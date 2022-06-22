@@ -1,4 +1,4 @@
-{
+{ 
   # The description attribute is a one-line description shown by nix flake metadata.
   description = "TODO Marconi Project Description";
 
@@ -35,6 +35,7 @@
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
     ];
     allow-import-from-derivation = true;
+    accept-flake-config = true;
   };
 
   # Any subsequent build of this flake will use the version of nixpkgs recorded 
@@ -48,4 +49,7 @@
 
   # Making sure that everything is in order:
   # nix flake check
+
+  # To avoid warning
+  # accept-flake-config
 }
