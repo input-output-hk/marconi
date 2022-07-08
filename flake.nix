@@ -6,9 +6,16 @@
   };
 
   outputs = { std, ... }@inputs:
-    std.grow {
+    std.growOn {
       inherit inputs;
       cellsFrom = ./nix;
+      # organelles = [
+      #   (inputs.std.clades.devshells "devshells")
+      # ];
+    }
+    {
+      # devShells = inputs.std.harvest inputs.self ["automation" "devshells"];
+      # packages = inputs.std.harvest inputs.self ["std" "cli"];
     };
 
   nixConfig = {
