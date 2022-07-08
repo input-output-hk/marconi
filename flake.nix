@@ -15,7 +15,8 @@
       ];
     }
     {
-      devShells = inputs.std.harvest inputs.self ["std" "devshells"];
+      # we need to harvest from the right cell
+      devShells = inputs.std.harvest inputs.self ["hello" "devshells"];
       # devShells = inputs.std.harvest inputs.self ["automation" "devshells"];
       # packages = inputs.std.harvest inputs.self ["std" "cli"];
     };
