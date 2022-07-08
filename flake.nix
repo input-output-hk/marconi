@@ -5,26 +5,37 @@
   # The inputs attribute specifies other flakes that this flake depends on. 
   # These are fetched by Nix and passed as arguments to the outputs function.
   inputs = {
-    nixpkgs.url = github:NixOS/nixpkgs/nixos-20.03;
+    # nixpkgs.url = github:NixOS/nixpkgs/nixos-20.03;
+
+    # flake-utils.url = "github:numtide/flake-utils";
+
+    std.url = "github:divnix/std";
   };
 
-  # The outputs attribute is the heart of the flake: it’s a function that 
-  # produces an attribute set. The function arguments are the flakes specified 
-  # in inputs. The self argument denotes this flake. Its primarily useful for 
-  # referring to the source of the flake (as in src = self;) or to other outputs 
-  # (e.g. self.defaultPackage.x86_64-linux).
-  # 
-  # The attributes produced by outputs are arbitrary values, except that there 
-  # are some standard outputs such as defaultPackage.${system}
-  # Every flake has some metadata, such as self.lastModifiedDate, which is used 
-  # to generate a version string like hello-20191015
-  outputs = { self, nixpkgs, ... }: {
 
-    packages.x86_64-linux.hello = nixpkgs.legacyPackages.x86_64-linux.hello;
+  outputs = { std, ... }@inputs:
+    std.grow {
+      inherit inputs;
+      cellsFrom = ./nix;
+    };
 
-    packages.x86_64-linux.default = self.packages.x86_64-linux.hello;
+  # # The outputs attribute is the heart of the flake: it’s a function that 
+  # # produces an attribute set. The function arguments are the flakes specified 
+  # # in inputs. The self argument denotes this flake. Its primarily useful for 
+  # # referring to the source of the flake (as in src = self;) or to other outputs 
+  # # (e.g. self.defaultPackage.x86_64-linux).
+  # # 
+  # # The attributes produced by outputs are arbitrary values, except that there 
+  # # are some standard outputs such as defaultPackage.${system}
+  # # Every flake has some metadata, such as self.lastModifiedDate, which is used 
+  # # to generate a version string like hello-20191015
+  # outputs = { self, nixpkgs, flake-utils, ... }: {
 
-  };
+  #   packages.x86_64-linux.hello = nixpkgs.legacyPackages.x86_64-linux.hello;
+
+  #   packages.x86_64-linux.default = self.packages.x86_64-linux.hello;
+
+  # };
 
   nixConfig = {
     extra-substituters = [
