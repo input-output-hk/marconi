@@ -78,7 +78,7 @@
     },
     "kroki-preprocessor": {
       "inputs": {
-        "nixpkgs": "nixpkgs",
+        "nixpkgs": "nixpkgs_2",
         "std": "std_2"
       },
       "locked": {
@@ -97,6 +97,21 @@
     },
     "nixpkgs": {
       "locked": {
+        "lastModified": 1657292830,
+        "narHash": "sha256-ldfVSTveWceDCmW6gf3B4kR6vwmz/XS80y5wsLLHFJU=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "334ec8b503c3981e37a04b817a70e8d026ea9e84",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
         "lastModified": 1652059086,
         "narHash": "sha256-CjHSbr6LSFkN4YBdTB6+8ZQmSqhsbiXqAeQ9hQJ/gBI=",
         "owner": "NixOS",
@@ -111,7 +126,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_2": {
+    "nixpkgs_3": {
       "locked": {
         "lastModified": 1650469885,
         "narHash": "sha256-BuILRZ6pzMnGey8/irbjGq1oo3vIvZa1pitSdZCmIXA=",
@@ -127,7 +142,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_3": {
+    "nixpkgs_4": {
       "locked": {
         "lastModified": 1652632955,
         "narHash": "sha256-cSxiAaS8ozw63rLJHdN6RPwhA4lY2XeC/J+uggodYXw=",
@@ -145,6 +160,7 @@
     },
     "root": {
       "inputs": {
+        "nixpkgs": "nixpkgs",
         "std": "std"
       }
     },
@@ -152,7 +168,7 @@
       "inputs": {
         "devshell": "devshell",
         "kroki-preprocessor": "kroki-preprocessor",
-        "nixpkgs": "nixpkgs_3",
+        "nixpkgs": "nixpkgs_4",
         "yants": "yants_2"
       },
       "locked": {
@@ -172,7 +188,7 @@
     "std_2": {
       "inputs": {
         "devshell": "devshell_2",
-        "nixpkgs": "nixpkgs_2",
+        "nixpkgs": "nixpkgs_3",
         "yants": "yants"
       },
       "locked": {

@@ -3,6 +3,7 @@
 
   inputs = {
     std.url = "github:divnix/std";
+    nixpkgs.url = github:NixOS/nixpkgs;
   };
 
   outputs = { std, ... }@inputs:
