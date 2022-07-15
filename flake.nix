@@ -1,10 +1,10 @@
 { 
   description = "WIP";
 
-  inputs = {
-    std.url = "github:divnix/std";
-    nixpkgs.url = github:NixOS/nixpkgs;
-  };
+  inputs.std.url = "github:divnix/std";
+  inputs.std.inputs.nixpkgs.follows = "nixpkgs";
+  
+  inputs.nixpkgs.url = github:NixOS/nixpkgs/nixos-22.05;
 
   outputs = { std, ... }@inputs:
     std.growOn {
@@ -15,10 +15,7 @@
       ];
     }
     {
-      # we need to harvest from the right cell
       devShells = inputs.std.harvest inputs.self ["hello" "devshells"];
-      # devShells = inputs.std.harvest inputs.self ["automation" "devshells"];
-      # packages = inputs.std.harvest inputs.self ["std" "cli"];
     };
 
   nixConfig = {
