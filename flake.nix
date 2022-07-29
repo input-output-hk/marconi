@@ -1,10 +1,18 @@
 { 
-  description = "WIP";
+  description = "Marconi Chain Indexer";
 
-  inputs.std.url = "github:divnix/std";
-  inputs.std.inputs.nixpkgs.follows = "nixpkgs";
-  
-  inputs.nixpkgs.url = github:NixOS/nixpkgs/nixos-22.05;
+  inputs = {
+    nixpkgs = {
+      url = github:NixOS/nixpkgs/30d3d79b7d3607d56546dd2a6b49e156ba0ec634;
+    };
+    std = {
+      url = "github:divnix/std";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    haskell-nix = {
+      url = "github:input-output-hk/haskell.nix";
+    };
+  };
 
   outputs = { std, ... }@inputs:
     std.growOn {
@@ -12,10 +20,12 @@
       cellsFrom = ./nix;
       organelles = [
         (inputs.std.devshells "devshells")
+        (inputs.std.installables "packages")
       ];
     }
     {
-      devShells = inputs.std.harvest inputs.self ["hello" "devshells"];
+      devShells = inputs.std.harvest inputs.self ["marconi" "devshells"];
+      packages = inputs.std.harvest inputs.self ["marconi" "packages"];
     };
 
   nixConfig = {
