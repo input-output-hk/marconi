@@ -6,7 +6,7 @@
       url = github:NixOS/nixpkgs/30d3d79b7d3607d56546dd2a6b49e156ba0ec634;
     };
     std = {
-      url = "github:divnix/std";
+      url = "github:divnix/std/b8a1db5f04e20b2e929572fe483dbd97dc23a9b8";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     haskell-nix = {
