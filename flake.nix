@@ -11,8 +11,8 @@
     };
     haskell-nix = {
       url = "github:input-output-hk/haskell.nix";
-      flake = false;
     };
+    # nixpkgs-haskell.follows = "haskell-nix/nixpkgs-unstable";
   };
 
   outputs = { std, ... }@inputs:
