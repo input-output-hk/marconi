@@ -5,15 +5,15 @@
 
   haskellNixProject = 
     let 
-      sources = import inputs.nixpkgs { 
+      sources = import inputs.nixpkgs-haskell { 
+        system = inputs.nixpkgs.system;
         config = inputs.haskell-nix.config;
         overlays = [ inputs.haskell-nix.overlay ];
       };
     in 
-      sources.haskell-nix.hackage-project {
-        src = ../../../src;
+      sources.haskell-nix.cabalProject {
+        src = inputs.self + /src;
         name = "cabal-install";
-        version = "3.6.2.0";
         compiler-nix-name = "ghc8107";
         index-state = "2022-02-22T20:47:03Z";
       };
@@ -27,3 +27,5 @@
     };
   };
 }
+
+
