@@ -12,7 +12,7 @@
     haskell-nix = {
       url = "github:input-output-hk/haskell.nix";
     };
-    # nixpkgs-haskell.follows = "haskell-nix/nixpkgs-unstable";
+    nixpkgs-haskell.follows = "haskell-nix/nixpkgs-unstable";
   };
 
   outputs = { std, ... }@inputs:
