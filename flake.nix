@@ -11,6 +11,7 @@
     };
     haskell-nix = {
       url = "github:input-output-hk/haskell.nix";
+      flake = false;
     };
   };
 
