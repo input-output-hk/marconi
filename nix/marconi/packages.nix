@@ -12,7 +12,7 @@
       };
     in 
       sources.haskell-nix.cabalProject {
-        src = inputs.self + /src;
+        src = inputs.self + ./src;
         name = "cabal-install";
         compiler-nix-name = "ghc8107";
         index-state = "2022-02-22T20:47:03Z";
