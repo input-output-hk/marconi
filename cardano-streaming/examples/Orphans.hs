@@ -4,8 +4,8 @@
 module Orphans where
 
 import Cardano.Api (BlockHeader (BlockHeader), BlockNo, ChainPoint (ChainPoint, ChainPointAtGenesis), ToJSON)
+import Cardano.Streaming (ChainSyncEvent)
 import GHC.Generics (Generic)
-import Plutus.Streaming (ChainSyncEvent)
 
 deriving instance Generic ChainPoint
 

@@ -1,6 +1,6 @@
 cabal-version: 2.4
-name:          plutus-streaming
-version:       1.0.0.0
+name:          cardano-streaming
+version:       0.1.0.0
 author:        Andrea Bedini
 maintainer:    andrea.bedini@iohk.io
 
@@ -29,7 +29,7 @@ common lang
 library
   import:          lang
   hs-source-dirs:  src
-  exposed-modules: Plutus.Streaming
+  exposed-modules: Cardano.Streaming
 
   --------------------------
   -- Other IOG dependencies
@@ -44,10 +44,9 @@ library
   build-depends:
     , async
     , base       >=4.9 && <5
-    , stm
     , streaming
 
-executable plutus-streaming-example-1
+executable cardano-streaming-example-1
   import:         lang
   hs-source-dirs: examples
   main-is:        Example1.hs
@@ -58,7 +57,7 @@ executable plutus-streaming-example-1
   --------------------
   -- Local components
   --------------------
-  build-depends:  plutus-streaming
+  build-depends:  cardano-streaming
 
   --------------------------
   -- Other IOG dependencies
@@ -71,13 +70,12 @@ executable plutus-streaming-example-1
   build-depends:
     , aeson
     , base                  >=4.9 && <5
-    , base16-bytestring
     , bytestring
     , optparse-applicative
     , streaming
     , text
 
-executable plutus-streaming-example-2
+executable cardano-streaming-example-2
   import:         lang
   hs-source-dirs: examples
   main-is:        Example2.hs
@@ -89,9 +87,8 @@ executable plutus-streaming-example-2
   -- Local components
   --------------------
   build-depends:
-    , plutus-ledger        >=1.0.0
-    , plutus-script-utils  >=1.0.0
-    , plutus-streaming
+    , cardano-streaming
+    , plutus-ledger      >=1.0.0
 
   --------------------------
   -- Other IOG dependencies
@@ -104,12 +101,11 @@ executable plutus-streaming-example-2
   build-depends:
     , aeson
     , base                  >=4.9 && <5
-    , base16-bytestring
     , bytestring
     , optparse-applicative
     , streaming
 
-executable plutus-streaming-example-3
+executable cardano-streaming-example-3
   import:         lang
   hs-source-dirs: examples
   main-is:        Example3.hs
@@ -121,8 +117,8 @@ executable plutus-streaming-example-3
   -- Local components
   --------------------
   build-depends:
+    , cardano-streaming
     , plutus-chain-index-core  >=1.0.0
-    , plutus-streaming
 
   --------------------------
   -- Other IOG dependencies
@@ -135,7 +131,6 @@ executable plutus-streaming-example-3
   build-depends:
     , aeson
     , base                  >=4.9 && <5
-    , base16-bytestring
     , bytestring
     , optparse-applicative
     , streaming

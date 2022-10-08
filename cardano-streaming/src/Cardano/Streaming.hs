@@ -1,4 +1,4 @@
-module Plutus.Streaming
+module Cardano.Streaming
   ( withChainSyncEventStream,
     ChainSyncEvent (..),
     ChainSyncEventException (..),
@@ -132,3 +132,4 @@ chainSyncStreamingClient point nextChainEventVar =
                   putMVar nextChainEventVar (RollBackward cp ct)
                   sendRequestNext
             }
+
