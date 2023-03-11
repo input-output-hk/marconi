@@ -1,35 +1,31 @@
-############################################################################
-# Builds Haskell packages with Haskell.nix
-############################################################################
-{ lib
-, haskell-nix
-, gitignore-nix
-, z3
-, libsodium-vrf
-, libsecp256k1
-, compiler-nix-name
-, enableHaskellProfiling
-  # Whether to set the `defer-plugin-errors` flag on those packages that need
-  # it. If set to true, we will also build the haddocks for those packages.
-, deferPluginErrors
-, CHaP
+{ inputs, cell }:
+
+# Whether to set the `defer-plugin-errors` flag on those packages that need
+# it. If set to true, we will also build the haddocks for those packages.
+{ deferPluginErrors ? false
+
+, enableHaskellProfiling ? false
 }:
+
 let
-  project = haskell-nix.cabalProject' ({ pkgs, config, ... }: {
-    inherit compiler-nix-name;
-    # This is incredibly difficult to get right, almost everything goes wrong, see https://github.com/input-output-hk/haskell.nix/issues/496
-    src = let root = ../../../.; in
-      haskell-nix.haskellLib.cleanSourceWith {
-        filter = gitignore-nix.gitignoreFilter root;
-        src = root;
-        # Otherwise this depends on the name in the parent directory, which reduces caching, and is
-        # particularly bad on Hercules, see https://github.com/hercules-ci/support/issues/40
-        name = "plutus-apps";
-      };
-    sha256map = import ./sha256map.nix;
-    inputMap = {
-      "https://input-output-hk.github.io/cardano-haskell-packages" = CHaP;
+  project = cell.library.pkgs.haskell-nix.cabalProject' ({ pkgs, config, lib, ... }: {
+
+    compiler-nix-name = cell.library.ghc-compiler-nix-name;
+
+    src = cell.library.pkgs.haskell-nix.haskellLib.cleanSourceWith {
+      src = inputs.self.outPath;
+      name = "marconi";
     };
+
+    shell.withHoogle = false;
+
+    # TODO(std) fix this when nix-shell goes away
+    sha256map = import (inputs.self + /nix/pkgs/haskell/sha256map.nix);
+
+    inputMap = {
+      "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.CHaP;
+    };
+
     # Configuration settings needed for cabal configure to work when cross compiling
     # for windows. We can't use `modules` for these as `modules` are only applied
     # after cabal has been configured.
@@ -69,7 +65,7 @@ let
             # of the components with we are going to run.
             # We should try to find a way to automate this will in haskell.nix.
             symlinkDlls = ''
-              ln -s ${libsodium-vrf}/bin/libsodium-23.dll $out/bin/libsodium-23.dll
+              ln -s ${pkgs.libsodium-vrf}/bin/libsodium-23.dll $out/bin/libsodium-23.dll
               ln -s ${pkgs.buildPackages.gcc.cc}/x86_64-w64-mingw32/lib/libgcc_s_seh-1.dll $out/bin/libgcc_s_seh-1.dll
               ln -s ${pkgs.buildPackages.gcc.cc}/x86_64-w64-mingw32/lib/libstdc++-6.dll $out/bin/libstdc++-6.dll
               ln -s ${pkgs.windows.mcfgthreads}/bin/mcfgthread-12.dll $out/bin/mcfgthread-12.dll
@@ -94,7 +90,11 @@ let
             };
           }
         )
-        (lib.mkIf pkgs.stdenv.hostPlatform.isDarwin { })
+        (lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
+          packages = {
+            plutus-pab-executables.components.tests.plutus-pab-test-full-long-running.buildable = lib.mkForce false;
+          };
+        })
         ({ pkgs, config, ... }: {
           packages = {
             marconi-core.doHaddock = deferPluginErrors;
@@ -106,14 +106,14 @@ let
             # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
             # is necessary to prevent the error
             # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
-            # See https://github.com/input-output-hk/cardano-node/issues/4194
+            # See https://github.com/input-output-hk/cardano-node/issues/4194.
             #
             # The line 'export CARDANO_NODE_SRC=...' is used to specify the
             # root folder used to fetch the `configuration.yaml` file (in
-            # plutus-apps, it's currently in the
+            # marconi, it's currently in the
             # `configuration/defaults/byron-mainnet` directory.
             # Else, we'll get the error
-            # `/nix/store/ls0ky8x6zi3fkxrv7n4vs4x9czcqh1pb-plutus-apps/marconi/test/configuration.yaml: openFile: does not exist (No such file or directory)`
+            # `/nix/store/ls0ky8x6zi3fkxrv7n4vs4x9czcqh1pb-marconi/marconi/test/configuration.yaml: openFile: does not exist (No such file or directory)`
             marconi-chain-index.preCheck = "
               export CARDANO_CLI=${config.hsPkgs.cardano-cli.components.exes.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
               export CARDANO_NODE=${config.hsPkgs.cardano-node.components.exes.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
@@ -133,6 +133,20 @@ let
               export CARDANO_NODE=${config.hsPkgs.cardano-node.components.exes.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
               export CARDANO_NODE_SRC=${src}
             ";
+            plutus-e2e-tests.components.tests.plutus-e2e-tests-test.build-tools =
+              lib.mkForce (with pkgs.buildPackages; [ jq coreutils shellcheck lsof ]);
+
+            plutus-use-cases.doHaddock = deferPluginErrors;
+            plutus-use-cases.flags.defer-plugin-errors = deferPluginErrors;
+
+            plutus-ledger.doHaddock = deferPluginErrors;
+            plutus-ledger.flags.defer-plugin-errors = deferPluginErrors;
+
+            plutus-script-utils.doHaddock = deferPluginErrors;
+            plutus-script-utils.flags.defer-plugin-errors = deferPluginErrors;
+
+            plutus-example.doHaddock = deferPluginErrors;
+            plutus-example.flags.defer-plugin-errors = deferPluginErrors;
             plutus-example.preCheck = "
               export CARDANO_CLI=${config.hsPkgs.cardano-cli.components.exes.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
               export CARDANO_NODE=${config.hsPkgs.cardano-node.components.exes.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
@@ -142,6 +156,7 @@ let
             ";
 
             # FIXME: Haddock mysteriously gives a spurious missing-home-modules warning
+            plutus-tx-plugin.doHaddock = false;
 
             # Relies on cabal-doctest, just turn it off in the Nix build
             prettyprinter-configurable.components.tests.prettyprinter-configurable-doctest.buildable = lib.mkForce false;
@@ -162,8 +177,8 @@ let
             ieee.components.library.libs = lib.mkForce [ ];
 
             # See https://github.com/input-output-hk/iohk-nix/pull/488
-            cardano-crypto-praos.components.library.pkgconfig = lib.mkForce [ [ libsodium-vrf ] ];
-            cardano-crypto-class.components.library.pkgconfig = lib.mkForce [ [ libsodium-vrf libsecp256k1 ] ];
+            cardano-crypto-praos.components.library.pkgconfig = lib.mkForce [ [ pkgs.libsodium-vrf ] ];
+            cardano-crypto-class.components.library.pkgconfig = lib.mkForce [ [ pkgs.libsodium-vrf pkgs.secp256k1 ] ];
           };
         })
       ] ++ lib.optional enableHaskellProfiling {

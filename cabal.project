@@ -16,28 +16,11 @@ index-state: 2023-02-28T00:00:00Z
 -- See CONTRIBUTING.adoc for how to update index-state
 index-state:
   , hackage.haskell.org 2023-02-28T00:00:00Z
-  , cardano-haskell-packages 2023-02-28T00:00:00Z
-
-packages: cardano-node-emulator
-          cardano-streaming
-          doc
-          freer-extras
-          marconi-chain-index
+  , cardano-haskell-packages 2023-03-13T07:15:21Z
+packages: marconi-chain-index
           marconi-core
           marconi-sidechain
-          pab-blockfrost
-          plutus-chain-index
-          plutus-chain-index-core
-          plutus-contract
-          plutus-contract-certification
-          plutus-e2e-tests
-          plutus-example
-          plutus-ledger
-          plutus-pab
-          plutus-pab-executables
-          plutus-script-utils
-          plutus-tx-constraints
-          plutus-use-cases
+          cardano-streaming
 
 -- We never, ever, want this.
 write-ghc-environment-files: never
@@ -63,6 +46,14 @@ allow-newer:
   , servant-server:aeson
   , servant-foreign:lens
   , blockfrost-api:lens
+
+allow-older:
+  -- freer-extras works with lens-5.2 (rather than 5.2.1)
+  , freer-extras:lens
+  -- freer-extras works with resource-pool-0.3.1.0 (rather than 0.4.0.0)
+  , freer-extras:resource-pool
+  -- plutus-ledger works with lens-5.2 (rather than 5.2.1)
+  , plutus-ledger:lens
 
 constraints:
   -- cardano-prelude-0.1.0.0 needs
@@ -98,19 +89,6 @@ constraints:
   -- ouroboros-consensus-shelley-0.1.0.1 needs
   , ouroboros-consensus-protocol==0.1.0.1
 
--- The plugin will typically fail when producing Haddock documentation. However,
--- in this instance you can simply tell it to defer any errors to runtime (which
--- will never happen since you're building documentation).
---
--- So, any package using 'PlutusTx.compile' in the code for which you need to
--- generate haddock documentation should use the following 'haddock-options'.
-package plutus-ledger
-  haddock-options: "--optghc=-fplugin-opt PlutusTx.Plugin:defer-errors"
-package plutus-script-utils
-  haddock-options: "--optghc=-fplugin-opt PlutusTx.Plugin:defer-errors"
-package plutus-contract
-  haddock-options: "--optghc=-fplugin-opt PlutusTx.Plugin:defer-errors"
-
 -- These packages appear in our dependency tree and are very slow to build.
 -- Empirically, turning off optimization shaves off ~50% build time.
 -- It also mildly improves recompilation avoidance.
@@ -139,7 +117,7 @@ package cardano-wallet-core-integration
 -- Making it a good place to start when bumping dependencies.
 -- As, for example, bumping the node first highly risks breaking API with the wallet.
 -- Unless early bug fixes are required, this is fine as the wallet tracks stable releases of the node.
--- And it is indeed nice for plutus-apps to track stable releases of the node too.
+-- And it is indeed nice for marconi track stable releases of the node too.
 --
 -- The current version is dated 2022/08/10
 source-repository-package
@@ -147,15 +125,6 @@ source-repository-package
     location: https://github.com/input-output-hk/cardano-wallet
     tag: 18a931648550246695c790578d4a55ee2f10463e
     subdir:
-      lib/cli
-      lib/core
-      lib/core-integration
-      lib/dbvar
-      lib/launcher
-      lib/numeric
-      lib/shelley
-      lib/strict-non-empty-containers
-      lib/test-utils
       lib/text-class
 
 -- Should follow cardano-wallet.
@@ -202,3 +171,14 @@ source-repository-package
       libs/small-steps
       libs/small-steps-test
       libs/non-integral
+
+-- This is needed because we rely on an unreleased branch of
+-- plutus-apps. The feature we need
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/plutus-apps
+    tag: 9d90900d049f2333960fbc349cc816d2b163cda5
+    subdir:
+      plutus-chain-index-core
+      plutus-chain-index
+      cardano-node-emulator

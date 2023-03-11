@@ -46,7 +46,7 @@ TODO
 
 The `marconi-sidechain` executable is available as a nix flake.
 
-If inside the `plutus-apps` repository, you can run from the top-level:
+If inside the `marconi` repository, you can run from the top-level:
 
 ```
 $ nix build .#marconi-sidechain
@@ -55,7 +55,7 @@ $ nix build .#marconi-sidechain
 Or you may run from anywhere:
 
 ```
-$ nix build github:input-output-hk/plutus-apps#marconi-sidechain
+$ nix build github:input-output-hk/marconi#marconi-sidechain
 ```
 
 Both commands will produce a `result` directory containing the executable
@@ -66,7 +66,7 @@ Both commands will produce a `result` directory containing the executable
 To build `marconi-sidechain` from the source files, use the following commands:
 
 ```sh
-git clone git@github.com:input-output-hk/plutus-apps.git
+git clone git@github.com:input-output-hk/marconi.git
 nix develop
 cabal clean && cabal update # Optional, but makes sure you start clean
 cabal build marconi-sidechain

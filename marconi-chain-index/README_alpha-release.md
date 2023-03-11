@@ -59,14 +59,14 @@ The configuration files are available here:
 
 The `marconi` executable is available as a nix flake.
 
-You may either clone the [`plutus-apps`](https://github.com/input-output-hk/plutus-apps)
+You may either clone the [`marconi`](https://github.com/input-output-hk/marconi)
 repository and run from the top-level:
 ``` 
 nix build .#marconi
 ``` 
 Or you may run from anywhere:
 ```
-nix build github:input-output-hk/plutus-apps#marconi
+nix build github:input-output-hk/marconi#marconi
 ``` 
 
 Both commands will produce a `result` directory containing the executable 

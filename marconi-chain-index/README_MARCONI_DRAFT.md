@@ -140,14 +140,14 @@ Can we provide example queries?
 
 The `marconi` executable is available as a nix flake.
 
-You may either clone the [`plutus-apps`](https://github.com/input-output-hk/plutus-apps)
+You may either clone the [`marconi`](https://github.com/input-output-hk/marconi)
 repository and run from the top-level:
 ```
 nix build .#marconi
 ```
 Or you may run from anywhere:
 ```
-nix build github:input-output-hk/plutus-apps#marconi
+nix build github:input-output-hk/marconi#marconi
 ```
 
 Both commands will produce a `result` directory containing the executable
@@ -160,7 +160,7 @@ Both commands will produce a `result` directory containing the executable
 How do you contribute to it? What tools, methods, processes are required?
 
 * Contributing documentation.
-* Most of the info in Plutus-Apps and Plutus should also be included in Marconi.
+* Most of the info in Marconi and Plutus should also be included in Marconi.
 
 ## Making Builds
 

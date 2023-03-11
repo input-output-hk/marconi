@@ -1,122 +1,29 @@
-= https://github.com/input-output-hk/plutus-apps[The Plutus Application Framework]
-:email: plutus@iohk.io
-:author: Input Output HK Limited
-:toc: left
-:reproducible:
+# Marconi 
 
-image:https://img.shields.io/badge/policy-Cardano%20Engineering%20Handbook-informational[link=https://input-output-hk.github.io/cardano-engineering-handbook]
+## Introduction
 
-The Plutus Application Framework, part of the Plutus Platform, is a framework for developing distributed applications using the Cardano blockchain.
-For more information about the projects, see the <<user-documentation>>.
+Marconi is A lightweight customizable solution for indexing and querying the Cardano blockchain.
 
-This repository contains:
+### Built by IOG in Haskell
+The purpose of Marconi is ....
 
-* Plutus Platform
-** Libraries which implement the Plutus Application Framework, a framework for writing applications that work with Cardano.
-** A selection of end-to-end usecases written with the Plutus Application Framework
+## Architecture
+The Marconi component are:
 
-[IMPORTANT]
-====
-The rest of this README is focussed on people who want to develop or contribute to the Framework.
+* [marconi-core](./marconi-core)
+* [marconi-chain-indexer](./marconi-chain-index)
+* [marconi-sidechain](./marconi-sidechain)
 
-For people who want to *use* the Framework, please consult the <<user-documentation>>.
-====
+## Developement
+.....
 
-== Development
+## System Requirements
 
-[[how-to-develop]]
-=== How to develop and contribute to the project
+The system requirements for `marconi-chain-index` and `marconi-sidechain` (with `node` running
+on the same machine are:
 
-Run `nix develop` to enter the development shell and you will be presented with a list of available commands.
-
-**Please see link:CONTRIBUTING{outfilesuffix}[CONTRIBUTING] for comprehensive documentation on how to contribute to the project, including development and submitting changes*
-
-== Documentation
-
-=== User documentation
-
-The main documentation is located https://plutus-apps.readthedocs.io/en/latest/[here].
-
-The generated Haskell API documentation (haddocks) are here:
-<https://playground.plutus.iohkdev.io/doc/haddock>.
-
-
-=== Talks
-
-- https://www.youtube.com/watch?v=MpWeg6Fg0t8[Functional Smart Contracts on Cardano]
-- https://www.youtube.com/watch?v=usMPt8KpBeI[The Plutus Platform]
-
-=== Specifications and design
-
-- https://ci.zw3rk.com/job/input-output-hk-plutus/master/x86_64-linux.plutus-report/latest/download/1[Plutus Technical Report (draft)]
-
-== Branching, Versioning and Releases
-
-There are two protected development branches in `plutus-apps`: `main` and `next-node`.
-We adopt the PVP versioning scheme.
-Check out link:doc/BRANCHING-AND-RELEASE.adoc[Branching Policy and Release Process] to learn more.
-
-=== Dependency update
-
-The dependency update policy is dependent on the protected branch.
-
-For `cardano-node`, we define major-version-bound the range of versions which are compatible with a specific era.
-For example, for the Alonzo era, that would be `>= 1.29 && < 1.35`. For the Vasil era, that would be `>= 1.35 && < 1.36`.
-
-Independently of the protected branch:
-
-* It should always use the same first-major-version of `plutus` as the one used by the `plutus` dependency of `cardano-node`
-* It should always be safe to upgrade to a new second-major-version of `plutus`: at worst this will lead to some code breakage.
-* It should, unless specified otherwise, use the same version for transitive dependencies (`cardano-ledger`, `ouroboros-network`, etc.) with `cardano-node`
-* It should pin the major version of `cardano-node` for all packages
-* It should pin the first and second-major version of `plutus` for all packages
-
-`main` branch:
-
-* It should not update `cardano-node` to a new major-version. In other words, it should use a `cardano-node` version which is compatible with the current Cardano mainnet
-* It should use a `cardano-wallet` version which is compatible with the current `cardano-node` version
-
-`next-node` branch:
-
-* It may update the `cardano-node` to a new major-version. In other words, it may use a `cardano-node` version which is incompatible with the current Cardano mainnet
-* It may use a `cardano-wallet` version which is incompatible with the current `cardano-node` version
-
-=== Version ranges
-
-Packages which depend on `plutus-apps` packages should use version ranges to control which version of those packages they build against.
-
-* Packages in `plutus-apps` which are used downstream should pin the major-version of each other (e.g. `plutus-pab-1.0.1` should depend on `plutus-contract ^>= 1.0`).
-* Downstream packages should pin at least the first-major-version of `plutus-apps` packages.
-** Upgrading to a new second-major-version should always be safe for working on the current mainnet, with at most code breakage (following the PVP). Users may of course want to pin this version as well to avoid such breakage.
-* Downstream packages pulling in `plutus-apps` packages via `source-repository-package` stanzas should always take tagged commits.
-
-== Working with the project
-
-=== How to submit an issue
-
-Issues can be filed in the https://github.com/input-output-hk/plutus-apps/issues[GitHub Issue tracker].
-
-However, note that this is pre-release software, so we will not usually be providing support.
-
-[[how-to-develop]]
-=== How to develop and contribute to the project
-
-See link:CONTRIBUTING{outfilesuffix}[CONTRIBUTING], which describes our processes in more detail including development environments; and link:ARCHITECTURE{outfilesuffix}[ARCHITECTURE], which describes the structure of the repository.
-
-=== How to depend on the project from another Haskell project
-
-None of our libraries are on Hackage, unfortunately (many of our dependencies aren't either).
-So for the time being, you need to:
-
-. Add `plutus-apps` as a `source-repository-package` to your `cabal.project`.
-. Copy the `source-repository-package` stanzas from our `cabal.project` to yours.
-. Copy additional stanzas from our `cabal.project` as you need, e.g. you may need some of the `allow-newer` stanzas.
-
-The https://github.com/input-output-hk/plutus-starter[plutus-starter] project
-(deprecated) provides an example.
+.....
 
 == Licensing
 
-You are free to copy, modify, and distribute the Plutus Platform with
-under the terms of the Apache 2.0 license. See the link:./LICENSE[LICENSE]
-and link:./NOTICE[NOTICE] files for details.
+.....

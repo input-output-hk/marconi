@@ -248,7 +248,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
   -- We have to filter out the txs the empty scripts hashes because
   -- sometimes the RollForward event contains a block with the first transaction 'tx1'
   -- which has no scripts. The test fails because of that in 'headM indexedScriptHashes'.
-  -- For more details see https://github.com/input-output-hk/plutus-apps/issues/775
+  -- For more details see https://github.com/input-output-hk/marconi/issues/775
   let (ScriptTx.TxCbor tx, indexedScriptHashes) = head $ NE.filter (\(_, hashes) -> hashes /= []) indexedWithScriptHashes
 
   ScriptTx.ScriptTxAddress indexedScriptHash <- H.headM indexedScriptHashes

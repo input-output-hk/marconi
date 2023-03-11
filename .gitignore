@@ -65,22 +65,6 @@ pkgs/.stack
 *.code-workspace
 .*.sw*
 
-# Frontend files (NPM/Yarn, Spago, etc.)
-# N.B. officially we use NPM; ignoring Yarn files allows the local use of Yarn for those that want
-**/generated-docs/
-**/node_modules/
-**/output/
-**/yarn-error.log
-**/yarn.lock
-**/.psci_modules/
-**/.spago/
-**/.spago2nix/
-**/.psa-stash
-plutus-pab-executables/demo/pab-nami/client/generated
-
-# Backend config files
-plutus-pab/plutus-pab.yaml
-
 # Misc
 .history/
 .virtualenv
@@ -104,11 +88,7 @@ node.sock
 **/node?/db
 .pre-commit-config.yaml
 secrets/*/.gpg-id
-generated-plutus-scripts/
 ghcid.txt
-plutus-pab/test-node/testnet/db
-plutus-pab/test-node/testnet/restore-wallet.json
-plutus-pab/test-node/alonzo-purple/db
 # profiling output files
 *.timelog
 *.stacks

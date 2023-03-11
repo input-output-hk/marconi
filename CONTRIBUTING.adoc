@@ -1,4 +1,4 @@
-= Contributing to Plutus Apps
+= Contributing to Marconi
 :toc: left
 :reproducible:
 
@@ -10,7 +10,7 @@ Thanks to Nix we ensure that everyone has consistent versions of the tools that 
 
 Please use Nix since problems due to mismatched versions of tools are particularly annoying to fix!
 
-If you _really_ cannot use Nix and still want to contribute to Plutus then xref:develop-without-nix[skip to the relevant section].
+If you _really_ cannot use Nix and still want to contribute to Marconi then xref:develop-without-nix[skip to the relevant section].
 
 === Installing and setting up Nix
 
@@ -98,7 +98,7 @@ On NixOS, add the user/group name to the list under [`nix.settings.trusted-users
 
 === What to do once inside the `nix develop` shell
 
-Your prompt will change to `[plutus-shell]` and you will be presented with a menu of available commands.
+Your prompt will change to `[marconi]` and you will be presented with a menu of available commands.
 
 Please read that menu carefully.
 
@@ -109,7 +109,7 @@ From here you can build the project packages directly with `cabal`.
 
 NOTE: You may need to run `cabal update` so that `cabal` knows about the index state xref:update-index-state[we have pinned].
 
-Run `cabal build plutus-core` from the root to build the Plutus Core library.
+Run `cabal build all` from the root to build all marconi modules.
 
 See the link:./cabal.project[cabal project file] for a list of other packages that you can build with `cabal`.
 
@@ -126,9 +126,9 @@ We don't have a `hie.yaml`, the implicit cradle support in HLS seems to work fin
 
 Haskell components are provisioned by Nix via link:https://github.com/input-output-hk/haskell.nix[Haskell.nix]
 
-In general you can run `nix build .#SYSTEM.plutus.library.plutus-project.hsPkgs.PACKAGE.components.COMPONENT`
+In general you can run `nix build .#SYSTEM.marconi.library.marconi-project.hsPkgs.PACKAGE.components.COMPONENT`
 
-For example `nix build .#x86_64-linux.plutus.library.plutus-project.hsPkgs.plutus-core.components.library`
+For example `nix build .#x86_64-linux.marconi.library.marconi-project.hsPkgs.marconi-sidechain.components.library` to build marconi-sidechain.
 
 For full documentation about the Nix code see the link:nix/README.md[Nix README].
 
@@ -196,7 +196,7 @@ In particular, we should not release our packages while we depend on a `source-r
 
 If we are stuck in a situation where we need a long-running fork of a package, we should release it to CHaP instead (see the https://github.com/input-output-hk/cardano-haskell-packages[CHaP README] for more).
 
-If you do add a `source-repository-package`, you need to update the `sha256` mapping in `nix/cells/plutus/library/make-plutus-project.nix`.
+If you do add a `source-repository-package`, you need to update the `sha256` mapping in `nix/cells/marconi/library/make-marconi-project.nix`.
 For the moment you have to do this by hand, using the following command to get the sha: `nix-prefetch-git --quiet <repo-url> <rev> | jq .sha256`, or by just getting it wrong and trying to build it, in which case Nix will give you the right value.
 
 [[update-nix-pins]]
@@ -215,7 +215,6 @@ Do *not* use `nix flake update`, as that will update all the inputs, which we ty
 
 TODO: Currently not available, coming soon
 
-If you launch `nix develop .#profiled-plutus-apps` you will get a shell where all the dependencies have been built with profiling.
 
 [WARNING]
 ====
@@ -308,7 +307,7 @@ allows us to remove the ``source-repository-package`` stanza.
 
 === How to work with a local copy of source dependencies
 
-Sometimes you may want to make a change that spans both `plutus-apps` *and* some of its dependencies (most commonly, the packages in `plutus`).
+Sometimes you may want to make a change that spans both `marconi` *and* some of its dependencies (most commonly, the packages in `plutus`).
 The obvious workflow is to make changes in the `plutus` repository, update the pin in `plutus-apps` to point to the new commit, test, repeat.
 But this is very tedious and it's much nicer to work with a local checkout where cabal can incrementally rebuild the whole thing.
 

@@ -10,7 +10,7 @@
 # You may want to refer to the standard glossary as you go along:
 # https://divnix.github.io/std/glossary.html
 {
-  description = "Plutus Apps";
+  description = "Marconi Chain Indexer";
 
   inputs = {
     nixpkgs = {
@@ -56,13 +56,15 @@
       flake = false;
     };
     haskell-language-server = {
-      # TODO Bump to 1.9.0.0 once plutus-apps hits GHC 9.2
+      # TODO Bump to 1.9.0.0 once marconi hits GHC 9.2
       url = "github:haskell/haskell-language-server?ref=1.8.0.0";
       flake = false;
     };
-    plutus-core = {
-      url = "github:input-output-hk/plutus";
+    plutus-apps = {
+      url = "github:input-output-hk/plutus-apps";
+      flake = false;
     };
+
   };
 
   # The flake outputs are managed by std.
@@ -82,8 +84,8 @@
         # In this repository we have two cells:
         #   automation
         #     Hydra jobsets and GHA tasks
-        #   plutus-apps
-        #     devcontainer, devshells, library and packages for plutus-apps and its documentation
+        #   marconi
+        #     devcontainer, devshells, library and packages for marconi and its documentation
         cellsFrom = ./__std__/cells;
 
         # Each cell contains "cell blocks".
@@ -132,17 +134,17 @@
       #
       # The attrs will be recursively merged in the order in which they appear.
       {
-        # Here we say that we want the "devshells" cell block of the plutus-apps cell
+        # Here we say that we want the "devshells" cell block of the marconi cell
         # (which contains a number of shell-able derivations) to be exposed
         # by the flake and accessible via nix develop.
-        devShells = inputs.std.harvest inputs.self [ "plutus-apps" "devshells" ];
-        packages = inputs.std.harvest inputs.self [ "plutus-apps" "packages" ];
+        devShells = inputs.std.harvest inputs.self [ "marconi" "devshells" ];
+        packages = inputs.std.harvest inputs.self [ "marconi" "packages" ];
       }
       {
-        # Here we say that we want the "devcontainer" cell block of the plutus-apps cell
+        # Here we say that we want the "devcontainer" cell block of the marconi cell
         # (which contains a number of buildable derivations) to be exposed
         # by the flake and accessible via nix build (or nix run).
-        packages = inputs.std.harvest inputs.self [ "plutus-apps" "devcontainer" ];
+        packages = inputs.std.harvest inputs.self [ "marconi" "devcontainer" ];
       }
       {
         hydraJobs = inputs.std.harvest inputs.self [ "automation" "hydra-jobs" ];

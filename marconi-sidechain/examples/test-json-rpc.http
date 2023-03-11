@@ -5,7 +5,7 @@
 # should echo
 POST http://localhost:3000/json-rpc
 Content-Type: application/json-rpc
-{"jsonrpc": "2.0", "method": "echo", "params": "plutus-apps rocks", "id": 0}
+{"jsonrpc": "2.0", "method": "echo", "params": "marconi rocks", "id": 0}
 #
 # should fail. `add` method is unknown
 POST http://localhost:3000/json-rpc
