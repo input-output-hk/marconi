@@ -2,7 +2,7 @@
 
 let
 
-  inherit (inputs.cells.plutus-apps.library) plutus-apps-project pkgs;
+  inherit (inputs.cells.marconi.library) marconi-project pkgs;
   inherit (pkgs.stdenv) system;
 
   make-haskell-jobs = project:
@@ -19,18 +19,18 @@ let
       plan-nix = project.plan-nix;
     };
 
-  native-plutus-apps-jobs = make-haskell-jobs plutus-apps-project;
+  native-marconi-jobs = make-haskell-jobs marconi-project;
 
-  windows-plutus-apps-jobs = make-haskell-jobs plutus-apps-project.projectCross.mingwW64;
+  windows-marconi-jobs = make-haskell-jobs marconi-project.projectCross.mingwW64;
 
-  other-jobs = inputs.cells.plutus-apps.devshells // inputs.cells.plutus-apps.packages;
+  other-jobs = inputs.cells.marconi.devshells // inputs.cells.marconi.packages;
 
   jobs =
-    { native = native-plutus-apps-jobs; } //
+    { native = native-marconi-jobs; } //
     # Only cross-compile to windows from linux
-    pkgs.lib.optionalAttrs (system == "x86_64-linux") { mingwW64 = windows-plutus-apps-jobs; } //
+    pkgs.lib.optionalAttrs (system == "x86_64-linux") { mingwW64 = windows-marconi-jobs; } //
     # Devcontainer is only available on linux
-    pkgs.lib.optionalAttrs (system == "x86_64-linux") inputs.cells.plutus-apps.devcontainer //
+    pkgs.lib.optionalAttrs (system == "x86_64-linux") inputs.cells.marconi.devcontainer //
     other-jobs;
 
   # Hydra doesn't like these attributes hanging around in "jobsets": it thinks they're jobs!

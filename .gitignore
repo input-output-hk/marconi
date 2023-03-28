@@ -1,0 +1,114 @@
+# Latex
+*.dvi
+*.fls
+*.ptb
+*.aux
+*.log
+*.pdf
+*.gz
+*.synctex(busy)
+*.bbl
+*.fdb_latexmk
+*.blg
+*.glg
+*.glo
+*.gls
+*.glsdefs
+*.ist
+*.out
+*.toc
+*.bcf
+*.run.xml
+*.thm
+auto
+
+# Cabal
+.ghc.environment*
+tags
+dist-newstyle
+dist
+cabal-dev
+.cabal-sandbox/
+cabal.sandbox.config
+cabal.config
+cabal.project.local
+
+# Stack
+.stack-work
+stack.yaml.lock
+
+# Haskell output files
+*.o
+*.hi
+*.dyn_o
+*.dyn_hi
+*.chi
+*.chs.h
+*.prof
+.liquid/
+
+# Python
+__pycache__
+
+# Nix
+result*
+pkgs/.cabal
+pkgs/.cache
+pkgs/.stack
+
+# Editor files
+*~
+*#
+*_flymake.*
+.psc-ide-port
+.dir-locals.el
+*.code-workspace
+.*.sw*
+
+# Frontend files (NPM/Yarn, Spago, etc.)
+# N.B. officially we use NPM; ignoring Yarn files allows the local use of Yarn for those that want
+**/generated-docs/
+**/node_modules/
+**/output/
+**/yarn-error.log
+**/yarn.lock
+**/.psci_modules/
+**/.spago/
+**/.spago2nix/
+**/.psa-stash
+plutus-pab-executables/demo/pab-nami/client/generated
+
+# Backend config files
+plutus-pab/plutus-pab.yaml
+
+# Misc
+.history/
+.virtualenv
+.vscode/
+.hsenv
+TAGS
+.DS_Store
+.uuid
+.terraform
+*.tfvars
+gh-pages
+.importify/
+.envrc
+.direnv/
+*.db
+*.db-shm
+*.db-wal
+hie.yaml
+node-server.sock*
+node.sock
+**/node?/db
+.pre-commit-config.yaml
+secrets/*/.gpg-id
+generated-plutus-scripts/
+ghcid.txt
+plutus-pab/test-node/testnet/db
+plutus-pab/test-node/testnet/restore-wallet.json
+plutus-pab/test-node/alonzo-purple/db
+# profiling output files
+*.timelog
+*.stacks

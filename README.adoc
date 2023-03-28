@@ -1,0 +1,81 @@
+= https://github.com/input-output-hk/marconi[Cardano Blockchain Indexer Framework]
+:email: plutus@iohk.io
+:author: Input Output HK Limited
+:toc: left
+:reproducible:
+
+image:https://img.shields.io/badge/policy-Cardano%20Engineering%20Handbook-informational[link=https://input-output-hk.github.io/cardano-engineering-handbook]
+
+## Introduction
+
+Marconi is A lightweight customizable solution for indexing and querying the Cardano blockchain.
+
+[[Architecture]]
+== Architecture
+
+Marconi consists of a set of compomentes:
+
+- link:./marconi-core[marconi-core]
+- link:./marconi-chain-index[marconi-chain-indexer]
+- link:./marconi-sidechain[marconi-sidechain]
+
+== Development
+
+[[how-to-develop]]
+=== How to develop and contribute to the project
+
+Run `nix develop` to enter the development shell and you will be presented with a list of available commands.
+
+**Please see link:CONTRIBUTING{outfilesuffix}[CONTRIBUTING] for comprehensive documentation on how to contribute to the project, including development and submitting changes*
+
+== Documentation
+
+=== User documentation
+
+User documentations are work in progress. You may generate Haskell API documenations (haddocks) directly from the `nix shell` for each of marconi compoments:
+
+```
+cabal haddock marconi-core
+cabal haddock marconi-chain-index
+cabal haddock marconi-sidechain
+
+```
+
+=== Dependency update
+
+The dependency update policy is dependent on the protected branch.
+
+For `cardano-node`, we define major-version-bound the range of versions which are compatible with a specific era.
+For example, for the Alonzo era, that would be `>= 1.29 && < 1.35`. For the Vasil era, that would be `>= 1.35 && < 1.36`.
+
+Independently of the protected branch:
+
+* It should always use the same first-major-version of `plutus` as the one used by the `plutus` dependency of `cardano-node`
+* It should always be safe to upgrade to a new second-major-version of `plutus`: at worst this will lead to some code breakage.
+* It should, unless specified otherwise, use the same version for transitive dependencies (`cardano-ledger`, `ouroboros-network`, etc.) with `cardano-node`
+* It should pin the major version of `cardano-node` for all packages
+* It should pin the first and second-major version of `plutus` for all packages
+
+`main` branch:
+
+* It should not update `cardano-node` to a new major-version. In other words, it should use a `cardano-node` version which is compatible with the current Cardano mainnet
+* It should use a `cardano-wallet` version which is compatible with the current `cardano-node` version
+
+== Working with the project
+
+=== How to submit an issue
+
+Issues can be filed in the https://github.com/input-output-hk/marconi/issues[GitHub Issue tracker].
+
+However, note that this is pre-release software, so we will not usually be providing support.
+
+[[how-to-develop]]
+=== How to develop and contribute to the project
+
+See link:CONTRIBUTING{outfilesuffix}[CONTRIBUTING], which describes our processes in more detail including development environments; and <<Architecture>>, which describes the structure of the repository.
+
+== Licensing
+
+You are free to copy, modify, and distribute the Marconi Platform with
+under the terms of the Apache 2.0 license. See the link:./LICENSE[LICENSE]
+and link:./NOTICE[NOTICE] files for details.

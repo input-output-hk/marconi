@@ -28,9 +28,9 @@ A description of the arguments follows:
   Remember that a cell is named after its folder.\
   The full format is: `inputs.cells.<cell>.<cell-block>.value`.\
   Examples:
-  - `inputs.cells.plutus-apps.packages.read-the-docs-site`
-  - `inputs.cells.plutus-apps.devshells.plutus-apps-shell`
-  - `inputs.cells.plutus-apps.library.cardano-node`
+  - `inputs.cells.marconi.packages.read-the-docs-site`
+  - `inputs.cells.marconi.devshells.marconi-shell`
+  - `inputs.cells.marconi.library.cardano-node`
 
 - `inputs.<flake-input>`\
   The flake inputs proper.\
@@ -40,10 +40,10 @@ A description of the arguments follows:
   Provides access to the cell's blocks.\
   This is a shorthand for `inputs.cells.<cell>.<cell-block>`, where `<cell>` evaluates to the cell housing this nix file.\
   Examples:
-  - `cell.library.cardano-node` only works for code in `/cells/plutus-apps`\
-    Alternatively `inputs.cells.plutus-apps.library.agda-cardano-node` works everywhere
-  - `cell.packages.hlint` only works for code in `/cells/plutus-apps`\
-    Alternatively `inputs.cells.plutus-apps.packages.hlint` works everywhere
+  - `cell.library.cardano-node` only works for code in `/cells/marconi`\
+    Alternatively `inputs.cells.marconi.library.agda-cardano-node` works everywhere
+  - `cell.packages.hlint` only works for code in `/cells/marconi`\
+    Alternatively `inputs.cells.marconi.packages.hlint` works everywhere
 
 ## One derivation per nix file
 
@@ -75,33 +75,33 @@ While these blocks are not exposed directly to the flake (they are not "harveste
 `nix (develop|build|run) .#<system>.<cell>.<cell-block>.<valid.attr.path>`
 
 For example:
-`nix build .#x86_64-linux.plutus-apps.library.plutus-apps-project.hsPkgs.marconi-sidechain.components.exes.marconi-sidechain`
+`nix build .#x86_64-linux.marconi.library.marconi-project.hsPkgs.marconi-sidechain.components.exes.marconi-sidechain`
 
 ## Reference example
 
-As an example, consider the file `./__std__/cells/plutus-apps/packages/marconi-chain-index.nix`:
+As an example, consider the file `./__std__/cells/marconi/packages/marconi-chain-index.nix`:
 
 - `./__std__/cells` is the `cellsFrom` value in `flake.nix`
-- `/plutus-apps` is the cell name
-- `/plutus-apps/*` are accessible via `cell.*` from `{ inputs, cell }` (while inside `cells/plutus-apps`)
-- `/plutus-apps/*` are accessible via `inputs.cells.plutus-apps.*` (everywhere)
+- `/marconi` is the cell name
+- `/marconi/*` are accessible via `cell.*` from `{ inputs, cell }` (while inside `cells/marconi`)
+- `/marconi/*` are accessible via `inputs.cells.marconi.*` (everywhere)
 - `/packages` is the cell block name
-- `/packages/*` are accessible via `cell.packages.*` (while inside `cells/plutus-apps`)
-- `/packages/*` are accessible via `inputs.cells.plutus-apps.packages.*` (everywhere)
+- `/packages/*` are accessible via `cell.packages.*` (while inside `cells/marconi`)
+- `/packages/*` are accessible via `inputs.cells.marconi.packages.*` (everywhere)
 - `/marconi-chain-index.nix` contains a *single derivation*
 - `marconi-chain-index` is the name of the flake fragment
-- A derivation named `marconi-chain-index` is accessible via `cell.packages.marconi-chain-index` (while inside `cells/plutus-apps`)
-- And also accessible via `inputs.cells.plutus-apps.packages.marconi-chain-index` (everywhere)
+- A derivation named `marconi-chain-index` is accessible via `cell.packages.marconi-chain-index` (while inside `cells/marconi`)
+- And also accessible via `inputs.cells.marconi.packages.marconi-chain-index` (everywhere)
 - And also buildable via `nix build .#marconi-chain-index`
 
-As another example, consider the file `./__std__/cells/plutus-apps/library/default.nix`
+As another example, consider the file `./__std__/cells/marconi/library/default.nix`
 
 - `./__std__/cells` is the `cellsFrom` value in `flake.nix`
-- `/plutus-apps` is the cell name
-- `/plutus-apps/*` are accessible via `cell.*` from `{ inputs, cell }` (while inside `cells/plutus-apps`)
-- `/plutus-apps/*` are accessible via `inputs.cells.plutus-apps.*` (everywhere)
+- `/marconi` is the cell name
+- `/marconi/*` are accessible via `cell.*` from `{ inputs, cell }` (while inside `cells/marconi`)
+- `/marconi/*` are accessible via `inputs.cells.marconi.*` (everywhere)
 - `/library` is the cell block name
-- `/library/*` are accessible via `cell.library.*` (while inside `cells/plutus-apps`)
+- `/library/*` are accessible via `cell.library.*` (while inside `cells/marconi`)
 - `/library/*` are accessible via `inputs.cells.library.*` (everywhere)
 - `/default.nix` imports every file in its directory
 - `/default.nix` contains a derivation for each file in its directory
