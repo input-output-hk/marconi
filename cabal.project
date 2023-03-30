@@ -171,13 +171,3 @@ source-repository-package
       libs/small-steps
       libs/small-steps-test
       libs/non-integral
-
--- This is needed because we rely on an unreleased branch of
--- plutus-apps. The feature we need
-source-repository-package
-    type: git
-    location: https://github.com/input-output-hk/plutus-apps
-    tag: 9d90900d049f2333960fbc349cc816d2b163cda5
-    subdir:
-      plutus-chain-index-core
-      cardano-node-emulator
