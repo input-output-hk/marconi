@@ -60,10 +60,6 @@
       url = "github:haskell/haskell-language-server?ref=1.8.0.0";
       flake = false;
     };
-    plutus-apps = {
-      url = "github:input-output-hk/plutus-apps";
-      flake = false;
-    };
     plutus-core = {
       url = "github:input-output-hk/plutus";
     };

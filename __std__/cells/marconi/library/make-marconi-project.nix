@@ -26,7 +26,6 @@ let
       "https://github.com/input-output-hk/cardano-ledger"."da3e9ae10cf9ef0b805a046c84745f06643583c2" = "sha256-3VUZKkLu1R43GUk9IwgsGQ55O0rnu8NrCkFX9gqA4ck=";
       "https://github.com/input-output-hk/cardano-wallet"."18a931648550246695c790578d4a55ee2f10463e" = "0i40hp1mdbljjcj4pn3n6zahblkb2jmpm8l4wnb36bya1pzf66fx";
       "https://github.com/sevanspowell/hw-aeson"."b5ef03a7d7443fcd6217ed88c335f0c411a05408" = "1dwx90wqavdl4d0npbzbxyh2pzi9zs1qz7nvsrb3n1cm2xbv4i5z";
-      "https://github.com/input-output-hk/plutus-apps"."9d90900d049f2333960fbc349cc816d2b163cda5" = "0cqm86z73k54rcnnplcwxl8v0l96pnmwlq4hgn9fjmlj01j2v3bv";
     };
 
     inputMap = {
