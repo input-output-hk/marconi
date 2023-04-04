@@ -1,11 +1,5 @@
 { inputs, cell }@block:
 {
-  combined-plutus-apps-haddock = import ./combined-plutus-apps-haddock.nix block;
-
-  # read-the-docs-site = import ./read-the-docs-site.nix block;
-
-  # serve-readthedocs-site = import ./serve-readthedocs-site.nix block;
-
   sphinx-markdown-tables = import ./sphinx-markdown-tables.nix block;
 
   sphinx-toolchain = import ./sphinx-toolchain.nix block;
@@ -42,17 +36,9 @@
 
   stylish-haskell = import ./stylish-haskell.nix block;
 
-  # sphinx-autobuild-readthedocs-site = import ./sphinx-autobuild-readthedocs-site.nix block;
-
-  # sphinx-build-readthedocs-site = import ./sphinx-build-readthedocs-site.nix block;
-
   marconi-chain-index = import ./marconi-chain-index.nix block;
 
   marconi-sidechain = import ./marconi-sidechain.nix block;
-
-  plutus-chain-index = import ./plutus-chain-index.nix block;
-
-  create-script-context = import ./create-script-context.nix block;
 
   cardano-wallet = import ./cardano-wallet.nix block;
 

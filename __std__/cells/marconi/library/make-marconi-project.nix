@@ -54,7 +54,6 @@ let
         ({ pkgs, ... }: lib.mkIf (pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform) {
           packages = {
             # Things that need plutus-tx-plugin
-            freer-extras.package.buildable = false;
             cardano-node-emulator.package.buildable = false;
             cardano-streaming.package.buildable = false;
             marconi-chain-index.package.buildable = false;
@@ -79,11 +78,6 @@ let
           in
           lib.mkIf (pkgs.stdenv.hostPlatform.isWindows) { }
         )
-        (lib.mkIf pkgs.stdenv.hostPlatform.isDarwin {
-          packages = {
-            plutus-pab-executables.components.tests.plutus-pab-test-full-long-running.buildable = lib.mkForce false;
-          };
-        })
         ({ pkgs, config, ... }: {
           packages = {
             marconi-core.doHaddock = deferPluginErrors;
@@ -126,7 +120,6 @@ let
             marconi-chain-index.ghcOptions = [ "-Werror" ];
             marconi-core.ghcOptions = [ "-Werror" ];
             marconi-sidechain.ghcOptions = [ "-Werror" ];
-            pab-blockfrost.ghcOptions = [ "-Werror" ];
 
             # Honestly not sure why we need this, it has a mysterious unused dependency on "m"
             # This will go away when we upgrade nixpkgs and things use ieee754 anyway.

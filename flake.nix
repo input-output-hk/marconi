@@ -84,7 +84,6 @@
         #   automation
         #     Hydra jobsets and GHA tasks
         #   marconi
-        #     devcontainer, devshells, library and packages for marconi and its documentation
         cellsFrom = ./__std__/cells;
 
         # Each cell contains "cell blocks".
@@ -102,8 +101,6 @@
         #     Development shells available via nix develop
         #   packages :: installables
         #     Derivations available via nix build
-        #   devcontainer :: installables
-        #     Docker image for creating a VS Code development environment
         #   library :: functions
         #     Everything that is not a derivation goes here
         #     Includes functions, attrsets and simple literal values shared across cells
@@ -117,7 +114,6 @@
         cellBlocks = [
           (inputs.std.devshells "devshells")
           (inputs.std.installables "packages")
-          (inputs.std.installables "devcontainer")
           (inputs.std.functions "library")
           (inputs.std.installables "hydra-jobs")
         ];
@@ -138,12 +134,6 @@
         # by the flake and accessible via nix develop.
         devShells = inputs.std.harvest inputs.self [ "marconi" "devshells" ];
         packages = inputs.std.harvest inputs.self [ "marconi" "packages" ];
-      }
-      {
-        # Here we say that we want the "devcontainer" cell block of the marconi cell
-        # (which contains a number of buildable derivations) to be exposed
-        # by the flake and accessible via nix build (or nix run).
-        packages = inputs.std.harvest inputs.self [ "marconi" "devcontainer" ];
       }
       {
         hydraJobs = inputs.std.harvest inputs.self [ "automation" "hydra-jobs" ];
