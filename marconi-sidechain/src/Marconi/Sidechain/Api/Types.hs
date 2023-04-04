@@ -20,10 +20,10 @@ import Cardano.Api qualified as C
 import Control.Concurrent.STM.TMVar (TMVar)
 import Control.Exception (Exception)
 import Control.Lens (makeLenses)
-import Marconi.ChainIndex.Indexers.EpochStakepoolSize (EpochSPDHandle)
+import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
 import Marconi.ChainIndex.Types as Export (TargetAddresses)
-import Marconi.Core.Storable (State)
+import Marconi.Core.Storable (State, StorableQuery)
 import Network.Wai.Handler.Warp (Settings)
 
 -- | Type represents http port for JSON-RPC
@@ -45,10 +45,10 @@ data SidechainEnv = SidechainEnv
 
 -- | Should contain all the indexers required by Sidechain.
 data SidechainIndexers = SidechainIndexers
-    { _sidechainAddressUtxoIndexer              :: !AddressUtxoIndexerEnv
+    { _sidechainAddressUtxoIndexer :: !AddressUtxoIndexerEnv
     -- ^ For query thread to access in-memory utxos
-    , _sidechainEpochStakePoolDelegationIndexer :: !EpochSPDIndexerEnv
-    -- ^ For query thread to access in-memory epoch stake pool delegation
+    , _sidechainEpochStateIndexer  :: !EpochStateIndexerEnv
+    -- ^ For query thread to access in-memory epoch state data
     }
 
 data AddressUtxoIndexerEnv = AddressUtxoIndexerEnv
@@ -56,17 +56,18 @@ data AddressUtxoIndexerEnv = AddressUtxoIndexerEnv
     , _addressUtxoIndexerEnvIndexer         :: !(TMVar (State UtxoHandle))
     }
 
-newtype EpochSPDIndexerEnv = EpochSPDIndexerEnv
-    { _epochSpdIndexerEnvIndexer         :: TMVar (State EpochSPDHandle)
+newtype EpochStateIndexerEnv = EpochStateIndexerEnv
+    { _epochStateIndexerEnvIndexer         :: TMVar (State EpochStateHandle)
     }
 
 data QueryExceptions
     = AddressConversionError !QueryExceptions
     | QueryError !String
+    | UnexpectedQueryResult !(StorableQuery UtxoHandle)
     deriving stock Show
     deriving anyclass  Exception
 
 makeLenses ''SidechainEnv
 makeLenses ''SidechainIndexers
 makeLenses ''AddressUtxoIndexerEnv
-makeLenses ''EpochSPDIndexerEnv
+makeLenses ''EpochStateIndexerEnv

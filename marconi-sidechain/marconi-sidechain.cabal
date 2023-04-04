@@ -45,7 +45,7 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Sidechain.Api.HttpServer
-    Marconi.Sidechain.Api.Query.Indexers.EpochSPD
+    Marconi.Sidechain.Api.Query.Indexers.EpochState
     Marconi.Sidechain.Api.Query.Indexers.Utxo
     Marconi.Sidechain.Api.Routes
     Marconi.Sidechain.Api.Types
@@ -71,7 +71,6 @@ library
   build-depends:
     , aeson
     , base                  >=4.9 && <5
-    , containers
     , filepath
     , lens
     , optparse-applicative
@@ -80,7 +79,6 @@ library
     , stm                   >=2.5
     , text
     , time
-    , vector
     , warp
 
 executable marconi-sidechain
@@ -205,7 +203,10 @@ test-suite marconi-sidechain-test
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:  cardano-api:{cardano-api, gen}
+  build-depends:
+    , cardano-api:{cardano-api, gen}
+    , cardano-crypto-class
+    , cardano-ledger-shelley
 
   ------------------------
   -- Non-IOG dependencies

@@ -15,7 +15,7 @@ import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, pack)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
-import Marconi.Sidechain.Api.Query.Indexers.EpochSPD qualified as EpochSPD
+import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (API, AddressUtxoResult, CurrentSyncedPointResult, EpochNonceResult,
                                      EpochStakePoolDelegationResult, JsonRpcAPI, MintingPolicyHashTxResult, RestAPI)
@@ -91,10 +91,13 @@ getTargetAddressesQueryHandler env _ =
 -- | Handler for retrieving current synced chain point.
 getCurrentSyncedPointHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-    -> String -- ^ Dummy parameter
+    -> String
+    -- ^ Will always be an empty string as we are ignoring this param, and returning everything
     -> Handler (Either (JsonRpcErr String) CurrentSyncedPointResult)
-getCurrentSyncedPointHandler _ _ =
-    pure $ Left $ JsonRpcErr 1 "Endpoint not implemented yet" Nothing
+getCurrentSyncedPointHandler env _ = liftIO $
+    first toRpcErr
+    <$> Q.Utxo.currentSyncedPoint
+           (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
 
 -- | Handler for retrieving UTXOs by Address
 getAddressUtxoHandler
@@ -121,14 +124,16 @@ getEpochStakePoolDelegationHandler
     -> Handler (Either (JsonRpcErr String) EpochStakePoolDelegationResult)
 getEpochStakePoolDelegationHandler env epochNo = liftIO $
     first toRpcErr
-    <$> EpochSPD.querySPDByEpochNo env epochNo
+    <$> EpochState.querySDDByEpochNo env epochNo
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochNonceHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
     -> Word64           -- ^ EpochNo
     -> Handler (Either (JsonRpcErr String) EpochNonceResult)
-getEpochNonceHandler _ _ = pure $ Left $ JsonRpcErr 1 "Endpoint not implemented yet" Nothing
+getEpochNonceHandler env epochNo = liftIO $
+    first toRpcErr
+    <$> EpochState.queryNonceByEpochNo env epochNo
 
 -- | Convert to JSON-RPC protocol error.
 toRpcErr
