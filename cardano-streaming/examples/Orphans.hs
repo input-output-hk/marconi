@@ -9,9 +9,9 @@ import GHC.Generics (Generic)
 
 deriving instance Generic ChainPoint
 
-instance ToJSON ChainPoint
+-- instance ToJSON ChainPoint
 
-instance ToJSON BlockNo
+-- instance ToJSON BlockNo
 
 deriving instance Generic BlockHeader
 

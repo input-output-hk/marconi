@@ -30,7 +30,7 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.Data qualified as LA
 import Cardano.Ledger.Alonzo.Scripts qualified as LA
 import Cardano.Ledger.Alonzo.Tx qualified as LA
-import Cardano.Ledger.Alonzo.TxWitness qualified as LA
+import Cardano.Ledger.Alonzo.TxWits qualified as LA
 import Cardano.Ledger.Babbage.Tx qualified as LB
 import Cardano.Ledger.Mary.Value qualified as LM
 import Control.Lens (makeLenses, view, (&), (^.))
@@ -89,16 +89,16 @@ txbMints txb = case txb of
     C.ShelleyBasedEraAllegra -> []
     C.ShelleyBasedEraMary -> []
     C.ShelleyBasedEraAlonzo -> do
-      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LA.mint shelleyTx
+      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LA.atbMint shelleyTx
       pure $ MintAsset policyId assetName quantity index' redeemer
     C.ShelleyBasedEraBabbage -> do
-      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LB.mint shelleyTx
+      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LB.btbMint shelleyTx
       pure $ MintAsset policyId assetName quantity index' redeemer
   _byronTxBody -> [] -- ByronTxBody is not exported but as it's the only other data constructor then _ matches it.
 
 -- * Helpers
 
-txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LA.Data (C.ShelleyLedgerEra era), LA.ExUnits)
+txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LA.Data era, LA.ExUnits)
 txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
   C.TxBodyScriptData _proof _datum redeemers -> LA.unRedeemers redeemers
   C.TxBodyNoScriptData                       -> mempty
@@ -112,9 +112,9 @@ mintRedeemers txb = txRedeemers txb
 
 getPolicyData
     :: C.TxBody era
-    -> LM.Value OEra.StandardCrypto
+    -> LM.MultiAsset OEra.StandardCrypto
     -> [(C.PolicyId, C.AssetName, C.Quantity, Word64, C.ScriptData)]
-getPolicyData txb (LM.Value _ m) = do
+getPolicyData txb (LM.MultiAsset m) = do
   let
     policyIdList = Map.toList m
     getPolicyId index' = policyIdList !! fromIntegral index'

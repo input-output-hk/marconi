@@ -63,7 +63,7 @@ library
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:   cardano-api
+  build-depends:   cardano-api >= 8.0
 
   ------------------------
   -- Non-IOG dependencies
@@ -151,7 +151,7 @@ library db-utils
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:   cardano-api
+  build-depends:   cardano-api >= 8.0
 
   ------------------------
   -- Non-IOG dependencies
@@ -205,7 +205,7 @@ test-suite marconi-sidechain-test
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, gen}
+    , cardano-api:{cardano-api, gen} >= 8.0
     , cardano-crypto-class
     , cardano-ledger-shelley
 

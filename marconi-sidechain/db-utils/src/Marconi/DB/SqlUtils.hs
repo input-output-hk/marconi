@@ -47,7 +47,7 @@ instance (ToField a) => ToRow (ShelleyFrequencyTable a )where
 
 instance FromField C.AddressAny where
   fromField f = fromField f >>=
-      maybe (returnError ConversionFailed f "Cannot deserialise address.")
+      either (const $ returnError ConversionFailed f "Cannot deserialise address.")
           pure . C.deserialiseFromRawBytes C.AsAddressAny
 
 -- | create a small SQL pipeline:
