@@ -2,8 +2,6 @@
 {
   pkgs = import ./pkgs.nix block;
 
-  combine-haddock = import ./combine-haddock.nix block;
-
   easy-ps = import ./easy-ps.nix block;
 
   marconi-project = import ./marconi-project.nix block;

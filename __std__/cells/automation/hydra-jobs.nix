@@ -29,15 +29,13 @@ let
     { native = native-marconi-jobs; } //
     # Only cross-compile to windows from linux
     pkgs.lib.optionalAttrs (system == "x86_64-linux") { mingwW64 = windows-marconi-jobs; } //
-    # Devcontainer is only available on linux
-    pkgs.lib.optionalAttrs (system == "x86_64-linux") inputs.cells.marconi.devcontainer //
     other-jobs;
 
   # Hydra doesn't like these attributes hanging around in "jobsets": it thinks they're jobs!
   filtered-jobs = pkgs.lib.filterAttrsRecursive (n: _: n != "recurseForDerivations") jobs;
 
   required-job = pkgs.releaseTools.aggregate {
-    name = "required-plutus";
+    name = "required-marconi";
     meta.description = "All jobs required to pass CI";
     constituents = pkgs.lib.collect pkgs.lib.isDerivation filtered-jobs;
   };

@@ -68,7 +68,7 @@ That is unless the relevant cell block was not exposed in `flake.nix`.
 
 Note however that the one-derivation-per-file policy stated above only holds for the `packages` and `devshells` cell blocks.
 
-Other cell blocks (for example `library` or `devcontainer`) host nix files that evaluate to functions, literal values, or more complex attribute sets.
+Other cell blocks (for example `library`) host nix files that evaluate to functions, literal values, or more complex attribute sets.
 
 While these blocks are not exposed directly to the flake (they are not "harvested"), they can still be accessed using this syntax:
 

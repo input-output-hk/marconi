@@ -88,33 +88,3 @@ executable cardano-streaming-example-1
     , optparse-applicative
     , streaming
     , text
-
-executable cardano-streaming-example-2
-  import:         lang
-  hs-source-dirs: examples
-  main-is:        Example2.hs
-  other-modules:
-    Common
-    Orphans
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:
-    , cardano-streaming
-    , plutus-ledger      >=1.2.0
-
-  --------------------------
-  -- Other IOG dependencies
-  --------------------------
-  build-depends:  cardano-api >=1.35
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , aeson
-    , base                  >=4.9 && <5
-    , bytestring
-    , optparse-applicative
-    , streaming

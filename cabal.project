@@ -47,14 +47,6 @@ allow-newer:
   , servant-foreign:lens
   , blockfrost-api:lens
 
-allow-older:
-  -- freer-extras works with lens-5.2 (rather than 5.2.1)
-  , freer-extras:lens
-  -- freer-extras works with resource-pool-0.3.1.0 (rather than 0.4.0.0)
-  , freer-extras:resource-pool
-  -- plutus-ledger works with lens-5.2 (rather than 5.2.1)
-  , plutus-ledger:lens
-
 constraints:
   -- cardano-prelude-0.1.0.0 needs
   , protolude <0.3.1
