@@ -66,12 +66,12 @@ module Marconi.Core.Spec.Experiment
 
 import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
-import Control.Lens (makeLenses, to, use, view, views, (%~), (.=), (^.))
+import Control.Lens (Getter, Lens', lens, makeLenses, to, use, view, views, (%~), (.=), (^.))
 
 import Control.Monad (foldM, replicateM)
 import Control.Monad.Except (MonadError)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.State (StateT, evalStateT, get)
+import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
 
 import Data.Foldable (Foldable (foldl'))
@@ -79,7 +79,7 @@ import Data.Function ((&))
 
 import GHC.Generics (Generic)
 
-import Test.QuickCheck (Arbitrary, Gen, Property, (===))
+import Test.QuickCheck (Arbitrary, Gen, Property, choose, (===))
 import Test.QuickCheck qualified as Test
 import Test.QuickCheck.Monadic (PropertyM)
 import Test.QuickCheck.Monadic qualified as GenM
@@ -115,49 +115,73 @@ data Item event
     | Rollback !TestPoint
     deriving stock Show
 
--- | 'GenState' is used in generators of chain events to keep track of the latest slot
-newtype GenState = GenState { _slotNo :: TestPoint }
-    deriving stock Show
+-- | 'GenChainConfig' is used in generators of chain events
+-- to determine the events that should be build
+data GenChainConfig
+    = GenChainConfig
+        { _chainSize         :: Int
+        , _rollbackFrequency :: Word
+        , _rollbackDepth     :: TestPoint -> Gen TestPoint
+        , _currentTestPoint  :: TestPoint
+        }
 
-makeLenses 'GenState
+chainSize :: Getter GenChainConfig Int
+chainSize = to _chainSize
+
+rollbackFrequency :: Lens' GenChainConfig Word
+rollbackFrequency
+    = lens _rollbackFrequency (\g f-> g{_rollbackFrequency = f})
+
+rollbackDepth :: Lens' GenChainConfig (TestPoint -> Gen TestPoint)
+rollbackDepth
+    = lens _rollbackDepth (\g d-> g{_rollbackDepth = d})
+
+currentTestPoint :: Lens' GenChainConfig TestPoint
+currentTestPoint
+    = lens _currentTestPoint (\g p-> g{_currentTestPoint = p})
 
 -- | Generate an insert at the given slot
-genInsert :: Arbitrary event => GenState -> Gen (Item event)
-genInsert s = do
+genInsert :: Arbitrary event => TestPoint -> Gen (Item event)
+genInsert no = do
     xs <- Test.arbitrary
-    pure $ Insert (s ^. slotNo + 1) xs
+    pure $ Insert (no + 1) xs
 
 -- | Generate a rollback, 'GenState' set the maximal depth of the rollback
-genRollback :: GenState -> Gen (Item event)
-genRollback s = do
-    n <- TestPoint <$> Test.choose (0, unwrapTestPoint $ s ^. slotNo)
-    pure $ Rollback n
+genRollback :: GenChainConfig -> Gen (Item event)
+genRollback = do
+    p <- view currentTestPoint
+    gen <- view rollbackDepth
+    pure $ Rollback <$> gen p
 
 -- | Generate an insert or a rollback, rollback depth is uniform on the chain length
 genItem
     :: Arbitrary event
-    => Word -- ^ rollback frequency (insert weight is 100 - rollback frequency)
-    -> StateT GenState Gen (Item event)
-genItem f = do
-    s <- get
-    no <- use slotNo
+    => StateT GenChainConfig Gen (Item event)
+genItem = do
+    no <- use currentTestPoint
+    f <- use rollbackFrequency
+    genRollback' <- gets genRollback
+    let setStateSlot = \case
+            Insert no' _ -> currentTestPoint .= no'
+            Rollback n   -> currentTestPoint .= n
     let f' = if no > 0 then f else 0 -- no rollback on genesis
     item <- lift $ Test.frequency
-        [ (fromIntegral f',  genRollback s)
-        , (100 - fromIntegral f', genInsert s)
+        [ (fromIntegral f',  genRollback')
+        , (100 - fromIntegral f', genInsert no)
         ]
-    case item of
-        Insert no' _ -> slotNo .= no'
-        Rollback n   -> slotNo .= n
+    setStateSlot item
     pure item
+
 
 genChain
     :: Arbitrary event
-    => Word -- ^ Rollback percentage
-    -> Int -- ^ Size
-    -> Gen [Item event]
-genChain percent size
-    = evalStateT (replicateM size (genItem percent)) (GenState Core.genesis)
+    => GenChainConfig -> Gen [Item event]
+genChain cfg = flip evalStateT cfg $ do
+    let size = cfg ^. chainSize
+    replicateM size genItem
+
+uniformRollBack :: TestPoint -> Gen TestPoint
+uniformRollBack = fmap TestPoint . choose . (,) 0 . unwrapTestPoint
 
 genLargeChain
     :: Arbitrary event
@@ -165,7 +189,7 @@ genLargeChain
     -> Gen [Item event]
 genLargeChain p = do
     n <- Test.choose (50000,200000)
-    genChain p n
+    genChain $ GenChainConfig n p uniformRollBack 0
 
 -- | Chain events with 10% of rollback
 newtype DefaultChain event = DefaultChain {_defaultChain :: [Item event]}
@@ -174,7 +198,8 @@ makeLenses 'DefaultChain
 
 instance Arbitrary event => Arbitrary (DefaultChain event) where
 
-    arbitrary = Test.sized $ fmap DefaultChain . genChain 10
+    arbitrary = Test.sized $ \n ->
+        DefaultChain <$> genChain (GenChainConfig n 10 uniformRollBack 0)
 
 -- | Chain events without any rollback
 newtype ForwardChain event = ForwardChain {_forwardChain :: [Item event]}
@@ -183,7 +208,8 @@ makeLenses 'ForwardChain
 
 instance Arbitrary event => Arbitrary (ForwardChain event) where
 
-    arbitrary = Test.sized $ fmap ForwardChain . genChain 0
+    arbitrary = Test.sized $ \n ->
+        ForwardChain <$> genChain (GenChainConfig n 0 uniformRollBack 0)
 
 -- ** Event instances
 
