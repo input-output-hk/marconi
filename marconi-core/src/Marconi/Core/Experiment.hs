@@ -241,7 +241,7 @@ import Data.Sequence qualified as Seq
 
 import Control.Concurrent (MVar, QSemN, forkIO)
 import Control.Lens (Getter, Lens', filtered, folded, makeLenses, maximumOf, set, to, view, (%~), (&), (+~), (-~), (.~),
-                     (<<.~), (^.), (^..), (^?))
+                     (^.), (^..), (^?))
 import Control.Monad (forever, guard, unless, void, when, (<=<))
 import Control.Monad.Except (ExceptT, MonadError (catchError, throwError), runExceptT)
 import Control.Tracer (Tracer)
@@ -421,12 +421,21 @@ class Queryable m event query indexer where
     -- It can be read as:
     -- "With the knowledge you have at that point in time,
     --  what is your answer to this query?"
-    query :: Ord (Point event) => Point event -> query -> indexer event -> m (Result query)
+    query
+        :: Ord (Point event)
+        => Point event
+        -> query
+        -> indexer event
+        -> m (Result query)
 
 -- | Like @query@, but internalise @QueryError@ in the result.
 query'
-    :: (Queryable (ExceptT (QueryError query) m) event query indexer, Ord (Point event))
-    => Point event -> query -> indexer event -> m (Either (QueryError query) (Result query))
+    :: Queryable (ExceptT (QueryError query) m) event query indexer
+    => Ord (Point event)
+    => Point event
+    -> query
+    -> indexer event
+    -> m (Either (QueryError query) (Result query))
 query' p q = runExceptT . query p q
 
 -- | The indexer can take a result and complete it with its events
@@ -434,7 +443,11 @@ class ResumableResult m event query indexer where
 
     resumeResult
        :: Ord (Point event)
-       => Point event -> query -> indexer event -> m (Result query) -> m (Result query)
+       => Point event
+       -> query
+       -> indexer event
+       -> m (Result query)
+       -> m (Result query)
 
 -- | We can reset an indexer to a previous `Point`
 --     * @indexer@ is the indexer implementation type
@@ -488,7 +501,8 @@ class Flushable m indexer where
         -> indexer event
         -> m (Container indexer (TimedEvent event), indexer event)
 
--- | A Full in memory indexer, it uses list because I was too lazy to port the @Vector@ implementation.
+-- | A Full in memory indexer.
+-- It uses list because I was too lazy to port the @Vector@ implementation.
 -- If we wanna move to these indexers, we should switch the implementation to the @Vector@ one.
 --
 -- The constructor is not exposed, use 'listIndexer' instead.
@@ -507,12 +521,6 @@ makeLenses 'ListIndexer
 listIndexer :: HasGenesis (Point event) => ListIndexer event
 listIndexer = ListIndexer [] genesis
 
-instance Applicative m => Flushable m ListIndexer where
-
-    currentLength ix = pure $ fromIntegral (length (ix ^. events))
-
-    flushMemory _ ix = pure $ ix & events <<.~ []
-
 instance Monad m => IsIndex m event ListIndexer where
 
     index timedEvent ix = let
@@ -530,6 +538,18 @@ instance Monad m => IsIndex m event ListIndexer where
 
 instance Applicative m => IsSync m event ListIndexer where
     lastSyncPoint = pure . view latest
+
+instance Applicative m => Flushable m ListIndexer where
+
+    -- | How many events are stored in the indexer
+    currentLength ix = pure $ fromIntegral (length (ix ^. events))
+
+    -- | Flush a given number of events from the indexer
+    flushMemory n ix = let
+
+        (freshest, oldest) = splitAt (fromIntegral n) $ ix ^. events
+
+        in pure (oldest, ix & events .~ freshest)
 
 instance Applicative m => Rewindable m event ListIndexer where
 
