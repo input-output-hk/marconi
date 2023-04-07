@@ -214,7 +214,7 @@ propTxInWhenPhase2ValidationFails = property $ do
         C.TxInsCollateralNone -> Hedgehog.assert $ null computedTxins
         C.TxInsCollateral _ txinsC_ -> do
           Hedgehog.footnoteShow txReturnCollateral
-          let (Utxo.TxOutBalance _ ins) = Utxo.txOutBalanceFromTx tx
+          let (Utxo.BalanceUtxo _ ins) = Utxo.balanceUtxoFromTx Nothing tx
           -- This property shows collateral TxIns will be processed and balanced
           -- Note: not all collateral txins may be utilized in when phase-2 validation fails
           ins === Set.fromList txinsC_
@@ -395,7 +395,7 @@ propComputeEventsAtAddress = property $ do
             $ Utxo.ueUtxos event
     computedAddresses === actualAddresses
 
--- | Calling 'Utxo.getUtxoEvents' with target addresses that are extracted from all tx outputs from
+-- | Calling 'Utxo.getUtxoEventos' with target addresses that are extracted from all tx outputs from
 -- the initial generated txs should return the same 'UtxoEvent's as if there was no provided target
 -- addresses.
 propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied ::  Property
@@ -428,7 +428,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       :: [C.Tx C.BabbageEra]
       -> Maybe TargetAddresses
     mkTargetAddressFromTxs txs =
-        foldMap (\(C.Tx (C.TxBody C.TxBodyContent { C.txOuts }) _) -> mkTargetAddressFromTxOuts txOuts) txs
+        foldMap (\(C.Tx (C.TxBody C.TxBodyContent { C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts)  txs
 
     mkTargetAddressFromTxOuts
       :: [C.TxOut C.CtxTx C.BabbageEra]
