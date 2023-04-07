@@ -61,11 +61,16 @@ import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
+import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
+import Prettyprinter.Render.Text (renderStrict)
 import System.Random.MWC (createSystemRandom, uniformR)
 import Text.RawString.QQ (r)
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.BM.Setup (withTrace)
+import Cardano.BM.Trace (logInfo)
+import Cardano.BM.Tracing (defaultConfigStdout)
 import Data.Ord (Down (Down, getDown))
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TargetAddresses, TxOut, pattern CurrentEra)
@@ -669,15 +674,41 @@ instance Rewindable UtxoHandle where
 -- For resuming we need to provide a list of points where we can resume from.
 instance Resumable UtxoHandle where
   resumeFromStorage (UtxoHandle c _ _) = do
-    chainPoints <- fmap (uncurry C.ChainPoint) <$>
-            SQL.query c
-                [r|SELECT slotNo, blockHash
-                   FROM unspent_transactions
-                   ORDER BY slotNo DESC|] ()
+    chainPoints <- resumeHelper c
     -- The ordering here matters. The node will try to find the first point in the
     -- ledger, then move to the next and so on, so we will send the latest point
     -- first.
     pure $ chainPoints ++ [C.ChainPointAtGenesis]
+
+-- Add paination to resume
+-- Main reason for adding this is to protect against OOM
+-- TODO use withAsync to spread the load
+resumeHelper :: SQL.Connection -> IO [C.ChainPoint]
+resumeHelper c =
+  let
+    limit :: Int = 216000
+    traceName :: Text.Text="marconi-utxo-resume"
+    helper :: Int -> [C.ChainPoint] -> IO [C.ChainPoint]
+    helper offset tally =  do
+      d <- defaultConfigStdout
+      cps <- fmap (uncurry C.ChainPoint) <$>
+        SQL.query c [r|SELECT DISTINCT slotNo, blockHash
+                   FROM unspent_transactions
+                   ORDER BY slotNo DESC
+                   LIMIT ? OFFSET ? |] (limit, offset)
+      case cps of
+        [] -> withTrace d traceName $ \trace -> do
+          logInfo trace $ renderStrict $
+            layoutPretty defaultLayoutOptions $
+            "Resume is complted."
+          pure tally
+        cps' -> withTrace d traceName $ \trace -> do
+          logInfo trace $ renderStrict $
+            layoutPretty defaultLayoutOptions $
+             "Resume is at offset: " <+> pretty offset
+          helper (limit + offset)(tally <> cps')
+  in helper 0 []
+
 
 -- | Convert from 'AddressInEra' of the 'CurrentEra' to 'AddressAny'.
 toAddr :: C.AddressInEra era -> C.AddressAny
