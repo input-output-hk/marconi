@@ -188,7 +188,7 @@ genLargeChain
     => Word -- ^ Rollback percentage
     -> Gen [Item event]
 genLargeChain p = do
-    n <- Test.choose (50000,200000)
+    n <- Test.choose (750000,1500000)
     genChain $ GenChainConfig n p uniformRollBack 0
 
 -- | Chain events with 10% of rollback
@@ -331,8 +331,8 @@ indexingPerformanceTest
     ) => String -> IndexerTestRunner m TestEvent indexer -> Tasty.TestTree
 indexingPerformanceTest indexerName runner
     = Tasty.testProperty (indexerName <> " performance check")
-        $ Test.withMaxSuccess 50
-        $ Test.within 1000000 $ storageBasedModelProperty (genLargeChain 10) runner
+        $ Test.withMaxSuccess 5
+        $ Test.within 10000000 $ storageBasedModelProperty (genLargeChain 10) runner
 
 storageBasedModelProperty
     ::
@@ -446,8 +446,8 @@ mixedModelLowMemoryIndexer
     -> Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer TestEvent
 mixedModelLowMemoryIndexer con
     = Core.mixedIndexer
-        10
         2
+        8
         (sqliteModelIndexer con)
         Core.listIndexer
 
@@ -456,7 +456,7 @@ mixedModelHighMemoryIndexer
     -> Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer TestEvent
 mixedModelHighMemoryIndexer con
     = Core.mixedIndexer
-        8192
+        4096
         4096
         (sqliteModelIndexer con)
         Core.listIndexer

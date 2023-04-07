@@ -1318,6 +1318,13 @@ data PruningConfig event
 makeLenses ''PruningConfig
 
 -- | WithPruning control when we should prune an indexer
+--
+-- The main purpose is to optimize storage for events that can't be rollbacked anymore.
+--
+-- In some contexts, once you know that an event can't be rollback anymore,
+-- your indexer may not need it, or may process it's information to make it
+-- irrelevant.
+-- In this case, you may want to `prune` the stored events.
 newtype WithPruning indexer event
     = WithPruning { _pruningWrapper :: IndexWrapper PruningConfig indexer event }
 
@@ -1473,10 +1480,10 @@ instance
 
 data MixedIndexerConfig store event
     = MixedIndexerConfig
-        { _configCapacity     :: Word
-        -- ^ maximum capacity in memory (flush when reached)
-        , _configKeepInMemory :: Word
+        { _configKeepInMemory :: Word
         -- ^ how many events are kept in memory after a flush
+        , _configFlushSize    :: Word
+        -- ^ how many events are sent on disk when we flush
         , _configInDatabase   :: store event
         -- ^ In database storage, usually for data that can't be rollbacked
         }
@@ -1494,19 +1501,19 @@ newtype MixedIndexer store mem event
 
 mixedIndexer
     :: Word
-    -- ^ memory size before a flush to store
-    -> Word
     -- ^ how many events are kept in memory after a flush
+    -> Word
+    -- ^ flush size
     -> store event
     -> mem event
     -> MixedIndexer store mem event
-mixedIndexer memCapacity keepNb db
-    = MixedIndexer . IndexWrapper (MixedIndexerConfig memCapacity keepNb db)
+mixedIndexer flushNb keepNb db
+    = MixedIndexer . IndexWrapper (MixedIndexerConfig flushNb keepNb db)
 
 makeLenses 'MixedIndexer
 
-capacity :: Lens' (MixedIndexer store mem event) Word
-capacity = mixedWrapper . wrapperConfig . configCapacity
+flushSize :: Lens' (MixedIndexer store mem event) Word
+flushSize = mixedWrapper . wrapperConfig . configFlushSize
 
 keepInMemory :: Lens' (MixedIndexer store mem event) Word
 keepInMemory = mixedWrapper . wrapperConfig . configKeepInMemory
@@ -1542,7 +1549,9 @@ instance
 
     index timedEvent indexer = let
 
-        isFull = (indexer ^. capacity <) <$> indexer ^. inMemory . to currentLength
+        isFull
+            = (indexer ^. flushSize + indexer ^. keepInMemory <)
+            <$> indexer ^. inMemory . to currentLength
 
         flushIfFull full = if full then flush else pure
 
