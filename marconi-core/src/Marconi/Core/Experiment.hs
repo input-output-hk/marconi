@@ -71,6 +71,10 @@ Howto:
             At the moment, 'ListIndexer' is the only pre-existing in memory indexer
             and 'SQLiteIndexer' is the only pre-existing on disk indexer.
 
+            If you want to go with it, it's probably better to follow the steps below
+            with the `ListIndexer` first, then with the `SQLiteIndexer`
+            and finally with the `MixedIndexer`.
+
         3. You then need to implement the 'IsIndex' and 'IsSync'
            typeclasses for your indexer.
 
