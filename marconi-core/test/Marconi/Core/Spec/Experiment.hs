@@ -23,12 +23,17 @@
 -}
 module Marconi.Core.Spec.Experiment
     (
-    -- * The test suite
+    -- * Tests
+    -- ** Main test suite
       indexingTestGroup
-    , indexingPerformanceTest
-    -- ** individual tests
     , storageBasedModelProperty
     , lastSyncBasedModelProperty
+    -- ** Cache test suite
+    , cacheTestGroup
+    , cacheHitProperty
+    -- , cacheMissTest
+    -- ** Other tests
+    , indexingPerformanceTest
     -- * Mock chain
     , DefaultChain
         , defaultChain
@@ -39,6 +44,11 @@ module Marconi.Core.Spec.Experiment
     , TestPoint (..)
     , TestEvent (..)
     -- ** Generators
+    , GenChainConfig
+        , chainSize
+        , rollbackFrequency
+        , rollbackDepth
+        , currentTestPoint
     , genInsert
     , genRollback
     , genItem
@@ -66,7 +76,7 @@ module Marconi.Core.Spec.Experiment
 
 import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
-import Control.Lens (Getter, Lens', lens, makeLenses, to, use, view, views, (%~), (.=), (^.))
+import Control.Lens (Getter, Lens', filtered, folded, lens, makeLenses, to, use, view, views, (%~), (.=), (^.), (^..))
 
 import Control.Monad (foldM, replicateM)
 import Control.Monad.Except (MonadError)
@@ -97,6 +107,7 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.ToField (ToField)
 
+import Control.Monad.Except (runExceptT)
 import Marconi.Core.Experiment (wrappedIndexer)
 import Marconi.Core.Experiment qualified as Core
 
@@ -119,13 +130,13 @@ data Item event
 -- to determine the events that should be build
 data GenChainConfig
     = GenChainConfig
-        { _chainSize         :: Int
+        { _chainSize         :: Gen Int
         , _rollbackFrequency :: Word
         , _rollbackDepth     :: TestPoint -> Gen TestPoint
         , _currentTestPoint  :: TestPoint
         }
 
-chainSize :: Getter GenChainConfig Int
+chainSize :: Getter GenChainConfig (Gen Int)
 chainSize = to _chainSize
 
 rollbackFrequency :: Lens' GenChainConfig Word
@@ -177,7 +188,7 @@ genChain
     :: Arbitrary event
     => GenChainConfig -> Gen [Item event]
 genChain cfg = flip evalStateT cfg $ do
-    let size = cfg ^. chainSize
+    size <- lift $ cfg ^. chainSize
     replicateM size genItem
 
 uniformRollBack :: TestPoint -> Gen TestPoint
@@ -188,7 +199,7 @@ genLargeChain
     => Word -- ^ Rollback percentage
     -> Gen [Item event]
 genLargeChain p = do
-    n <- Test.choose (750000,1500000)
+    let n = Test.choose (750000,1500000)
     genChain $ GenChainConfig n p uniformRollBack 0
 
 -- | Chain events with 10% of rollback
@@ -196,10 +207,11 @@ newtype DefaultChain event = DefaultChain {_defaultChain :: [Item event]}
 
 makeLenses 'DefaultChain
 
+-- | Chain events with 10% of rollback (rollbackDepth is)
 instance Arbitrary event => Arbitrary (DefaultChain event) where
 
     arbitrary = Test.sized $ \n ->
-        DefaultChain <$> genChain (GenChainConfig n 10 uniformRollBack 0)
+        DefaultChain <$> genChain (GenChainConfig (pure n) 10 uniformRollBack 0)
 
 -- | Chain events without any rollback
 newtype ForwardChain event = ForwardChain {_forwardChain :: [Item event]}
@@ -209,12 +221,12 @@ makeLenses 'ForwardChain
 instance Arbitrary event => Arbitrary (ForwardChain event) where
 
     arbitrary = Test.sized $ \n ->
-        ForwardChain <$> genChain (GenChainConfig n 0 uniformRollBack 0)
+        ForwardChain <$> genChain (GenChainConfig (pure n) 0 uniformRollBack 0)
 
 -- ** Event instances
 
 newtype TestEvent = TestEvent Int
-    deriving newtype (Arbitrary, Eq, Ord, Show, Num, FromField, ToField)
+    deriving newtype (Arbitrary, Eq, Ord, Show, Num, Enum, Real, Integral, FromField, ToField)
 
 type instance Core.Point TestEvent = TestPoint
 
@@ -225,7 +237,7 @@ newtype IndexerModel e = IndexerModel {_model :: [(TestPoint, e)]}
 
 makeLenses ''IndexerModel
 
--- Build a model for the given chain of events
+-- | Build a model from a given chain of events
 runModel :: [Item event] -> IndexerModel event
 runModel = let
 
@@ -253,10 +265,15 @@ compareToModelWith
     => Core.IsIndex m event indexer
     => Core.Rewindable m event indexer
     => Gen [Item event]
+    -- ^ the generator used to generate the chain
     -> IndexerTestRunner m event indexer
+    -- ^ the runner, applying the chain to the indexer we want to test
     -> (IndexerModel event -> a)
+    -- ^ generate the reference value from the base model
     -> (indexer event -> m a)
+    -- ^ extract the value we want to test from the indexer
     -> (a -> a -> Property)
+    -- ^ the property we want to test
     -> Property
 compareToModelWith genChain' runner modelComputation indexerComputation prop
     = let
@@ -271,7 +288,7 @@ compareToModelWith genChain' runner modelComputation indexerComputation prop
         iResult <- GenM.run $ indexerComputation indexer
         let model' = runModel chain
             mResult = modelComputation model'
-        GenM.stop $ iResult `prop` mResult
+        GenM.stop $  mResult `prop` iResult
 
 -- | Compare an execution on the base model and one on the indexer
 behaveLikeModel
@@ -282,9 +299,13 @@ behaveLikeModel
     => Core.IsIndex m event indexer
     => Core.Rewindable m event indexer
     => Gen [Item event]
+    -- ^ the generator used to generate the chain
     -> IndexerTestRunner m event indexer
+    -- ^ the runner, applying the chain to the indexer we want to test
     -> (IndexerModel event -> a)
+    -- ^ generate the reference value from the base model
     -> (indexer event -> m a)
+    -- ^ extract the value we want to test from the indexer
     -> Property
 behaveLikeModel genChain' runner modelComputation indexerComputation
     = compareToModelWith genChain' runner modelComputation indexerComputation (===)
@@ -319,7 +340,6 @@ indexingTestGroup indexerName runner
             ]
         ]
 
--- | A test tree for the core functionalities of an indexer
 indexingPerformanceTest
     :: ( Core.Rewindable m TestEvent indexer
     , Core.IsIndex m TestEvent indexer
@@ -351,10 +371,9 @@ storageBasedModelProperty gen runner
     = let
 
         indexerEvents indexer = do
-            p <- Core.lastSyncPoint indexer
             fmap (view Core.event)
                 . fromRight []
-                <$> Core.query' p Core.allEvents indexer
+                <$> Core.queryLatest' Core.allEvents indexer
 
     in behaveLikeModel
         gen
@@ -533,3 +552,99 @@ coordinatorIndexerRunner wRunner
             wrapped <- wRunner ^. indexerGenerator
             (t, run) <- Core.createWorker pure id wrapped
             UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> Core.start [run]
+
+data ParityQuery = OddTestEvent | EvenTestEvent
+    deriving (Eq, Ord, Show)
+
+type instance Core.Result ParityQuery = [TestEvent]
+
+instance Applicative m
+    => Core.Queryable m TestEvent ParityQuery Core.ListIndexer where
+
+    query p par indexer = do
+        let isBefore p' e = p' >= e ^. Core.point
+        let f = case par of
+                OddTestEvent  -> odd
+                EvenTestEvent -> even
+        pure
+            $ indexer ^.. Core.events . folded
+            . filtered (isBefore p) . Core.event . filtered f
+
+buildCacheFor
+    :: Core.Queryable (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event query indexer
+    => Core.IsSync (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event indexer
+    => Monad m
+    => Ord query
+    => Ord (Core.Point event)
+    => query
+    -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+    -> indexer event
+    -> m (Core.WithCache query indexer event)
+buildCacheFor q onForward indexer = do
+    let initialCache = Core.withCache onForward indexer
+    fromRight initialCache <$> runExceptT (Core.addCacheFor q initialCache)
+
+-- | A runner for a the 'WithTracer' tranformer
+withCacheRunner
+    :: Core.Queryable (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event query wrapped
+    => Core.IsSync (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event wrapped
+    => Monad m
+    => Ord query
+    => Ord (Core.Point event)
+    => query
+    -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+    -> IndexerTestRunner m event wrapped
+    -> IndexerTestRunner m event (Core.WithCache query wrapped)
+withCacheRunner q onForward wRunner
+    = IndexerTestRunner
+        (wRunner ^. indexerRunner)
+        (buildCacheFor q onForward =<< (wRunner ^. indexerGenerator))
+
+pairCacheRunner :: IndexerTestRunner IO TestEvent (Core.WithCache ParityQuery Core.ListIndexer)
+pairCacheRunner = let
+    aggregate timedEvent xs
+         = let e = timedEvent ^. Core.event
+         in if odd e then e:xs else xs
+    in withCacheRunner OddTestEvent aggregate listIndexerRunner
+
+cacheTestGroup :: Tasty.TestTree
+cacheTestGroup = Tasty.testGroup "Cache"
+    [ Tasty.testProperty "Hit cache"
+        $ Test.withMaxSuccess 5000
+        $ cacheHitProperty (view forwardChain <$> Test.arbitrary)
+    , Tasty.testProperty "Miss cache"
+        $ Test.withMaxSuccess 5000
+        $ cacheMissProperty (view forwardChain <$> Test.arbitrary)
+    ]
+
+cacheHitProperty
+    :: Gen [Item TestEvent]
+    -> Property
+cacheHitProperty gen
+    = let
+
+        indexerEvents indexer
+            = fromRight []
+            <$> Core.queryLatest' OddTestEvent indexer
+
+    in behaveLikeModel
+        gen
+        pairCacheRunner
+        (views model (filter odd . fmap snd))
+        indexerEvents
+
+cacheMissProperty
+    :: Gen [Item TestEvent]
+    -> Property
+cacheMissProperty gen
+    = let
+
+        indexerEvents indexer
+            = fromRight []
+            <$> Core.queryLatest' EvenTestEvent indexer
+
+    in behaveLikeModel
+        gen
+        pairCacheRunner
+        (views model (filter even . fmap snd))
+        indexerEvents
