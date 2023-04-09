@@ -31,7 +31,7 @@ module Marconi.Core.Spec.Experiment
     -- ** Cache test suite
     , cacheTestGroup
     , cacheHitProperty
-    -- , cacheMissTest
+    , cacheMissProperty
     -- ** Other tests
     , indexingPerformanceTest
     -- * Mock chain
@@ -79,7 +79,7 @@ import Control.Concurrent qualified as Con
 import Control.Lens (Getter, Lens', filtered, folded, lens, makeLenses, to, use, view, views, (%~), (.=), (^.), (^..))
 
 import Control.Monad (foldM, replicateM)
-import Control.Monad.Except (MonadError)
+import Control.Monad.Except (MonadError, runExceptT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
@@ -103,18 +103,17 @@ import Control.Monad.Trans.Except (ExceptT)
 import Data.Either (fromRight)
 import Data.Maybe (listToMaybe)
 
+import Database.SQLite.Simple (FromRow)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.ToField (ToField)
-
-import Control.Monad.Except (runExceptT)
 import Marconi.Core.Experiment (wrappedIndexer)
 import Marconi.Core.Experiment qualified as Core
 
 newtype TestPoint = TestPoint { unwrapTestPoint :: Int }
     deriving stock (Generic)
     deriving newtype (Eq, Ord, Enum, Num, Real, Integral, Show, FromField, ToField)
-    deriving anyclass (SQL.FromRow)
+    deriving anyclass (FromRow)
     deriving anyclass (SQL.ToRow)
 
 instance Core.HasGenesis TestPoint where
@@ -226,7 +225,9 @@ instance Arbitrary event => Arbitrary (ForwardChain event) where
 -- ** Event instances
 
 newtype TestEvent = TestEvent Int
+    deriving stock Generic
     deriving newtype (Arbitrary, Eq, Ord, Show, Num, Enum, Real, Integral, FromField, ToField)
+    deriving anyclass FromRow
 
 type instance Core.Point TestEvent = TestPoint
 
@@ -570,6 +571,29 @@ instance Applicative m
             $ indexer ^.. Core.events . folded
             . filtered (isBefore p) . Core.event . filtered f
 
+instance MonadIO m
+    => Core.Queryable m TestEvent ParityQuery Core.SQLiteIndexer where
+
+    query p q indexer = let
+
+        remainder = \case
+            OddTestEvent  -> odd
+            EvenTestEvent -> even
+
+        rowToResult _
+            = id
+
+        in do
+           fmap (either (pure []) (filter (remainder q))) . runExceptT
+               $ Core.querySQLiteIndexerWith
+               (\p' _q' -> [":point" SQL.:= p'])
+               " SELECT value               \
+               \ FROM index_model           \
+               \ WHERE point <= :point      \
+               \ ORDER BY point DESC"
+               rowToResult p q
+               indexer
+
 buildCacheFor
     :: Core.Queryable (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event query indexer
     => Core.IsSync (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event indexer
@@ -607,44 +631,69 @@ pairCacheRunner = let
          in if odd e then e:xs else xs
     in withCacheRunner OddTestEvent aggregate listIndexerRunner
 
+sqlLiteCacheRunner :: IndexerTestRunner IO TestEvent (Core.WithCache ParityQuery Core.SQLiteIndexer)
+sqlLiteCacheRunner = let
+    aggregate timedEvent xs
+         = let e = timedEvent ^. Core.event
+         in if odd e then e:xs else xs
+    in withCacheRunner OddTestEvent aggregate sqliteIndexerRunner
+
 cacheTestGroup :: Tasty.TestTree
 cacheTestGroup = Tasty.testGroup "Cache"
-    [ Tasty.testProperty "Hit cache"
-        $ Test.withMaxSuccess 5000
-        $ cacheHitProperty (view forwardChain <$> Test.arbitrary)
-    , Tasty.testProperty "Miss cache"
-        $ Test.withMaxSuccess 5000
-        $ cacheMissProperty (view forwardChain <$> Test.arbitrary)
+    [ Tasty.testGroup "With ListIndexer"
+        [ Tasty.testProperty "Hit cache"
+            $ Test.withMaxSuccess 10000
+            $ cacheHitProperty (view defaultChain <$> Test.arbitrary) pairCacheRunner
+        , Tasty.testProperty "Miss cache"
+            $ Test.withMaxSuccess 10000
+            $ cacheMissProperty (view defaultChain <$> Test.arbitrary) pairCacheRunner
+        ]
+    , Tasty.testGroup "With SQLiteIndexer"
+        [ Tasty.testProperty "Hit cache"
+            $ Test.withMaxSuccess 10000
+            $ cacheHitProperty (view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
+        , Tasty.testProperty "Miss cache"
+            $ Test.withMaxSuccess 10000
+            $ cacheMissProperty (view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
+        ]
     ]
 
 cacheHitProperty
-    :: Gen [Item TestEvent]
-    -> Property
-cacheHitProperty gen
+    :: Core.IsIndex m TestEvent indexer
+    => Core.Rewindable m TestEvent indexer
+    => Core.Queryable (ExceptT (Core.QueryError ParityQuery) m) TestEvent ParityQuery indexer
+    => Core.IsSync m TestEvent indexer
+    => Gen [Item TestEvent]
+    -> IndexerTestRunner m TestEvent indexer -> Property
+cacheHitProperty gen indexer
     = let
 
-        indexerEvents indexer
+        indexerEvents indexer'
             = fromRight []
-            <$> Core.queryLatest' OddTestEvent indexer
+            <$> Core.queryLatest' OddTestEvent indexer'
 
     in behaveLikeModel
         gen
-        pairCacheRunner
+        indexer
         (views model (filter odd . fmap snd))
         indexerEvents
 
 cacheMissProperty
-    :: Gen [Item TestEvent]
-    -> Property
-cacheMissProperty gen
+    :: Core.IsIndex m TestEvent indexer
+    => Core.Rewindable m TestEvent indexer
+    => Core.Queryable (ExceptT (Core.QueryError ParityQuery) m) TestEvent ParityQuery indexer
+    => Core.IsSync m TestEvent indexer
+    => Gen [Item TestEvent]
+    -> IndexerTestRunner m TestEvent indexer -> Property
+cacheMissProperty gen indexer
     = let
 
-        indexerEvents indexer
+        indexerEvents indexer'
             = fromRight []
-            <$> Core.queryLatest' EvenTestEvent indexer
+            <$> Core.queryLatest' EvenTestEvent indexer'
 
     in behaveLikeModel
         gen
-        pairCacheRunner
+        indexer
         (views model (filter even . fmap snd))
         indexerEvents

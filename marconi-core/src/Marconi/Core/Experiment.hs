@@ -1628,16 +1628,6 @@ instance
         indexer' <- indexAllVia cachedIndexer evts indexer
         pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
 
-rewindCacheEntry
-    :: Queryable m event query index
-    => Ord (Point event)
-    => Point event
-    -> query
-    -> WithCache query index event
-    -> m (Result query)
-rewindCacheEntry p q indexer
-    = query p q (indexer ^. cachedIndexer)
-
 rewindCache
     :: Applicative f
     => Ord (Point event)
@@ -1645,8 +1635,11 @@ rewindCache
     => Point event
     -> WithCache query indexer event
     -> f (WithCache query indexer event)
-rewindCache p indexer'
-    = itraverseOf cacheEntries (\q -> const $ rewindCacheEntry p q indexer') indexer'
+rewindCache p indexer
+    = itraverseOf
+        cacheEntries
+        (\q -> const $ queryVia cachedIndexer p q indexer)
+        indexer
 
 instance
     ( Monad m
