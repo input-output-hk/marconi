@@ -143,6 +143,8 @@ module Marconi.Core.Experiment
     , isAheadOfSync
     , Queryable (..)
     , query'
+    , queryLatest
+    , queryLatest'
     , ResumableResult (..)
     , Rewindable (..)
     , Prunable (..)
@@ -170,6 +172,7 @@ module Marconi.Core.Experiment
         , mixedIndexer
         , inMemory
         , inDatabase
+    , Flushable (..)
     , IndexQuery (..)
     , InsertRecord
     , singleInsertSQLiteIndexer
@@ -219,18 +222,24 @@ module Marconi.Core.Experiment
         , nextPruning
         , stepsBeforeNext
         , currentDepth
+    -- ** Caching
+    , WithCache
+        , withCache
+        , addCacheFor
+        , cachedIndexer
     -- ** Index wrapper
     -- *** Derive via machinery
     , IndexWrapper (IndexWrapper)
         , wrappedIndexer
         , wrapperConfig
+    -- *** Helpers
     , pruneVia
     , pruningPointVia
     , rewindVia
-    -- *** Helpers
     , indexVia
     , lastSyncPointVia
     , queryVia
+    , queryLatestVia
     , syncPointsVia
     ) where
 
@@ -240,8 +249,8 @@ import Control.Tracer qualified as Tracer (traceWith)
 import Data.Sequence qualified as Seq
 
 import Control.Concurrent (MVar, QSemN, forkIO)
-import Control.Lens (Getter, Lens', filtered, folded, makeLenses, maximumOf, set, to, view, (%~), (&), (+~), (-~), (.~),
-                     (^.), (^..), (^?))
+import Control.Lens (Getter, IndexedTraversal', Lens', at, filtered, folded, indexed, itraverseOf, lens, makeLenses,
+                     maximumOf, set, to, view, (%~), (&), (+~), (-~), (.~), (^.), (^..), (^?))
 import Control.Monad (forever, guard, unless, void, when, (<=<))
 import Control.Monad.Except (ExceptT, MonadError (catchError, throwError), runExceptT)
 import Control.Tracer (Tracer)
@@ -254,10 +263,12 @@ import Control.Monad.Trans (MonadTrans)
 import Control.Monad.Trans.Class (lift)
 import Data.Bifunctor (first)
 import Data.Either (fromRight)
-import Data.Foldable (foldlM, foldrM, traverse_)
+import Data.Foldable (foldl', foldlM, foldrM, traverse_)
 import Data.Functor (($>))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import Data.List (intersect)
+import Data.Map (Map, traverseWithKey)
+import Data.Map qualified as Map
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
 import Data.Text (Text)
 import Database.SQLite.Simple qualified as SQL
@@ -428,7 +439,7 @@ class Queryable m event query indexer where
         -> indexer event
         -> m (Result query)
 
--- | Like @query@, but internalise @QueryError@ in the result.
+-- | Like 'query', but internalise @QueryError@ in the result.
 query'
     :: Queryable (ExceptT (QueryError query) m) event query indexer
     => Ord (Point event)
@@ -437,6 +448,33 @@ query'
     -> indexer event
     -> m (Either (QueryError query) (Result query))
 query' p q = runExceptT . query p q
+
+-- | Like 'query', but use the latest point of the indexer instead of a provided one
+queryLatest
+    :: Queryable m event query indexer
+    => IsSync m event indexer
+    => MonadError (QueryError query) m
+    => Ord (Point event)
+    => query
+    -> indexer event
+    -> m (Result query)
+queryLatest q indexer = do
+    p <- lastSyncPoint indexer
+    query p q indexer
+
+-- | Like 'query\'', but use the latest point of the indexer instead of a provided one
+queryLatest'
+    :: Queryable (ExceptT (QueryError query) m) event query indexer
+    => IsSync m event indexer
+    => Monad m
+    => Ord (Point event)
+    => query
+    -> indexer event
+    -> m (Either (QueryError query) (Result query))
+queryLatest' q indexer = do
+    p <- lastSyncPoint indexer
+    query' p q indexer
+
 
 -- | The indexer can take a result and complete it with its events
 class ResumableResult m event query indexer where
@@ -450,6 +488,7 @@ class ResumableResult m event query indexer where
        -> m (Result query)
 
 -- | We can reset an indexer to a previous `Point`
+--
 --     * @indexer@ is the indexer implementation type
 --     * @event@ the indexer events
 --     * @m@ the monad in which our indexer operates
@@ -793,11 +832,11 @@ data WorkerM m input point =
     , Point event ~ point
     ) =>
     Worker
-        { workerState    :: MVar (indexer event)
+        { workerState     :: MVar (indexer event)
 
-        , transformInput :: input -> m event
+        , transformInput  :: input -> m event
           -- ^ used by the worker to check whether an input is a rollback or an event
-        , hoistError     :: forall a. n a -> ExceptT IndexError m a
+        , hoistIndexError :: forall a. n a -> ExceptT IndexError m a
         }
 
 type Worker = WorkerM IO
@@ -826,7 +865,7 @@ startWorker
     -> QSemN
     -> Worker input (Point input) ->
     IO ()
-startWorker chan tokens (Worker ix transformInput hoistError) = let
+startWorker chan tokens (Worker ix transformInput hoistIndexError) = let
 
     unlockCoordinator :: IO ()
     unlockCoordinator = Con.signalQSemN tokens 1
@@ -836,14 +875,14 @@ startWorker chan tokens (Worker ix transformInput hoistError) = let
 
     indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer ->
         fmap (fromRight indexer) $ runExceptT $ do -- TODO add error handling
-            indexerLastPoint <- hoistError $ lastSyncPoint indexer
+            indexerLastPoint <- hoistIndexError $ lastSyncPoint indexer
             if timedEvent `fresherThan` indexerLastPoint
-               then hoistError $ index timedEvent indexer
+               then hoistIndexError $ index timedEvent indexer
                else pure indexer
 
     handleRollback p = Con.modifyMVar_ ix $ \indexer ->
         fmap (fromRight indexer) $ runExceptT $ do  -- TODO add error handling
-            hoistError $ rewind p indexer
+            hoistIndexError $ rewind p indexer
 
     in do
         chan' <- STM.atomically $ STM.dupTChan chan
@@ -880,10 +919,10 @@ workerSyncPoints [] = pure []
 workerSyncPoints (r:rs) = let
 
     getSyncPoints :: Ord point => Worker input point -> IO [point]
-    getSyncPoints (Worker ix _ hoistError) =
+    getSyncPoints (Worker ix _ hoistIndexError) =
         fmap (fromRight []) $ runExceptT $ do
             indexer <- lift $ Con.readMVar ix
-            hoistError $ syncPoints indexer
+            hoistIndexError $ syncPoints indexer
 
     in do
         ps <- getSyncPoints r
@@ -960,6 +999,7 @@ instance (HasGenesis (Point event), MonadIO m) => Rewindable m event Coordinator
 
 -- | Get the event stored by the indexer at a given point in time
 data EventAtQuery event = EventAtQuery
+   deriving (Eq, Ord, Show)
 
 -- | The result of EventAtQuery is always an event.
 -- The error cases are handled by the query interface.
@@ -971,20 +1011,20 @@ instance MonadError (QueryError (EventAtQuery event)) m
 
     query p EventAtQuery ix = do
         let isAtPoint e p' = e ^. point == p'
-        check <- not <$> isAheadOfSync p ix
-        if check
-        then maybe
+        aHeadOfSync <- not <$> isAheadOfSync p ix
+        when aHeadOfSync
+            $ throwError $ AheadOfLastSync Nothing
+        maybe
              -- If we can't find the point and if it's in the past, we probably pruned it
             (throwError NotStoredAnymore)
             pure
             $ ix ^? events . folded . filtered (`isAtPoint` p) . event
-        else throwError $ AheadOfLastSync Nothing
 
 instance MonadError (QueryError (EventAtQuery event)) m
     => ResumableResult m event (EventAtQuery event) ListIndexer where
 
     resumeResult p q indexer result = result `catchError` \case
-         -- If we didn't find a result in the 1st indexer, try in memory
+        -- If we didn't find a result in the 1st indexer, try in memory
         _inDatabaseError -> query p q indexer
 
 -- ** Filtering available events
@@ -1059,6 +1099,13 @@ indexVia
     => Lens' s (indexer event) -> TimedEvent event -> s -> m s
 indexVia l = l . index
 
+-- | Helper to implement the @index@ functon of 'IsIndex' when we use a wrapper.
+-- If you don't want to perform any other side logic, use @deriving via@ instead.
+indexAllVia
+    :: (Ord (Point event), IsIndex m event indexer, Traversable f)
+    => Lens' s (indexer event) -> f (TimedEvent event) -> s -> m s
+indexAllVia l = l . indexAll
+
 instance
     (Monad m, IsIndex m event indexer)
     => IsIndex m event (IndexWrapper config indexer) where
@@ -1084,6 +1131,18 @@ queryVia
     => Getter s (indexer event)
     -> Point event -> query -> s -> m (Result query)
 queryVia l p q = query p q . view l
+
+-- | Helper to implement the @query@ functon of 'Queryable' when we use a wrapper.
+-- If you don't want to perform any other side logic, use @deriving via@ instead.
+queryLatestVia
+    ::
+    ( Queryable m event query indexer
+    , MonadError (QueryError query) m
+    , Ord (Point event)
+    , IsSync m event indexer)
+    => Getter s (indexer event)
+    -> query -> s -> m (Result query)
+queryLatestVia l q = queryLatest q . view l
 
 instance Queryable m event query indexer
     => Queryable m event query (IndexWrapper config indexer) where
@@ -1143,7 +1202,15 @@ deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
     instance IsSync m event indexer => IsSync m event (WithTracer m indexer)
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
+    instance (MonadTrans t, IsSync (t m) event indexer) => IsSync (t m) event (WithTracer m indexer)
+
+
+deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
     instance Queryable m event query indexer => Queryable m event query (WithTracer m indexer)
+
+deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
+    instance (MonadTrans t, Queryable (t m) event query indexer)
+        => Queryable (t m) event query (WithTracer m indexer)
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
     instance Resumable m event indexer => Resumable m event (WithTracer m indexer)
@@ -1162,6 +1229,15 @@ instance
         res <- indexVia tracedIndexer timedEvent indexer
         Tracer.traceWith (indexer ^. tracer) $ Index timedEvent
         pure res
+
+instance (MonadTrans t, Monad m, Monad (t m),  IsIndex (t m) event index)
+    => IsIndex (t m) event (WithTracer m index) where
+
+    index timedEvent indexer = do
+        res <- indexVia tracedIndexer timedEvent indexer
+        lift $ Tracer.traceWith (indexer ^. tracer) $ Index timedEvent
+        pure res
+
 
 instance
     ( Monad m
@@ -1187,25 +1263,6 @@ instance (Functor m, Prunable m event indexer)
     prune = pruneVia tracedIndexer
 
     pruningPoint = pruningPointVia tracedIndexer
-
-instance (MonadTrans t, Monad m, IsSync (t m) event index)
-    => IsSync (t m) event (WithTracer m index) where
-
-    lastSyncPoint = lastSyncPointVia tracedIndexer
-
-instance (MonadTrans t, Monad m, Monad (t m),  IsIndex (t m) event index)
-    => IsIndex (t m) event (WithTracer m index) where
-
-    index timedEvent indexer = do
-        res <- indexVia tracedIndexer timedEvent indexer
-        lift $ Tracer.traceWith (indexer ^. tracer) $ Index timedEvent
-        pure res
-
-instance (MonadTrans t, Monad m, Monad (t m),  Queryable (t m) event query index)
-    => Queryable (t m) event query (WithTracer m index) where
-
-    query = queryVia tracedIndexer
-
 
 data DelayConfig event
     = DelayConfig
@@ -1476,6 +1533,150 @@ instance
                 . resetStep
                 <$> rewindWrappedIndexer p indexer
 
+
+data CacheConfig query event
+    = CacheConfig
+      { _configCache     :: Map query (Result query)
+      , _configOnForward :: TimedEvent event -> Result query -> Result query
+      }
+
+configCache :: Lens' (CacheConfig query event) (Map query (Result query))
+configCache = lens _configCache (\cfg c -> cfg {_configCache = c})
+
+configCacheEntries :: IndexedTraversal' query (CacheConfig query event) (Result query)
+configCacheEntries f cfg
+    = (\c -> cfg {_configCache = c})
+    <$> traverseWithKey (indexed f) (_configCache cfg)
+
+configOnForward
+    :: Getter
+        (CacheConfig query event)
+        (TimedEvent event -> Result query -> Result query)
+configOnForward = to _configOnForward
+
+-- | Setup a cache for some requests.
+--
+-- The cache is active only for the latest `Point`.
+-- As a consequence, using `WithCache` is more effective on top of the on-disk
+-- part of a `MixedIndexer`, or any other part of an indexer that has a relatively
+-- stable sync point.
+newtype WithCache query indexer event
+    = WithCache { _cacheWrapper :: IndexWrapper (CacheConfig query) indexer event }
+
+makeLenses 'WithCache
+
+withCache
+    :: Ord query
+    => (TimedEvent event -> Result query -> Result query)
+    -> indexer event
+    -> WithCache query indexer event
+withCache _configOnForward
+    = WithCache . IndexWrapper
+    ( CacheConfig
+        { _configCache = mempty
+        , _configOnForward
+        }
+    )
+
+cacheEntries :: IndexedTraversal' query (WithCache query indexer event) (Result query)
+cacheEntries = cacheWrapper . wrapperConfig . configCacheEntries
+
+cache :: Lens' (WithCache query indexer event) (Map query (Result query))
+cache = cacheWrapper . wrapperConfig . configCache
+
+onForward
+    :: Getter
+        (WithCache query indexer event)
+        (TimedEvent event -> Result query -> Result query)
+onForward = cacheWrapper . wrapperConfig . configOnForward
+
+cachedIndexer :: Lens' (WithCache query indexer event) (indexer event)
+cachedIndexer = cacheWrapper . wrappedIndexer
+
+addCacheFor
+    :: Queryable (ExceptT (QueryError query) m) event query indexer
+    => IsSync (ExceptT (QueryError query) m) event indexer
+    => Monad m
+    => MonadError IndexError m
+    => Ord query
+    => Ord (Point event)
+    => query
+    -> WithCache query indexer event
+    -> m (WithCache query indexer event)
+addCacheFor q indexer
+    = do
+        initialResult <- runExceptT $ queryLatestVia cachedIndexer q indexer
+        case initialResult of
+            Left _err    -> throwError $ OtherIndexError "Can't create cache"
+            Right result -> pure $ indexer & cache %~ Map.insert q result
+
+deriving via (IndexWrapper (CacheConfig query) indexer)
+    instance Resumable m event indexer => Resumable m event (WithCache query indexer)
+
+deriving via (IndexWrapper (CacheConfig query) indexer)
+    instance IsSync m event indexer => IsSync m event (WithCache query indexer)
+
+instance
+    (Applicative m, IsIndex m event index)
+    => IsIndex m event (WithCache query index) where
+
+    index timedEvent indexer = do
+        indexer' <- indexVia cachedIndexer timedEvent indexer
+        pure $ indexer' & cacheEntries %~ (indexer' ^. onForward) timedEvent
+
+    indexAll evts indexer = do
+        indexer' <- indexAllVia cachedIndexer evts indexer
+        pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
+
+rewindCacheEntry
+    :: Queryable m event query index
+    => Ord (Point event)
+    => Point event
+    -> query
+    -> WithCache query index event
+    -> m (Result query)
+rewindCacheEntry p q indexer
+    = query p q (indexer ^. cachedIndexer)
+
+rewindCache
+    :: Applicative f
+    => Ord (Point event)
+    => Queryable f event query indexer
+    => Point event
+    -> WithCache query indexer event
+    -> f (WithCache query indexer event)
+rewindCache p indexer'
+    = itraverseOf cacheEntries (\q -> const $ rewindCacheEntry p q indexer') indexer'
+
+instance
+    ( Monad m
+    , Rewindable m event index
+    , HasGenesis (Point event)
+    , Queryable m event query index
+    ) => Rewindable m event (WithCache query index) where
+
+    rewind p indexer = do
+        res <- rewindVia cachedIndexer p indexer
+        rewindCache p res
+
+instance
+    (Ord query
+    , Ord (Point event)
+    , IsSync m event index
+    , MonadError (QueryError query) m
+    , Monad m
+    , Queryable m event query index
+    ) => Queryable m event query (WithCache query index) where
+
+    query p q indexer = do
+        syncPoint <- lastSyncPointVia cachedIndexer indexer
+        let cached = indexer ^. cache . at q
+        let queryWithoutCache = queryVia cachedIndexer p q indexer
+        case compare p syncPoint of
+            LT -> queryWithoutCache
+            EQ -> maybe queryWithoutCache pure cached
+            GT -> maybe queryWithoutCache (throwError . AheadOfLastSync . Just) cached
+
 -- ** Mixed indexer
 
 data MixedIndexerConfig store event
@@ -1490,8 +1691,9 @@ data MixedIndexerConfig store event
 
 makeLenses 'MixedIndexerConfig
 
--- | An indexer that has at most '_configCapacity' events in memory and put the older one in database.
--- The query interface for this indexer will alwyas go through the database first and then prune
+-- | An indexer that keepAtLeast '_configKeepInMemory' events in memory
+-- and put the older one on disk by group of '_configFlushSize' events.
+-- The query interface for this indexer will always go through the database first and then prune
 -- results present in memory.
 --
 -- @mem@ the indexer that handle old events, when we need to remove stuff from memory
