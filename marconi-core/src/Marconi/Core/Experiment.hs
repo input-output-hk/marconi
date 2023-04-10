@@ -158,7 +158,7 @@ module Marconi.Core.Experiment
         , events
         , latest
     -- ** In database
-    , SQLiteIndexer
+    , SQLiteIndexer (SQLiteIndexer)
         , handle
         , prepareInsert
         , buildInsert
