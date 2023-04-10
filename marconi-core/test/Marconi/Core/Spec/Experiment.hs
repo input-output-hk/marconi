@@ -198,7 +198,7 @@ genLargeChain
     => Word -- ^ Rollback percentage
     -> Gen [Item event]
 genLargeChain p = do
-    let n = Test.choose (750000,1500000)
+    let n = Test.choose (1000000,1200000)
     genChain $ GenChainConfig n p uniformRollBack 0
 
 -- | Chain events with 10% of rollback
