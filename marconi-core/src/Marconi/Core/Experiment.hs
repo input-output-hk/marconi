@@ -44,9 +44,7 @@ What's included in this module:
   (non-exhaustive) TODO list:
 
     * Provide a less naive in-memory indexer implementation than the list one
-    * Test, test, test. The current code is not tested, and it's wrong.
-      Ideally, we should be able to provide a model-based testing approach to specify
-      what we expect from indexers.
+    * Test, test, test. The current code is partially tested, and it's wrong.
     * Re-implement some of our indexers.
     * Split up this mess in modules.
     * Generate haddock, double-check it, fill the void.
@@ -302,9 +300,7 @@ makeLenses 'TimedEvent
 
 -- | Error that can occur when you index events
 data IndexError
-   = NoSpaceLeft
-     -- ^ An indexer with limited capacity is full and is unable to index an event
-   | RollbackBehindHistory
+   = RollbackBehindHistory
      -- ^ An indexer don't have access to the history at the point that is asked
    | OtherIndexError Text
      -- ^ Any other cause of failure
@@ -516,7 +512,7 @@ class Prunable m event indexer where
 -- | Points from which we can restract safely
 class Resumable m event indexer where
 
-    -- | List the points that we still have in the indexers, allowing us to restart from them
+    -- | List the points that we still have in the indexer, allowing us to restart from them
     syncPoints :: Ord (Point event) => indexer event -> m [Point event]
 
 
@@ -1565,6 +1561,8 @@ newtype WithCache query indexer event
 
 makeLenses 'WithCache
 
+-- | A smart constructor for 'WithCache'.
+-- The cache starts empty, you can populate it with 'addCacheFor'
 withCache
     :: Ord query
     => (TimedEvent event -> Result query -> Result query)
@@ -1578,21 +1576,30 @@ withCache _configOnForward
         }
     )
 
+-- | A (indexed-)traversal to all the entries of the cache
 cacheEntries :: IndexedTraversal' query (WithCache query indexer event) (Result query)
 cacheEntries = cacheWrapper . wrapperConfig . configCacheEntries
 
+-- | Access to the cache
 cache :: Lens' (WithCache query indexer event) (Map query (Result query))
 cache = cacheWrapper . wrapperConfig . configCache
 
+-- | How do we add event to existing cache
 onForward
     :: Getter
         (WithCache query indexer event)
         (TimedEvent event -> Result query -> Result query)
 onForward = cacheWrapper . wrapperConfig . configOnForward
 
+-- | Access to the indexer that is cached.
 cachedIndexer :: Lens' (WithCache query indexer event) (indexer event)
 cachedIndexer = cacheWrapper . wrappedIndexer
 
+-- | Add a cache for a specific query.
+--
+-- When added, the cache query the underlying indexer to populate the cache for this query.
+--
+-- If you want to add several indexers at the same time, use traverse.
 addCacheFor
     :: Queryable (ExceptT (QueryError query) m) event query indexer
     => IsSync (ExceptT (QueryError query) m) event indexer
@@ -1616,6 +1623,8 @@ deriving via (IndexWrapper (CacheConfig query) indexer)
 deriving via (IndexWrapper (CacheConfig query) indexer)
     instance IsSync m event indexer => IsSync m event (WithCache query indexer)
 
+-- | This instances update all the cached queries with the incoming event
+-- and then pass this event to the underlying indexer.
 instance
     (Applicative m, IsIndex m event index)
     => IsIndex m event (WithCache query index) where
@@ -1641,6 +1650,8 @@ rewindCache p indexer
         (\q -> const $ queryVia cachedIndexer p q indexer)
         indexer
 
+-- | Rewind the underlying indexer, clear the cache,
+-- repopulate it with queries to the underlying indexer.
 instance
     ( Monad m
     , Rewindable m event index
@@ -1661,6 +1672,12 @@ instance
     , Queryable m event query index
     ) => Queryable m event query (WithCache query index) where
 
+
+    -- | On a query, if it miss the cache, query the indexer.
+    -- If the cache is fresher than the request point, query the underlying indexer,
+    -- if it's the cached point, send the result.
+    -- If the cache is behind the requested point, send an 'AheadOfLastSync' error
+    -- with the cached content.
     query p q indexer = do
         syncPoint <- lastSyncPointVia cachedIndexer indexer
         let cached = indexer ^. cache . at q
