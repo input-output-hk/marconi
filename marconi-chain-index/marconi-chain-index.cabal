@@ -261,10 +261,12 @@ benchmark marconi-chain-index-bench
 test-suite marconi-chain-index-test
   import:         lang
   ghc-options:    -Wno-unused-packages
+  ghc-options:    -fobject-code
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
+    CompareToDbSync
     Spec.Marconi.ChainIndex.CLI
     Spec.Marconi.ChainIndex.Indexers.AddressDatum
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
@@ -296,8 +298,11 @@ test-suite marconi-chain-index-test
     , cardano-crypto-class
     , cardano-ledger-alonzo           ^>=1.1
     , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-testnet
     , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
     , ouroboros-network
     , plutus-core
     , plutus-ledger-api               ^>=1.1
@@ -313,6 +318,7 @@ test-suite marconi-chain-index-test
     , base                  >=4.9 && <5
     , base16-bytestring
     , bytestring
+    , cborg
     , containers
     , directory
     , filepath
@@ -320,6 +326,7 @@ test-suite marconi-chain-index-test
     , hedgehog-extras
     , lens
     , optparse-applicative
+    , postgresql-simple
     , prettyprinter
     , serialise
     , sqlite-simple
@@ -329,3 +336,4 @@ test-suite marconi-chain-index-test
     , tasty-golden
     , tasty-hedgehog
     , text
+    , transformers

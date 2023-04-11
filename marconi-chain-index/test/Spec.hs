@@ -9,6 +9,7 @@ import Spec.Marconi.ChainIndex.Indexers.AddressDatum qualified as Indexers.Addre
 import Spec.Marconi.ChainIndex.Indexers.ScriptTx qualified as Indexers.ScriptTx
 -- TODO see tests below
 -- import Spec.Marconi.ChainIndex.Indexers.EpochStakepoolSize qualified as Indexers.EpochStakepoolSize
+import CompareToDbSync qualified
 import Spec.Marconi.ChainIndex.Indexers.MintBurn qualified as Indexers.MintBurn
 import Spec.Marconi.ChainIndex.Indexers.Utxo qualified as Indexers.Utxo
 import Spec.Marconi.ChainIndex.Orphans qualified as Orphans
@@ -26,4 +27,5 @@ tests = testGroup "Marconi"
   , CLI.tests
   -- TODO Enable when test environemnt is reconfigured
   -- , EpochStakepoolSize.tests
+  , CompareToDbSync.tests
   ]
