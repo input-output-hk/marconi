@@ -10,7 +10,6 @@
 {-# LANGUAGE PackageImports        #-}
 {-# LANGUAGE PatternSynonyms       #-}
 {-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE UndecidableInstances  #-}
 
@@ -50,8 +49,7 @@ import Data.Functor ((<&>))
 import Data.List (groupBy, sort, sortBy)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
-import Data.Map qualified
-import Data.Maybe (mapMaybe)
+import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as Text
@@ -61,16 +59,11 @@ import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
-import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
-import Prettyprinter.Render.Text (renderStrict)
 import System.Random.MWC (createSystemRandom, uniformR)
 import Text.RawString.QQ (r)
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Trace (logInfo)
-import Cardano.BM.Tracing (defaultConfigStdout)
 import Data.Ord (Down (Down, getDown))
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TargetAddresses, TxOut, pattern CurrentEra)
@@ -218,7 +211,7 @@ eventIsBefore :: C.ChainPoint -> StorableEvent UtxoHandle -> Bool
 eventIsBefore (C.ChainPoint slot' _) (UtxoEvent _ _ (C.ChainPoint slot _)) =  slot <= slot'
 eventIsBefore _ _                                                          = False
 
--- | mappend, combine Unspent utxoEvents:
+-- | mappend, combine and balance Utxos
 instance Semigroup (StorableEvent UtxoHandle) where
   (UtxoEvent us is cp) <> (UtxoEvent us' is' cp') =
     UtxoEvent utxos txins (max cp cp')
@@ -233,23 +226,33 @@ instance Semigroup (StorableEvent UtxoHandle) where
 instance Monoid (StorableEvent UtxoHandle) where
   mempty = UtxoEvent mempty mempty C.ChainPointAtGenesis
 
--- | The effect of a transaction (or a number of them) on the tx output set.
+-- | The effect of a transaction (or a number of them) on the tx output map.
 data TxOutBalance =
   TxOutBalance
-    { _tobUnspent :: !(Set C.TxIn)
+    { _tbUnspent :: !(Map C.TxIn Utxo)
     -- ^ Outputs newly added by the transaction(s)
-    , _tobSpent   :: !(Set C.TxIn)
+    , _tbSpent   :: !(Set C.TxIn)
     -- ^ Outputs spent by the transaction(s)
     }
     deriving stock (Eq, Show, Generic)
 
 instance Semigroup TxOutBalance where
-    tobL <> tobR =
+    bUtxoL <> bUtxoR =
+      let
+        bUnspentKeys :: Set C.TxIn
+        bUnspentKeys
+          = (Map.keysSet $ _tbUnspent bUtxoR)
+          <> ((Map.keysSet $ _tbUnspent bUtxoL) `Set.difference` _tbSpent bUtxoR)
+        utxoMap :: Map C.TxIn Utxo
+        utxoMap = _tbUnspent bUtxoL `Map.union` _tbUnspent bUtxoR
+        bSpentKeys :: Set C.TxIn
+        bSpentKeys
+          = _tbSpent bUtxoL
+          <> ( _tbSpent bUtxoR `Set.difference` (Map.keysSet $ _tbUnspent bUtxoL))
+      in
         TxOutBalance
-            { _tobUnspent = _tobUnspent tobR
-                            <> (_tobUnspent tobL `Set.difference` _tobSpent tobR)
-            , _tobSpent   = _tobSpent tobL
-                            <>   (_tobSpent tobR `Set.difference` _tobUnspent tobL)
+            { _tbUnspent = Map.restrictKeys utxoMap bUnspentKeys
+            , _tbSpent = bSpentKeys
             }
 
 instance Monoid TxOutBalance where
@@ -555,16 +558,6 @@ eventsAtAddress addr p = let
 
    in concatMap splitEventAtAddress
 
--- | only store rows in the address list.
-addressFilteredRows
-  :: Foldable f
-  => C.AddressAny                   -- ^ query
-  -> Maybe C.SlotNo                 -- ^ latest included chainpoint
-  -> f (StorableEvent UtxoHandle)   -- ^ Utxo Event
-  -> [UtxoRow]                      -- ^ Rows at the query
-addressFilteredRows addr slotNo =
-    concatMap eventToRows . eventsAtAddress addr slotNo . toList
-
 utxoAtAddressQuery
     :: Foldable f
     => SQL.Connection
@@ -651,7 +644,6 @@ instance Queryable UtxoHandle where
                   _:p:_xs -> getChainPoint p
                   _other  -> C.ChainPointAtGenesis
 
-
 -- | Query memory buffer
 queryBuffer
   :: Foldable f
@@ -680,35 +672,28 @@ instance Resumable UtxoHandle where
     -- first.
     pure $ chainPoints ++ [C.ChainPointAtGenesis]
 
--- Add paination to resume
+-- Add pagination to resume
 -- Main reason for adding this is to protect against OOM
--- TODO use withAsync to spread the load
+-- TODO use withAsync to spread the load. as resume, as is implemented here, could take several minutes depending on the amount of data stored.
 resumeHelper :: SQL.Connection -> IO [C.ChainPoint]
 resumeHelper c =
   let
     limit :: Int = 216000
-    traceName :: Text.Text="marconi-utxo-resume"
-    helper :: Int -> [C.ChainPoint] -> IO [C.ChainPoint]
-    helper offset tally =  do
-      d <- defaultConfigStdout
+    helper
+      :: Int -- ^ page
+      -> [C.ChainPoint]
+      -> IO [C.ChainPoint] -- ^ accumulated chainpoints
+    helper page tally =  do
+      let offset = page * limit
       cps <- fmap (uncurry C.ChainPoint) <$>
         SQL.query c [r|SELECT DISTINCT slotNo, blockHash
                    FROM unspent_transactions
                    ORDER BY slotNo DESC
                    LIMIT ? OFFSET ? |] (limit, offset)
       case cps of
-        [] -> withTrace d traceName $ \trace -> do
-          logInfo trace $ renderStrict $
-            layoutPretty defaultLayoutOptions $
-            "Resume is complted."
-          pure tally
-        cps' -> withTrace d traceName $ \trace -> do
-          logInfo trace $ renderStrict $
-            layoutPretty defaultLayoutOptions $
-             "Resume is at offset: " <+> pretty offset
-          helper (limit + offset)(tally <> cps')
+        []   -> pure tally
+        cps' -> helper (page + 1) (tally <> cps')
   in helper 0 []
-
 
 -- | Convert from 'AddressInEra' of the 'CurrentEra' to 'AddressAny'.
 toAddr :: C.AddressInEra era -> C.AddressAny
@@ -732,14 +717,9 @@ getUtxoEvents
   -> C.ChainPoint
   -> StorableEvent UtxoHandle -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
 getUtxoEvents maybeTargetAddresses txs cp =
-  let utxoMap :: Map C.TxIn Utxo
-      utxoMap = foldMap (getUtxos maybeTargetAddresses) txs
-      (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
+  let (TxOutBalance utxos spentTxOuts) = foldMap (balanceUtxoFromTx maybeTargetAddresses) txs
       resolvedUtxos :: Set Utxo
-      resolvedUtxos
-        = Set.fromList
-        $ mapMaybe (`Data.Map.lookup` utxoMap)
-        $ Set.toList utxos
+      resolvedUtxos = Set.fromList $ Map.elems utxos
   in
     UtxoEvent resolvedUtxos spentTxOuts cp
 
@@ -752,7 +732,7 @@ isAddressInTarget (Just targetAddresses) addr =
       C.AddressShelley addr' -> addr' `elem` targetAddresses
 
 getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]
-getTxOutFromTxBodyContent C.TxBodyContent {..} = case txScriptValidityToScriptValidity  txScriptValidity of
+getTxOutFromTxBodyContent C.TxBodyContent {C.txOuts, C.txReturnCollateral, C.txScriptValidity} = case txScriptValidityToScriptValidity txScriptValidity of
   C.ScriptValid   -> txOuts -- When transaction is valid, only transaction fee is collected
   C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
   where
@@ -765,11 +745,11 @@ getUtxosFromTxBody
   -> C.TxBody era
   -> Map C.TxIn Utxo
 getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyContent{} )=
-  fromRight Data.Map.empty (getUtxos' $ getTxOutFromTxBodyContent txBodyContent)
+  fromRight Map.empty (getUtxos $ getTxOutFromTxBodyContent txBodyContent)
   where
-    getUtxos' :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
-    getUtxos'
-      = fmap (Data.Map.fromList . concatMap Data.Map.toList . imap txoutToUtxo)
+    getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
+    getUtxos
+      = fmap (Map.fromList . concatMap Map.toList . imap txoutToUtxo)
       . traverse (C.eraCast CurrentEra)
 
     txid = C.getTxId txBody
@@ -779,34 +759,31 @@ getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyC
         txin = C.TxIn txid (C.TxIx (fromIntegral ix))
       in
         case getUtxoFromTxOut maybeTargetAddresses txin txout of
-          Nothing   -> Data.Map.empty
-          Just utxo -> Data.Map.singleton txin utxo
+          Nothing   -> Map.empty
+          Just utxo -> Map.singleton txin utxo
 
 getUtxoFromTxOut
   :: Maybe TargetAddresses -- ^ Target addresses to filter for
   -> C.TxIn -- ^ unique id and position of this transaction
   -> C.TxOut C.CtxTx era -- ^ Cardano TxOut
   -> Maybe Utxo -- ^ Utxo
-getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr value' datum' refScript) =
+getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr val dtum refScript) =
   if isAddressInTarget maybeTargetAddresses addrAny
   then Just $ Utxo
     { _txId = txid
     , _txIx = txix
     , _address = addrAny
-    , _value = C.txOutValueToValue value'
-    , _datum = __datum
-    , _datumHash = __datumHash
-    , _inlineScript = __inlineScript
-    , _inlineScriptHash = __inlineScriptHash
+    , _value = C.txOutValueToValue val
+    , _datum = datum'
+    , _datumHash = datumHash'
+    , _inlineScript = inlineScript'
+    , _inlineScriptHash = inlineScriptHash'
     }
   else Nothing
   where
     addrAny = toAddr addr
-    (__datum, __datumHash) = getScriptDataAndHash datum'
-    (__inlineScript, __inlineScriptHash) = getRefScriptAndHash refScript
-
-getUtxos :: (C.IsCardanoEra era) => Maybe TargetAddresses -> C.Tx era -> Map C.TxIn Utxo
-getUtxos maybeTargetAddresses (C.Tx txBody _) = getUtxosFromTxBody maybeTargetAddresses txBody
+    (datum', datumHash') = getScriptDataAndHash dtum
+    (inlineScript', inlineScriptHash') = getRefScriptAndHash refScript
 
 -- | get the inlineScript and inlineScriptHash
 --
@@ -852,7 +829,7 @@ getInputsFromTx (C.Tx txbody _) = getInputs txbody
 --  If phase-2 validation fails, we only process TxIns associated with collateral
 getInputs :: C.TxBody era -> Set C.TxIn
 getInputs (C.TxBody C.TxBodyContent
-                 {..}) =
+                 {C.txIns, C.txInsCollateral, C.txScriptValidity }) =
   let
     inputs = case txScriptValidityToScriptValidity txScriptValidity of
       C.ScriptValid -> fst <$> txIns
@@ -880,39 +857,14 @@ isAddressInTarget' targetAddresses utxo =
 mkQueryableAddresses :: TargetAddresses -> QueryableAddresses
 mkQueryableAddresses = fmap (flip UtxoByAddress Nothing . C.toAddressAny)
 
-txOutBalanceFromTxs :: [C.Tx era] -> TxOutBalance
-txOutBalanceFromTxs = foldMap txOutBalanceFromTx
-
-txOutBalanceFromTx :: C.Tx era -> TxOutBalance
-txOutBalanceFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
+balanceUtxoFromTx
+  :: C.IsCardanoEra era
+  => Maybe TargetAddresses    -- ^ target addresses to filter for
+  -> C.Tx era
+  -> TxOutBalance
+balanceUtxoFromTx addrs (C.Tx txBody _) =
     let
         txInputs = getInputs txBody -- adjusted txInput after phase-2 validation
-        utxoRefs = Set.fromList
-                 $ fmap (\(txix, _) -> C.TxIn (C.getTxId txBody) (C.TxIx txix))
-                 $ zip [0..]
-                 $ getTxOutFromTxBodyContent txBodyContent
-     in TxOutBalance utxoRefs txInputs
-
-convertTxOutToUtxo :: C.TxId -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo
-convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum refScript) =
-    let (scriptDataHash, scriptData) =
-            case txOutDatum of
-              C.TxOutDatumNone       -> (Nothing, Nothing)
-              C.TxOutDatumHash _ dh  -> (Just dh, Nothing)
-              C.TxOutDatumInTx _ d   -> (Just $ C.hashScriptData d, Just d)
-              C.TxOutDatumInline _ d -> (Just $ C.hashScriptData d, Just d)
-        (scriptHash, script) =
-            case refScript of
-              C.ReferenceScriptNone -> (Nothing, Nothing)
-              C.ReferenceScript _ scriptInAnyLang@(C.ScriptInAnyLang _ s) ->
-                  (Just $ C.hashScript s, Just scriptInAnyLang)
-     in Utxo
-            { _address = C.toAddressAny addr
-            , _txId = txid
-            , _txIx = txix
-            , _datum = scriptData
-            , _datumHash = scriptDataHash
-            , _value = C.txOutValueToValue val
-            , _inlineScript = script
-            , _inlineScriptHash = scriptHash
-            }
+        utxoRefs :: Map C.TxIn Utxo
+        utxoRefs = getUtxosFromTxBody addrs txBody
+    in TxOutBalance utxoRefs txInputs

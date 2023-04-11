@@ -10,17 +10,19 @@ module Gen.Marconi.ChainIndex.Indexers.Utxo
 where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
 import Control.Monad (forM)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
+import Data.Set (Set)
 import Data.Set qualified as Set
+import GHC.Generics (Generic)
 import Gen.Cardano.Api.Typed qualified as CGen
 import Gen.Marconi.ChainIndex.Mockchain (BlockHeader (BlockHeader), MockBlock (MockBlock), genMockchain,
                                          genTxBodyContentFromTxinsWihtPhase2Validation)
 import Hedgehog (Gen)
-import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (UtxoEvent), TxOutBalance (TxOutBalance), Utxo, UtxoHandle,
-                                         _address, convertTxOutToUtxo, txOutBalanceFromTx)
+import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 
 -- | Generates a list of UTXO events.
@@ -71,6 +73,61 @@ genUtxoEventsWithTxs' txOutToUtxo = do
                 $ zip [0..]
                 $ C.txOuts txBodyContent
 
+-- | The effect of a transaction (or a number of them) on the tx output set.
+data TxOutBalance =
+  TxOutBalance
+    { _tobUnspent :: !(Set C.TxIn)
+    -- ^ Outputs newly added by the transaction(s)
+    , _tobSpent   :: !(Set C.TxIn)
+    -- ^ Outputs spent by the transaction(s)
+    }
+    deriving stock (Eq, Show, Generic)
+
+instance Semigroup TxOutBalance where
+    tobL <> tobR =
+        TxOutBalance
+            { _tobUnspent = _tobUnspent tobR
+                         <> (_tobUnspent tobL `Set.difference` _tobSpent tobR)
+            , _tobSpent = _tobSpent tobL <> _tobSpent tobR
+            }
+
+instance Monoid TxOutBalance where
+    mappend = (<>)
+    mempty = TxOutBalance mempty mempty
+
+txOutBalanceFromTx :: C.Tx era -> TxOutBalance
+txOutBalanceFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
+    let txId = C.getTxId txBody
+        txInputs = Set.fromList $ fst <$> C.txIns txBodyContent
+        utxoRefs = Set.fromList
+                 $ fmap (\(txIx, _) -> C.TxIn txId $ C.TxIx txIx)
+                 $ zip [0..]
+                 $ C.txOuts txBodyContent
+     in TxOutBalance utxoRefs txInputs
+
+convertTxOutToUtxo :: C.TxId -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo
+convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum refScript) =
+    let (scriptDataHash, scriptData) =
+            case txOutDatum of
+              C.TxOutDatumNone       -> (Nothing, Nothing)
+              C.TxOutDatumHash _ dh  -> (Just dh, Nothing)
+              C.TxOutDatumInTx _ d   -> (Just $ C.hashScriptData d, Just d)
+              C.TxOutDatumInline _ d -> (Just $ C.hashScriptData d, Just d)
+        (scriptHash, script) =
+            case refScript of
+              C.ReferenceScriptNone -> (Nothing, Nothing)
+              C.ReferenceScript _ scriptInAnyLang@(C.ScriptInAnyLang _ s) ->
+                  (Just $ C.hashScript s, Just scriptInAnyLang)
+     in Utxo
+            ( C.toAddressAny addr)
+              txid
+              txix
+              scriptData
+              scriptDataHash
+              (C.txOutValueToValue val)
+              script
+              scriptHash
+
 -- | Override the Utxo address with ShelleyEra address
 -- This is used to generate ShelleyEra Utxo events
 utxoAddressOverride
@@ -105,3 +162,4 @@ genTx' gen = do
   txBodyContent  <- gen [txIn]
   txBody <- either (fail . show) pure $ C.makeTransactionBody txBodyContent
   pure $ C.makeSignedTransaction [] txBody
+

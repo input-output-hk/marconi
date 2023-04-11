@@ -206,15 +206,15 @@ propTxInWhenPhase2ValidationFails = property $ do
   case txScriptValidity of
     -- this is the same as script is valid, see https://github.com/input-output-hk/cardano-node/pull/4569
     C.TxScriptValidityNone    ->
-      Hedgehog.assert $ all (== True) [u `elem` expectedTxins| u <- computedTxins]
+      Hedgehog.assert $ and [u `elem` expectedTxins| u <- computedTxins]
     (C.TxScriptValidity _ C.ScriptValid ) ->
-      Hedgehog.assert $ all (== True) [u `elem` expectedTxins| u <- computedTxins]
+      Hedgehog.assert $ and [u `elem` expectedTxins| u <- computedTxins]
     (C.TxScriptValidity _ C.ScriptInvalid ) -> do
       case txInsCollateral of
         C.TxInsCollateralNone -> Hedgehog.assert $ null computedTxins
         C.TxInsCollateral _ txinsC_ -> do
           Hedgehog.footnoteShow txReturnCollateral
-          let (Utxo.TxOutBalance _ ins) = Utxo.txOutBalanceFromTx tx
+          let (Utxo.TxOutBalance _ ins) = Utxo.balanceUtxoFromTx Nothing tx
           -- This property shows collateral TxIns will be processed and balanced
           -- Note: not all collateral txins may be utilized in when phase-2 validation fails
           ins === Set.fromList txinsC_
@@ -315,7 +315,6 @@ propSaveAndRetrieveUtxoEvents = property $ do
     $ all (== True)
     [u `notElem` fromEventsTxIns| u <- fromStorageTxIns]
 
-
 -- Insert Utxo events in storage, and retreive the events by address and slot
 -- Note: The property we are checking is:
 --   - Insert many events at various chainPoints
@@ -395,7 +394,7 @@ propComputeEventsAtAddress = property $ do
             $ Utxo.ueUtxos event
     computedAddresses === actualAddresses
 
--- | Calling 'Utxo.getUtxoEvents' with target addresses that are extracted from all tx outputs from
+-- | Calling 'Utxo.getUtxoEventos' with target addresses that are extracted from all tx outputs from
 -- the initial generated txs should return the same 'UtxoEvent's as if there was no provided target
 -- addresses.
 propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied ::  Property
@@ -428,7 +427,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       :: [C.Tx C.BabbageEra]
       -> Maybe TargetAddresses
     mkTargetAddressFromTxs txs =
-        foldMap (\(C.Tx (C.TxBody C.TxBodyContent { C.txOuts }) _) -> mkTargetAddressFromTxOuts txOuts) txs
+        foldMap (\(C.Tx (C.TxBody C.TxBodyContent { C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts)  txs
 
     mkTargetAddressFromTxOuts
       :: [C.TxOut C.CtxTx C.BabbageEra]

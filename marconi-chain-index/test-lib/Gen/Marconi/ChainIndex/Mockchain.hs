@@ -31,11 +31,13 @@ data MockBlock era = MockBlock
     , mockBlockTxs        :: ![C.Tx era]
     } deriving Show
 
+-- | Generate a Mochain
 genMockchain :: Gen (Mockchain C.BabbageEra)
 genMockchain = genMockchain' genTxBodyContentFromTxIns
 
+-- | Generate a Mochain
 genMockchain'
-  :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra))
+  :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)) -- function that know how generate TxBodyContent
   -> Gen (Mockchain C.BabbageEra)
 genMockchain' genTxBody = do
     maxSlots <- Gen.word64 (Range.linear 1 5)
