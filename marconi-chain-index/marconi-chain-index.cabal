@@ -50,6 +50,7 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.ChainIndex.CLI
+    Marconi.ChainIndex.Experimental.Indexers.Utxo
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
     Marconi.ChainIndex.Indexers.Datum
