@@ -84,7 +84,7 @@
         #   automation
         #     Hydra jobsets and GHA tasks
         #   marconi
-        cellsFrom = ./__std__/cells;
+        cellsFrom = ./nix/cells;
 
         # Each cell contains "cell blocks".
         # Block names are arbitrary.
