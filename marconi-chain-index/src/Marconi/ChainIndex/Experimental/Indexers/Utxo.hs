@@ -1,11 +1,16 @@
 {-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs      #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE PatternSynonyms   #-}
 {-# LANGUAGE TemplateHaskell   #-}
+
+{-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 
 module Marconi.ChainIndex.Experimental.Indexers.Utxo where
 
+import Control.Lens (view)
 import Control.Lens.Fold (folded)
 import Control.Lens.Operators ((^.), (^..))
 import Control.Lens.TH (makeLenses)
@@ -20,17 +25,17 @@ import Cardano.Api ()
 import Cardano.Api qualified as C
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
-
 import Marconi.Core.Experiment qualified as Core
 
+
 data Utxo = Utxo
-  { _address          :: !C.AddressAny
-  , _txIn             :: !C.TxIn
-  , _datum            :: !(Maybe C.ScriptData)
-  , _datumHash        :: !(Maybe (C.Hash C.ScriptData))
-  , _value            :: !C.Value
-  , _inlineScript     :: !(Maybe C.ScriptInAnyLang)
-  , _inlineScriptHash :: !(Maybe C.ScriptHash)
+  { _utxoAddress          :: !C.AddressAny
+  , _utxoTxIn             :: !C.TxIn
+  , _utxoDatum            :: !(Maybe C.ScriptData)
+  , _utxoDatumHash        :: !(Maybe (C.Hash C.ScriptData))
+  , _utxoValue            :: !C.Value
+  , _utxoInlineScript     :: !(Maybe C.ScriptInAnyLang)
+  , _utxoInlineScriptHash :: !(Maybe C.ScriptHash)
   } deriving (Show, Eq, Generic)
 
 $(makeLenses ''Utxo)
@@ -46,40 +51,49 @@ instance Ord Spent where
       compare (txid, txix) (txid', txix')
 
 data UtxoEvent = UtxoEvent
-    { ueUtxos  :: !(Set Utxo)
-    , ueInputs :: !(Set Spent)
+    { _ueUtxos  :: !(Set Utxo)
+    , _ueInputs :: !(Set Spent)
     } deriving (Eq, Ord, Show, Generic)
 
 $(makeLenses ''UtxoEvent)
 
 type instance Core.Point UtxoEvent = C.ChainPoint
+type instance Core.Point Utxo = C.ChainPoint
 
 newtype QueryUtxoByAddress = QueryUtxoByAddress (C.AddressAny, Maybe C.SlotNo)
 
-type instance Core.Result QueryUtxoByAddress = [Core.TimedEvent Utxo]
+type instance Core.Result QueryUtxoByAddress = [Core.TimedEvent Utxo] -- use this instead of the utxorow
 
-data UtxoRow = UtxoRow
-  { _urUtxo       :: !Utxo,
-    _urChainPoint :: !C.ChainPoint
-  }
-  deriving (Show, Eq, Ord, Generic)
+instance MonadIO m => Core.ResumableResult m UtxoEvent QueryUtxoByAddress Core.ListIndexer where
+  resumeResult
+    :: Ord (Core.Point UtxoEvent)
+    => Core.Point UtxoEvent
+    -> QueryUtxoByAddress
+    -> Core.ListIndexer UtxoEvent
+    -> m (Core.Result QueryUtxoByAddress)
+    -> m (Core.Result QueryUtxoByAddress)
+  resumeResult C.ChainPointAtGenesis _ _ _ = pure []
+  resumeResult cp@(C.ChainPoint _ _) q events onDiskResult =
+    let
+      utxoEvents :: Core.ListIndexer UtxoEvent -> [UtxoEvent]
+      utxoEvents lx = lx ^. Core.events ^.. folded . Core.event
 
-data SpentRow = SpentRow
-  { _srSpent      :: !Spent,
-    _srChainPoint :: !C.ChainPoint
-  }
-  deriving (Show, Eq, Ord, Generic)
+      txInsFromEvent :: UtxoEvent -> Set C.TxIn
+      txInsFromEvent = Set.map unSpent . _ueInputs
 
-type instance Core.InsertRecord UtxoEvent = [(Maybe UtxoRow, Maybe SpentRow)] -- TODO not sure about this
+      txins :: Core.ListIndexer UtxoEvent -> Set C.TxIn
+      txins = foldl' (\a c -> txInsFromEvent c  `Set.union` a) Set.empty . utxoEvents
 
-instance Core.ResumableResult m UtxoEvent QueryUtxoByAddress Core.ListIndexer where
-  resumeResult ::
-    Core.Point UtxoEvent ->
-    QueryUtxoByAddress ->
-    Core.ListIndexer UtxoEvent ->
-    m (Core.Result QueryUtxoByAddress) ->
-    m (Core.Result QueryUtxoByAddress)
-  resumeResult (C.ChainPoint sno _) (QueryUtxoByAddress (addr, maybeSno)) events onDiskResult = undefined
+      reduceUtxos :: Core.Result QueryUtxoByAddress -> Core.Result QueryUtxoByAddress
+      reduceUtxos =
+        filter (\(Core.TimedEvent _ utxo) -> (utxo ^. utxoTxIn) `notElem` txins events)
+    in
+      do
+        mem :: (Core.Result QueryUtxoByAddress) <- Core.query cp q events
+        disk <- onDiskResult
+        pure $ reduceUtxos (disk <> mem)
+
+  {- merging the ondisk and in-memory event. -}
 
 -- TODO filter the in memmory for the address, then merge with onDisk
 
@@ -87,29 +101,54 @@ instance Core.ResumableResult m UtxoEvent QueryUtxoByAddress Core.ListIndexer wh
 -- used in the resume result,
 instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListIndexer  where
   query
-    :: Core.Point UtxoEvent -- ^ give me what you know up to this point, potentially a point in future
+    :: Ord (Core.Point UtxoEvent)
+    =>  Core.Point UtxoEvent -- ^ give me what you know up to this point, potentially a point in future
     -> QueryUtxoByAddress
     -> Core.ListIndexer UtxoEvent -- ^ get the point for ListIndexer
     -> m (Core.Result QueryUtxoByAddress)
-  query (C.ChainPoint sno _) (QueryUtxoByAddress (addr, maybeSno)) listXer = pure timedEventAtAddress'
+  query C.ChainPointAtGenesis _ _ = pure []
+  query _ (QueryUtxoByAddress (addr, maybeSno)) listXer = pure timedEventsAtAddress
+  -- we're ignoring future spent query for this version
     -- pure $ fmap (Core.TimedEvent pnt) eventsAtAddress
     where
-      utxoEvents :: [UtxoEvent] = listXer ^. Core.events ^.. folded . Core.event
-      utxosAtAddress :: UtxoEvent -> UtxoEvent
-      pnt :: Core.Point UtxoEvent = listXer ^. Core.latest
-      utxosAtAddress (UtxoEvent outs ins)  = UtxoEvent (Set.filter addressFilter outs) ins
-      eventsAtAddress :: [UtxoEvent] = fmap utxosAtAddress utxoEvents
-      timedEventAtAddress :: [Core.TimedEvent UtxoEvent] = fmap (Core.TimedEvent pnt) eventsAtAddress
-      getUtxoTimedEvent :: Core.TimedEvent UtxoEvent -> [Core.TimedEvent Utxo]
-      getUtxoTimedEvent = undefined
-      timedEventAtAddress' :: [Core.TimedEvent Utxo] = concatMap ( getUtxoTimedEvent . Core.TimedEvent pnt) eventsAtAddress
+      utxoEvents :: [UtxoEvent]
+      utxoEvents = filter (pointFilter maybeSno) (listXer ^. Core.events) ^.. folded . Core.event
+      pnt :: Core.Point UtxoEvent
+      pnt = listXer ^. Core.latest
 
-      pointFilter :: Maybe C.SlotNo -> Bool -- TODO need the case where utxo becomes spent in future
-      pointFilter ms = maybe True (sno <=) ms
+
+      pointFilter :: Maybe C.SlotNo -> Core.TimedEvent UtxoEvent -> Bool
+      pointFilter ms = maybe (const True) (\s -> isBeforeSlot s . view Core.point )  ms
+
+      isBeforeSlot :: C.SlotNo -> C.ChainPoint -> Bool
+      isBeforeSlot s = \case
+            C.ChainPointAtGenesis -> True
+            C.ChainPoint s' _     -> s' <= s
 
       addressFilter :: Utxo -> Bool
-      addressFilter u = (u ^. address) == addr
+      addressFilter u = (u ^. utxoAddress) == addr
 
+      timedEventAtAddress :: [Core.TimedEvent UtxoEvent]
+      timedEventAtAddress =
+        let
+            utxosAtAddress :: UtxoEvent -> UtxoEvent
+            utxosAtAddress (UtxoEvent outs ins)  = UtxoEvent (Set.filter addressFilter outs) ins
+            eventsAtAddress :: [UtxoEvent]
+            eventsAtAddress = fmap utxosAtAddress utxoEvents
+
+        in fmap (Core.TimedEvent pnt)  eventsAtAddress
+
+      timedEventsAtAddress :: [Core.TimedEvent Utxo]
+      timedEventsAtAddress = concatMap timedEventToTimedUtxos timedEventAtAddress
+
+
+timedEventToTimedUtxos :: Core.TimedEvent UtxoEvent -> [Core.TimedEvent Utxo]
+timedEventToTimedUtxos te =
+  let
+    getutxos :: UtxoEvent -> [Utxo]
+    getutxos = Set.toList . _ueUtxos
+  in
+    fmap (\u -> Core.TimedEvent (te ^. Core.point) u) (getutxos (te ^. Core.event))
 
 -- | combine events in the context of time
 instance Semigroup UtxoEvent where
@@ -117,7 +156,7 @@ instance Semigroup UtxoEvent where
     UtxoEvent utxos spents
     where
       getTxIn :: Utxo -> C.TxIn
-      getTxIn u = u ^. txIn
+      getTxIn u = u ^. utxoTxIn
       txins :: Set C.TxIn = Set.union (Set.map unSpent is) (Set.map unSpent is')
       utxos
         = foldl' (\a c -> if getTxIn c `Set.notMember` txins then Set.insert c a; else a) Set.empty
