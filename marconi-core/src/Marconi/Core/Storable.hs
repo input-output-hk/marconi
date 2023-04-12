@@ -121,13 +121,19 @@ data QueryInterval p =
 -}
 class Buffered h where
   -- | This function persists the memory/buffer events to disk when the memory buffer is filled.
-  persistToStorage :: Foldable f => f (StorableEvent h) -> h -> StorableMonad h h
+  persistToStorage
+    :: Foldable f
+    => f (StorableEvent h)
+    -> h
+    -> StorableMonad h h
 
   {- This function retrieves the events from the disk/events area.
      If the user chooses to only store events, without accumulating them, this function
      is expected to return the events over which rollbacks can occur in order to keep
      things performant -}
-  getStoredEvents :: h -> StorableMonad h [StorableEvent h]
+  getStoredEvents
+    :: h
+    -> StorableMonad h [StorableEvent h]
 
 {-
    All information from indexers should be made accessible through queries. Queries
@@ -157,7 +163,8 @@ class Queryable h where
    This is what the next class is meant to do.
 -}
 class Rewindable h where
-  rewindStorage :: StorablePoint h -> h -> StorableMonad h (Maybe h)
+  rewindStorage
+    :: StorablePoint h -> h -> StorableMonad h h
 
 {-
    Another feature of indexers is the ability to resume from a previously stored event.
@@ -173,7 +180,8 @@ class Rewindable h where
    request it.
 -}
 class Resumable h where
-  resumeFromStorage :: h -> StorableMonad h [StorablePoint h]
+  resumeFromStorage
+    :: h -> StorableMonad h [StorablePoint h]
 
 {-
    The next class is witnessing the fact that events contain enough information to
@@ -347,12 +355,12 @@ rewind
   => Ord (StorablePoint h)
   => StorablePoint h
   -> State h
-  -> StorableMonad h (Maybe (State h))
+  -> StorableMonad h (State h)
 rewind p s = if s ^. storage . cursor == 0
   -- Buffer is empty, rewind storage just in case:
   then do
     void $ rewindStorage p (s ^. handle)
-    return $ Just s
+    return s
   -- Something in buffer:
   else do
     v <- V.freeze $ VM.slice 0 (s ^. storage . cursor) (s ^. storage . events)
@@ -360,12 +368,12 @@ rewind p s = if s ^. storage . cursor == 0
       -- All of buffer is later than p, reset memory and rewind storage
       Just 0 -> do
         void $ rewindStorage p (s ^. handle)
-        return $ Just $ s & storage . cursor .~ 0
+        pure $ s & storage . cursor .~ 0
       -- Some of buffer is later than p, truncate memory to that
-      Just ix -> return $ Just $ s & storage . cursor .~ ix
+      Just ix -> pure $ s & storage . cursor .~ ix
       -- No point is larger than p => everything is smaller. Since
       -- buffer was not empty then don't do anything:
-      _       -> return $ Just s
+      Nothing -> pure s
 
 resume
   :: Resumable h

@@ -15,6 +15,7 @@ import Cardano.Api qualified as C
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, tryReadTMVar)
 import Control.Lens ((^.))
+import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.Functor ((<&>))
@@ -64,10 +65,10 @@ currentSyncedBlock env = do
         (tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer)
     case indexer of
          Just i -> do
-             res <- Storable.query Storable.QEverything i Utxo.LastSyncPoint
+             res <- runExceptT $ Storable.query Storable.QEverything i Utxo.LastSyncPoint
              case res of
-                  Utxo.LastSyncPointResult cp -> pure $ Right $ GetCurrentSyncedBlockResult cp
-                  _other                      -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncPoint
+                  Right (Utxo.LastSyncPointResult cp) -> pure $ Right $ GetCurrentSyncedBlockResult cp
+                  _other                              -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncPoint
          Nothing -> pure . Right $ GetCurrentSyncedBlockResult C.ChainPointAtGenesis
 
 
@@ -109,9 +110,9 @@ withQueryAction env query =
   where
     action Nothing = pure $ Right $ GetUtxosFromAddressResult [] -- may occures at startup before marconi-chain-index gets to update the indexer
     action (Just indexer) = do
-            res <- Storable.query Storable.QEverything indexer query
+            res <- runExceptT $ Storable.query Storable.QEverything indexer query
             pure $ case res of
-                 Utxo.UtxoResult rows ->
+                 Right (Utxo.UtxoResult rows) ->
                      Right $ GetUtxosFromAddressResult $ rows <&> \row ->
                          AddressUtxoResult
                             (row ^. urBlockHash)

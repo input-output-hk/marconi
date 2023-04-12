@@ -45,6 +45,7 @@ import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.ToField (ToField)
 import Database.SQLite.Simple.ToRow (ToRow)
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.Utxo (StorableQuery (UtxoByAddress), StorableResult (UtxoResult, getUtxoResult),
                                          UtxoHandle, UtxoIndexer)
@@ -143,7 +144,7 @@ tests databaseDir indexerTVar = do
             UtxoResult rows -> length rows
             _other          -> 0
 
-    noUtxos <- fmap countRows fetchUtxoOfAddressWithMostUtxos
+    noUtxos <- fmap countRows $ raiseException fetchUtxoOfAddressWithMostUtxos
     putStrLn
         $ "Address "
        <> Text.unpack (C.serialiseAddress addressWithMostUtxos)
@@ -153,13 +154,13 @@ tests databaseDir indexerTVar = do
     defaultMain
         [ bgroup "UTXO indexer query performance"
             [ bench "Query address with most utxos and get result size" $
-                nfIO (fmap (length . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+                nfIO (raiseException $ fmap (length . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
             , bench "Query address with most utxos and call 'show' on the result" $
-                nfIO (fmap (fmap show . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+                nfIO (raiseException $ fmap (fmap show . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
             , bench "Query address with most utxos and encode result in JSON" $
-                nfIO (fmap (fmap Aeson.encode . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+                nfIO (raiseException $ fmap (fmap Aeson.encode . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
             , bench "Query address with most utxos and JSON encode/decode roundtrip the result" $
-                nfIO (fmap (encodeDecodeRoundTrip . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+                nfIO (raiseException $ fmap (encodeDecodeRoundTrip . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
             ]
         ]
 

@@ -68,6 +68,8 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.TxWits qualified as Ledger
 import Control.Applicative ((<|>))
 import Control.Monad (forM, forM_)
+import Control.Monad.Trans.Class (MonadTrans (lift))
+import Control.Monad.Trans.Except (ExceptT)
 import Data.Foldable (Foldable (foldl'), fold, toList)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
@@ -79,6 +81,8 @@ import Data.Set qualified as Set
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
+                                 liftSQLError)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), QueryInterval (QEverything, QInterval),
                               Queryable (queryStorage), Resumable, Rewindable (rewindStorage), StorableEvent,
@@ -95,7 +99,7 @@ data AddressDatumHandle = AddressDatumHandle
     , _addressDatumHandleDiskStore :: Int
     }
 
-type instance StorableMonad AddressDatumHandle = IO
+type instance StorableMonad AddressDatumHandle = ExceptT IndexerError IO
 
 -- | 'StorableEvent AddressDatumHandle is the type of events. Events are the data atoms that the
 -- indexer consumes.
@@ -245,8 +249,9 @@ instance Buffered AddressDatumHandle where
     :: Foldable f
     => f (StorableEvent AddressDatumHandle)
     -> AddressDatumHandle
-    -> IO AddressDatumHandle
-  persistToStorage es h = do
+    -> StorableMonad AddressDatumHandle AddressDatumHandle
+  persistToStorage es h
+    = liftSQLError CantInsertEvent $ do
     let addressDatumHashRows = foldl' (\ea e -> ea ++ toAddressDatumHashRow e) [] es
         datumRows = foldl' (\ea e -> ea ++ toDatumRow e) [] es
         c    = addressDatumHandleConnection h
@@ -283,8 +288,9 @@ instance Buffered AddressDatumHandle where
 
   getStoredEvents
     :: AddressDatumHandle
-    -> IO [StorableEvent AddressDatumHandle]
-  getStoredEvents (AddressDatumHandle c n) = do
+    -> StorableMonad AddressDatumHandle [StorableEvent AddressDatumHandle]
+  getStoredEvents (AddressDatumHandle c n)
+    = liftSQLError CantQueryIndexer $ do
       sns :: [[Integer]] <-
           SQL.query c
             [r|SELECT slot_no
@@ -362,8 +368,8 @@ instance Queryable AddressDatumHandle where
     -> f (StorableEvent AddressDatumHandle)
     -> AddressDatumHandle
     -> StorableQuery AddressDatumHandle
-    -> IO (StorableResult AddressDatumHandle)
-  queryStorage qi es (AddressDatumHandle c _) AllAddressesQuery = do
+    -> StorableMonad AddressDatumHandle (StorableResult AddressDatumHandle)
+  queryStorage qi es (AddressDatumHandle c _) AllAddressesQuery = liftSQLError CantQueryIndexer $ do
     persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
       case qi of
         QEverything ->
@@ -398,7 +404,8 @@ instance Queryable AddressDatumHandle where
          $ Set.fromList
          $ concatMap (\(AddressDatumIndexEvent addrMap _ _) -> Map.keys addrMap) addressDatumIndexEvents
 
-  queryStorage qi es (AddressDatumHandle c _) (AddressDatumQuery q) = do
+  queryStorage qi es (AddressDatumHandle c _) (AddressDatumQuery q)
+    = liftSQLError CantQueryIndexer $ do
     persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
       case qi of
         QEverything ->
@@ -467,18 +474,20 @@ instance Rewindable AddressDatumHandle where
     rewindStorage
         :: C.ChainPoint
         -> AddressDatumHandle
-        -> IO (Maybe AddressDatumHandle )
-    rewindStorage C.ChainPointAtGenesis h@(AddressDatumHandle c _) = do
-         SQL.execute_ c "DELETE FROM address_datums"
-         pure $ Just h
-    rewindStorage (C.ChainPoint sn _) h@(AddressDatumHandle c _) = do
-         SQL.execute c "DELETE FROM address_datums WHERE slot_no > ?" (SQL.Only sn)
-         pure $ Just h
+        -> StorableMonad AddressDatumHandle AddressDatumHandle
+    rewindStorage C.ChainPointAtGenesis h@(AddressDatumHandle c _)
+      = liftSQLError CantRollback $ do
+             SQL.execute_ c "DELETE FROM address_datums"
+             pure h
+    rewindStorage (C.ChainPoint sn _) h@(AddressDatumHandle c _)
+      = liftSQLError CantRollback $ do
+             SQL.execute c "DELETE FROM address_datums WHERE slot_no > ?" (SQL.Only sn)
+             pure h
 
 instance Resumable AddressDatumHandle where
     resumeFromStorage
         :: AddressDatumHandle
-        -> IO [C.ChainPoint]
+        -> StorableMonad AddressDatumHandle [C.ChainPoint]
     resumeFromStorage h = do
         es <- Storable.getStoredEvents h
         pure $ fmap (\(AddressDatumIndexEvent _ _ chainPoint) -> chainPoint) es
@@ -487,23 +496,23 @@ instance Resumable AddressDatumHandle where
 open
   :: FilePath
   -> AddressDatumDepth
-  -> IO AddressDatumIndex
+  -> StorableMonad AddressDatumHandle AddressDatumIndex
 open dbPath (AddressDatumDepth k) = do
-    c <- SQL.open dbPath
-    SQL.execute_ c "PRAGMA journal_mode=WAL"
-    SQL.execute_ c
+    c <- liftSQLError CantStartIndexer (SQL.open dbPath)
+    lift $ SQL.execute_ c "PRAGMA journal_mode=WAL"
+    lift $ SQL.execute_ c
         [r|CREATE TABLE IF NOT EXISTS address_datums
             ( address TEXT NOT NULL
             , datum_hash BLOB NOT NULL
             , slot_no INT NOT NULL
             , block_hash BLOB NOT NULL
             )|]
-    SQL.execute_ c
+    lift $ SQL.execute_ c
         [r|CREATE TABLE IF NOT EXISTS datumhash_datum
             ( datum_hash BLOB PRIMARY KEY
             , datum BLOB
             )|]
-    SQL.execute_ c
+    lift $ SQL.execute_ c
         [r|CREATE INDEX IF NOT EXISTS address_datums_index
            ON address_datums (address)|]
 

@@ -68,6 +68,7 @@ library
     , lens
     , primitive
     , sqlite-simple
+    , text
     , vector
 
 test-suite marconi-core-test

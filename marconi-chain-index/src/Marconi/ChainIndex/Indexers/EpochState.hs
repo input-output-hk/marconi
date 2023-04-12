@@ -84,6 +84,8 @@ import Cardano.Slotting.Slot (EpochNo)
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Monad (filterM, forM_, when)
+import Control.Monad.Except (ExceptT)
+import Control.Monad.Trans (MonadTrans (lift))
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.=))
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as BS
@@ -103,6 +105,8 @@ import Data.Tuple (swap)
 import Data.VMap qualified as VMap
 import Database.SQLite.Simple qualified as SQL
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
+                                 liftSQLError)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.ChainIndex.Utils (isBlockRollbackable)
@@ -130,7 +134,7 @@ data EpochStateHandle = EpochStateHandle
     , _epochStateHandleSecurityParam      :: !SecurityParam
     }
 
-type instance StorableMonad EpochStateHandle = IO
+type instance StorableMonad EpochStateHandle = ExceptT IndexerError IO
 
 data instance StorableEvent EpochStateHandle =
     EpochStateEvent
@@ -342,8 +346,9 @@ instance Buffered EpochStateHandle where
         :: Foldable f
         => f (StorableEvent EpochStateHandle)
         -> EpochStateHandle
-        -> IO EpochStateHandle
-    persistToStorage events h@(EpochStateHandle topLevelConfig c ledgerStateDirPath securityParam) = do
+        -> StorableMonad EpochStateHandle EpochStateHandle
+    persistToStorage events h@(EpochStateHandle topLevelConfig c ledgerStateDirPath securityParam)
+        = liftSQLError CantInsertEvent $ do
         let eventsList = toList events
 
         SQL.execute_ c "BEGIN"
@@ -468,9 +473,8 @@ instance Buffered EpochStateHandle where
     -- implementation. Therefore, this function returns an empty list.
     getStoredEvents
         :: EpochStateHandle
-        -> IO [StorableEvent EpochStateHandle]
-    getStoredEvents EpochStateHandle {} = do
-        pure []
+        -> StorableMonad EpochStateHandle [StorableEvent EpochStateHandle]
+    getStoredEvents EpochStateHandle {}  = liftSQLError CantQueryIndexer $ pure []
 
 eventToEpochSDDRows
     :: StorableEvent EpochStateHandle
@@ -505,9 +509,10 @@ instance Queryable EpochStateHandle where
         -> f (StorableEvent EpochStateHandle)
         -> EpochStateHandle
         -> StorableQuery EpochStateHandle
-        -> IO (StorableResult EpochStateHandle)
+        -> StorableMonad EpochStateHandle (StorableResult EpochStateHandle)
 
-    queryStorage _ events (EpochStateHandle _ c _ _) (SDDByEpochNoQuery epochNo) = do
+    queryStorage _ events (EpochStateHandle _ c _ _) (SDDByEpochNoQuery epochNo)
+        = liftSQLError CantQueryIndexer $ do
         case List.find (\e -> epochStateEventEpochNo e == Just epochNo) (toList events) of
           Just e ->
               pure $ SDDByEpochNoResult $ eventToEpochSDDRows e
@@ -519,7 +524,8 @@ instance Queryable EpochStateHandle where
                   |] (SQL.Only epochNo)
               pure $ SDDByEpochNoResult res
 
-    queryStorage _ events (EpochStateHandle _ c _ _) (NonceByEpochNoQuery epochNo) = do
+    queryStorage _ events (EpochStateHandle _ c _ _) (NonceByEpochNoQuery epochNo)
+        = liftSQLError CantQueryIndexer $ do
         case List.find (\e -> epochStateEventEpochNo e == Just epochNo) (toList events) of
           Just e ->
               pure $ NonceByEpochNoResult $ eventToEpochNonceRow e
@@ -531,13 +537,14 @@ instance Queryable EpochStateHandle where
                   |] (SQL.Only epochNo)
               pure $ NonceByEpochNoResult $ listToMaybe res
 
-    queryStorage _ _ EpochStateHandle {} (LedgerStateAtPointQuery C.ChainPointAtGenesis) = do
-        pure $ LedgerStateAtPointResult Nothing
+    queryStorage _ _ EpochStateHandle {} (LedgerStateAtPointQuery C.ChainPointAtGenesis)
+        = liftSQLError CantQueryIndexer $ pure $ LedgerStateAtPointResult Nothing
     queryStorage
             _
             events
             (EpochStateHandle topLevelConfig _ ledgerStateDirPath _)
-            (LedgerStateAtPointQuery (C.ChainPoint slotNo _)) = do
+            (LedgerStateAtPointQuery (C.ChainPoint slotNo _))
+        = liftSQLError CantQueryIndexer $ do
         case List.find (\e -> epochStateEventSlotNo e == slotNo) (toList events) of
             Nothing -> do
                 ledgerStateFilePaths <- listDirectory ledgerStateDirPath
@@ -568,15 +575,17 @@ instance Rewindable EpochStateHandle where
     rewindStorage
         :: C.ChainPoint
         -> EpochStateHandle
-        -> IO (Maybe EpochStateHandle)
-    rewindStorage C.ChainPointAtGenesis h@(EpochStateHandle _ c ledgerStateDirPath _) = do
+        -> StorableMonad EpochStateHandle EpochStateHandle
+    rewindStorage C.ChainPointAtGenesis h@(EpochStateHandle _ c ledgerStateDirPath _)
+        = liftSQLError CantRollback $ do
         SQL.execute_ c "DELETE FROM epoch_sdd"
         SQL.execute_ c "DELETE FROM epoch_nonce"
 
         ledgerStateFilePaths <- listDirectory ledgerStateDirPath
         forM_ ledgerStateFilePaths (\f -> removeFile $ ledgerStateDirPath </> f)
-        pure $ Just h
-    rewindStorage (C.ChainPoint sn _) h@(EpochStateHandle _ c ledgerStateDirPath _) = do
+        pure h
+    rewindStorage (C.ChainPoint sn _) h@(EpochStateHandle _ c ledgerStateDirPath _)
+        = liftSQLError CantRollback $ do
         SQL.execute c "DELETE FROM epoch_sdd WHERE slotNo > ?" (SQL.Only sn)
         SQL.execute c "DELETE FROM epoch_nonce WHERE slotNo > ?" (SQL.Only sn)
 
@@ -587,13 +596,14 @@ instance Rewindable EpochStateHandle where
               Just (_, slotNo, _, _) | slotNo > sn -> removeFile $ ledgerStateDirPath </> fp
               Just _                               -> pure ()
 
-        pure $ Just h
+        pure h
 
 instance Resumable EpochStateHandle where
     resumeFromStorage
         :: EpochStateHandle
-        -> IO [C.ChainPoint]
-    resumeFromStorage (EpochStateHandle _ c ledgerStateDirPath _) = do
+        -> StorableMonad EpochStateHandle [C.ChainPoint]
+    resumeFromStorage (EpochStateHandle _ c ledgerStateDirPath _)
+        = liftSQLError CantQueryIndexer $ do
         ledgerStateFilepaths <- listDirectory ledgerStateDirPath
         let ledgerStateChainPoints =
                 fmap (\(_, sn, bhh, _) -> (sn, bhh))
@@ -648,11 +658,11 @@ open
   -> FilePath
   -- ^ Directory from which we will save the various 'LedgerState' as different points in time.
   -> SecurityParam
-  -> IO (State EpochStateHandle)
+  -> StorableMonad EpochStateHandle (State EpochStateHandle)
 open topLevelConfig dbPath ledgerStateDirPath securityParam = do
-    c <- SQL.open dbPath
-    SQL.execute_ c "PRAGMA journal_mode=WAL"
-    SQL.execute_ c
+    c <- liftSQLError CantStartIndexer $ SQL.open dbPath
+    lift $ SQL.execute_ c "PRAGMA journal_mode=WAL"
+    lift $ SQL.execute_ c
         [r|CREATE TABLE IF NOT EXISTS epoch_sdd
             ( epochNo INT NOT NULL
             , poolId BLOB NOT NULL
@@ -661,7 +671,7 @@ open topLevelConfig dbPath ledgerStateDirPath securityParam = do
             , blockHeaderHash BLOB NOT NULL
             , blockNo INT NOT NULL
             )|]
-    SQL.execute_ c
+    lift $ SQL.execute_ c
         [r|CREATE TABLE IF NOT EXISTS epoch_nonce
             ( epochNo INT NOT NULL
             , nonce BLOB NOT NULL

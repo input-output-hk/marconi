@@ -15,6 +15,8 @@ import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
 import Control.Concurrent.STM (atomically)
 import Control.Lens.Operators ((^.))
+import Control.Monad.Except (runExceptT)
+
 import Marconi.ChainIndex.CLI (multiString)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
@@ -22,7 +24,9 @@ import Marconi.Sidechain.Api.HttpServer (bootstrap)
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
 import Marconi.Sidechain.Api.Types (SidechainEnv, sidechainAddressUtxoIndexer, sidechainEnvIndexers)
 import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
+
 import Options.Applicative (Parser, execParser, help, helper, info, long, metavar, optional, short, strOption, (<**>))
+import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
 data CliOptions = CliOptions
@@ -61,8 +65,9 @@ main = do
 -- Effectively we are going to query SQLite only
 mocUtxoIndexer :: FilePath -> SidechainEnv -> IO ()
 mocUtxoIndexer dbpath env =
-        Utxo.open dbpath (Utxo.Depth 4) True >>= callback >> innerLoop
+        runExceptT (Utxo.open dbpath (Utxo.Depth 4) True) >>= handleError >>= callback >> innerLoop
     where
+      handleError = either (const exitFailure) pure
       callback :: Utxo.UtxoIndexer -> IO ()
       callback = atomically . UIQ.updateEnvState (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
       innerLoop = threadDelay 1000000 >> innerLoop -- create some latency
