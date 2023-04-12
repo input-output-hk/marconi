@@ -403,10 +403,10 @@ lastSyncBasedModelProperty gen runner
 -- | A runner for a 'ListIndexer'
 listIndexerRunner
     :: Core.HasGenesis (Core.Point e)
-    => IndexerTestRunner IO e Core.ListIndexer
+    => IndexerTestRunner (ExceptT Core.IndexerError IO) e Core.ListIndexer
 listIndexerRunner
     = IndexerTestRunner
-        GenM.monadicIO
+        monadicExceptTIO
         (pure Core.listIndexer)
 
 initSQLite :: IO SQL.Connection
@@ -447,19 +447,23 @@ instance
 
         in Core.querySQLiteIndexerWith
             (\p _ -> [":point" SQL.:= p])
-            " SELECT point, value \
-            \ FROM index_model \
+            " SELECT point, value   \
+            \ FROM index_model      \
             \ WHERE point <= :point \
             \ ORDER BY point DESC"
             rowToResult
 
+monadicExceptTIO :: Tasty.Testable a => PropertyM (ExceptT err IO) a -> Property
+monadicExceptTIO
+    = GenM.monadic $ Tasty.ioProperty . fmap (fromRight $ Tasty.property False) . runExceptT
+
 -- | A runner for a 'SQLiteIndexer'
 sqliteIndexerRunner
-    :: IndexerTestRunner IO TestEvent Core.SQLiteIndexer
+    :: IndexerTestRunner (ExceptT Core.IndexerError IO) TestEvent Core.SQLiteIndexer
 sqliteIndexerRunner
     = IndexerTestRunner
-        GenM.monadicIO
-        (sqliteModelIndexer <$> initSQLite)
+        monadicExceptTIO
+        (sqliteModelIndexer <$> lift initSQLite)
 
 mixedModelLowMemoryIndexer
     :: SQL.Connection
@@ -483,19 +487,25 @@ mixedModelHighMemoryIndexer con
 
 -- | A runner for a 'MixedIndexer' with a small in-memory storage
 mixedLowMemoryIndexerRunner
-    :: IndexerTestRunner IO TestEvent (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer)
+    :: IndexerTestRunner
+        (ExceptT Core.IndexerError IO)
+        TestEvent
+        (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer)
 mixedLowMemoryIndexerRunner
     = IndexerTestRunner
-        GenM.monadicIO
-        (mixedModelLowMemoryIndexer <$> initSQLite)
+        monadicExceptTIO
+        (mixedModelLowMemoryIndexer <$> lift initSQLite)
 
 -- | A runner for a 'MixedIndexer' with a large in-memory storage
 mixedHighMemoryIndexerRunner
-    :: IndexerTestRunner IO TestEvent (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer)
+    :: IndexerTestRunner
+        (ExceptT Core.IndexerError IO)
+        TestEvent
+        (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer)
 mixedHighMemoryIndexerRunner
     = IndexerTestRunner
-        GenM.monadicIO
-        (mixedModelHighMemoryIndexer <$> initSQLite)
+        monadicExceptTIO
+        (mixedModelHighMemoryIndexer <$> lift initSQLite)
 
 -- | A runner for a the 'WithTracer' tranformer
 withTracerRunner
@@ -516,14 +526,18 @@ newtype UnderCoordinator indexer event
 
 makeLenses ''UnderCoordinator
 
-deriving via (Core.IndexWrapper (IndexerMVar indexer) Core.Coordinator)
-    instance Core.IsIndex IO event (UnderCoordinator indexer)
+instance (MonadIO m, MonadError Core.IndexerError m)
+    => Core.IsIndex m event (UnderCoordinator indexer) where
 
-deriving via (Core.IndexWrapper (IndexerMVar indexer) Core.Coordinator)
-    instance Core.IsSync IO event (UnderCoordinator indexer)
+    index = Core.indexVia underCoordinator
+    indexAll = Core.indexAllVia underCoordinator
+
+instance MonadIO m => Core.IsSync m event (UnderCoordinator indexer) where
+
+    lastSyncPoint = Core.lastSyncPointVia underCoordinator
 
 instance Core.HasGenesis (Core.Point event)
-    => Core.Rewindable IO event (UnderCoordinator indexer) where
+    => Core.Rewindable (ExceptT Core.IndexerError IO) event (UnderCoordinator indexer) where
     rewind = Core.rewindVia $ underCoordinator . wrappedIndexer
 
 instance (MonadIO m, Core.Queryable m event (Core.EventsMatchingQuery event) indexer) =>
@@ -538,21 +552,20 @@ instance (MonadIO m, Core.Queryable m event (Core.EventsMatchingQuery event) ind
 
 coordinatorIndexerRunner
     ::
-    ( Core.IsIndex (ExceptT Core.IndexError IO) event wrapped
-    , Core.IsSync (ExceptT Core.IndexError IO) event wrapped
-    , Core.Resumable (ExceptT Core.IndexError IO) event wrapped
-    , Core.Rewindable (ExceptT Core.IndexError IO) event wrapped
+    ( Core.WorkerIndexer (ExceptT Core.IndexerError IO) event wrapped
     , Core.HasGenesis (Core.Point event)
     , Ord (Core.Point event)
-    ) => IndexerTestRunner IO event wrapped
-    -> IndexerTestRunner IO event (UnderCoordinator wrapped)
+    ) => IndexerTestRunner (ExceptT Core.IndexerError IO) event wrapped
+    -> IndexerTestRunner (ExceptT Core.IndexerError IO) event (UnderCoordinator wrapped)
 coordinatorIndexerRunner wRunner
     = IndexerTestRunner
-        (wRunner ^. indexerRunner)
-        $ do
+        monadicExceptTIO $ do
             wrapped <- wRunner ^. indexerGenerator
-            (t, run) <- Core.createWorker pure id wrapped
-            UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> Core.start [run]
+            (t, run) <- lift $ Core.createWorker
+                pure
+                (const $ pure ())
+                wrapped
+            UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.start [run])
 
 data ParityQuery = OddTestEvent | EvenTestEvent
     deriving (Eq, Ord, Show)
@@ -595,8 +608,8 @@ instance MonadIO m
                indexer
 
 buildCacheFor
-    :: Core.Queryable (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event query indexer
-    => Core.IsSync (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event indexer
+    :: Core.Queryable (ExceptT (Core.QueryError query) (ExceptT Core.IndexerError m)) event query indexer
+    => Core.IsSync (ExceptT (Core.QueryError query) (ExceptT Core.IndexerError m)) event indexer
     => Monad m
     => Ord query
     => Ord (Core.Point event)
@@ -610,8 +623,8 @@ buildCacheFor q onForward indexer = do
 
 -- | A runner for a the 'WithTracer' tranformer
 withCacheRunner
-    :: Core.Queryable (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event query wrapped
-    => Core.IsSync (ExceptT (Core.QueryError query) (ExceptT Core.IndexError m)) event wrapped
+    :: Core.Queryable (ExceptT (Core.QueryError query) (ExceptT Core.IndexerError m)) event query wrapped
+    => Core.IsSync (ExceptT (Core.QueryError query) (ExceptT Core.IndexerError m)) event wrapped
     => Monad m
     => Ord query
     => Ord (Core.Point event)
@@ -624,14 +637,22 @@ withCacheRunner q onForward wRunner
         (wRunner ^. indexerRunner)
         (buildCacheFor q onForward =<< (wRunner ^. indexerGenerator))
 
-pairCacheRunner :: IndexerTestRunner IO TestEvent (Core.WithCache ParityQuery Core.ListIndexer)
+pairCacheRunner
+    :: IndexerTestRunner
+        (ExceptT Core.IndexerError IO)
+        TestEvent
+        (Core.WithCache ParityQuery Core.ListIndexer)
 pairCacheRunner = let
     aggregate timedEvent xs
          = let e = timedEvent ^. Core.event
          in if odd e then e:xs else xs
     in withCacheRunner OddTestEvent aggregate listIndexerRunner
 
-sqlLiteCacheRunner :: IndexerTestRunner IO TestEvent (Core.WithCache ParityQuery Core.SQLiteIndexer)
+sqlLiteCacheRunner
+    :: IndexerTestRunner
+        (ExceptT Core.IndexerError IO)
+        TestEvent
+        (Core.WithCache ParityQuery Core.SQLiteIndexer)
 sqlLiteCacheRunner = let
     aggregate timedEvent xs
          = let e = timedEvent ^. Core.event

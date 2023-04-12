@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds      #-}
 {-# LANGUAGE DerivingVia          #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE RankNTypes           #-}
@@ -6,6 +7,8 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-} -- for DerivingVia
 {- |
  This module propose an alternative to the index implementation proposed in 'RewindableIndex.Storable'.
+
+ = Motivation
 
  The point we wanted to address are the folowing:
 
@@ -26,24 +29,45 @@
     * In marconi, the original design uses a callback design to handle `MVar` modification,
       we wanted to address this point as well.
 
-What's included in this module:
+ = Terminology
+
+    * An /indexer/ is a data structure that can store any type of /events/.
+    * Each /event/ is emitted at a givent /point/ in time.
+    * A /query/ is a request that the /indexer/ should be able to answer.
+    * An /indexer instance/ corresponds to the use of an indexer for a specific type of events.
+    * Most of the time, an /indexer instance/ requires the implementation of some typeclasses to specify its behaviour.
+    * An /indexer transformer/ slightly alter the behaviour of an existing transformer.
+      In general, an /indexer transformer/ should add its logic to one of the typeclasses
+      that specify the behaviour of an indexer.
+    * A /coordinator/ is a specific kind of indexer that pass events to a set of indexer it coordonates.
+    * A /worker/ is a wrapper around an indexer, that hides the indexer types to a coordinator
+      and handle locally the lifecycle of the indexer.
+
+
+ = Content
 
     * Base type classes to define an indexer, its query interface, and the required plumbing to handle rollback.
     * A full in-memory indexer (naive), a full SQLite indexer
       and an indexer that compose it with a SQL layer for persistence.
     * A coordinator for indexers, that can be exposed as an itdexer itself.
     * Some queries that can be applied to many indexers.
-    * Several modifiers for indexers:
+    * Several transformers for indexers:
+
         * Tracing, as a modifier to an existing indexer.
           (it allows us to opt-in for traces if we want, indexer by indexer)
         * Delay to delay event processing for heavy computation.
         * Pruning, to compact data that can't be rollbacked.
 
-  Contrary to the original Marconi design, indexers don't have a unique (in-memory/sqlite) implementation.
+  Contrary to the original Marconi design,
+  indexers don't have a unique (in-memory/sqlite) implementation,
+  even if it is probably the one that is used as a reference indexer
+  at the momont.
 
-  (non-exhaustive) TODO list:
+ = TODO List (non-exhaustive)
 
-    * Provide a less naive in-memory indexer implementation than the list one
+    * Provide a less naive in-memory indexer implementation than the list one.
+      /This is actually debatable, as most of the data manipulation in memory fits very well with the complexity/
+      /of the list operations (except if we need to foldr the in memory resume to answer a query)./
     * Test, test, test. The current code is partially tested, and it's wrong.
     * Re-implement some of our indexers.
     * Split up this mess in modules.
@@ -51,10 +75,12 @@ What's included in this module:
     * Provide a tutorial on how to write indexer, transformers, and how to instantiate them.
     * Cold start from disk.
     * Provide MonadState version of the functions that manipulates the indexer.
+    * Add custom error handling at the worker and at the coordinator level,
+      even if its likely that the coordinator can't do much aside distributing poison pills.
 
-Howto:
+ = How-to
 
-    * Setup an existing indexer
+ == Setup an existing indexer
 
         1. You need to define a type for @event@ (the input of your indexer).
         As soon as it's done, define the 'Point' type instance for this event,
@@ -99,8 +125,10 @@ Howto:
 
         7. You have the minimal needed to run your indexer.
 
-    * Writing a new indexer: The steps are almost the same as those for reusing an
-    indexer, except that you have to think about how it should be done in the general
+ == Write a new indexer
+
+    The steps are almost the same as the steps 3 to 7 for reusing an indexer,
+    except that you have to think about how it should be done in the general
     case.
 
         Best practices is to implement as much as we can 'event'/'query' agnostic
@@ -110,6 +138,7 @@ Howto:
 
         Try to provide a smart constructor to hide most of the complexity of your indexer.
 
+        Then you also probably need to provide a helper to create workers for this indexer.
 -}
 module Marconi.Core.Experiment
     (
@@ -124,6 +153,7 @@ module Marconi.Core.Experiment
     --     2. @indexer@ that stores relevant (for them) pieces of information
     --     from the @event@s;
     --     3. @query@ that define what can be asked to an @indexer@.
+    --
       Point
     , Result
     , Container
@@ -134,8 +164,6 @@ module Marconi.Core.Experiment
     , IsIndex (..)
     , index'
     , indexAll'
-    , indexIO
-    , indexAllIO
     , HasGenesis (..)
     , IsSync (..)
     , isAheadOfSync
@@ -148,16 +176,41 @@ module Marconi.Core.Experiment
     , Prunable (..)
     , Resumable (..)
     -- ** Errors
-    , IndexError (..)
+    , IndexerError
     , QueryError (..)
 
     -- * Core Indexers
+    --
+    -- | A bunch of indexers that should cover the general need.
+    --
+    --     * 'ListIndexer' to store events in memory.
+    --     * 'SQLiteIndexer' to store events in a SQLite database.
+    --     * 'MixedIndexer' to store recent events in an indexer
+    --       and older events in another one.
+
     -- ** In memory
+    --
+    -- | A Full in memory indexer, backed by a simple list of events.
+    -- Most of the logic for this indexer is generic.
+    --
+    -- To create an indexer instance that uses a list indexer,
+    -- you have to define:
+    --
+    --     * the type of @event@ you want to store
+    --     * the type(s) of query your indexer instance must handle
+    --     * the 'Queryable' interface for these queries.
     , ListIndexer
         , listIndexer
         , events
         , latest
     -- ** In database
+    -- | An in-memory indexer that stores its events in a SQLite database.
+    --
+    -- We try to provide as much machinery as possible to minimize the work needed
+    -- to create an indexer instance that uses a 'SQLiteIndexer'.
+    -- Populating a constructor and defining the queries
+    -- (and the corresponding 'Queryable' interface)
+    -- should be enough to have an operational indexer.
     , SQLiteIndexer (SQLiteIndexer)
         , handle
         , prepareInsert
@@ -166,25 +219,80 @@ module Marconi.Core.Experiment
         , rewindSQLiteIndexerWith
         , querySQLiteIndexerWith
         , querySyncedOnlySQLiteIndexerWith
-    -- ** Mixed indexer
+    -- ** Mixed inedexer
+    -- | An indexer that uses two indexer internally:
+    -- one for the most recents points, another for the older points.
+    --
+    -- The idea is that recent events are _volatile_ and can be rollbacked,
+    -- so they must be easy to delete if needed.
+    -- Older events are stable and can be store on disk to be persisted.
     , MixedIndexer
         , mixedIndexer
         , inMemory
         , inDatabase
-    , Flushable (..)
+    -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
+    -- ending with several insert.
+    --
+    -- This leads to two major issues:
+    --     - Each query has its own parameter type, we consequently don't have a unique type for a parametrised query.
+    --     - When we perform the insert, we want to process in the same way all the queries.
+    --     - We can't know in the general case neither how many query will be needed, nor the param types.
+    --     - We want to minimise the boilerplate for a end user.
+    --
+    -- To tackle these issue, we wrap our queries in a opaque type, @IndexQuery@,
+    -- which hides the query parameters.
+    -- Internally, we only have to deal with an @[IndexQuery]@ to be able to insert an event.
     , IndexQuery (..)
+    -- | How we map an event to its sql representation
+    --
+    -- In general, it consists in breaking the event in many fields of a record,
+    -- each field corresponding to the parameters required to insert a part of the event in one table.
+    --
+    -- Usually, an insert record will be of the form:
+    --
+    -- @
+    -- data MyInsertRecord
+    --     = MyInsertRecord
+    --     { _tableA :: [ParamsForTableA]
+    --     { _tableB :: [ParamsForTableB]
+    --     -- ...
+    --     }
+    -- @
     , InsertRecord
+    -- | A smart constructor for indexer that want to map an event to a single table.
+    -- We just have to set the type family of `InsertRecord event` to `[param]` and
+    -- then to provide the expected parameters.
     , singleInsertSQLiteIndexer
-
+    -- | The indexer of the most recent events must be able to send a part
+    -- of its events to the other indexer when they are stable.
+    --
+    -- The number of events that are sent and the number of events kept in memory
+    -- is controlled by the 'MixedIndexer'
+    , Flushable (..)
     -- ** LastPointIndexer
     , LastPointIndexer
         , lastPointIndexer
 
     -- * Running indexers
+    -- | To control a set of indexers simultaneously,
+    -- we want to be able to consider a list of them.
+    -- Unfortunately, each indexer has its own purpose and (usually) operates
+    -- on its own @event@ type.
+    -- As a consequence, a list of indexer would be an heterogeneous list,
+    -- which is hard to manipulate.
+    -- 'WorkerM' (and 'Worker') offers an opaque representation of a 'Worker',
+    -- which can be embed in a homogeneous list.
+    --
+    -- Coordinator take a bunch of 'Worker' and synchronise their work,
+    -- sending them events and rollbacks.
+
     -- ** Workers
     , WorkerM (..)
     , Worker
+    , WorkerIndexer
+    , createWorker'
     , createWorker
+    , createWorkerPure
     , startWorker
     , ProcessedInput (..)
     -- ** Coordinator
@@ -241,41 +349,42 @@ module Marconi.Core.Experiment
     , pruningPointVia
     , rewindVia
     , indexVia
+    , indexAllVia
     , lastSyncPointVia
     , queryVia
     , queryLatestVia
     , syncPointsVia
     ) where
 
-import Control.Concurrent qualified as Con (modifyMVar_, newMVar, newQSemN, readMVar, signalQSemN, waitQSemN)
+import Control.Concurrent qualified as Con (modifyMVar_, newEmptyMVar, newMVar, newQSemN, readMVar, signalQSemN,
+                                            tryPutMVar, tryReadMVar, waitQSemN)
 import Control.Concurrent.STM qualified as STM (atomically, dupTChan, newBroadcastTChanIO, readTChan, writeTChan)
 import Control.Tracer qualified as Tracer (traceWith)
 import Data.Sequence qualified as Seq
 
-import Control.Concurrent (MVar, QSemN, forkIO)
+import Control.Concurrent (MVar, QSemN, ThreadId, forkFinally, killThread)
 import Control.Lens (Getter, IndexedTraversal', Lens', at, filtered, folded, indexed, itraverseOf, lens, makeLenses,
-                     maximumOf, set, to, view, (%~), (&), (+~), (-~), (.~), (^.), (^..), (^?))
+                     maximumOf, set, to, view)
+import Control.Lens.Operators ((%~), (&), (+~), (-~), (.~), (^.), (^..), (^?))
 import Control.Monad (forever, guard, unless, void, when, (<=<))
 import Control.Monad.Except (ExceptT, MonadError (catchError, throwError), runExceptT)
 import Control.Tracer (Tracer)
 
 import Control.Concurrent.Async (mapConcurrently_)
 import Control.Concurrent.STM (TChan)
-import Control.Exception (Exception, throwIO)
+import Control.Exception (Exception, catch, throw)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (MonadTrans)
 import Control.Monad.Trans.Class (lift)
 import Data.Bifunctor (first)
-import Data.Either (fromRight)
-import Data.Foldable (foldl', foldlM, foldrM, traverse_)
-import Data.Functor (($>))
+import Data.Foldable (foldl', foldrM, traverse_)
 import Data.Functor.Compose (Compose (Compose, getCompose))
-import Data.List (intersect)
 import Data.Map (Map, traverseWithKey)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
 
 
@@ -293,7 +402,6 @@ type family Point event
 --     * we want to assign a query type to different indexers.
 type family Result query
 
-
 -- | Attach an event to a point in time
 data TimedEvent event =
      TimedEvent
@@ -306,15 +414,19 @@ deriving stock instance (Show event, Show (Point event)) => Show (TimedEvent eve
 makeLenses 'TimedEvent
 
 -- | Error that can occur when you index events
-data IndexError
+data IndexerError
    = RollbackBehindHistory
      -- ^ An indexer don't have access to the history at the point that is asked
+   | IndexerInternalError Text
+     -- ^ The indexer did not respond
+   | InvalidIndexer Text
+     -- ^ The indexer is in an invalid state and can't recover
    | OtherIndexError Text
      -- ^ Any other cause of failure
 
-instance Exception IndexError where
+instance Exception IndexerError where
 
-deriving stock instance Show IndexError
+deriving stock instance Show IndexerError
 
 -- | The base class of an indexer.
 -- The indexer should provide two main functionalities:
@@ -338,58 +450,33 @@ class Monad m => IsIndex m event indexer where
 
     {-# MINIMAL index #-}
 
--- | Like @index@, but internalise @IndexError@ in the result.
+-- | Like @index@, but internalise its error in the result.
 --
 -- It's useful when you don't want to internalise the error in the monad stack to handle it explicitly,
--- it's often use when we target IO as we don't want to mess with @IOException@.
+-- it's often used when we target IO as we don't want to mess with @IOException@.
 index'
     ::
-    ( IsIndex (ExceptT IndexError m) event indexer
+    ( IsIndex (ExceptT err m) event indexer
     , Monad m
     , Eq (Point event)
     )
     => TimedEvent event
     -> indexer event
-    -> m (Either IndexError (indexer event))
+    -> m (Either err (indexer event))
 index' evt = runExceptT . index evt
 
--- | Like @indexAll@, but internalise @IndexError@ in the result.
+-- | Like @indexAll@, but internalise the error in the result.
 indexAll'
     ::
-    ( IsIndex (ExceptT IndexError m) event indexer
+    ( IsIndex (ExceptT err m) event indexer
     , Monad m
     , Traversable f
     , Ord (Point event)
     )
     => f (TimedEvent event)
     -> indexer event
-    -> m (Either IndexError (indexer event))
+    -> m (Either err (indexer event))
 indexAll' evt = runExceptT . indexAll evt
-
--- Highly partial version of 'index' that throws exception using @Control.Exception@.
-indexIO
-    ::
-    ( MonadIO m
-    , IsIndex (ExceptT IndexError m) event indexer
-    , Eq (Point event)
-    )
-    => TimedEvent event
-    -> indexer event
-    -> m (indexer event)
-indexIO evt = either (liftIO . throwIO) pure <=< index' evt
-
--- Highly partial version of 'indexAll' that throws exception using @Control.Exception@.
-indexAllIO
-    ::
-    ( MonadIO m
-    , IsIndex (ExceptT IndexError m) event indexer
-    , Traversable f
-    , Ord (Point event)
-    )
-    => f (TimedEvent event)
-    -> indexer event
-    -> m (indexer event)
-indexAllIO evt = either (liftIO . throwIO) pure <=< indexAll' evt
 
 class HasGenesis t where
 
@@ -490,6 +577,7 @@ class ResumableResult m event query indexer where
        -> m (Result query)
        -> m (Result query)
 
+
 -- | We can reset an indexer to a previous `Point`
 --
 --     * @indexer@ is the indexer implementation type
@@ -526,7 +614,7 @@ class Resumable m event indexer where
 -- | How events can be extracted from an indexer
 type family Container (indexer :: * -> *) :: * -> *
 
--- | Define an in-memory container with a limited memory
+-- | Define a way to flush old events out of a container
 class Flushable m indexer where
 
     -- | Check if there isn't space left in memory
@@ -539,15 +627,13 @@ class Flushable m indexer where
         -> indexer event
         -> m (Container indexer (TimedEvent event), indexer event)
 
--- | A Full in memory indexer.
--- It uses list because I was too lazy to port the @Vector@ implementation.
--- If we wanna move to these indexers, we should switch the implementation to the @Vector@ one.
---
--- The constructor is not exposed, use 'listIndexer' instead.
+-- | The constructor is not exposed, use 'listIndexer' instead.
 data ListIndexer event =
     ListIndexer
-    { _events :: [TimedEvent event] -- ^ Stored @event@s, associated with their history 'Point'
-    , _latest :: Point event -- ^ Ease access to the latest sync point
+    { _events :: [TimedEvent event]
+      -- ^ Stored @event@s, associated with their history 'Point'
+    , _latest :: Point event
+      -- ^ Ease access to the latest sync point
     }
 
 deriving stock instance (Show event, Show (Point event)) => Show (ListIndexer event)
@@ -556,6 +642,7 @@ type instance Container ListIndexer = []
 
 makeLenses 'ListIndexer
 
+-- | A smart constructor for list indexer, starting at genesis with an empty list§.
 listIndexer :: HasGenesis (Point event) => ListIndexer event
 listIndexer = ListIndexer [] genesis
 
@@ -580,7 +667,7 @@ instance Applicative m => IsSync m event ListIndexer where
 instance Applicative m => Flushable m ListIndexer where
 
     -- | How many events are stored in the indexer
-    currentLength ix = pure $ fromIntegral (length (ix ^. events))
+    currentLength ix = pure $ fromIntegral $ length (ix ^. events)
 
     -- | Flush a given number of events from the indexer
     flushMemory n ix = let
@@ -603,7 +690,7 @@ instance Applicative m => Rewindable m event ListIndexer where
         isIndexBeforeRollback x = x ^. latest < p
 
         isEventAfterRollback :: TimedEvent event -> Bool
-        isEventAfterRollback = (p <) . view point
+        isEventAfterRollback x = x ^. point > p
 
         in pure
         $ if isIndexBeforeRollback ix
@@ -624,41 +711,14 @@ instance Applicative m => Resumable m event ListIndexer where
       in pure $ addLatestIfNeeded (ix ^. latest) indexPoints
 
 
--- | When we want to store an event in a database, it may happen that you want to store it in many tables,
--- ending with several insert.
---
--- This leads to two major issues:
---     - Each query has its own parameter type, we consequently don't have a unique type for a parametrised query.
---     - When we perform the insert, we want to process in the same way all the queries.
---     - We can't know in the general case neither how many query will be needed, nor the param types.
---     - We want to minimise the boilerplate for a end user.
---
--- To tackle these issue, we wrap our queries in a opaque type, @IndexQuery@,
--- which hides the query parameters.
--- Internally, we only have to deal with a @[IndexQuery]@ to be able to insert an event.
 data IndexQuery
     = forall param. SQL.ToRow param
     => IndexQuery
         { insertQuery :: SQL.Query
         , params      :: [param]
-         -- ^ It's a list because me want to be able to deal with bulk insert,
-         -- which is often required for performance reasons in Marconi.
+         -- ^ It's a list because me want to be able to deal with bulk insert.
         }
 
--- | Run a list of insert queries in one single transaction.
-runIndexQueries :: MonadIO m => SQL.Connection -> [IndexQuery] -> m ()
-runIndexQueries _ [] = pure ()
-runIndexQueries c xs = let
-
-    runIndexQuery (IndexQuery insertQuery params)
-        = SQL.executeMany c insertQuery params
-
-    in liftIO $ SQL.withTransaction c $ mapConcurrently_ runIndexQuery xs
-
--- | How we map an event to its sql representation
---
--- In general, it consists in breaking the event in many fields of a record,
--- each field correspondind to the parameters required to insert a part of the event in one table.
 type family InsertRecord event
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
@@ -679,14 +739,28 @@ data SQLiteIndexer event
           -- One can think at the insert record as a typed representation of the parameters of the queries,
           -- ^ The query to extract the latest sync point from the database.
         , _dbLastSync    :: Point event
-          -- ^ We keep the sync point in memory to avoid a request as Much as possible
+          -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
         }
 
 makeLenses ''SQLiteIndexer
 
--- | A smart constructor for indexer that want to map an event to a single table.
--- We just have to set the type family of `InsertRecord event` to `[param]` and
--- then to provide the expected parameters.
+-- | Run a list of insert queries in one single transaction.
+runIndexQueries
+    :: MonadIO m
+    => MonadError IndexerError m
+    => SQL.Connection -> [IndexQuery] -> m ()
+runIndexQueries _ [] = pure ()
+runIndexQueries c xs = let
+
+    runIndexQuery (IndexQuery insertQuery params)
+        = SQL.executeMany c insertQuery params
+
+    in either throwError pure <=< liftIO
+        $ fmap Right (SQL.withTransaction c $ mapConcurrently_ runIndexQuery xs)
+            `catch` (\(x :: SQL.FormatError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+            `catch` (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+            `catch` (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
+
 singleInsertSQLiteIndexer
     :: SQL.ToRow param
     => InsertRecord event ~ [param]
@@ -705,7 +779,7 @@ singleInsertSQLiteIndexer c toParam insertQuery
         , _dbLastSync = genesis
         }
 
-instance (MonadIO m, Monoid (InsertRecord event))
+instance (MonadIO m, Monoid (InsertRecord event), MonadError IndexerError m)
     => IsIndex m event SQLiteIndexer where
 
     index timedEvent indexer = do
@@ -836,7 +910,9 @@ instance Applicative m => Rewindable m event LastPointIndexer where
 -- | The different types of input of a worker
 data ProcessedInput event
    = Rollback (Point event)
+   -- ^ A rollback happen and indexers need to go back to the given point in time
    | Index (TimedEvent event)
+   -- ^ A new event has to be indexed
 
 mapIndex
     :: Applicative f
@@ -845,54 +921,75 @@ mapIndex
 mapIndex _ (Rollback p)       = pure $ Rollback p
 mapIndex f (Index timedEvent) = Index . TimedEvent (timedEvent ^. point) <$> f (timedEvent ^. event)
 
--- * Workers
-
--- | A worker encapsulate an indexer in an opaque type.
--- It allows us to manipulate seamlessly a list of indexers that has different types
--- as long as they implement the required interfaces.
-data WorkerM m input point =
-    forall indexer event n.
-    ( IsIndex n event indexer
+-- Type alias for the type classes that are required to build a worker for an indexer
+type WorkerIndexer n event indexer
+    = ( IsIndex n event indexer
     , IsSync n event indexer
     , Resumable n event indexer
     , Rewindable n event indexer
+    )
+
+data WorkerM m input point =
+    forall indexer event n.
+    ( WorkerIndexer n event indexer
     , Point event ~ point
     ) =>
     Worker
-        { workerState     :: MVar (indexer event)
-
-        , transformInput  :: input -> m event
+        { workerState    :: MVar (indexer event)
+          -- ^ the indexer controlled by this worker
+        , transformInput :: input -> m event
           -- ^ used by the worker to check whether an input is a rollback or an event
-        , hoistIndexError :: forall a. n a -> ExceptT IndexError m a
+        , hoistError     :: forall a. n a -> ExceptT IndexerError m a
+          -- ^ used by the worker to check whether an input is a rollback or an event
+        , errorBox       :: MVar IndexerError
+          -- ^ a place where the worker places error that it can't handle,
+          -- to notify the coordinator
+        , onExit         :: indexer event -> n ()
         }
 
 type Worker = WorkerM IO
 
 -- | create a worker for an indexer, retuning the worker and the @MVar@ it's using internally
-createWorker ::
-    ( MonadIO m
-    , IsIndex n event indexer
-    , IsSync n event indexer
-    , Resumable n event indexer
-    , Rewindable n event indexer
-    , point ~ Point event)
-    => (input -> m event)
-    -> (forall a. n a -> ExceptT IndexError m a)
+createWorker'
+    :: ( MonadIO m, WorkerIndexer n event indexer)
+    => (forall a. n a -> ExceptT IndexerError m a)
+    -> (input -> m event)
+    -> (indexer event -> n ())
     -> indexer event
-    -> m (MVar (indexer event), WorkerM m input point)
-createWorker getEvent hoist ix = do
-    mvar <- liftIO $ Con.newMVar ix
-    pure (mvar, Worker mvar getEvent hoist)
+    -> m (MVar (indexer event), WorkerM m input (Point event))
+createWorker' hoist getEvent takePoisonPill ix = do
+    workerState <- liftIO $ Con.newMVar ix
+    errorBox <- liftIO Con.newEmptyMVar
+    pure (workerState, Worker workerState getEvent hoist errorBox takePoisonPill)
+
+-- | create a worker for an indexer that doesn't throw error
+createWorkerPure
+    :: (MonadIO m , WorkerIndexer m event indexer)
+    => (input -> m event)
+    -> (indexer event -> m ())
+    -> indexer event
+    -> m (MVar (indexer event), WorkerM m input (Point event))
+createWorkerPure = createWorker' lift
+
+-- | create a worker for an indexer that already throws IndexerError
+createWorker
+    :: (MonadIO m , WorkerIndexer (ExceptT IndexerError m) event indexer)
+    => (input -> m event)
+    -> (indexer event -> ExceptT IndexerError m ())
+    -> indexer event
+    -> m (MVar (indexer event), WorkerM m input (Point event))
+createWorker = createWorker' id
 
 -- | The worker notify its coordinator that it's ready
 -- and starts waiting for new events and process them as they come
 startWorker
-    :: Ord (Point input)
+    :: MonadIO m
+    => Ord (Point input)
     => TChan (ProcessedInput input)
     -> QSemN
     -> Worker input (Point input) ->
-    IO ()
-startWorker chan tokens (Worker ix transformInput hoistIndexError) = let
+    m ThreadId
+startWorker chan tokens (Worker ix transformInput hoistError errorBox takePoisonPill) = let
 
     unlockCoordinator :: IO ()
     unlockCoordinator = Con.signalQSemN tokens 1
@@ -900,26 +997,41 @@ startWorker chan tokens (Worker ix transformInput hoistIndexError) = let
     fresherThan :: Ord (Point event) => TimedEvent event -> Point event -> Bool
     fresherThan evt p = evt ^. point > p
 
-    indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer ->
-        fmap (fromRight indexer) $ runExceptT $ do -- TODO add error handling
-            indexerLastPoint <- hoistIndexError $ lastSyncPoint indexer
+    indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer -> do
+        result <- runExceptT $ do
+            indexerLastPoint <- hoistError $ lastSyncPoint indexer
             if timedEvent `fresherThan` indexerLastPoint
-               then hoistIndexError $ index timedEvent indexer
+               then hoistError $ index timedEvent indexer
                else pure indexer
+        either raiseError pure result
 
-    handleRollback p = Con.modifyMVar_ ix $ \indexer ->
-        fmap (fromRight indexer) $ runExceptT $ do  -- TODO add error handling
-            hoistIndexError $ rewind p indexer
+    raiseError err = do
+        -- We don't need to check if tryPutMVar succeed
+        -- because if @errorBox@ is already full, our job is done anyway
+        void $ Con.tryPutMVar errorBox err
+        unlockCoordinator
+        throw err
 
-    in do
+
+    handleRollback p = Con.modifyMVar_ ix $ \indexer -> do
+        result <- runExceptT $ hoistError $ rewind p indexer
+        either raiseError pure result
+
+    swallowPill = do
+        indexer <- Con.readMVar ix
+        void $ runExceptT $ hoistError $ takePoisonPill indexer
+
+    loop chan' = forever $ do
+        input <- STM.atomically $ STM.readTChan chan'
+        processedEvent <- mapIndex transformInput input
+        case processedEvent of
+            Rollback p -> handleRollback p
+            Index e    -> indexEvent e
+        unlockCoordinator
+
+    in liftIO $ do
         chan' <- STM.atomically $ STM.dupTChan chan
-        void . forkIO . forever $ do
-            input <- STM.atomically $ STM.readTChan chan'
-            processedEvent <- mapIndex transformInput input
-            case processedEvent of
-                Rollback p -> handleRollback p
-                Index e    -> indexEvent e
-            unlockCoordinator
+        forkFinally (loop chan') (const swallowPill)
 
 -- | A coordinator synchronises the event processing of a list of indexers.
 -- A coordinator is itself is an indexer.
@@ -928,32 +1040,14 @@ startWorker chan tokens (Worker ix transformInput hoistIndexError) = let
 data Coordinator input = Coordinator
   { _lastSync  :: Point input -- ^ the last common sync point for the workers
   , _workers   :: [Worker input (Point input)] -- ^ the list of workers managed by this coordinator
+  , _threadIds :: [ThreadId] -- ^ the thread ids of the workers
   , _tokens    :: QSemN -- ^ use to synchronise the worker
   , _channel   :: TChan (ProcessedInput input) -- ^ to dispatch input to workers
   , _nbWorkers :: Int -- ^ how many workers are we waiting for, should always be equal to @length workers@
   }
 
-
 -- TODO handwrite lenses to avoid invalid states
 makeLenses 'Coordinator
-
--- | Get the common syncPoints of a group or workers
---
--- Important note : the syncpoints are sensible to rewind. It means that the result of this function may be invalid if
--- the indexer is rewinded.
-workerSyncPoints :: (HasGenesis point, Ord point) => [Worker input point] -> IO [point]
-workerSyncPoints [] = pure []
-workerSyncPoints (r:rs) = let
-
-    getSyncPoints :: Ord point => Worker input point -> IO [point]
-    getSyncPoints (Worker ix _ hoistIndexError) =
-        fmap (fromRight []) $ runExceptT $ do
-            indexer <- lift $ Con.readMVar ix
-            hoistIndexError $ syncPoints indexer
-
-    in do
-        ps <- getSyncPoints r
-        (genesis:) <$> foldlM (\acc r' -> intersect acc <$> getSyncPoints r') ps rs
 
 -- | create a coordinator with started workers
 start
@@ -962,22 +1056,26 @@ start
     => [Worker input (Point input)] -> IO (Coordinator input)
 start workers' = let
 
-    startWorkers channel' tokens' = traverse_ (startWorker channel' tokens') workers'
+    startWorkers channel' tokens' = traverse (startWorker channel' tokens') workers'
 
     in do
         let nb = length workers'
         tokens' <- Con.newQSemN 0 -- starts empty, will be filled when the workers will start
         channel' <- STM.newBroadcastTChanIO
-        startWorkers channel' tokens'
-        pure $ Coordinator genesis workers' tokens' channel' nb
+        threadIds' <- startWorkers channel' tokens'
+        pure $ Coordinator genesis workers' threadIds' tokens' channel' nb
 
 -- | A coordinator step (send an input to its workers, wait for an ack of every worker before listening again)
 step
-    :: (HasGenesis (Point input), Ord (Point input))
-    => Coordinator input -> ProcessedInput input -> IO (Coordinator input)
-step coordinator input = case input of
-    Index e    -> index e coordinator
-    Rollback p -> rewind p coordinator -- TODO: handle failure
+    :: (HasGenesis (Point input)
+    , Ord (Point input)
+    , MonadIO m
+    , MonadError IndexerError m)
+    => Coordinator input -> ProcessedInput input -> m (Coordinator input)
+step coordinator input = do
+        case input of
+            Index e    -> index e coordinator
+            Rollback p -> rewind p coordinator
 
 waitWorkers :: Coordinator input -> IO ()
 waitWorkers coordinator = Con.waitQSemN (coordinator ^. tokens) (coordinator ^. nbWorkers)
@@ -985,39 +1083,56 @@ waitWorkers coordinator = Con.waitQSemN (coordinator ^. tokens) (coordinator ^. 
 dispatchNewInput :: Coordinator input -> ProcessedInput input -> IO ()
 dispatchNewInput coordinator = STM.atomically . STM.writeTChan (coordinator ^. channel)
 
+healthCheck
+    :: MonadIO m
+    => Coordinator input -> m (Maybe IndexerError)
+healthCheck c = do
+   let ws = c ^. workers
+   errors <- liftIO $ traverse Con.tryReadMVar $ errorBox <$> ws
+   pure $ listToMaybe $ catMaybes errors
+
+
 -- A coordinator can be consider as an indexer that forwards the input to its worker
-instance MonadIO m => IsIndex m event Coordinator where
+instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator where
 
     index timedEvent coordinator = let
 
         setLastSync c e = c & lastSync .~ (e ^. point)
 
-        in liftIO $ do
-            dispatchNewInput coordinator $ Index timedEvent
-            waitWorkers coordinator $> setLastSync coordinator timedEvent
+        stopWorkers = traverse_ killThread $ coordinator ^. threadIds
+
+        in do
+            liftIO $ dispatchNewInput coordinator $ Index timedEvent
+            liftIO $ waitWorkers coordinator
+            errors <- healthCheck coordinator
+            case errors of
+                Just err -> liftIO stopWorkers *> throwError err
+                Nothing  -> pure $ setLastSync coordinator timedEvent
 
 instance MonadIO m => IsSync m event Coordinator where
     lastSyncPoint indexer = pure $ indexer ^. lastSync
 
 -- | To rewind a coordinator, we try and rewind all the workers.
-instance (HasGenesis (Point event), MonadIO m) => Rewindable m event Coordinator where
+instance
+    (HasGenesis (Point event)
+    , MonadIO m
+    , MonadError IndexerError m
+    ) => Rewindable m event Coordinator where
 
     rewind p = let
 
         setLastSync c = c & lastSync .~ p
 
-        rewindWorkers ::
-            Coordinator event ->
-            IO (Coordinator event)
+        rewindWorkers :: Coordinator event -> m (Coordinator event)
         rewindWorkers c = do
-            availableSyncs <- workerSyncPoints $ c ^. workers
-            -- we start by checking if the given point is a valid sync point
-            guard $ p `elem` availableSyncs
-            liftIO $ do
-                dispatchNewInput c $ Rollback p
-                waitWorkers c $> setLastSync c
+            liftIO $ dispatchNewInput c $ Rollback p
+            liftIO $ waitWorkers c
+            errors <- healthCheck c
+            case errors of
+                Just err -> throwError err
+                Nothing  -> pure $ setLastSync c
 
-        in  liftIO . rewindWorkers
+        in rewindWorkers
 
 -- There is no point in providing a 'Queryable' interface for 'CoordinatorIndex' though,
 -- as it's sole interest would be to get the latest synchronisation points,
@@ -1412,6 +1527,8 @@ makeLenses ''PruningConfig
 newtype WithPruning indexer event
     = WithPruning { _pruningWrapper :: IndexWrapper PruningConfig indexer event }
 
+makeLenses ''WithPruning
+
 withPruning
     :: Word
           -- ^ how far can a rollback go
@@ -1422,8 +1539,6 @@ withPruning
 withPruning sec every
     = WithPruning
     . IndexWrapper (PruningConfig sec every Seq.empty every 0)
-
-makeLenses ''WithPruning
 
 deriving via (IndexWrapper PruningConfig indexer)
     instance IsSync m event indexer => IsSync m event (WithPruning indexer)
@@ -1513,7 +1628,7 @@ instance
 -- mess up with the rollbackable events.
 instance
     ( Monad m
-    , MonadError IndexError m
+    , MonadError IndexerError m
     , Prunable m event indexer
     , Rewindable m event indexer
     , HasGenesis (Point event)
@@ -1521,12 +1636,6 @@ instance
     ) => Rewindable m event (WithPruning indexer) where
 
     rewind p indexer = let
-
-        rewindWrappedIndexer
-            :: Point event
-            -> WithPruning indexer event
-            -> m (WithPruning indexer event)
-        rewindWrappedIndexer p' = rewindVia prunedIndexer p'
 
         resetStep :: WithPruning indexer event -> WithPruning indexer event
         resetStep = do
@@ -1558,7 +1667,7 @@ instance
             countFromPruningPoints
                 . removePruningPointsAfterRollback p
                 . resetStep
-                <$> rewindWrappedIndexer p indexer
+                <$> rewindVia prunedIndexer p indexer
 
 
 data CacheConfig query event
@@ -1635,7 +1744,7 @@ addCacheFor
     :: Queryable (ExceptT (QueryError query) m) event query indexer
     => IsSync (ExceptT (QueryError query) m) event indexer
     => Monad m
-    => MonadError IndexError m
+    => MonadError IndexerError m
     => Ord query
     => Ord (Point event)
     => query
@@ -1767,6 +1876,7 @@ inMemory = mixedWrapper . wrappedIndexer
 inDatabase :: Lens' (MixedIndexer store mem event) (store event)
 inDatabase = mixedWrapper . wrapperConfig . configInDatabase
 
+
 -- | Flush all the in-memory events to the database, keeping track of the latest index
 flush ::
     ( Monad m
@@ -1778,7 +1888,8 @@ flush ::
     m (MixedIndexer store mem event)
 flush indexer = do
     let keep = indexer ^. keepInMemory
-    (eventsToFlush, indexer') <- getCompose $ inMemory (Compose . flushMemory keep) indexer
+    (eventsToFlush, indexer') <- getCompose
+        $ inMemory (Compose . flushMemory keep) indexer
     inDatabase (indexAll eventsToFlush) indexer'
 
 instance
@@ -1786,8 +1897,8 @@ instance
     , Ord (Point event)
     , Flushable m mem
     , Traversable (Container mem)
-    , IsIndex m event mem
     , IsIndex m event store
+    , IsIndex m event mem
     ) => IsIndex m event (MixedIndexer store mem) where
 
     index timedEvent indexer = let
@@ -1811,16 +1922,11 @@ instance
     , Rewindable m event store
     ) => Rewindable m event (MixedIndexer store ListIndexer) where
 
-    rewind p indexer = let
-
-        rewindInStore :: Rewindable m event index => index event -> m (index event)
-        rewindInStore = rewind p
-
-        in do
-            ix <- inMemory rewindInStore indexer
-            if not $ null $ ix ^. inMemory . events
-                then pure ix
-                else inDatabase rewindInStore ix
+    rewind p indexer = do
+        indexer' <- inMemory (rewind p) indexer
+        if not $ null $ indexer' ^. inMemory . events
+            then pure indexer'
+            else inDatabase (rewind p) indexer'
 
 instance
     ( ResumableResult m event query ListIndexer
