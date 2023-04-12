@@ -166,6 +166,7 @@ module Marconi.Core.Experiment
         , rewindSQLiteIndexerWith
         , querySQLiteIndexerWith
         , querySyncedOnlySQLiteIndexerWith
+    -- ** Mixed indexer
     , MixedIndexer
         , mixedIndexer
         , inMemory
@@ -174,6 +175,10 @@ module Marconi.Core.Experiment
     , IndexQuery (..)
     , InsertRecord
     , singleInsertSQLiteIndexer
+
+    -- ** LastPointIndexer
+    , LastPointIndexer
+        , lastPointIndexer
 
     -- * Running indexers
     -- ** Workers
@@ -198,6 +203,7 @@ module Marconi.Core.Experiment
     , EventAtQuery (..)
     , EventsMatchingQuery (..)
     , allEvents
+
     -- * Indexer Transformers
     -- ** Tracer
     , WithTracer
@@ -267,6 +273,7 @@ import Data.Functor.Compose (Compose (Compose, getCompose))
 import Data.List (intersect)
 import Data.Map (Map, traverseWithKey)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
 import Data.Text (Text)
 import Database.SQLite.Simple qualified as SQL
@@ -516,10 +523,6 @@ class Resumable m event indexer where
     syncPoints :: Ord (Point event) => indexer event -> m [Point event]
 
 
--- * Base indexers
-
--- ** Full in-memory indexer
-
 -- | How events can be extracted from an indexer
 type family Container (indexer :: * -> *) :: * -> *
 
@@ -597,7 +600,7 @@ instance Applicative m => Rewindable m event ListIndexer where
         cleanEventsAfterRollback = events %~ dropWhile isEventAfterRollback
 
         isIndexBeforeRollback :: ListIndexer event -> Bool
-        isIndexBeforeRollback x = p >= x ^. latest
+        isIndexBeforeRollback x = x ^. latest < p
 
         isEventAfterRollback :: TimedEvent event -> Bool
         isEventAfterRollback = (p <) . view point
@@ -801,6 +804,34 @@ querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer
             $ throwError (AheadOfLastSync Nothing)
         res <- liftIO $ SQL.queryNamed c sqlQuery (toNamedParam p q)
         pure $ fromRows q res
+
+-- | LastPointIndexer.
+-- An indexer that does nothing except keeping track of the last point.
+-- While it may sound useless,
+-- it can be usefull when you want to benefit of the capabilities of a transformer.
+newtype LastPointIndexer event = LastPointIndexer {_lastPoint :: Point event}
+
+deriving stock instance (Show event, Show (Point event)) => Show (LastPointIndexer event)
+
+makeLenses 'LastPointIndexer
+
+-- | A smart constructor for 'LastPointIndexer'
+lastPointIndexer :: HasGenesis (Point event) => LastPointIndexer event
+lastPointIndexer = LastPointIndexer genesis
+
+instance (HasGenesis (Point event), Monad m)
+    => IsIndex m event LastPointIndexer where
+
+    index timedEvent _ = pure $ LastPointIndexer $ timedEvent ^. point
+
+    indexAll evts _ = pure $ LastPointIndexer $ fromMaybe genesis $ maximumOf (folded . point) evts
+
+instance Applicative m => IsSync m event LastPointIndexer where
+    lastSyncPoint = pure . view lastPoint
+
+instance Applicative m => Rewindable m event LastPointIndexer where
+
+    rewind p _ = pure $ LastPointIndexer p
 
 -- | The different types of input of a worker
 data ProcessedInput event
