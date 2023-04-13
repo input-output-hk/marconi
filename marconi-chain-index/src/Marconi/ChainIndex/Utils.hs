@@ -2,6 +2,7 @@
 module Marconi.ChainIndex.Utils
     ( isBlockRollbackable
     , querySecurityParam
+    , querySecurityParamEra
     ) where
 
 import Cardano.Api qualified as C
@@ -22,7 +23,17 @@ isBlockRollbackable securityParam (C.BlockNo chainSyncBlockNo) localChainTip =
 
 -- | Query security param from node
 querySecurityParam :: C.NetworkId -> FilePath -> IO SecurityParam
-querySecurityParam networkId socketPath = do
+querySecurityParam = querySecurityParamEra C.BabbageEraInCardanoMode
+
+-- | Query security param from node
+querySecurityParamEra
+  :: forall era
+   . C.IsShelleyBasedEra era
+  => C.EraInMode era C.CardanoMode
+  -> C.NetworkId
+  -> FilePath
+  -> IO SecurityParam
+querySecurityParamEra eraInMode networkId socketPath = do
   result <- liftIO $ C.queryNodeLocalState localNodeConnectInfo Nothing queryInMode
   let genesisParameters = either showError (either showError id) (result :: Either C.AcquiringFailure (Either EraMismatch C.GenesisParameters))
   return $ fromIntegral $ C.protocolParamSecurity genesisParameters
@@ -31,13 +42,10 @@ querySecurityParam networkId socketPath = do
     localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
     localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
 
-    eraInMode :: C.EraInMode C.BabbageEra C.CardanoMode
-    eraInMode = C.BabbageEraInCardanoMode
-
     queryInMode :: C.QueryInMode C.CardanoMode (Either EraMismatch C.GenesisParameters)
     queryInMode = C.QueryInEra eraInMode
-      $ C.QueryInShelleyBasedEra (C.shelleyBasedEra @C.BabbageEra) C.QueryGenesisParameters
+      $ C.QueryInShelleyBasedEra (C.shelleyBasedEra @era) C.QueryGenesisParameters
 
     -- TODO /Really/ handle the error.
     showError :: Show a => a -> b
-    showError = error . show
+    showError = error . ("Marconi.ChainIndex.Utils.querySecurityParam: " <>) . show
