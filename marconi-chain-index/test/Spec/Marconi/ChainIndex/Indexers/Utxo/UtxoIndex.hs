@@ -1,10 +1,10 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex (tests) where
 
-import Cardano.Api qualified as C
 import Control.Lens (each, filtered, folded, toListOf, (%~), (&), (^.))
 import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
@@ -18,10 +18,11 @@ import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 
-import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents, genUtxoEvents)
+import Cardano.Api qualified as C
+import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents, genTx, genUtxoEvents)
 import Gen.Marconi.ChainIndex.Indexers.Utxo qualified as UtxoGen
 import Gen.Marconi.ChainIndex.Mockchain (MockBlock (mockBlockChainPoint, mockBlockTxs))
-import Gen.Marconi.ChainIndex.Types (genChainPoints)
+import Gen.Marconi.ChainIndex.Types (genChainPoint, genChainPoints)
 import Helpers (addressAnyToShelley)
 import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (ueInputs, ueUtxos), StorableQuery (LastSyncPoint),
                                          StorableResult (LastSyncPointResult))
@@ -43,6 +44,16 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
         "All queried UTXOs by address should be unspent."
         "allqueryUtxosShouldBeUnspent"
         allqueryUtxosShouldBeUnspent
+
+      , testPropertyNamed
+        "Collateral that was produced in a transaction should be returned."
+        "propTxOutWhenPhase2ValidationFails"
+        propTxOutWhenPhase2ValidationFails
+
+      , testPropertyNamed
+        "Collateral TxIn should be indexed only, When Phase-2 validation fails."
+        "propTxInWhenPhase2ValidationFails"
+        propTxInWhenPhase2ValidationFails
 
       , testPropertyNamed
         "When there are target addresses, we should store only events at those addresses."
@@ -177,6 +188,62 @@ allqueryUtxosShouldBeUnspent = property $ do
     $ all (== True)
     [u `notElem` txInsFromGeneratedEvents| u <- txinsFromRetrievedUtsoRows]
 
+-- | The property verifies that we
+--    * process/store all TxIns for valid transactions
+--    * use the collateral TxIns only to balance transactions when phase-2 validation failas
+--    * use the collateral TxOutsTxIns
+propTxInWhenPhase2ValidationFails :: Property
+propTxInWhenPhase2ValidationFails = property $ do
+  tx@(C.Tx (C.TxBody C.TxBodyContent {..})_) <- forAll genTx
+  cp <- forAll genChainPoint
+  let event :: StorableEvent Utxo.UtxoHandle = Utxo.getUtxoEvents Nothing [tx] cp
+      computedTxins :: [C.TxIn]
+        = fmap (\(Utxo.Spent txid txix _ _) -> C.TxIn txid txix)
+        . Utxo.getSpentFrom
+        $ event
+      expectedTxins :: [C.TxIn] = fmap fst txIns
+
+  case txScriptValidity of
+    -- this is the same as script is valid, see https://github.com/input-output-hk/cardano-node/pull/4569
+    C.TxScriptValidityNone    ->
+      Hedgehog.assert $ and [u `elem` expectedTxins| u <- computedTxins]
+    (C.TxScriptValidity _ C.ScriptValid ) ->
+      Hedgehog.assert $ and [u `elem` expectedTxins| u <- computedTxins]
+    (C.TxScriptValidity _ C.ScriptInvalid ) -> do
+      case txInsCollateral of
+        C.TxInsCollateralNone -> Hedgehog.assert $ null computedTxins
+        C.TxInsCollateral _ txinsC_ -> do
+          Hedgehog.footnoteShow txReturnCollateral
+          let (Utxo.TxOutBalance _ ins) = Utxo.balanceUtxoFromTx Nothing tx
+          -- This property shows collateral TxIns will be processed and balanced
+          -- Note: not all collateral txins may be utilized in when phase-2 validation fails
+          ins === Set.fromList txinsC_
+          -- Note: Post transaction balancing, C.TxIns of Spent,
+          -- are a subset of of the Collateral TxIns for the same reason as previous note
+          -- empty list of computedTxis is a valid subset of collateral txins
+          Hedgehog.assert $ all (== True) [u `elem` ins | u <- computedTxins]
+      -- -- we should only return txOut collateral
+
+-- | The property verifies that we when there is
+--    * no failure in phase-2 validation, collateral is not used
+--    * failure in phase-2 validation, collateral used
+propTxOutWhenPhase2ValidationFails :: Property
+propTxOutWhenPhase2ValidationFails = property $ do
+  (C.Tx (C.TxBody txBodyContent@C.TxBodyContent {..}) _) <- forAll genTx
+  let computedTxOuts = Utxo.getTxOutFromTxBodyContent txBodyContent
+  case txReturnCollateral of
+    C.TxReturnCollateralNone -> Hedgehog.success -- nothing to do here
+    C.TxReturnCollateral _ txout -> do
+      case txScriptValidity of
+        (C.TxScriptValidity _ C.ScriptValid ) ->
+          Hedgehog.assert $ txout `notElem` computedTxOuts -- collateral is discarded/returned
+        (C.TxScriptValidity _ C.ScriptInvalid ) ->
+          Hedgehog.footnoteShow computedTxOuts >>
+          [txout] === computedTxOuts -- collateral is the only UTXO
+        C.TxScriptValidityNone    ->
+          Hedgehog.footnoteShow computedTxOuts >>
+          [txout] === computedTxOuts -- collateral is the only UTXO
+
 -- | Round trip UtxoEvents to UtxoRow conversion
 -- The purpose of this test is to show that there is a isomorphism between `UtxoRow` and UtxoEvent.
 propRoundTripEventsToRowConversion :: Property
@@ -196,7 +263,6 @@ propRoundTripEventsToRowConversion  = property $ do
     rows = concatMap Utxo.eventToRows postGenesisEvents
   computedEvent <- liftIO . Utxo.rowsToEvents f $ rows
   Set.fromList computedEvent === Set.fromList postGenesisEvents
-  Set.fromList computedEvent === Set.fromList events
 
 -- | Insert Utxo events in storage, and retreive the events
 --   Note:
@@ -214,9 +280,9 @@ propSaveToAndRetrieveFromUtxoInMemoryStore = property $ do
 
 -- | Insert Utxo events in storage, and retrieve the events
 --   The property we're checking here is:
---    - retreived at least one unspent utxo
---    - only retreive unspent utxo's
---    - test `spent` filtering at the boundry of in-memory & disk storage
+--    - retrieved at least one unspent utxo
+--    - only retrieve unspent utxo's
+--    - test `spent` filtering at the boundary of in-memory & disk storage
 propSaveAndRetrieveUtxoEvents :: Property
 propSaveAndRetrieveUtxoEvents = property $ do
   -- events <- forAll genUtxoEvents'' -- TODO
@@ -248,7 +314,6 @@ propSaveAndRetrieveUtxoEvents = property $ do
   Hedgehog.assert
     $ all (== True)
     [u `notElem` fromEventsTxIns| u <- fromStorageTxIns]
-
 
 -- Insert Utxo events in storage, and retreive the events by address and slot
 -- Note: The property we are checking is:
@@ -329,7 +394,7 @@ propComputeEventsAtAddress = property $ do
             $ Utxo.ueUtxos event
     computedAddresses === actualAddresses
 
--- | Calling 'Utxo.getUtxoEvents' with target addresses that are extracted from all tx outputs from
+-- | Calling 'Utxo.getUtxoEventos' with target addresses that are extracted from all tx outputs from
 -- the initial generated txs should return the same 'UtxoEvent's as if there was no provided target
 -- addresses.
 propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied ::  Property
@@ -351,7 +416,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
                                    (Utxo.ueUtxos expectedUtxoEvent)
                     }
 
-        -- If the 'expectedUtxoEvent' only contain byron addresses, then 'filteredExpectedUtxoEvent'
+        -- If the 'expectedUtxoEvent' only contain Byron addresses, then 'filteredExpectedUtxoEvent'
         -- will have an empty set of utxos. In that scenario, the `getUtxoEvents` should not filter
         -- anything, so we just return 'pure ()'.
         if not (null $ Utxo.ueUtxos expectedUtxoEvent) && null (Utxo.ueUtxos filteredExpectedUtxoEvent)
@@ -362,7 +427,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       :: [C.Tx C.BabbageEra]
       -> Maybe TargetAddresses
     mkTargetAddressFromTxs txs =
-        foldMap (\(C.Tx (C.TxBody C.TxBodyContent { C.txOuts }) _) -> mkTargetAddressFromTxOuts txOuts) txs
+        foldMap (\(C.Tx (C.TxBody C.TxBodyContent { C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts)  txs
 
     mkTargetAddressFromTxOuts
       :: [C.TxOut C.CtxTx C.BabbageEra]
@@ -399,7 +464,7 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
     depth <- forAll $ Gen.int (Range.linear 1 $ length events - 1)
 
     -- We insert the events in the indexer, but for the test assertions, we discard the events in
-    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
+    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum SQLite
     void $ liftIO $ Storable.insertMany events indexer
 
     actualResumablePoints <- liftIO $ Storable.resume indexer
