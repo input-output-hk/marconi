@@ -79,9 +79,9 @@ For example:
 
 ## Reference example
 
-As an example, consider the file `./__std__/cells/marconi/packages/marconi-chain-index.nix`:
+As an example, consider the file `./nix/cells/marconi/packages/marconi-chain-index.nix`:
 
-- `./__std__/cells` is the `cellsFrom` value in `flake.nix`
+- `./nix/cells` is the `cellsFrom` value in `flake.nix`
 - `/marconi` is the cell name
 - `/marconi/*` are accessible via `cell.*` from `{ inputs, cell }` (while inside `cells/marconi`)
 - `/marconi/*` are accessible via `inputs.cells.marconi.*` (everywhere)
@@ -94,9 +94,9 @@ As an example, consider the file `./__std__/cells/marconi/packages/marconi-chain
 - And also accessible via `inputs.cells.marconi.packages.marconi-chain-index` (everywhere)
 - And also buildable via `nix build .#marconi-chain-index`
 
-As another example, consider the file `./__std__/cells/marconi/library/default.nix`
+As another example, consider the file `./nix/cells/marconi/library/default.nix`
 
-- `./__std__/cells` is the `cellsFrom` value in `flake.nix`
+- `./nix/cells` is the `cellsFrom` value in `flake.nix`
 - `/marconi` is the cell name
 - `/marconi/*` are accessible via `cell.*` from `{ inputs, cell }` (while inside `cells/marconi`)
 - `/marconi/*` are accessible via `inputs.cells.marconi.*` (everywhere)
