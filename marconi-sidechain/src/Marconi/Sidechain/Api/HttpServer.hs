@@ -17,9 +17,10 @@ import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
-import Marconi.Sidechain.Api.Routes (API, AddressUtxoResult, CurrentSyncedPointResult, EpochNonceResult,
-                                     EpochStakePoolDelegationResult, JsonRpcAPI, MintingPolicyHashTxResult, RestAPI,
-                                     TxOutAtQuery (queryAddress, querySlot))
+import Marconi.Sidechain.Api.Routes (API, GetCurrentSyncedBlockResult, GetEpochNonceResult,
+                                     GetEpochStakePoolDelegationResult, GetTxsBurningAssetIdResult,
+                                     GetUtxosFromAddressParams (queryAddress, queryUnspentAtSlot, queryUnspentAtSlot),
+                                     GetUtxosFromAddressResult, JsonRpcAPI, RestAPI)
 import Marconi.Sidechain.Api.Types (QueryExceptions, SidechainEnv, sidechainAddressUtxoIndexer,
                                     sidechainEnvHttpSettings, sidechainEnvIndexers)
 import Network.JsonRpc.Server.Types ()
@@ -42,7 +43,7 @@ jsonRpcServer
   -> Server JsonRpcAPI
 jsonRpcServer env = echo
   :<|> getTargetAddressesQueryHandler env
-  :<|> getCurrentSyncedPointHandler env
+  :<|> getCurrentSyncedBlockHandler env
   :<|> getAddressUtxoHandler env
   :<|> getMintingPolicyHashTxHandler env
   :<|> getEpochStakePoolDelegationHandler env
@@ -90,40 +91,40 @@ getTargetAddressesQueryHandler env _ =
          $ Q.Utxo.reportBech32Addresses (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
 
 -- | Handler for retrieving current synced chain point.
-getCurrentSyncedPointHandler
+getCurrentSyncedBlockHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
     -> String
     -- ^ Will always be an empty string as we are ignoring this param, and returning everything
-    -> Handler (Either (JsonRpcErr String) CurrentSyncedPointResult)
-getCurrentSyncedPointHandler env _ = liftIO $
+    -> Handler (Either (JsonRpcErr String) GetCurrentSyncedBlockResult)
+getCurrentSyncedBlockHandler env _ = liftIO $
     first toRpcErr
-    <$> Q.Utxo.currentSyncedPoint
+    <$> Q.Utxo.currentSyncedBlock
            (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
 
 -- | Handler for retrieving UTXOs by Address
 getAddressUtxoHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-    -> TxOutAtQuery -- ^ Bech32 addressCredential and a slotNumber
-    -> Handler (Either (JsonRpcErr String) AddressUtxoResult)
+    -> GetUtxosFromAddressParams -- ^ Bech32 addressCredential and a slotNumber
+    -> Handler (Either (JsonRpcErr String) GetUtxosFromAddressResult)
 getAddressUtxoHandler env query = liftIO $
     first toRpcErr <$> do
         Q.Utxo.findByBech32AddressAtSlot
             (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
             (pack $ queryAddress query)
-            (querySlot query)
+            (queryUnspentAtSlot query)
 
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
     -> String           -- ^ Minting policy hash
-    -> Handler (Either (JsonRpcErr String) MintingPolicyHashTxResult)
+    -> Handler (Either (JsonRpcErr String) GetTxsBurningAssetIdResult)
 getMintingPolicyHashTxHandler _ _ = pure $ Left $ JsonRpcErr 1 "Endpoint not implemented yet" Nothing
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochStakePoolDelegationHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
     -> Word64           -- ^ EpochNo
-    -> Handler (Either (JsonRpcErr String) EpochStakePoolDelegationResult)
+    -> Handler (Either (JsonRpcErr String) GetEpochStakePoolDelegationResult)
 getEpochStakePoolDelegationHandler env epochNo = liftIO $
     first toRpcErr
     <$> EpochState.querySDDByEpochNo env epochNo
@@ -132,7 +133,7 @@ getEpochStakePoolDelegationHandler env epochNo = liftIO $
 getEpochNonceHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
     -> Word64           -- ^ EpochNo
-    -> Handler (Either (JsonRpcErr String) EpochNonceResult)
+    -> Handler (Either (JsonRpcErr String) GetEpochNonceResult)
 getEpochNonceHandler env epochNo = liftIO $
     first toRpcErr
     <$> EpochState.queryNonceByEpochNo env epochNo

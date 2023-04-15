@@ -14,8 +14,8 @@ import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle, StorableQuery (
                                                StorableResult (NonceByEpochNoResult, SDDByEpochNoResult))
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
-import Marconi.Sidechain.Api.Routes (EpochNonceResult (EpochNonceResult),
-                                     EpochStakePoolDelegationResult (EpochStakePoolDelegationResult))
+import Marconi.Sidechain.Api.Routes (GetEpochNonceResult (GetEpochNonceResult),
+                                     GetEpochStakePoolDelegationResult (GetEpochStakePoolDelegationResult))
 import Marconi.Sidechain.Api.Types (EpochStateIndexerEnv (EpochStateIndexerEnv), QueryExceptions (QueryError),
                                     SidechainEnv, epochStateIndexerEnvIndexer, sidechainEnvIndexers,
                                     sidechainEpochStateIndexer)
@@ -36,7 +36,7 @@ updateEnvState = writeTMVar
 querySDDByEpochNo
     :: SidechainEnv -- ^ Query run time environment
     -> Word64 -- ^ Bech32 Address
-    -> IO (Either QueryExceptions EpochStakePoolDelegationResult)  -- ^ Plutus address conversion error may occur
+    -> IO (Either QueryExceptions GetEpochStakePoolDelegationResult)  -- ^ Plutus address conversion error may occur
 querySDDByEpochNo env epochNo = do
     -- We must stop the indexer inserts before doing the query.
     epochStateIndexer <-
@@ -51,14 +51,14 @@ querySDDByEpochNo env epochNo = do
         query indexer = do
             (SDDByEpochNoResult epochSddRows) <-
                 Storable.query Storable.QEverything indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
-            pure $ Right $ EpochStakePoolDelegationResult epochSddRows
+            pure $ Right $ GetEpochStakePoolDelegationResult epochSddRows
 
 -- | Retrieve the nonce associated at the given 'EpochNo'
 -- We return an empty list if the 'EpochNo' is not found.
 queryNonceByEpochNo
     :: SidechainEnv -- ^ Query run time environment
     -> Word64 -- ^ Bech32 Address
-    -> IO (Either QueryExceptions EpochNonceResult)  -- ^ Plutus address conversion error may occur
+    -> IO (Either QueryExceptions GetEpochNonceResult)  -- ^ Plutus address conversion error may occur
 queryNonceByEpochNo env epochNo = do
     -- We must stop the indexer inserts before doing the query.
     epochStateIndexer <-
@@ -73,4 +73,4 @@ queryNonceByEpochNo env epochNo = do
         query indexer = do
             (NonceByEpochNoResult epochNonceRows) <-
                 Storable.query Storable.QEverything indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
-            pure $ Right $ EpochNonceResult epochNonceRows
+            pure $ Right $ GetEpochNonceResult epochNonceRows

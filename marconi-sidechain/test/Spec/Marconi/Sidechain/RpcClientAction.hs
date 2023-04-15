@@ -6,8 +6,8 @@ import Data.Proxy (Proxy (Proxy))
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
-import Marconi.Sidechain.Api.Routes (AddressUtxoResult, CurrentSyncedPointResult, JsonRpcAPI,
-                                     TxOutAtQuery (TxOutAtQuery))
+import Marconi.Sidechain.Api.Routes (GetCurrentSyncedBlockResult, GetUtxosFromAddressParams (GetUtxosFromAddressParams),
+                                     GetUtxosFromAddressResult, JsonRpcAPI)
 import Marconi.Sidechain.Api.Types (SidechainEnv, sidechainAddressUtxoIndexer, sidechainEnvIndexers)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.JsonRpc.Client.Types ()
@@ -21,8 +21,8 @@ import Servant.Client (BaseUrl (BaseUrl), ClientEnv, HasClient (Client), Scheme 
 -- | Type for the storable action and RPC client Action pair, to simplify the type signatures.
 data RpcClientAction = RpcClientAction
     { insertUtxoEventsAction  :: !InsertUtxoEventsCallback
-    , queryAddressUtxosAction :: !(String -> IO (JsonRpcResponse String AddressUtxoResult))
-    , querySyncedPointAction  :: !(IO (JsonRpcResponse String CurrentSyncedPointResult))
+    , queryAddressUtxosAction :: !(String -> IO (JsonRpcResponse String GetUtxosFromAddressResult))
+    , querySyncedBlockAction  :: !(IO (JsonRpcResponse String GetCurrentSyncedBlockResult))
     }
 
 mkRpcClientAction :: SidechainEnv -> Port -> IO RpcClientAction
@@ -32,7 +32,7 @@ mkRpcClientAction env port = do
         (_ :<|> _ :<|> rpcSyncPoint :<|> rpcUtxos :<|> _ :<|> _ :<|> _)
           = mkHoistedHttpRpcClient clientEnv
     pure $ RpcClientAction (mkInsertUtxoEventsCallback env)
-                           (\a -> rpcUtxos $ TxOutAtQuery a Nothing)
+                           (\a -> rpcUtxos $ GetUtxosFromAddressParams a Nothing)
                            (rpcSyncPoint "")
 
 baseUrl :: Warp.Port -> BaseUrl
