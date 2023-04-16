@@ -7,6 +7,7 @@ module Gen.Marconi.ChainIndex.Mockchain
     , C.BlockHeader(..)
     , MockBlock(..)
     , genMockchain
+    , genTxBodyContentFromTxIns
     , genTxBodyContentFromTxinsWihtPhase2Validation
     )
 where
