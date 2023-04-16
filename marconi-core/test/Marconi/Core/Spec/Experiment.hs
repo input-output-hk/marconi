@@ -571,7 +571,6 @@ coordinatorIndexerRunner wRunner
         monadicExceptTIO $ do
             wrapped <- wRunner ^. indexerGenerator
             (t, run) <- lift $ Core.createWorker
-                (const $ pure ())
                 pure
                 wrapped
             UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.start [run])
@@ -816,4 +815,3 @@ delayTestGroup runner
                 $ delayProperty 10 (view defaultChain <$> Test.arbitrary) runner
             ]
         ]
-
