@@ -29,11 +29,12 @@ experimentTests = testGroup "Experiment"
         , E.indexingTestGroup "WithTracer" $ E.withTracerRunner E.listIndexerRunner
         , E.indexingTestGroup "Coordinator" $ E.coordinatorIndexerRunner E.listIndexerRunner
         ]
+    , E.cacheTestGroup
+    , E.delayTestGroup E.listIndexerRunner
     , testGroup "Performance"
         [ E.indexingPerformanceTest "ListIndexer" E.listIndexerRunner
         , E.indexingPerformanceTest "MixedIndexer" E.mixedHighMemoryIndexerRunner
         ]
-    , E.cacheTestGroup
     ]
 
 traceModelProperties :: TestTree
