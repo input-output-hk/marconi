@@ -293,6 +293,9 @@ module Marconi.Core.Experiment
     , createWorker'
     , createWorker
     , createWorkerPure
+    -- *** Worker creation for specific indexers
+    , createListIndexerWorker
+    , createSQLiteIndexerWorker
     , startWorker
     , ProcessedInput (..)
     -- ** Coordinator
@@ -339,12 +342,30 @@ module Marconi.Core.Experiment
         , withCache
         , addCacheFor
         , cachedIndexer
-    -- ** Index wrapper
+    -- ** Index Wrapper
+    --
+    -- | Wrap an indexer with some extra information to modify its behaviour
+    --
+    -- The wrapper comes with some instances that relay the function to the wrapped indexer,
+    -- without any extra behaviour.
+    --
+    -- An indexer transformer can be a newtype of 'IndexWrapper',
+    -- reuse some of its instances with @deriving via@,
+    -- and specifies its own instances when it wants to add logic in it.
+
     -- *** Derive via machinery
     , IndexWrapper (IndexWrapper)
         , wrappedIndexer
         , wrapperConfig
     -- *** Helpers
+    --
+    -- | Via methods have two major utilities.
+    --
+    --     1. In some cases, we can't use deriving via to derive a typeclass,
+    --     then, via method can help in the declaration of our typeclasses.
+    --     2. Often, when an indexer transformer modify the default behaviour
+    --     of an indexer typeclass, we need to call the some methods of the
+    --     underlying indexer, via methods make it easier.
     , pruneVia
     , pruningPointVia
     , rewindVia
@@ -379,7 +400,7 @@ import Control.Monad.Trans.Class (lift)
 import Data.Bifunctor (first)
 import Data.Foldable (foldl', foldrM, traverse_)
 import Data.Functor.Compose (Compose (Compose, getCompose))
-import Data.Map (Map, traverseWithKey)
+import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
@@ -953,11 +974,11 @@ type Worker = WorkerM IO
 createWorker'
     :: ( MonadIO m, WorkerIndexer n event indexer)
     => (forall a. n a -> ExceptT IndexerError m a)
-    -> (input -> m event)
     -> (indexer event -> n ())
+    -> (input -> m event)
     -> indexer event
     -> m (MVar (indexer event), WorkerM m input (Point event))
-createWorker' hoist getEvent takePoisonPill ix = do
+createWorker' hoist takePoisonPill getEvent ix = do
     workerState <- liftIO $ Con.newMVar ix
     errorBox <- liftIO Con.newEmptyMVar
     pure (workerState, Worker workerState getEvent hoist errorBox takePoisonPill)
@@ -965,8 +986,8 @@ createWorker' hoist getEvent takePoisonPill ix = do
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
     :: (MonadIO m , WorkerIndexer m event indexer)
-    => (input -> m event)
-    -> (indexer event -> m ())
+    => (indexer event -> m ())
+    -> (input -> m event)
     -> indexer event
     -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorkerPure = createWorker' lift
@@ -974,11 +995,27 @@ createWorkerPure = createWorker' lift
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
     :: (MonadIO m , WorkerIndexer (ExceptT IndexerError m) event indexer)
-    => (input -> m event)
-    -> (indexer event -> ExceptT IndexerError m ())
+    => (indexer event -> ExceptT IndexerError m ())
+    -> (input -> m event)
     -> indexer event
     -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorker = createWorker' id
+
+-- | create a worker for a 'ListIndexer'
+createListIndexerWorker
+    :: (MonadIO m , WorkerIndexer m event ListIndexer)
+    => (input -> m event)
+    -> ListIndexer event
+    -> m (MVar (ListIndexer event), WorkerM m input (Point event))
+createListIndexerWorker = createWorkerPure (const $ pure ())
+
+-- | create a worker for a 'SQLiteIndexer'
+createSQLiteIndexerWorker
+    :: (MonadIO m , WorkerIndexer m event SQLiteIndexer)
+    => (input -> m event)
+    -> SQLiteIndexer event
+    -> m (MVar (SQLiteIndexer event), WorkerM m input (Point event))
+createSQLiteIndexerWorker = createWorkerPure (liftIO . SQL.close . view handle)
 
 -- | The worker notify its coordinator that it's ready
 -- and starts waiting for new events and process them as they come
@@ -1218,14 +1255,6 @@ instance MonadError (QueryError (EventsMatchingQuery event)) m
             pure $ memoryResult <> dbResult
 
 
--- | Wrap an indexer with some extra information to modify its behaviour
---
---
--- The wrapeer comes with some instances that relay the function to the wrapped indexer,
--- without any extra behaviour.
---
--- A wrapper can be a newtype of 'IndexWrapper', reuse some of its instances with @deriving via@,
--- and specify its own instances when it wants to add logic in it.
 data IndexWrapper config indexer event
     = IndexWrapper
         { _wrapperConfig  :: config event
@@ -1419,8 +1448,10 @@ makeLenses 'DelayConfig
 -- 'WithDelay' buffers events before sending them to the underlying indexer.
 -- Buffered events are sent when the buffers overflows.
 --
--- An indexer wrapped in 'WithDelay' won't interact nicely with coordinator at the moment,
+-- An indexer wrapped in 'WithDelay' won't interact nicely with a coordinator at the moment,
 -- as 'WithDelay' acts as it's processing an event while it only postpones the processing.
+--
+-- As a consequence, 'WithDelay' is preferably used at the top of the hierarchy.
 newtype WithDelay indexer event
     = WithDelay { _delayWrapper :: IndexWrapper DelayConfig indexer event}
 
@@ -1490,13 +1521,15 @@ instance
 
         resetBuffer = (delayLength .~ 0) . (delayBuffer .~ Seq.empty)
 
-        (after, before) =  Seq.spanl ((> p) . view point) $ indexer ^. delayBuffer
+        before =  Seq.dropWhileL ((> p) . view point) $ indexer ^. delayBuffer
 
         in if Seq.null before
+           -- if we empty the delay buffer,
+           -- some events in the wrapped indexer may need a rewrite
            then resetBuffer <$> rewindWrappedIndexer p
            else pure $ indexer
-                   & delayBuffer .~ after
-                   & delayLength .~ fromIntegral (Seq.length after)
+                   & delayBuffer .~ before
+                   & delayLength .~ fromIntegral (Seq.length before)
 
 -- ** Pruning control
 
@@ -1682,7 +1715,7 @@ configCache = lens _configCache (\cfg c -> cfg {_configCache = c})
 configCacheEntries :: IndexedTraversal' query (CacheConfig query event) (Result query)
 configCacheEntries f cfg
     = (\c -> cfg {_configCache = c})
-    <$> traverseWithKey (indexed f) (_configCache cfg)
+    <$> Map.traverseWithKey (indexed f) (_configCache cfg)
 
 configOnForward
     :: Getter
