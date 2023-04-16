@@ -166,6 +166,7 @@ module Marconi.Core.Experiment
     , indexAll'
     , HasGenesis (..)
     , IsSync (..)
+    , Closeable (..)
     , isAheadOfSync
     , Queryable (..)
     , query'
@@ -290,13 +291,10 @@ module Marconi.Core.Experiment
     , WorkerM (..)
     , Worker
     , WorkerIndexer
+    , startWorker
     , createWorker'
     , createWorker
     , createWorkerPure
-    -- *** Worker creation for specific indexers
-    , createListIndexerWorker
-    , createSQLiteIndexerWorker
-    , startWorker
     , ProcessedInput (..)
     -- ** Coordinator
     , Coordinator
@@ -372,6 +370,7 @@ module Marconi.Core.Experiment
     , indexVia
     , indexAllVia
     , lastSyncPointVia
+    , closeVia
     , queryVia
     , queryLatestVia
     , syncPointsVia
@@ -631,6 +630,10 @@ class Resumable m event indexer where
     -- | List the points that we still have in the indexer, allowing us to restart from them
     syncPoints :: Ord (Point event) => indexer event -> m [Point event]
 
+-- | We know how to close an indexer
+class Closeable m indexer where
+
+    close :: indexer event -> m ()
 
 -- | How events can be extracted from an indexer
 type family Container (indexer :: * -> *) :: * -> *
@@ -731,6 +734,9 @@ instance Applicative m => Resumable m event ListIndexer where
 
       in pure $ addLatestIfNeeded (ix ^. latest) indexPoints
 
+instance Applicative m => Closeable m ListIndexer where
+
+    close = const $ pure ()
 
 data IndexQuery
     = forall param. SQL.ToRow param
@@ -823,6 +829,10 @@ instance (HasGenesis (Point event), SQL.FromRow (Point event), MonadIO m)
 
     lastSyncPoint indexer
         = pure $ indexer ^. dbLastSync
+
+instance MonadIO m => Closeable m SQLiteIndexer where
+
+    close indexer = liftIO $ SQL.close $ indexer ^. handle
 
 -- | A helper for the definition of the 'Rewindable' typeclass for 'SQLiteIndexer'
 rewindSQLiteIndexerWith
@@ -948,6 +958,7 @@ type WorkerIndexer n event indexer
     , IsSync n event indexer
     , Resumable n event indexer
     , Rewindable n event indexer
+    , Closeable n indexer
     )
 
 data WorkerM m input point =
@@ -965,7 +976,6 @@ data WorkerM m input point =
         , errorBox       :: MVar IndexerError
           -- ^ a place where the worker places error that it can't handle,
           -- to notify the coordinator
-        , onExit         :: indexer event -> n ()
         }
 
 type Worker = WorkerM IO
@@ -974,20 +984,18 @@ type Worker = WorkerM IO
 createWorker'
     :: ( MonadIO m, WorkerIndexer n event indexer)
     => (forall a. n a -> ExceptT IndexerError m a)
-    -> (indexer event -> n ())
     -> (input -> m event)
     -> indexer event
     -> m (MVar (indexer event), WorkerM m input (Point event))
-createWorker' hoist takePoisonPill getEvent ix = do
+createWorker' hoist getEvent ix = do
     workerState <- liftIO $ Con.newMVar ix
     errorBox <- liftIO Con.newEmptyMVar
-    pure (workerState, Worker workerState getEvent hoist errorBox takePoisonPill)
+    pure (workerState, Worker workerState getEvent hoist errorBox)
 
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
     :: (MonadIO m , WorkerIndexer m event indexer)
-    => (indexer event -> m ())
-    -> (input -> m event)
+    => (input -> m event)
     -> indexer event
     -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorkerPure = createWorker' lift
@@ -995,27 +1003,10 @@ createWorkerPure = createWorker' lift
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
     :: (MonadIO m , WorkerIndexer (ExceptT IndexerError m) event indexer)
-    => (indexer event -> ExceptT IndexerError m ())
-    -> (input -> m event)
+    => (input -> m event)
     -> indexer event
     -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorker = createWorker' id
-
--- | create a worker for a 'ListIndexer'
-createListIndexerWorker
-    :: (MonadIO m , WorkerIndexer m event ListIndexer)
-    => (input -> m event)
-    -> ListIndexer event
-    -> m (MVar (ListIndexer event), WorkerM m input (Point event))
-createListIndexerWorker = createWorkerPure (const $ pure ())
-
--- | create a worker for a 'SQLiteIndexer'
-createSQLiteIndexerWorker
-    :: (MonadIO m , WorkerIndexer m event SQLiteIndexer)
-    => (input -> m event)
-    -> SQLiteIndexer event
-    -> m (MVar (SQLiteIndexer event), WorkerM m input (Point event))
-createSQLiteIndexerWorker = createWorkerPure (liftIO . SQL.close . view handle)
 
 -- | The worker notify its coordinator that it's ready
 -- and starts waiting for new events and process them as they come
@@ -1026,7 +1017,7 @@ startWorker
     -> QSemN
     -> Worker input (Point input) ->
     m ThreadId
-startWorker chan tokens (Worker ix transformInput hoistError errorBox takePoisonPill) = let
+startWorker chan tokens (Worker ix transformInput hoistError errorBox) = let
 
     unlockCoordinator :: IO ()
     unlockCoordinator = Con.signalQSemN tokens 1
@@ -1056,7 +1047,7 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox takePoison
 
     swallowPill = do
         indexer <- Con.readMVar ix
-        void $ runExceptT $ hoistError $ takePoisonPill indexer
+        void $ runExceptT $ hoistError $ close indexer
 
     loop chan' = forever $ do
         input <- STM.atomically $ STM.readTChan chan'
@@ -1134,7 +1125,7 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator w
 
     index timedEvent coordinator = let
 
-        setLastSync c e = c & lastSync .~ (e ^. point)
+        setLastSync e = coordinator & lastSync .~ (e ^. point)
 
         stopWorkers = traverse_ killThread $ coordinator ^. threadIds
 
@@ -1144,7 +1135,7 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator w
             errors <- healthCheck coordinator
             case errors of
                 Just err -> liftIO stopWorkers *> throwError err
-                Nothing  -> pure $ setLastSync coordinator timedEvent
+                Nothing  -> pure $ setLastSync timedEvent
 
 instance MonadIO m => IsSync m event Coordinator where
     lastSyncPoint indexer = pure $ indexer ^. lastSync
@@ -1295,6 +1286,18 @@ instance IsSync event m index
 
     lastSyncPoint = lastSyncPointVia wrappedIndexer
 
+-- | Helper to implement the @lastSyncPoint@ functon of 'IsSync' when we use a wrapper.
+-- If you don't want to perform any other side logic, use @deriving via@ instead.
+closeVia
+    :: Closeable m indexer
+    => Getter s (indexer event) -> s -> m ()
+closeVia l = close . view l
+
+instance Closeable m index
+    => Closeable m (IndexWrapper config index) where
+
+    close = closeVia wrappedIndexer
+
 -- | Helper to implement the @query@ functon of 'Queryable' when we use a wrapper.
 -- If you don't want to perform any other side logic, use @deriving via@ instead.
 queryVia
@@ -1375,6 +1378,8 @@ deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
     instance (MonadTrans t, IsSync (t m) event indexer) => IsSync (t m) event (WithTracer m indexer)
 
+deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
+    instance Closeable m indexer => Closeable m (WithTracer m indexer)
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
     instance Queryable m event query indexer => Queryable m event query (WithTracer m indexer)
@@ -1971,3 +1976,13 @@ instance
             (indexer ^. inMemory)
             (query valid q (indexer ^. inDatabase))
 
+instance
+    ( Closeable m store
+    , Closeable m mem
+    , Monad m
+    )
+    => Closeable m (MixedIndexer store mem) where
+
+    close indexer = do
+       close $ indexer ^. inMemory
+       close $ indexer ^. inDatabase
