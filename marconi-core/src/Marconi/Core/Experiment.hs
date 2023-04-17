@@ -258,6 +258,7 @@ module Marconi.Core.Experiment
     --     { _tableB :: [ParamsForTableB]
     --     -- ...
     --     }
+    -- type InsertRecord MyEvent = MyInsertRecord
     -- @
     , InsertRecord
     -- | A smart constructor for indexer that want to map an event to a single table.
@@ -764,7 +765,6 @@ data SQLiteIndexer event
           -- ^ Map the 'InsertRecord' representation to 'IndexQuery',
           -- to actually performed the insertion in the database.
           -- One can think at the insert record as a typed representation of the parameters of the queries,
-          -- ^ The query to extract the latest sync point from the database.
         , _dbLastSync    :: Point event
           -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
         }
