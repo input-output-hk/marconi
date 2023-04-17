@@ -199,7 +199,6 @@ library marconi-chain-index-test-lib
     , plutus-core
     , plutus-ledger-api               ^>=1.1
     , plutus-tx
-    , plutus-tx-plugin
 
   ------------------------
   -- Non-IOG dependencies
@@ -261,7 +260,6 @@ benchmark marconi-chain-index-bench
 test-suite marconi-chain-index-test
   import:         lang
   ghc-options:    -Wno-unused-packages
-  ghc-options:    -fobject-code
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: test
@@ -307,7 +305,6 @@ test-suite marconi-chain-index-test
     , plutus-core
     , plutus-ledger-api               ^>=1.1
     , plutus-tx
-    , plutus-tx-plugin
 
   ------------------------
   -- Non-IOG dependencies
