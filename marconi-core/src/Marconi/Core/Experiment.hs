@@ -164,7 +164,10 @@
 
         * 'IsSync'
         * 'IsIndex'
+        * 'Rewindable'
         * 'ResumableResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
+        * 'Queryable'
+        * 'Closeable' (if you plan to use it in a worker, and you probably plan to)
 
 
     Best practices is to implement as much as we can 'event'/'query' agnostic
@@ -192,7 +195,6 @@ module Marconi.Core.Experiment
     --
       Point
     , Result
-    , Container
     , TimedEvent (TimedEvent)
         , point
         , event
@@ -200,6 +202,7 @@ module Marconi.Core.Experiment
     , IsIndex (..)
     , index'
     , indexAll'
+    , Rewindable (..)
     , HasGenesis (..)
     , IsSync (..)
     , Closeable (..)
@@ -209,7 +212,6 @@ module Marconi.Core.Experiment
     , queryLatest
     , queryLatest'
     , ResumableResult (..)
-    , Rewindable (..)
     , Prunable (..)
     , Resumable (..)
     -- ** Errors
@@ -412,7 +414,7 @@ module Marconi.Core.Experiment
     , closeVia
     , queryVia
     , queryLatestVia
-    , syncPointsVia
+    , syncPointVia
     ) where
 
 import Control.Concurrent qualified as Con (modifyMVar_, newEmptyMVar, newMVar, newQSemN, readMVar, signalQSemN,
@@ -666,19 +668,20 @@ class Prunable m event indexer where
 -- | Points from which we can restract safely
 class Resumable m event indexer where
 
-    -- | List the points that we still have in the indexer, allowing us to restart from them
-    syncPoints :: Ord (Point event) => indexer event -> m [Point event]
+    -- | Last point we should be able to resume from
+    -- We assume that an indexer is always able to restart from a previous point.
+    syncPoint :: Ord (Point event) => indexer event -> m (Point event)
 
 -- | We know how to close an indexer
 class Closeable m indexer where
 
     close :: indexer event -> m ()
 
--- | How events can be extracted from an indexer
-type family Container (indexer :: * -> *) :: * -> *
-
 -- | Define a way to flush old events out of a container
 class Flushable m indexer where
+
+    -- | The events container used when you flush event
+    type family Container (indexer :: * -> *) :: * -> *
 
     -- | Check if there isn't space left in memory
     currentLength :: indexer event -> m Word
@@ -700,8 +703,6 @@ data ListIndexer event =
     }
 
 deriving stock instance (Show event, Show (Point event)) => Show (ListIndexer event)
-
-type instance Container ListIndexer = []
 
 makeLenses 'ListIndexer
 
@@ -728,6 +729,8 @@ instance Applicative m => IsSync m event ListIndexer where
     lastSyncPoint = pure . view latest
 
 instance Applicative m => Flushable m ListIndexer where
+
+    type instance Container ListIndexer = []
 
     -- | How many events are stored in the indexer
     currentLength ix = pure $ fromIntegral $ length (ix ^. events)
@@ -764,14 +767,7 @@ instance Applicative m => Rewindable m event ListIndexer where
 
 instance Applicative m => Resumable m event ListIndexer where
 
-    syncPoints ix = let
-
-      indexPoints = ix ^.. events . folded . point
-      -- if the latest point of the index is not a stored event, we add it to the list of points
-      addLatestIfNeeded p []        = [p]
-      addLatestIfNeeded p ps@(p':_) = if p == p' then ps else p:ps
-
-      in pure $ addLatestIfNeeded (ix ^. latest) indexPoints
+    syncPoint = lastSyncPoint
 
 instance Applicative m => Closeable m ListIndexer where
 
@@ -1361,16 +1357,16 @@ instance Queryable m event query indexer
 
 -- | Helper to implement the @query@ functon of 'Resumable' when we use a wrapper.
 -- If you don't want to perform any other side logic, use @deriving via@ instead.
-syncPointsVia
+syncPointVia
     :: (Resumable m event indexer, Ord (Point event))
-    => Getter s (indexer event) -> s -> m [Point event]
-syncPointsVia l = syncPoints . view l
+    => Getter s (indexer event) -> s -> m (Point event)
+syncPointVia l = syncPoint . view l
 
 
 instance Resumable m event indexer
     => Resumable m event (IndexWrapper config indexer) where
 
-    syncPoints = syncPointsVia wrappedIndexer
+    syncPoint = syncPointVia wrappedIndexer
 
 -- | Helper to implement the @prune@ functon of 'Prunable' when we use a wrapper.
 -- Unfortunately, as @m@ must have a functor instance, we can't use @deriving via@ directly.
@@ -1893,10 +1889,10 @@ instance
     -- If the cache is behind the requested point, send an 'AheadOfLastSync' error
     -- with the cached content.
     query p q indexer = do
-        syncPoint <- lastSyncPointVia cachedIndexer indexer
+        syncPoint' <- lastSyncPointVia cachedIndexer indexer
         let cached = indexer ^. cache . at q
         let queryWithoutCache = queryVia cachedIndexer p q indexer
-        case compare p syncPoint of
+        case compare p syncPoint' of
             LT -> queryWithoutCache
             EQ -> maybe queryWithoutCache pure cached
             GT -> maybe queryWithoutCache (throwError . AheadOfLastSync . Just) cached
