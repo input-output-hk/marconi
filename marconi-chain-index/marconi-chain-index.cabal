@@ -216,6 +216,8 @@ library marconi-chain-index-test-lib
     , streaming
     , temporary
 
+  build-depends:   plutus-tx-plugin
+
 benchmark marconi-chain-index-bench
   import:         lang
   main-is:        BenchQueries.hs
@@ -260,6 +262,7 @@ benchmark marconi-chain-index-bench
 test-suite marconi-chain-index-test
   import:         lang
   ghc-options:    -Wno-unused-packages
+  ghc-options:    -fobject-code
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: test
@@ -334,3 +337,5 @@ test-suite marconi-chain-index-test
     , tasty-hedgehog
     , text
     , transformers
+
+  build-depends:  plutus-tx-plugin

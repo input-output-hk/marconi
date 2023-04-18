@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import System.Environment (lookupEnv)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
 import Spec.Marconi.ChainIndex.CLI qualified as CLI
@@ -15,7 +16,12 @@ import Spec.Marconi.ChainIndex.Indexers.Utxo qualified as Indexers.Utxo
 import Spec.Marconi.ChainIndex.Orphans qualified as Orphans
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  -- Run comparison tests when DBSYNC_COMPARE env variable is set.
+  mb <- lookupEnv "DBSYNC_COMPARE"
+  defaultMain $ case mb of
+    Just _  -> CompareToDbSync.tests
+    Nothing -> tests
 
 tests :: TestTree
 tests = testGroup "Marconi"
@@ -27,5 +33,4 @@ tests = testGroup "Marconi"
   , CLI.tests
   -- TODO Enable when test environemnt is reconfigured
   -- , EpochStakepoolSize.tests
-  , CompareToDbSync.tests
   ]
