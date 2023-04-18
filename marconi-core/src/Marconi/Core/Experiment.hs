@@ -80,65 +80,101 @@
 
  = How-to
 
- == Setup an existing indexer
+ == Define an indexer instance
+
+ === Define an indexer instance for a 'MixedIndexer'
+
+ Follow in order the steps for the creation of a 'ListIndexer' (the in-memory part)
+ and the ones for a 'SQLiteIndexer' (the on-disk part).
+
+ Once it's done, you need to implement the 'ResumableResult' for the in-memory part.
+ It's purpose is to take the result of an on-disk query and to update it with on-memory events.
+
+ You can choose different indexers for your in-memory part or on-disk part,
+ but these choices are not documented yet.
+
+ === Define an indexer instance for 'ListIndexer'
 
         1. You need to define a type for @event@ (the input of your indexer).
         As soon as it's done, define the 'Point' type instance for this event,
         'Point' is a way to know when the Point was emitted.
-        It can be a time, a slot number, whatever information that tracks when
+        It can be a time, a slot number, a block, whatever information that tracks when
         an event happen.
 
-        2. Choose the based indexing instances that you need to index your events.
+        2. It's already enough to index `TimedEvent` of the events you defined at step one
+        of your indexer and to proceed to rollback.
+        You can already test it, creating an indexer with `listIndexer`.
 
-            The most common approach is to go for a 'MixedIndexer'
-            with an in memory indexer and a disk indexer.
-            At the moment, 'ListIndexer' is the only pre-existing in memory indexer
-            and 'SQLiteIndexer' is the only pre-existing on disk indexer.
+        3. Define a @query@ type and the corresponding 'Result' type.
 
-            If you want to go with it, it's probably better to follow the steps below
-            with the `ListIndexer` first, then with the `SQLiteIndexer`
-            and finally with the `MixedIndexer`.
+        4. Then, for this query you need to define the 'Queryable' instance that
+        corresponds to your indexer.
 
-        3. You then need to implement the 'IsIndex' and 'IsSync'
-           typeclasses for your indexer.
+        5. The 'ListIndexer' is ready.
 
-            If you went for a 'MixedIndexer' with a 'ListIndexer' and a 'SQLiteIndexer',
-            these instances are already defined.
+ == Define an indexer instance for 'SQLiteIndexer'
 
-        4. You can then continue with 'Rewindable' instances for your indexer
-           that handles the rollbacks.
+        1. You need to define a type for @event@ (the input of your indexer).
+        As soon as it's done, define the 'Point' type instance for this event,
+        'Point' is a way to know when the Point was emitted.
+        It can be a time, a slot number, a block, whatever information that tracks when
+        an event happen.
+        If you follow these steps in order to build a 'MixedIndexer',
+        just reuse the @event@ type you declared for the 'ListIndexer'.
 
-            With the default 'MixedIndexer'/'ListIndexer'/'SQLiteIndexer' mix,
-            you only need to define the instance for 'SQLiteIndexer'.
-            'rewindSQLiteIndexerWith' can help to avoid boilerplate.
 
-        5. The next step is probably to define a query type for your indexer.
-        A query type usually come with a 'Result' type instance,
-        the expected answer for this query.
+        2. Define a @query@ type and the corresponding 'Result' type.
+        Again, reuse the one declared for the 'ListIndexer' if you're building a 'MixedIndexer'.
 
-        6. Then, for this query you need to define the 'Queryable' instances that
-        correspond to your indexer.
+        3. A 'SQLiteIndexer' will require a bit of type machinery to be able to index record.
+        There are two cases,
+        A simple one, where you only need one insert query to index your event,
+        And a more complex one, where several inserts are needed.
 
-            If you use a 'MixedIndexer' you need to define 'Queryable'
-            only for the on-disk storage (@store@) and 'ResumableResult'
-            for the in-memory part (@mem@).
+            In the simple case, you can use 'singleInsertSQLiteIndexr' to create your indexer.
+            It requires the definition of a @param@ type, a data representation of the TimedEvent
+            that SQLite can process (it should have a @ToRow@ instance).
+            You also need to declare a 'InsertRecord' type instance that is a list of this @param@.
 
-        7. You have the minimal needed to run your indexer.
+            In the complex case, you need to define a custom 'InsertRecord' type instance.
+            And your own insertion function. This case is not covered yet in this tutorial.
+
+        4. At this stage, your indexer should be able to index event in the SQLite indexer.
+        We now need to enable rollback events, with the 'Rewindable' instance.
+        'rewindSQLiteIndexerWith' can save you from a bit of boilerplate.
+
+        5. Define a @query@ type and the corresponding 'Result' type.
+        If you plan to use a 'MixedIndexer' you probably want to reuse the query
+
+        6. Then, for this query you need to define the 'Queryable' instance.
+        There's no helper on this one, but you probably want to query the database and
+        to aggregate the query result in your @Result@ type.
+
 
  == Write a new indexer
 
-    The steps are almost the same as the steps 3 to 7 for reusing an indexer,
-    except that you have to think about how it should be done in the general
-    case.
+    You probably /don't/ want to do this.
 
-        Best practices is to implement as much as we can 'event'/'query' agnostic
-        instances of the typeclasses of these module for the new indexer.
-        When it's impossible to write a typeclass, think about how we can reduce the
-        boilerplate with a helper function, and expose it.
+    Non-exhaustive good reasons to do this are:
 
-        Try to provide a smart constructor to hide most of the complexity of your indexer.
+        * Support another backend for an on-disk indexer.
+        * Support another data-structure for an in-memory indexer.
 
-        Then you also probably need to provide a helper to create workers for this indexer.
+    The minimal typeclass that your indexer must implement/allow to implement are:
+
+        * 'IsSync'
+        * 'IsIndex'
+        * 'ResumableResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
+
+
+    Best practices is to implement as much as we can 'event'/'query' agnostic
+    instances of the typeclasses of these module for the new indexer.
+    When it's impossible to write a typeclass, think about how we can reduce the
+    boilerplate with a helper function, and expose it.
+
+    Try to provide a smart constructor to hide most of the complexity of your indexer.
+
+    Then you also probably need to provide a helper to create workers for this indexer.
 -}
 module Marconi.Core.Experiment
     (
@@ -204,6 +240,7 @@ module Marconi.Core.Experiment
         , listIndexer
         , events
         , latest
+
     -- ** In database
     -- | An in-memory indexer that stores its events in a SQLite database.
     --
@@ -220,17 +257,6 @@ module Marconi.Core.Experiment
         , rewindSQLiteIndexerWith
         , querySQLiteIndexerWith
         , querySyncedOnlySQLiteIndexerWith
-    -- ** Mixed inedexer
-    -- | An indexer that uses two indexer internally:
-    -- one for the most recents points, another for the older points.
-    --
-    -- The idea is that recent events are _volatile_ and can be rollbacked,
-    -- so they must be easy to delete if needed.
-    -- Older events are stable and can be store on disk to be persisted.
-    , MixedIndexer
-        , mixedIndexer
-        , inMemory
-        , inDatabase
     -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
     -- ending with several insert.
     --
@@ -271,6 +297,18 @@ module Marconi.Core.Experiment
     -- The number of events that are sent and the number of events kept in memory
     -- is controlled by the 'MixedIndexer'
     , Flushable (..)
+
+    -- ** Mixed indexer
+    -- | An indexer that uses two indexer internally:
+    -- one for the most recents points, another for the older points.
+    --
+    -- The idea is that recent events are _volatile_ and can be rollbacked,
+    -- so they must be easy to delete if needed.
+    -- Older events are stable and can be store on disk to be persisted.
+    , MixedIndexer
+        , mixedIndexer
+        , inMemory
+        , inDatabase
     -- ** LastPointIndexer
     , LastPointIndexer
         , lastPointIndexer
@@ -754,7 +792,7 @@ data SQLiteIndexer event
     = SQLiteIndexer
         { _handle        :: SQL.Connection
           -- ^ The connection used to interact with the database
-        , _prepareInsert :: TimedEvent event -> InsertRecord event
+        , _prepareInsert :: TimedEvent event -> (InsertRecord event)
           -- ^ 'InsertRecord' is the typed representation of what has to be inserted in the database
           -- It should be a monoid, to allow insertion of 0 to n rows in a single transaction.
           --
@@ -793,7 +831,7 @@ singleInsertSQLiteIndexer
     => InsertRecord event ~ [param]
     => HasGenesis (Point event)
     => SQL.Connection
-    -> (TimedEvent event -> param)
+    -> (TimedEvent event -> [param])
     -- ^ extract @param@ out of a 'TimedEvent'
     -> SQL.Query
     -- ^ the insert query
@@ -801,7 +839,7 @@ singleInsertSQLiteIndexer
 singleInsertSQLiteIndexer c toParam insertQuery
     = SQLiteIndexer
         {_handle = c
-        , _prepareInsert = pure . toParam
+        , _prepareInsert = toParam
         , _buildInsert = pure . IndexQuery insertQuery
         , _dbLastSync = genesis
         }
@@ -810,9 +848,7 @@ instance (MonadIO m, Monoid (InsertRecord event), MonadError IndexerError m)
     => IsIndex m event SQLiteIndexer where
 
     index timedEvent indexer = do
-        let indexQueries = indexer ^. buildInsert
-                $ indexer ^. prepareInsert
-                $ timedEvent
+        let indexQueries = indexer ^. buildInsert $ indexer ^. prepareInsert $ timedEvent
         runIndexQueries (indexer ^. handle) indexQueries
         pure $ indexer & dbLastSync .~ (timedEvent ^. point)
 

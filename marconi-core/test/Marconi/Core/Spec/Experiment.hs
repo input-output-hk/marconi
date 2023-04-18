@@ -435,7 +435,7 @@ type instance Core.InsertRecord TestEvent = [(TestPoint, TestEvent)]
 sqliteModelIndexer :: SQL.Connection -> Core.SQLiteIndexer TestEvent
 sqliteModelIndexer con
     = Core.singleInsertSQLiteIndexer con
-        (\t -> (t ^. Core.point, t ^. Core.event))
+        (\t -> pure (t ^. Core.point, t ^. Core.event))
         "INSERT INTO index_model VALUES (?, ?)"
 
 instance MonadIO m => Core.Rewindable m TestEvent Core.SQLiteIndexer where
