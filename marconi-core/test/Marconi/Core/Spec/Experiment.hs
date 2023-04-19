@@ -36,6 +36,7 @@ module Marconi.Core.Spec.Experiment
     , delayTestGroup
     -- ** Other tests
     , indexingPerformanceTest
+    , stopCoordinatorTest
     -- * Mock chain
     , DefaultChain
         , defaultChain
@@ -81,7 +82,7 @@ import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
 import Control.Lens (Getter, Lens', filtered, folded, lens, makeLenses, to, use, view, views, (%~), (.=), (^.), (^..))
 
-import Control.Monad (foldM, replicateM)
+import Control.Monad (foldM, replicateM, void)
 import Control.Monad.Except (MonadError, runExceptT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
@@ -92,7 +93,7 @@ import Data.Function ((&))
 
 import GHC.Generics (Generic)
 
-import Test.QuickCheck (Arbitrary, Gen, Property, choose, (===))
+import Test.QuickCheck (Arbitrary, Gen, Property, choose, (===), (==>))
 import Test.QuickCheck qualified as Test
 import Test.QuickCheck.Monadic (PropertyM)
 import Test.QuickCheck.Monadic qualified as GenM
@@ -110,6 +111,7 @@ import Database.SQLite.Simple (FromRow)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.ToField (ToField)
+import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
 import Marconi.Core.Experiment (wrappedIndexer)
 import Marconi.Core.Experiment qualified as Core
 
@@ -549,6 +551,10 @@ instance Core.HasGenesis (Core.Point event)
     => Core.Rewindable (ExceptT Core.IndexerError IO) event (UnderCoordinator indexer) where
     rewind = Core.rewindVia $ underCoordinator . wrappedIndexer
 
+instance Core.Closeable (ExceptT Core.IndexerError IO) Core.Coordinator
+    => Core.Closeable (ExceptT Core.IndexerError IO) (UnderCoordinator indexer) where
+    close = Core.closeVia $ underCoordinator . wrappedIndexer
+
 instance (MonadIO m, Core.Queryable m event (Core.EventsMatchingQuery event) indexer) =>
     Core.Queryable m event (Core.EventsMatchingQuery event) (UnderCoordinator indexer) where
 
@@ -815,3 +821,48 @@ delayTestGroup runner
                 $ delayProperty 10 (view defaultChain <$> Test.arbitrary) runner
             ]
         ]
+
+stopCoordinatorTest
+    :: Core.IsIndex (ExceptT Core.IndexerError IO) TestEvent indexer
+    => Core.IsSync (ExceptT Core.IndexerError IO) TestEvent indexer
+    => Core.Rewindable (ExceptT Core.IndexerError IO) TestEvent indexer
+    => Core.Resumable (ExceptT Core.IndexerError IO) TestEvent indexer
+    => Core.Closeable (ExceptT Core.IndexerError IO) indexer
+    => Core.Queryable
+        (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) IO)
+        TestEvent
+        (Core.EventsMatchingQuery TestEvent) indexer
+    => Core.IsSync (ExceptT Core.IndexerError IO) TestEvent indexer
+    => Gen [Item TestEvent]
+    -> IndexerTestRunner (ExceptT Core.IndexerError IO) TestEvent indexer
+    -> Property
+stopCoordinatorTest gen runner = let
+
+    cRunner = coordinatorIndexerRunner runner
+    r = cRunner ^. indexerRunner
+    waitForKill = GenM.run $ liftIO $ Con.threadDelay 100
+    forgedError = Core.OtherIndexError "STOP"
+
+    process = \case
+        Insert ix evt -> Core.index (Core.TimedEvent ix evt)
+        Rollback n    -> Core.rewind n
+
+    seedError ix
+        = GenM.run
+        $ lift
+        $ Con.putMVar
+            (Core.errorBox . head $ ix ^. underCoordinator . Core.wrappedIndexer . Core.workers)
+            forgedError
+
+    in Test.forAll gen $ \chain ->
+        length chain > 5 ==> r $ do
+            initialIndexer <- GenM.run $ cRunner ^. indexerGenerator
+            let (beforeStop, afterStop) = splitAt 5 chain
+                stop = head afterStop
+            indexer' <- GenM.run $ foldM (flip process) initialIndexer beforeStop
+            void $ seedError indexer'
+            Left err <- GenM.run $ lift $ runExceptT $ process stop indexer'
+            void $ pure $ forgedError === err
+            waitForKill
+            let threadIds = indexer' ^. underCoordinator . Core.wrappedIndexer . Core.threadIds
+            liftIO $ ([ThreadFinished] ===) <$> traverse threadStatus threadIds

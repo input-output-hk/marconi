@@ -1,6 +1,7 @@
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.QuickCheck (testProperty, withMaxSuccess)
+import Test.Tasty.QuickCheck (Arbitrary (arbitrary), testProperty, withMaxSuccess)
 
+import Control.Lens (view)
 import Marconi.Core.Model qualified as Ix
 import Marconi.Core.Spec.Experiment qualified as E
 import Marconi.Core.Spec.Sqlite qualified as S
@@ -34,6 +35,10 @@ experimentTests = testGroup "Experiment"
     , testGroup "Performance"
         [ E.indexingPerformanceTest "ListIndexer" E.listIndexerRunner
         , E.indexingPerformanceTest "MixedIndexer" E.mixedHighMemoryIndexerRunner
+        ]
+    , testGroup "Error handling"
+        [ testProperty "Error handling"
+          $ E.stopCoordinatorTest (view E.defaultChain <$> arbitrary) E.listIndexerRunner
         ]
     ]
 
