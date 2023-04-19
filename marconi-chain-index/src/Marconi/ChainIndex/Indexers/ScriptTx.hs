@@ -28,7 +28,7 @@ import Cardano.Ledger.Core qualified
 import Cardano.Ledger.Crypto qualified as LedgerCrypto
 import Cardano.Ledger.Keys qualified as LedgerShelley
 import Cardano.Ledger.Shelley.Scripts qualified as LedgerShelley
-import Cardano.Ledger.ShelleyMA.Timelocks qualified as Timelock
+import Cardano.Ledger.Allegra.Scripts qualified as Timelock
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint (getPoint),

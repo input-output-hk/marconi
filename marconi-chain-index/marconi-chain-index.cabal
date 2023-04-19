@@ -74,28 +74,27 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                    >=8.0
+    , cardano-api                    ^>=8.0
     , cardano-binary
     , cardano-crypto-class
     , cardano-crypto-wrapper
     , cardano-data
     , cardano-ledger-allegra
-    , cardano-ledger-alonzo
-    , cardano-ledger-babbage
+    , cardano-ledger-alonzo ^>=1.1
+    , cardano-ledger-babbage ^>=1.1
     , cardano-ledger-binary
     , cardano-ledger-byron
-    , cardano-ledger-conway
+    , cardano-ledger-conway ^>=1.1
     , cardano-ledger-core
-    , cardano-ledger-mary
+    , cardano-ledger-mary ^>=1.1
     , cardano-ledger-shelley
-    , cardano-ledger-shelley-ma
-    , cardano-protocol-tpraos
+    , cardano-protocol-tpraos ^>=1.0
     , cardano-slotting
     , iohk-monitoring
     , ouroboros-consensus
     , ouroboros-consensus-byron
     , ouroboros-consensus-diffusion
-    , ouroboros-consensus-protocol
+    , ouroboros-consensus-protocol ^>=0.4
     , ouroboros-network
     , ouroboros-network-api
     , ouroboros-network-protocols
@@ -203,7 +202,7 @@ library marconi-chain-index-test-lib
     , cardano-crypto-class
     , cardano-ledger-alonzo
     , cardano-ledger-core
-    , cardano-testnet
+    , cardano-testnet ^>=8.0
     , ouroboros-network
     , ouroboros-network-protocols
     , plutus-core
@@ -305,7 +304,7 @@ test-suite marconi-chain-index-test
     , cardano-api:{cardano-api, gen}  >=8.0
     , cardano-binary
     , cardano-crypto-class
-    , cardano-ledger-alonzo
+    , cardano-ledger-alonzo ^>=1.1
     , cardano-ledger-core
     , cardano-testnet
     , iohk-monitoring
