@@ -15,12 +15,12 @@ import Cardano.Api qualified as C
 import Control.Monad (foldM)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Gen.Cardano.Api.Typed qualified as CGen
 import Gen.Marconi.ChainIndex.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Helpers (emptyTxBodyContent)
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 type Mockchain era = [MockBlock era]
 

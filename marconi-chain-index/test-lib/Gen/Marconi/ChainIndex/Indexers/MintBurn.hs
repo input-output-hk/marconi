@@ -27,7 +27,6 @@ import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.String (fromString)
-import Gen.Cardano.Api.Typed qualified as CGen
 import Hedgehog (Gen, forAll, (===))
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -36,8 +35,10 @@ import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Logging ()
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core.Storable qualified as Storable
-import Plutus.V1.Ledger.Api (MintingPolicy)
-import Plutus.V1.Ledger.Api qualified as PlutusV1
+import Test.Gen.Cardano.Api.Typed qualified as CGen
+-- import PlutusLedgerApi.V1 (MintingPolicy)
+import PlutusLedgerApi.V1 qualified as PlutusV1
+import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
 
 -- | The workhorse of the test: generate an indexer, then generate
@@ -141,21 +142,23 @@ eventsPersisted bufferSize nEvents = let
   numberOfEventsPersisted = bufferFlushesN * bufferSize
   in numberOfEventsPersisted
 
+type MintingPolicy = PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
+
 mkMintValue
   :: MintingPolicy -> [(C.AssetName, C.Quantity)]
   -> (C.PolicyId, C.ScriptWitness C.WitCtxMint C.AlonzoEra, C.Value)
 mkMintValue policy policyAssets = (policyId, policyWitness, mintedValues)
   where
     serialisedPolicyScript :: C.PlutusScript C.PlutusScriptV1
-    serialisedPolicyScript = C.PlutusScriptSerialised $ SBS.toShort . LBS.toStrict $ serialise $ PlutusV1.unMintingPolicyScript policy
+    serialisedPolicyScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode policy
 
     policyId :: C.PolicyId
     policyId = C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV1 serialisedPolicyScript :: C.PolicyId
 
     executionUnits :: C.ExecutionUnits
     executionUnits = C.ExecutionUnits {C.executionSteps = 300000, C.executionMemory = 1000 }
-    redeemer :: C.ScriptData
-    redeemer = C.fromPlutusData $ PlutusV1.toData ()
+    redeemer :: C.ScriptRedeemer
+    redeemer = C.unsafeHashableScriptData $ C.fromPlutusData $ PlutusV1.toData ()
     policyWitness :: C.ScriptWitness C.WitCtxMint C.AlonzoEra
     policyWitness = C.PlutusScriptWitness C.PlutusScriptV1InAlonzo C.PlutusScriptV1
       (C.PScript serialisedPolicyScript) C.NoScriptDatumForMint redeemer executionUnits
@@ -164,7 +167,7 @@ mkMintValue policy policyAssets = (policyId, policyWitness, mintedValues)
     mintedValues = C.valueFromList $ map (first (C.AssetId policyId)) policyAssets
 
 commonMintingPolicy :: MintingPolicy
-commonMintingPolicy = PlutusV1.mkMintingPolicyScript $$(PlutusTx.compile [||\_ _ -> ()||])
+commonMintingPolicy = $$(PlutusTx.compile [||\_ _ -> ()||])
 
 -- | Recreate an indexe, useful because the sql connection to a
 -- :memory: database can be reused.

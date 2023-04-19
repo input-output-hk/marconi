@@ -124,7 +124,7 @@ instance SQL.ToField (StorableQuery ScriptTxHandle) where
   toField (ScriptTxAddress hash)  = SQL.SQLBlob . Shelley.serialiseToRawBytes $ hash
 instance SQL.FromField (StorableQuery ScriptTxHandle) where
   fromField f = SQL.fromField f >>=
-      \b -> maybe cantDeserialise (return . ScriptTxAddress) $ Shelley.deserialiseFromRawBytes Shelley.AsScriptHash b
+      \b -> either (const cantDeserialise) (return . ScriptTxAddress) $ Shelley.deserialiseFromRawBytes Shelley.AsScriptHash b
     where
       cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
 
@@ -321,23 +321,23 @@ fromShelleyBasedScript  :: Shelley.ShelleyBasedEra era
 fromShelleyBasedScript era script =
   case era of
     Shelley.ShelleyBasedEraShelley ->
-      Shelley.ScriptInEra Shelley.SimpleScriptV1InShelley $
-      Shelley.SimpleScript Shelley.SimpleScriptV1 $
+      Shelley.ScriptInEra Shelley.SimpleScriptInShelley $
+      Shelley.SimpleScript $
       fromShelleyMultiSig script
     Shelley.ShelleyBasedEraAllegra ->
-      Shelley.ScriptInEra Shelley.SimpleScriptV2InAllegra $
-      Shelley.SimpleScript Shelley.SimpleScriptV2 $
-      fromAllegraTimelock Shelley.TimeLocksInSimpleScriptV2 script
+      Shelley.ScriptInEra Shelley.SimpleScriptInAllegra $
+      Shelley.SimpleScript $
+      fromAllegraTimelock script
     Shelley.ShelleyBasedEraMary ->
-      Shelley.ScriptInEra Shelley.SimpleScriptV2InMary $
-      Shelley.SimpleScript Shelley.SimpleScriptV2 $
-      fromAllegraTimelock Shelley.TimeLocksInSimpleScriptV2 script
+      Shelley.ScriptInEra Shelley.SimpleScriptInMary $
+      Shelley.SimpleScript $
+      fromAllegraTimelock script
     Shelley.ShelleyBasedEraAlonzo ->
       case script of
         Alonzo.TimelockScript s ->
-          Shelley.ScriptInEra Shelley.SimpleScriptV2InAlonzo $
-          Shelley.SimpleScript Shelley.SimpleScriptV2 $
-          fromAllegraTimelock Shelley.TimeLocksInSimpleScriptV2 s
+          Shelley.ScriptInEra Shelley.SimpleScriptInAlonzo $
+          Shelley.SimpleScript $
+          fromAllegraTimelock s
         Alonzo.PlutusScript Alonzo.PlutusV1 s ->
           Shelley.ScriptInEra Shelley.PlutusScriptV1InAlonzo $
           Shelley.PlutusScript Shelley.PlutusScriptV1 $
@@ -347,9 +347,9 @@ fromShelleyBasedScript era script =
     Shelley.ShelleyBasedEraBabbage ->
       case script of
         Alonzo.TimelockScript s ->
-          Shelley.ScriptInEra Shelley.SimpleScriptV2InBabbage $
-          Shelley.SimpleScript Shelley.SimpleScriptV2 $
-          fromAllegraTimelock Shelley.TimeLocksInSimpleScriptV2 s
+          Shelley.ScriptInEra Shelley.SimpleScriptInBabbage $
+          Shelley.SimpleScript $
+          fromAllegraTimelock s
         Alonzo.PlutusScript Alonzo.PlutusV1 s ->
           Shelley.ScriptInEra Shelley.PlutusScriptV1InBabbage $
           Shelley.PlutusScript Shelley.PlutusScriptV1 $
@@ -359,21 +359,34 @@ fromShelleyBasedScript era script =
           Shelley.PlutusScript Shelley.PlutusScriptV2 $
           Shelley.PlutusScriptSerialised s
 
+    Shelley.ShelleyBasedEraConway ->
+      case script of
+        Alonzo.TimelockScript s ->
+          Shelley.ScriptInEra Shelley.SimpleScriptInConway
+            . Shelley.SimpleScript $ fromAllegraTimelock  s
+        Alonzo.PlutusScript Alonzo.PlutusV1 s ->
+          Shelley.ScriptInEra Shelley.PlutusScriptV1InConway
+            . Shelley.PlutusScript Shelley.PlutusScriptV1 $ Shelley.PlutusScriptSerialised s
+        Alonzo.PlutusScript Alonzo.PlutusV2 s ->
+          Shelley.ScriptInEra Shelley.PlutusScriptV2InConway
+            . Shelley.PlutusScript Shelley.PlutusScriptV2 $ Shelley.PlutusScriptSerialised s
+
+
   where
-  fromAllegraTimelock :: Shelley.TimeLocksSupported lang
-                      -> Timelock.Timelock LedgerCrypto.StandardCrypto
-                      -> Shelley.SimpleScript lang
-  fromAllegraTimelock timelocks = go
+  fromAllegraTimelock :: (Cardano.Ledger.Core.Era era, Cardano.Ledger.Core.EraCrypto era ~ LedgerCrypto.StandardCrypto)
+                      => Timelock.Timelock era -> Shelley.SimpleScript
+  fromAllegraTimelock = go
     where
       go (Timelock.RequireSignature kh) = Shelley.RequireSignature
                                             (Shelley.PaymentKeyHash (LedgerShelley.coerceKeyRole kh))
-      go (Timelock.RequireTimeExpire t) = Shelley.RequireTimeBefore timelocks t
-      go (Timelock.RequireTimeStart  t) = Shelley.RequireTimeAfter  timelocks t
+      go (Timelock.RequireTimeExpire t) = Shelley.RequireTimeBefore t
+      go (Timelock.RequireTimeStart  t) = Shelley.RequireTimeAfter t
       go (Timelock.RequireAllOf      s) = Shelley.RequireAllOf (map go (toList s))
       go (Timelock.RequireAnyOf      s) = Shelley.RequireAnyOf (map go (toList s))
       go (Timelock.RequireMOf      i s) = Shelley.RequireMOf i (map go (toList s))
 
-  fromShelleyMultiSig :: LedgerShelley.MultiSig LedgerCrypto.StandardCrypto -> Shelley.SimpleScript lang
+  fromShelleyMultiSig :: (Cardano.Ledger.Core.Era era, Cardano.Ledger.Core.EraCrypto era ~ LedgerCrypto.StandardCrypto)
+                    => LedgerShelley.MultiSig era -> Shelley.SimpleScript
   fromShelleyMultiSig = go
     where
       go (LedgerShelley.RequireSignature kh)

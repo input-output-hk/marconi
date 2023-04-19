@@ -28,6 +28,7 @@ import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.FilePath ((</>))
 
+import GHC.Stack (HasCallStack)
 import Hedgehog (Property, assert, forAll, property, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test qualified as HE
@@ -43,22 +44,26 @@ import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
-import Gen.Cardano.Api.Typed qualified as CGen
 import Gen.Marconi.ChainIndex.Types (genTxBodyWithTxIns, genWitnessAndHashInEra)
 import Marconi.ChainIndex.Indexers qualified as M
 import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
 import Marconi.ChainIndex.Logging ()
 import Marconi.Core.Storable qualified as Storable
-import Plutus.V1.Ledger.Scripts qualified as Plutus
+import Test.Gen.Cardano.Api.Typed qualified as CGen
+-- import Plutus.V1.Ledger.Scripts qualified as Plutus
+import Hedgehog.Extras.Test.Base qualified as H
+import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
 import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
 import Prettyprinter.Render.Text (renderStrict)
-import Test.Base qualified as H
 
+import Cardano.Testnet qualified as TN
 import Helpers qualified as TN
-import Testnet.Cardano qualified as TN
 -- ^ Although these are defined in this cabal component, they are
 -- helpers for interacting with the testnet, thus TN
+
+integration :: HasCallStack => H.Integration () -> H.Property
+integration = H.withTests 1 . H.propertyOnce
 
 
 tests :: TestTree
@@ -107,10 +112,10 @@ propGetTxBodyScriptsRoundtrip = property $ do
       the indexer to see if it was indexed properly
 -}
 propEndToEndScriptTx :: Property
-propEndToEndScriptTx = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempAbsPath -> do
+propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempAbsPath -> do
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
 
-  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet TN.defaultTestnetOptions base tempAbsPath
+  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.CardanoOnlyTestnetOptions TN.cardanoDefaultTestnetOptions) base tempAbsPath
   let networkId = TN.getNetworkId runtime
   socketPathAbs <- TN.getSocketPathAbs conf runtime
 
@@ -149,10 +154,10 @@ propEndToEndScriptTx = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFi
   let
     -- Create an always succeeding validator script
     plutusScript :: C.PlutusScript C.PlutusScriptV1
-    plutusScript = C.PlutusScriptSerialised $ SBS.toShort . LBS.toStrict $ serialise $ Plutus.unValidatorScript validator
+    plutusScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode validator
       where
-        validator :: Plutus.Validator
-        validator = Plutus.mkValidatorScript $$(PlutusTx.compile [|| \_ _ _ -> () ||])
+        validator :: PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
+        validator = $$(PlutusTx.compile [|| \_ _ _ -> () ||])
 
     plutusScriptHash = C.hashScript $ C.PlutusScript C.PlutusScriptV1 plutusScript :: C.ScriptHash
     plutusScriptAddr :: C.Address C.ShelleyAddr
@@ -182,7 +187,7 @@ propEndToEndScriptTx = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFi
 
   pparams <- TN.getProtocolParams @C.AlonzoEra localNodeConnectInfo
   let scriptDatum = C.ScriptDataNumber 42 :: C.ScriptData
-      scriptDatumHash = C.hashScriptData scriptDatum
+      scriptDatumHash = C.hashScriptData $ C.unsafeHashableScriptData scriptDatum
       amountPaid = 10_000_000 :: C.Lovelace -- 10 ADA
       -- Must return everything that was not paid to script and that didn't went to fees:
       amountReturned = totalLovelace - amountPaid :: C.Lovelace
@@ -222,7 +227,7 @@ propEndToEndScriptTx = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFi
   let lovelaceAtScript = C.txOutValueToLovelace valueAtScript
   assert $ lovelaceAtScript == 10_000_000 -- script has the 10 ADA we put there in tx1
 
-  redeemer <- H.forAll CGen.genScriptData -- The script always returns true so any redeemer will do
+  redeemer <- H.forAll CGen.genHashableScriptData -- The script always returns true so any redeemer will do
   let
       -- The following execution unit and fee values were found by
       -- trial and error. When the transaction which we are in the
@@ -234,7 +239,7 @@ propEndToEndScriptTx = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFi
       scriptWitness :: C.Witness C.WitCtxTxIn C.AlonzoEra
       scriptWitness = C.ScriptWitness C.ScriptWitnessForSpending $
         C.PlutusScriptWitness C.PlutusScriptV1InAlonzo C.PlutusScriptV1 (C.PScript plutusScript)
-        (C.ScriptDatumForTxIn scriptDatum) redeemer executionUnits
+        (C.ScriptDatumForTxIn $ C.unsafeHashableScriptData scriptDatum) redeemer executionUnits
 
       tx2ins = [(scriptTxIn, C.BuildTxWith scriptWitness)]
       mkTx2Outs lovelace = [TN.mkAddressAdaTxOut address lovelace]

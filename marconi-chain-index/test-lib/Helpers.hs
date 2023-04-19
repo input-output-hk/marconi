@@ -30,10 +30,10 @@ import Hedgehog.Extras.Test.Base qualified as H
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Streaming qualified as CS
+import Cardano.Testnet qualified as TC (Conf (..), ProjectBase (ProjectBase), YamlFilePath (YamlFilePath), mkConf)
+import Cardano.Testnet qualified as TN hiding (testnetMagic)
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
-import Test.Runtime qualified as TN
-import Testnet.Cardano qualified as TN
-import Testnet.Conf qualified as TC (Conf (..), ProjectBase (ProjectBase), YamlFilePath (YamlFilePath), mkConf)
+import Testnet.Util.Runtime qualified as TN
 
 -- | Start a testnet.
 startTestnet
@@ -76,7 +76,7 @@ getSocketPathAbs conf tn = do
 getPoolSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
 getPoolSocketPathAbs conf tn = do
   let tempAbsPath = TC.tempAbsPath conf
-  socketPath <- IO.sprocketArgumentName <$> H.headM (TN.poolNodeSprocket <$> TN.poolNodes tn)
+  socketPath <- IO.sprocketArgumentName <$> H.headM (TN.poolSprockets tn)
   H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
 
 readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a

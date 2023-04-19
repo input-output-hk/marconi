@@ -11,6 +11,7 @@ import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
@@ -27,6 +28,7 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Word (Word64)
+import GHC.Stack (HasCallStack)
 import Gen.Marconi.ChainIndex.Indexers.MintBurn qualified as Gen
 import Hedgehog (Property, forAll, tripping, (===))
 import Hedgehog qualified as H
@@ -48,10 +50,12 @@ import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.FilePath ((</>))
-import Test.Base qualified as H
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
-import Testnet.Cardano qualified as TN
+
+integration :: HasCallStack => H.Integration () -> H.Property
+integration = H.withTests 1 . H.propertyOnce
+
 
 -- | Each test case is described beside every top level property
 -- declaration.
@@ -310,9 +314,9 @@ intervals = H.property $ do
 -- mint event, put it in a transaction and submit it, find the
 -- generated event passed back through the indexer.
 endToEnd :: Property
-endToEnd = H.withShrinks 0 $ H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempPath -> do
+endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempPath -> do
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet TN.defaultTestnetOptions base tempPath
+  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.CardanoOnlyTestnetOptions TN.cardanoDefaultTestnetOptions) base tempPath
   let networkId = TN.getNetworkId runtime
   socketPath <- TN.getSocketPathAbs conf runtime
 

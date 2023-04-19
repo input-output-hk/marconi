@@ -77,6 +77,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Coin qualified as Ledger
 import Cardano.Ledger.Compactible qualified as Ledger
+import Cardano.Ledger.Crypto qualified as Ledger
 import Cardano.Ledger.Era qualified as Ledger
 import Cardano.Ledger.Shelley.API qualified as Ledger
 import Cardano.Protocol.TPraos.API qualified as Shelley
@@ -188,8 +189,8 @@ toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEvent
         isFirstEventOfEpoch
 
 -- | From LedgerState, get epoch stake pool delegation: a mapping of pool ID to amount staked in
--- lovelace. We do this by getting the '_pstakeSet' stake snapshot and then use '_delegations' and
--- '_stake' to resolve it into the desired mapping.
+-- lovelace. We do this by getting the 'ssStakeSet' stake snapshot and then use 'ssDelegations' and
+-- 'ssStake' to resolve it into the desired mapping.
 getStakeMap
     :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
     -> Map C.PoolId C.Lovelace
@@ -203,20 +204,20 @@ getStakeMap extLedgerState = case O.ledgerState extLedgerState of
   where
     getStakeMapFromShelleyBlock
       :: forall proto era c
-       . (c ~ Ledger.Crypto era, c ~ O.StandardCrypto)
+       . (c ~ Ledger.EraCrypto era, c ~ O.StandardCrypto)
       => O.LedgerState (O.ShelleyBlock proto era)
       -> Map C.PoolId C.Lovelace
     getStakeMapFromShelleyBlock st = sdd
       where
         nes = O.shelleyLedgerState st :: Ledger.NewEpochState era
 
-        stakeSnapshot = Ledger._pstakeSet . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
+        stakeSnapshot = Ledger.ssStakeSet . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
 
         stakes = Ledger.unStake
-               $ Ledger._stake stakeSnapshot
+               $ Ledger.ssStake stakeSnapshot
 
         delegations :: VMap.VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
-        delegations = Ledger._delegations stakeSnapshot
+        delegations = Ledger.ssDelegations stakeSnapshot
 
         sdd :: Map C.PoolId C.Lovelace
         sdd = Map.fromListWith (+)
@@ -636,7 +637,7 @@ chainTipsFromLedgerStateFilePath ledgerStateFilepath =
      parseSlotNo slotNoStr = C.SlotNo <$> readMaybe (Text.unpack slotNoStr)
      parseBlockHeaderHash bhhStr = do
           bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 bhhStr
-          C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
+          either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
      parseBlockNo blockNoStr = C.BlockNo <$> readMaybe (Text.unpack blockNoStr)
 
 open

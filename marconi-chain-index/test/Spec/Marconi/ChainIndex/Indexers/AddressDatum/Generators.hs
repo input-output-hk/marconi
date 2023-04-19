@@ -7,11 +7,11 @@ module Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators
 where
 
 import Cardano.Api qualified as C
-import Gen.Cardano.Api.Typed qualified as CGen
 import Gen.Marconi.ChainIndex.Types (genProtocolParametersForPlutusScripts, genTxOutTxContext)
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 genTxBodyContentWithPlutusScripts :: Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentWithPlutusScripts = do

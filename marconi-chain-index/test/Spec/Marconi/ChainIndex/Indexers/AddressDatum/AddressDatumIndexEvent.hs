@@ -15,8 +15,8 @@ import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, isJust, mapMaybe)
 import Data.Set qualified as Set
-import Gen.Cardano.Api.Typed qualified as CGen
 import Marconi.Core.Storable qualified as Storable
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, localOption, testGroup)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyNamed)
 
@@ -60,9 +60,9 @@ propShouldIndexAddressWithTxOutDatum = property $ do
     cp <- forAll genChainPoint
     let datGen =
             Gen.choice
-                [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptData d) d) genSimpleScriptData
-                , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptData d) d) genSimpleScriptData
-                , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) genSimpleScriptData
+                [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+                , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+                , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) CGen.genHashableScriptData
                 ]
     addressesDatum <- forAll $ genAddressesWithDatum datGen
     Hedgehog.cover 30 "At least one address with datum hash in tx out"
@@ -110,16 +110,16 @@ propShouldAlwaysIndexPlutusDatumWitness = property $ do
     cp <- forAll genChainPoint
 
     let txOutDatGen =
-            Gen.choice [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptData d) d) genSimpleScriptData
-                       , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptData d) d) genSimpleScriptData
-                       , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) genSimpleScriptData
+            Gen.choice [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+                       , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+                       , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) CGen.genHashableScriptData
                        ]
     addressesDatum1 <- forAll $ genAddressesWithDatum txOutDatGen
     txs1 <- forAll $ Gen.list (Range.constant 1 5)
                    $ C.makeSignedTransaction [] <$> genTxBodyWithAddresses addressesDatum1
 
     let plutusWitDatGen =
-            fmap (\d -> PlutusScriptDatumLocation (C.hashScriptData d) d) genSimpleScriptData
+            fmap (\d -> PlutusScriptDatumLocation (C.hashScriptData d) d) CGen.genHashableScriptData
     addressesDatum2 <- forAll $ genAddressesWithDatum plutusWitDatGen
     txs2 <- forAll $ Gen.list (Range.constant 1 5)
                    $ C.makeSignedTransaction [] <$> genTxBodyWithAddresses addressesDatum2
@@ -134,7 +134,7 @@ propShouldAlwaysIndexPlutusDatumWitness = property $ do
 propShouldIndexAddressBasedOnFilter :: Property
 propShouldIndexAddressBasedOnFilter = property $ do
     cp <- forAll genChainPoint
-    let datGen = fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) genSimpleScriptData
+    let datGen = fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) CGen.genHashableScriptData
     addressesWithDatum <- forAll $ genAddressesWithDatum datGen
     let filteredAddresses =
             List.nub
@@ -172,18 +172,18 @@ addressesDatumToAddressDatumIndexEvent filterF cp addressDatums =
                         $ getDatumFromTxOutLocation datLoc) filteredAddressDatums
 
         datums = Map.fromList
-               $ mapMaybe (\(h, d) -> fmap (h,) d)
+               $ mapMaybe (\(h, d) -> fmap (h,) (C.getScriptData <$> d))
                $ mapMaybe (\(_ , datLoc) -> getDatumFromAnyLocation datLoc) filteredAddressDatums
      in AddressDatumIndexEvent addressDatumsMap datums cp
  where
-    getDatumFromAnyLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.ScriptData)
+    getDatumFromAnyLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
     getDatumFromAnyLocation NoDatumLocation                  = Nothing
     getDatumFromAnyLocation (TxOutDatumHashLocation hd _)    = Just (hd, Nothing)
     getDatumFromAnyLocation (TxOutDatumInTxLocation hd d)    = Just (hd, Just d)
     getDatumFromAnyLocation (TxOutDatumInlineLocation hd d)  = Just (hd, Just d)
     getDatumFromAnyLocation (PlutusScriptDatumLocation hd d) = Just (hd, Just d)
 
-    getDatumFromTxOutLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.ScriptData)
+    getDatumFromTxOutLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
     getDatumFromTxOutLocation NoDatumLocation                 = Nothing
     getDatumFromTxOutLocation (TxOutDatumHashLocation hd _)   = Just (hd, Nothing)
     getDatumFromTxOutLocation (TxOutDatumInTxLocation hd d)   = Just (hd, Just d)
@@ -193,10 +193,10 @@ addressesDatumToAddressDatumIndexEvent filterF cp addressDatums =
 -- | TxOutDatumInScriptWitness C.ScriptData
 data DatumLocation
     = NoDatumLocation
-    | TxOutDatumHashLocation (C.Hash C.ScriptData) C.ScriptData
-    | TxOutDatumInTxLocation (C.Hash C.ScriptData) C.ScriptData
-    | TxOutDatumInlineLocation (C.Hash C.ScriptData) C.ScriptData
-    | PlutusScriptDatumLocation (C.Hash C.ScriptData) C.ScriptData
+    | TxOutDatumHashLocation (C.Hash C.ScriptData) C.HashableScriptData
+    | TxOutDatumInTxLocation (C.Hash C.ScriptData) C.HashableScriptData
+    | TxOutDatumInlineLocation (C.Hash C.ScriptData) C.HashableScriptData
+    | PlutusScriptDatumLocation (C.Hash C.ScriptData) C.HashableScriptData
     deriving (Show)
 
 genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.AddressInEra C.BabbageEra, DatumLocation)]

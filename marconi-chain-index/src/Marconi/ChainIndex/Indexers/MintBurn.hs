@@ -98,14 +98,14 @@ txbMints txb = case txb of
 
 -- * Helpers
 
-txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LA.Data era, LA.ExUnits)
-txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
-  C.TxBodyScriptData _proof _datum redeemers -> LA.unRedeemers redeemers
-  C.TxBodyNoScriptData                       -> mempty
-txRedeemers _ = mempty
+-- txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LA.Data era, LA.ExUnits)
+-- txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
+--   C.TxBodyScriptData _proof _datum redeemers -> LA.unRedeemers redeemers
+--   C.TxBodyNoScriptData                       -> mempty
+-- txRedeemers _ = mempty
 
 mintRedeemers :: C.TxBody era -> [(Word64, (LA.Data (C.ShelleyLedgerEra era), LA.ExUnits))]
-mintRedeemers txb = txRedeemers txb
+mintRedeemers txb = undefined -- txRedeemers txb
   & Map.toList
   & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
   & map (\(LA.RdmrPtr _ w, a) -> (w, a))

@@ -12,13 +12,14 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
-import Gen.Cardano.Api.Typed qualified as CGen
 import Gen.Marconi.ChainIndex.Types qualified as CGen
 import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Property, forAll, property, tripping)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Marconi.ChainIndex.Indexers.EpochState (EpochNonceRow (EpochNonceRow), EpochSDDRow (EpochSDDRow))
+import Marconi.ChainIndex.Indexers.MintBurn (TxMintRow (TxMintRow))
+import Marconi.ChainIndex.Indexers.Utxo (Utxo (Utxo), UtxoRow (UtxoRow))
 import Marconi.Sidechain.Api.Routes (AddressUtxoResult (AddressUtxoResult), AssetIdTxResult (AssetIdTxResult),
                                      GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
                                      GetEpochNonceResult (GetEpochNonceResult),

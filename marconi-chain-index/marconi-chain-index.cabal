@@ -205,8 +205,9 @@ library marconi-chain-index-test-lib
     , cardano-ledger-core
     , cardano-testnet
     , ouroboros-network
+    , ouroboros-network-protocols
     , plutus-core
-    , plutus-ledger-api ^>=1.1
+    , plutus-ledger-api               ^>=1.1
     , plutus-tx
     , plutus-tx-plugin
 
@@ -310,7 +311,7 @@ test-suite marconi-chain-index-test
     , iohk-monitoring
     , ouroboros-network
     , plutus-core
-    , plutus-ledger-api ^>=1.1
+    , plutus-ledger-api               ^>=1.1
     , plutus-tx
     , plutus-tx-plugin
 

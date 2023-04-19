@@ -18,12 +18,12 @@ import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import GHC.Generics (Generic)
-import Gen.Cardano.Api.Typed qualified as CGen
 import Gen.Marconi.ChainIndex.Mockchain (BlockHeader (BlockHeader), MockBlock (MockBlock), genMockchain,
                                          genTxBodyContentFromTxinsWihtPhase2Validation)
 import Hedgehog (Gen)
 import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 -- | Generates a list of UTXO events.
 --
@@ -122,7 +122,7 @@ convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum ref
             ( C.toAddressAny addr)
               txid
               txix
-              scriptData
+              (C.getScriptData <$> scriptData)
               scriptDataHash
               (C.txOutValueToValue val)
               script

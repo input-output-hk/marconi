@@ -792,10 +792,10 @@ getRefScriptAndHash
   -> (Maybe C.ScriptInAnyLang, Maybe C.ScriptHash)
 getRefScriptAndHash refScript = case refScript of
   C.ReferenceScriptNone -> (Nothing, Nothing)
-  C.ReferenceScript _ s@(C.ScriptInAnyLang(C.SimpleScriptLanguage C.SimpleScriptV1) script) ->
+  C.ReferenceScript _ s@(C.ScriptInAnyLang(C.SimpleScriptLanguage) script) ->
       ( Just  s
       , Just . C.hashScript $ script)
-  C.ReferenceScript _ s@(C.ScriptInAnyLang (C.SimpleScriptLanguage C.SimpleScriptV2) script)->
+  C.ReferenceScript _ s@(C.ScriptInAnyLang (C.SimpleScriptLanguage) script)->
     ( Just s
     , Just . C.hashScript $ script)
   C.ReferenceScript _ s@(C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV1) script)->
@@ -811,8 +811,8 @@ getScriptDataAndHash
   -> (Maybe C.ScriptData, Maybe (C.Hash C.ScriptData))
 getScriptDataAndHash C.TxOutDatumNone         = (Nothing, Nothing)
 getScriptDataAndHash (C.TxOutDatumHash _ h)   = (Nothing, Just h)
-getScriptDataAndHash (C.TxOutDatumInTx _ d)   = (Just d, (Just . C.hashScriptData) d)
-getScriptDataAndHash (C.TxOutDatumInline _ d) = (Just d, (Just . C.hashScriptData) d)
+getScriptDataAndHash (C.TxOutDatumInTx _ d)   = (Just $ C.getScriptData d, (Just . C.hashScriptData) d)
+getScriptDataAndHash (C.TxOutDatumInline _ d) = (Just $ C.getScriptData d, (Just . C.hashScriptData) d)
 
 -- | remove spent transactions
 rmSpent :: Set C.TxIn -> [Utxo] -> [Utxo]

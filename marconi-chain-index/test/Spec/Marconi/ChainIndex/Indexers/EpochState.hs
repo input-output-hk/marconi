@@ -11,6 +11,7 @@ import Cardano.BM.Configuration.Static (defaultConfigStdout)
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent qualified as STM
 import Control.Concurrent.Async qualified as IO
@@ -23,8 +24,10 @@ import Data.Aeson qualified as J
 import Data.ByteString.Lazy qualified as BL
 import Data.List qualified as List
 import Data.Map qualified as Map
+import GHC.Stack (HasCallStack)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test qualified as HE
+import Hedgehog.Extras.Test.Base qualified as H
 import Helpers qualified as TN
 import Marconi.ChainIndex.Indexers qualified as Indexers
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
@@ -34,10 +37,12 @@ import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.FilePath.Posix ((</>))
-import Test.Base qualified as H
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
-import Testnet.Cardano qualified as TN
+import Testnet.Util.Runtime qualified as TN
+
+integration :: HasCallStack => H.Integration () -> H.Property
+integration = H.withTests 1 . H.propertyOnce
 
 tests :: TestTree
 tests = testGroup "EpochState"
@@ -56,12 +61,12 @@ tests = testGroup "EpochState"
 -- and discovering how cardano-cli implements its command line
 -- interface.
 test :: H.Property
-test = H.integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath -> do
+test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath -> do
 
   -- start testnet
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  let testnetOptions = TN.defaultTestnetOptions
-        { TN.epochLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
+  let testnetOptions = TN.CardanoOnlyTestnetOptions $ TN.cardanoDefaultTestnetOptions
+        { TN.cardanoSlotLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
         }
   (con, conf, runtime) <- TN.startTestnet testnetOptions base tempAbsPath
   let networkId = TN.getNetworkId runtime
