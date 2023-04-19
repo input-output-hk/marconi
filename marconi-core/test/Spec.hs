@@ -1,7 +1,6 @@
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.QuickCheck (Arbitrary (arbitrary), testProperty, withMaxSuccess)
+import Test.Tasty.QuickCheck (testProperty, withMaxSuccess)
 
-import Control.Lens (view)
 import Marconi.Core.Model qualified as Ix
 import Marconi.Core.Spec.Experiment qualified as E
 import Marconi.Core.Spec.Sqlite qualified as S
@@ -24,21 +23,27 @@ experimentTests :: TestTree
 experimentTests = testGroup "Experiment"
     [ testGroup "Indexing"
         [ E.indexingTestGroup "ListIndexer" E.listIndexerRunner
-        , E.indexingTestGroup "SqliteIndexer" E.sqliteIndexerRunner
+        , E.indexingTestGroup "SQLiteIndexer" E.sqliteIndexerRunner
         , E.indexingTestGroup "MixedIndexer - low memory" E.mixedLowMemoryIndexerRunner
         , E.indexingTestGroup "MixedIndexer - high memory" E.mixedHighMemoryIndexerRunner
         , E.indexingTestGroup "WithTracer" $ E.withTracerRunner E.listIndexerRunner
         , E.indexingTestGroup "Coordinator" $ E.coordinatorIndexerRunner E.listIndexerRunner
         ]
     , E.cacheTestGroup
-    , E.delayTestGroup E.listIndexerRunner
+    , testGroup "WithDelay"
+        [ E.delayTestGroup "ListIndexer" E.listIndexerRunner
+        , E.delayTestGroup "SQLiteIndexer" E.sqliteIndexerRunner
+        ]
     , testGroup "Performance"
         [ E.indexingPerformanceTest "ListIndexer" E.listIndexerRunner
         , E.indexingPerformanceTest "MixedIndexer" E.mixedHighMemoryIndexerRunner
         ]
     , testGroup "Error handling"
-        [ testProperty "Error handling"
-          $ E.stopCoordinatorTest (view E.defaultChain <$> arbitrary) E.listIndexerRunner
+        [ E.stopCoordinatorTest  E.listIndexerRunner
+        ]
+    , testGroup "Resuming"
+        [ E.resumeSQLiteLastSyncTest E.sqliteIndexerRunner
+        , E.resumeMixedLastSyncTest E.mixedNoMemoryIndexerRunner
         ]
     ]
 

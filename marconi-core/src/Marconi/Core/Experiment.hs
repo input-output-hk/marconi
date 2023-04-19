@@ -6,7 +6,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-} -- for DerivingVia
 {- |
- This module propose an alternative to the index implementation proposed in 'RewindableIndex.Storable'.
+ This module propose an alternative to the index implementation proposed in @Storable@.
 
  = Motivation
 
@@ -65,15 +65,13 @@
 
  = TODO List (non-exhaustive)
 
+    * Re-implement some of our indexers (WIP).
+    * Test, test, test. The current code is partially tested, and it's wrong (WIP).
+    * Cold start from disk (WIP).
     * Provide a less naive in-memory indexer implementation than the list one.
       /This is actually debatable, as most of the data manipulation in memory fits very well with the complexity/
       /of the list operations (except if we need to foldr the in memory resume to answer a query)./
-    * Test, test, test. The current code is partially tested, and it's wrong.
-    * Re-implement some of our indexers.
     * Split up this mess in modules.
-    * Generate haddock, double-check it, fill the void.
-    * Provide a tutorial on how to write indexer, transformers, and how to instantiate them.
-    * Cold start from disk.
     * Provide MonadState version of the functions that manipulates the indexer.
     * Add custom error handling at the worker and at the coordinator level,
       even if its likely that the coordinator can't do much aside distributing poison pills.
@@ -140,8 +138,8 @@
             And your own insertion function. This case is not covered yet in this tutorial.
 
         4. At this stage, your indexer should be able to index event in the SQLite indexer.
-        We now need to enable rollback events, with the 'Rewindable' instance.
-        'rewindSQLiteIndexerWith' can save you from a bit of boilerplate.
+        We now need to enable rollback events, with the 'Rollbackable' instance.
+        'rollbackSQLiteIndexerWith' can save you from a bit of boilerplate.
 
         5. Define a @query@ type and the corresponding 'Result' type.
         If you plan to use a 'MixedIndexer' you probably want to reuse the query
@@ -164,7 +162,7 @@
 
         * 'IsSync'
         * 'IsIndex'
-        * 'Rewindable'
+        * 'Rollbackable'
         * 'ResumableResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
         * 'Queryable'
         * 'Closeable' (if you plan to use it in a worker, and you probably plan to)
@@ -202,7 +200,9 @@ module Marconi.Core.Experiment
     , IsIndex (..)
     , index'
     , indexAll'
-    , Rewindable (..)
+    , Rollbackable (..)
+    , Resetable (..)
+    , resumeFrom
     , HasGenesis (..)
     , IsSync (..)
     , Closeable (..)
@@ -213,7 +213,6 @@ module Marconi.Core.Experiment
     , queryLatest'
     , ResumableResult (..)
     , Prunable (..)
-    , Resumable (..)
     -- ** Errors
     , IndexerError (..)
     , QueryError (..)
@@ -244,6 +243,7 @@ module Marconi.Core.Experiment
         , latest
 
     -- ** In database
+    --
     -- | An in-memory indexer that stores its events in a SQLite database.
     --
     -- We try to provide as much machinery as possible to minimize the work needed
@@ -252,11 +252,20 @@ module Marconi.Core.Experiment
     -- (and the corresponding 'Queryable' interface)
     -- should be enough to have an operational indexer.
     , SQLiteIndexer (SQLiteIndexer)
+        -- | Resume an existing SQLite indexer
+        --
+        -- The main difference with 'SQLiteIndexer' is
+        -- that we set 'dbLastSync' thanks to the provided query
+        , sqliteIndexer
+        -- | A smart constructor for indexer that want to map an event to a single table.
+        -- We just have to set the type family of `InsertRecord event` to `[param]` and
+        -- then to provide the expected parameters.
+        , singleInsertSQLiteIndexer
         , handle
         , prepareInsert
         , buildInsert
         , dbLastSync
-        , rewindSQLiteIndexerWith
+        , rollbackSQLiteIndexerWith
         , querySQLiteIndexerWith
         , querySyncedOnlySQLiteIndexerWith
     -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
@@ -289,10 +298,6 @@ module Marconi.Core.Experiment
     -- type InsertRecord MyEvent = MyInsertRecord
     -- @
     , InsertRecord
-    -- | A smart constructor for indexer that want to map an event to a single table.
-    -- We just have to set the type family of `InsertRecord event` to `[param]` and
-    -- then to provide the expected parameters.
-    , singleInsertSQLiteIndexer
     -- | The indexer of the most recent events must be able to send a part
     -- of its events to the other indexer when they are stable.
     --
@@ -301,6 +306,7 @@ module Marconi.Core.Experiment
     , Flushable (..)
 
     -- ** Mixed indexer
+    --
     -- | An indexer that uses two indexer internally:
     -- one for the most recents points, another for the older points.
     --
@@ -308,7 +314,19 @@ module Marconi.Core.Experiment
     -- so they must be easy to delete if needed.
     -- Older events are stable and can be store on disk to be persisted.
     , MixedIndexer
-        , mixedIndexer
+          -- | A smart constructor for 'MixedIndexer'.
+          -- It doesn't sync up the last syncEvent of inMemory and in Database indexers.
+          --
+          -- As a consequence, if these indexers aren't empty, you probably want to
+          -- modify the result of the constructor.
+        , newMixedIndexer
+          -- | A smart constructor for a /standard/ 'MixedIndexer':
+          -- an on-disk indexer and a 'ListIndexer' for the in-memory part.
+          --
+          -- Contrary to 'newMixedIndexer',
+          -- this smart constructor checks the content of the on-disk indexer
+          -- to set the 'lastSyncPoint' correctly.
+        , standardMixedIndexer
         , inMemory
         , inDatabase
     -- ** LastPointIndexer
@@ -408,14 +426,13 @@ module Marconi.Core.Experiment
     --     underlying indexer, via methods make it easier.
     , pruneVia
     , pruningPointVia
-    , rewindVia
+    , rollbackVia
     , indexVia
     , indexAllVia
     , lastSyncPointVia
     , closeVia
     , queryVia
     , queryLatestVia
-    , syncPointVia
     ) where
 
 import Control.Concurrent qualified as Con (modifyMVar_, newEmptyMVar, newMVar, newQSemN, readMVar, signalQSemN,
@@ -641,19 +658,58 @@ class ResumableResult m event query indexer where
        -> m (Result query)
 
 
--- | We can reset an indexer to a previous `Point`
+-- | We can rollback an indexer to a previous `Point`
 --
 --     * @indexer@ is the indexer implementation type
 --     * @event@ the indexer events
 --     * @m@ the monad in which our indexer operates
-class Rewindable m event indexer where
+class Rollbackable m event indexer where
 
-    rewind :: Ord (Point event) => Point event -> indexer event -> m (indexer event)
+    rollback :: Ord (Point event) => Point event -> indexer event -> m (indexer event)
+
+-- | We can reset an indexer, clearing all its content
+--
+--     * @indexer@ is the indexer implementation type
+--     * @event@ the indexer events
+--     * @m@ the monad in which our indexer operates
+class HasGenesis (Point event) => Resetable m event indexer where
+
+    reset :: indexer event -> m (indexer event)
+
+
+-- | Try to rollback to a given point to resume the indexer
+-- if we can't resume from here,
+-- either we allow reset and we restart the indexer from genesis,
+-- or we don't and we throw an error.
+resumeFrom
+    :: Rollbackable m event indexer
+    => MonadError IndexerError m
+    => Resetable m event indexer
+    => IsSync m event indexer
+    => HasGenesis (Point event)
+    => Ord (Point event)
+    => Point event
+    -> Bool
+    -- ^ do we allow reset?
+    -> indexer event
+    -> m (Point event, indexer event)
+resumeFrom p allowReset indexer = let
+
+    handleError = \case
+        RollbackBehindHistory -> if allowReset
+            then reset indexer
+            else throwError RollbackBehindHistory
+        err -> throwError err
+
+    in do
+      indexer' <- rollback p indexer `catchError` handleError
+      resumePoint <-  lastSyncPoint indexer'
+      pure (resumePoint, indexer')
 
 -- | The indexer can prune old data.
 -- The main purpose is to speed up query processing.
--- If the indexer is 'Rewindable' and 'Prunable',
--- it can't 'rewind' behind the 'pruningPoint',
+-- If the indexer is 'Rollbackable' and 'Prunable',
+-- it can't 'rollback' behind the 'pruningPoint',
 -- the idea is to call 'prune' on points that can't be rollbacked anymore.
 --
 --     * @indexer@ is the indexer implementation type
@@ -666,13 +722,6 @@ class Prunable m event indexer where
 
     -- The latest pruned point (events up to the result are pruned)
     pruningPoint :: indexer event -> m (Maybe (Point event))
-
--- | Points from which we can restract safely
-class Resumable m event indexer where
-
-    -- | Last point we should be able to resume from
-    -- We assume that an indexer is always able to restart from a previous point.
-    syncPoint :: Ord (Point event) => indexer event -> m (Point event)
 
 -- | We know how to close an indexer
 class Closeable m indexer where
@@ -744,9 +793,9 @@ instance Applicative m => Flushable m ListIndexer where
 
         in pure (oldest, ix & events .~ freshest)
 
-instance Applicative m => Rewindable m event ListIndexer where
+instance Applicative m => Rollbackable m event ListIndexer where
 
-    rewind p ix = let
+    rollback p ix = let
 
         adjustLatestPoint :: ListIndexer event -> ListIndexer event
         adjustLatestPoint = latest .~ p
@@ -767,9 +816,14 @@ instance Applicative m => Rewindable m event ListIndexer where
                 & cleanEventsAfterRollback
                 & adjustLatestPoint
 
-instance Applicative m => Resumable m event ListIndexer where
+instance
+    ( HasGenesis (Point event)
+    , Applicative m
+    ) => Resetable m event ListIndexer where
 
-    syncPoint = lastSyncPoint
+    reset indexer = pure $ indexer
+        & events .~ mempty
+        & latest  .~ genesis
 
 instance Applicative m => Closeable m ListIndexer where
 
@@ -824,8 +878,26 @@ runIndexQueries c xs = let
             `catch` (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
             `catch` (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
 
-singleInsertSQLiteIndexer
+
+runLastSyncQuery
+    :: MonadError IndexerError m
+    => MonadIO m
+    => SQL.FromRow r
+    => SQL.Connection
+    -> SQL.Query
+    -> m [r]
+runLastSyncQuery connection lastSyncQuery
+        = either throwError pure <=< liftIO
+        $ fmap Right (SQL.query connection lastSyncQuery ())
+    `catch` (\(x :: SQL.FormatError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+    `catch` (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+    `catch` (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
+
+sqliteIndexer
     :: SQL.ToRow param
+    => SQL.FromRow (Point event)
+    => MonadIO m
+    => MonadError IndexerError m
     => InsertRecord event ~ [param]
     => HasGenesis (Point event)
     => SQL.Connection
@@ -833,14 +905,43 @@ singleInsertSQLiteIndexer
     -- ^ extract @param@ out of a 'TimedEvent'
     -> SQL.Query
     -- ^ the insert query
-    -> SQLiteIndexer event
-singleInsertSQLiteIndexer c toParam insertQuery
-    = SQLiteIndexer
-        {_handle = c
-        , _prepareInsert = toParam
-        , _buildInsert = pure . IndexQuery insertQuery
-        , _dbLastSync = genesis
-        }
+    -> SQL.Query
+    -- ^ the lastSyncQuery
+    -> m (SQLiteIndexer event)
+sqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery
+    = let
+
+    in do
+        res <- runLastSyncQuery _handle lastSyncQuery
+        _dbLastSync <- case res of
+            []     -> pure genesis
+            [x]    -> pure x
+            _other -> throwError (InvalidIndexer "Ambiguous sync point")
+
+        pure $ SQLiteIndexer
+            {_handle
+            , _prepareInsert
+            , _buildInsert = pure . IndexQuery insertQuery
+            , _dbLastSync
+            }
+
+-- | A monomorphic restriction of 'sqliteIndexer' where 'InsertRecord' is a single list.
+singleInsertSQLiteIndexer
+    :: SQL.ToRow param
+    => SQL.FromRow (Point event)
+    => MonadIO m
+    => MonadError IndexerError m
+    => InsertRecord event ~ [param]
+    => HasGenesis (Point event)
+    => SQL.Connection
+    -> (TimedEvent event -> [param])
+    -- ^ extract @param@ out of a 'TimedEvent'
+    -> SQL.Query
+    -- ^ the insert query
+    -> SQL.Query
+    -- ^ the lastSyncQuery
+    -> m (SQLiteIndexer event)
+singleInsertSQLiteIndexer = sqliteIndexer
 
 instance (MonadIO m, Monoid (InsertRecord event), MonadError IndexerError m)
     => IsIndex m event SQLiteIndexer where
@@ -868,17 +969,17 @@ instance MonadIO m => Closeable m SQLiteIndexer where
 
     close indexer = liftIO $ SQL.close $ indexer ^. handle
 
--- | A helper for the definition of the 'Rewindable' typeclass for 'SQLiteIndexer'
-rewindSQLiteIndexerWith
+-- | A helper for the definition of the 'Rollbackable' typeclass for 'SQLiteIndexer'
+rollbackSQLiteIndexerWith
     :: (MonadIO m, SQL.ToRow (Point event))
     => SQL.Query
-    -- ^ The rewind statement
+    -- ^ The rollback statement
     -> Point event
     -- ^ Point will be passed as a parameter to the query
     -> SQLiteIndexer event
     -- ^ We're just using the connection
     -> m (SQLiteIndexer event)
-rewindSQLiteIndexerWith q p indexer = do
+rollbackSQLiteIndexerWith q p indexer = do
     let c = indexer ^. handle
     liftIO $ SQL.withTransaction c
         (SQL.execute c q p)
@@ -968,9 +1069,9 @@ instance (HasGenesis (Point event), Monad m)
 instance Applicative m => IsSync m event LastPointIndexer where
     lastSyncPoint = pure . view lastPoint
 
-instance Applicative m => Rewindable m event LastPointIndexer where
+instance Applicative m => Rollbackable m event LastPointIndexer where
 
-    rewind p _ = pure $ LastPointIndexer p
+    rollback p _ = pure $ LastPointIndexer p
 
 -- | The different types of input of a worker
 data ProcessedInput event
@@ -990,8 +1091,7 @@ mapIndex f (Index timedEvent) = Index . TimedEvent (timedEvent ^. point) <$> f (
 type WorkerIndexer n event indexer
     = ( IsIndex n event indexer
     , IsSync n event indexer
-    , Resumable n event indexer
-    , Rewindable n event indexer
+    , Rollbackable n event indexer
     , Closeable n indexer
     )
 
@@ -1075,7 +1175,7 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) = let
         pure indexer
 
     handleRollback p = Con.modifyMVar_ ix $ \indexer -> do
-        result <- runExceptT $ hoistError $ rewind p indexer
+        result <- runExceptT $ hoistError $ rollback p indexer
         either (raiseError indexer) pure result
 
     swallowPill = do
@@ -1136,7 +1236,7 @@ step
 step coordinator input = do
         case input of
             Index e    -> index e coordinator
-            Rollback p -> rewind p coordinator
+            Rollback p -> rollback p coordinator
 
 waitWorkers :: Coordinator input -> IO ()
 waitWorkers coordinator = Con.waitQSemN (coordinator ^. tokens) (coordinator ^. nbWorkers)
@@ -1171,19 +1271,19 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator w
 instance MonadIO m => IsSync m event Coordinator where
     lastSyncPoint indexer = pure $ indexer ^. lastSync
 
--- | To rewind a coordinator, we try and rewind all the workers.
+-- | To rollback a coordinator, we try and rollback all the workers.
 instance
     (HasGenesis (Point event)
     , MonadIO m
     , MonadError IndexerError m
-    ) => Rewindable m event Coordinator where
+    ) => Rollbackable m event Coordinator where
 
-    rewind p = let
+    rollback p = let
 
         setLastSync c = c & lastSync .~ p
 
-        rewindWorkers :: Coordinator event -> m (Coordinator event)
-        rewindWorkers c = do
+        rollbackWorkers :: Coordinator event -> m (Coordinator event)
+        rollbackWorkers c = do
             liftIO $ dispatchNewInput c $ Rollback p
             liftIO $ waitWorkers c
             errors <- healthCheck c
@@ -1191,7 +1291,7 @@ instance
                 Just err -> close c *> throwError err
                 Nothing  -> pure $ setLastSync c
 
-        in rewindWorkers
+        in rollbackWorkers
 
 instance MonadIO m => Closeable m Coordinator where
 
@@ -1359,19 +1459,6 @@ instance Queryable m event query indexer
 
     query =  queryVia wrappedIndexer
 
--- | Helper to implement the @query@ functon of 'Resumable' when we use a wrapper.
--- If you don't want to perform any other side logic, use @deriving via@ instead.
-syncPointVia
-    :: (Resumable m event indexer, Ord (Point event))
-    => Getter s (indexer event) -> s -> m (Point event)
-syncPointVia l = syncPoint . view l
-
-
-instance Resumable m event indexer
-    => Resumable m event (IndexWrapper config indexer) where
-
-    syncPoint = syncPointVia wrappedIndexer
-
 -- | Helper to implement the @prune@ functon of 'Prunable' when we use a wrapper.
 -- Unfortunately, as @m@ must have a functor instance, we can't use @deriving via@ directly.
 pruneVia
@@ -1386,14 +1473,27 @@ pruningPointVia
     => Getter s (indexer event) -> s -> m (Maybe (Point event))
 pruningPointVia l = pruningPoint . view l
 
--- | Helper to implement the @rewind@ functon of 'Rewindable' when we use a wrapper.
+-- | Helper to implement the @rollback@ functon of 'Rollbackable' when we use a wrapper.
 -- Unfortunately, as @m@ must have a functor instance, we can't use @deriving via@ directly.
-rewindVia
-    :: (Functor m, Rewindable m event indexer, Ord (Point event), HasGenesis (Point event))
+rollbackVia
+    :: (Functor m, Rollbackable m event indexer, Ord (Point event), HasGenesis (Point event))
     => Lens' s (indexer event)
     -> Point event -> s -> m s
-rewindVia l p = l (rewind p)
+rollbackVia l = l . rollback
 
+-- | Helper to implement the @reset@ functon of 'Resetable' when we use a wrapper.
+-- Unfortunately, as @m@ must have a functor instance, we can't use @deriving via@ directly.
+resetVia
+    :: (Functor m, Resetable m event indexer, HasGenesis (Point event))
+    => Lens' s (indexer event)
+    -> s -> m s
+resetVia l = l reset
+
+instance
+    (Functor m, Resetable m event indexer, HasGenesis (Point event), Resetable m event indexer)
+    => Resetable m event (IndexWrapper config indexer) where
+
+    reset = resetVia wrappedIndexer
 
 newtype ProcessedInputTracer m event = ProcessedInputTracer { _unwrapTracer :: Tracer m (ProcessedInput event)}
 
@@ -1409,23 +1509,28 @@ withTracer tr = WithTracer . IndexWrapper (ProcessedInputTracer tr)
 makeLenses 'WithTracer
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
-    instance IsSync m event indexer => IsSync m event (WithTracer m indexer)
+    instance IsSync m event indexer
+        => IsSync m event (WithTracer m indexer)
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
-    instance (MonadTrans t, IsSync (t m) event indexer) => IsSync (t m) event (WithTracer m indexer)
+    instance (MonadTrans t, IsSync (t m) event indexer)
+        => IsSync (t m) event (WithTracer m indexer)
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
-    instance Closeable m indexer => Closeable m (WithTracer m indexer)
+    instance Closeable m indexer
+        => Closeable m (WithTracer m indexer)
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
-    instance Queryable m event query indexer => Queryable m event query (WithTracer m indexer)
+    instance (MonadTrans t, Closeable (t m) indexer)
+        => Closeable (t m) (WithTracer m indexer)
+
+deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
+    instance Queryable m event query indexer
+        => Queryable m event query (WithTracer m indexer)
 
 deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
     instance (MonadTrans t, Queryable (t m) event query indexer)
         => Queryable (t m) event query (WithTracer m indexer)
-
-deriving via (IndexWrapper (ProcessedInputTracer m) indexer)
-    instance Resumable m event indexer => Resumable m event (WithTracer m indexer)
 
 tracer :: Lens' (WithTracer m indexer event) (Tracer m (ProcessedInput event))
 tracer = tracerWrapper . wrapperConfig . unwrapTracer
@@ -1453,21 +1558,29 @@ instance (MonadTrans t, Monad m, Monad (t m),  IsIndex (t m) event index)
 
 instance
     ( Monad m
-    , Rewindable m event index
+    , Rollbackable m event index
     , HasGenesis (Point event)
-    ) => Rewindable m event (WithTracer m index) where
+    ) => Rollbackable m event (WithTracer m index) where
 
-    rewind p indexer = let
+    rollback p indexer = let
 
-         rewindWrappedIndexer p' = rewindVia tracedIndexer p' indexer
+         rollbackWrappedIndexer p' = rollbackVia tracedIndexer p' indexer
 
-         traceRewind =
+         traceRollback =
               Tracer.traceWith (indexer ^. tracer) (Rollback p)
 
         in do
-        -- Warn about the rewind first
-        traceRewind
-        rewindWrappedIndexer p
+        -- Warn about the rollback first
+        traceRollback
+        rollbackWrappedIndexer p
+
+instance
+    ( HasGenesis (Point event)
+    , Functor m
+    , Resetable m event indexer
+    ) => Resetable m event (WithTracer m indexer) where
+
+    reset = resetVia tracedIndexer
 
 instance (Functor m, Prunable m event indexer)
     => Prunable m event (WithTracer m indexer) where
@@ -1509,9 +1622,6 @@ deriving via (IndexWrapper DelayConfig indexer)
     instance IsSync m event indexer => IsSync m event (WithDelay indexer)
 
 deriving via (IndexWrapper DelayConfig indexer)
-    instance Resumable m event indexer => Resumable m event (WithDelay indexer)
-
-deriving via (IndexWrapper DelayConfig indexer)
     instance Queryable m event query indexer => Queryable m event query (WithDelay indexer)
 
 delayedIndexer :: Lens' (WithDelay indexer event) (indexer event)
@@ -1551,14 +1661,14 @@ instance
 
 instance
     ( Monad m
-    , Rewindable m event indexer
+    , Rollbackable m event indexer
     , HasGenesis (Point event)
     , Ord (Point event)
-    ) => Rewindable m event (WithDelay indexer) where
+    ) => Rollbackable m event (WithDelay indexer) where
 
-    rewind p indexer = let
+    rollback p indexer = let
 
-        rewindWrappedIndexer p' = rewindVia delayedIndexer p' indexer
+        rollbackWrappedIndexer p' = rollbackVia delayedIndexer p' indexer
 
         resetBuffer = (delayLength .~ 0) . (delayBuffer .~ Seq.empty)
 
@@ -1567,7 +1677,7 @@ instance
         in if Seq.null before
            -- if we empty the delay buffer,
            -- some events in the wrapped indexer may need a rewrite
-           then resetBuffer <$> rewindWrappedIndexer p
+           then resetBuffer <$> rollbackWrappedIndexer p
            else pure $ indexer
                    & delayBuffer .~ before
                    & delayLength .~ fromIntegral (Seq.length before)
@@ -1697,19 +1807,19 @@ instance
           (\p -> pruneVia prunedIndexer p indexer)
           mp
 
--- | The rewindable instance for `WithPruning` is a defensive heuristic
+-- | The rollbackable instance for `WithPruning` is a defensive heuristic
 -- that may provide a non optimal behaviour but ensure that we don't
 -- mess up with the rollbackable events.
 instance
     ( Monad m
     , MonadError IndexerError m
     , Prunable m event indexer
-    , Rewindable m event indexer
+    , Rollbackable m event indexer
     , HasGenesis (Point event)
     , Ord (Point event)
-    ) => Rewindable m event (WithPruning indexer) where
+    ) => Rollbackable m event (WithPruning indexer) where
 
-    rewind p indexer = let
+    rollback p indexer = let
 
         resetStep :: WithPruning indexer event -> WithPruning indexer event
         resetStep = do
@@ -1741,7 +1851,7 @@ instance
             countFromPruningPoints
                 . removePruningPointsAfterRollback p
                 . resetStep
-                <$> rewindVia prunedIndexer p indexer
+                <$> rollbackVia prunedIndexer p indexer
 
 
 data CacheConfig query event
@@ -1832,9 +1942,6 @@ addCacheFor q indexer
             Right result -> pure $ indexer & cache %~ Map.insert q result
 
 deriving via (IndexWrapper (CacheConfig query) indexer)
-    instance Resumable m event indexer => Resumable m event (WithCache query indexer)
-
-deriving via (IndexWrapper (CacheConfig query) indexer)
     instance IsSync m event indexer => IsSync m event (WithCache query indexer)
 
 -- | This instances update all the cached queries with the incoming event
@@ -1851,31 +1958,31 @@ instance
         indexer' <- indexAllVia cachedIndexer evts indexer
         pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
 
-rewindCache
+rollbackCache
     :: Applicative f
     => Ord (Point event)
     => Queryable f event query indexer
     => Point event
     -> WithCache query indexer event
     -> f (WithCache query indexer event)
-rewindCache p indexer
+rollbackCache p indexer
     = itraverseOf
         cacheEntries
         (\q -> const $ queryVia cachedIndexer p q indexer)
         indexer
 
--- | Rewind the underlying indexer, clear the cache,
+-- | Rollback the underlying indexer, clear the cache,
 -- repopulate it with queries to the underlying indexer.
 instance
     ( Monad m
-    , Rewindable m event index
+    , Rollbackable m event index
     , HasGenesis (Point event)
     , Queryable m event query index
-    ) => Rewindable m event (WithCache query index) where
+    ) => Rollbackable m event (WithCache query index) where
 
-    rewind p indexer = do
-        res <- rewindVia cachedIndexer p indexer
-        rewindCache p res
+    rollback p indexer = do
+        res <- rollbackVia cachedIndexer p indexer
+        rollbackCache p res
 
 instance
     (Ord query
@@ -1925,7 +2032,7 @@ makeLenses 'MixedIndexerConfig
 newtype MixedIndexer store mem event
     = MixedIndexer { _mixedWrapper :: IndexWrapper (MixedIndexerConfig store) mem event}
 
-mixedIndexer
+newMixedIndexer
     :: Word
     -- ^ how many events are kept in memory after a flush
     -> Word
@@ -1933,8 +2040,22 @@ mixedIndexer
     -> store event
     -> mem event
     -> MixedIndexer store mem event
-mixedIndexer flushNb keepNb db
+newMixedIndexer flushNb keepNb db
     = MixedIndexer . IndexWrapper (MixedIndexerConfig flushNb keepNb db)
+
+standardMixedIndexer
+    :: IsSync m event store
+    => Monad m
+    => HasGenesis (Point event)
+    => Word
+    -- ^ how many events are kept in memory after a flush
+    -> Word
+    -- ^ flush size
+    -> store event
+    -> m (MixedIndexer store ListIndexer event)
+standardMixedIndexer flushNb keepNb db = do
+    lSync <- lastSyncPoint db
+    pure $ newMixedIndexer flushNb keepNb db (listIndexer & latest .~ lSync)
 
 makeLenses 'MixedIndexer
 
@@ -1977,30 +2098,30 @@ instance
 
     index timedEvent indexer = let
 
-        isFull
-            = (indexer ^. flushSize + indexer ^. keepInMemory <)
-            <$> indexer ^. inMemory . to currentLength
+        isFull indexer'
+            = (indexer' ^. flushSize + indexer' ^. keepInMemory <)
+            <$> indexer' ^. inMemory . to currentLength
 
         flushIfFull full = if full then flush else pure
 
         in do
-        full <- isFull
-        indexer' <- flushIfFull full indexer
-        indexVia inMemory timedEvent indexer'
+        indexer' <- indexVia inMemory timedEvent indexer
+        full <- isFull indexer'
+        flushIfFull full indexer'
 
 instance IsSync event m mem => IsSync event m (MixedIndexer store mem) where
     lastSyncPoint = lastSyncPoint . view inMemory
 
 instance
     ( Monad m
-    , Rewindable m event store
-    ) => Rewindable m event (MixedIndexer store ListIndexer) where
+    , Rollbackable m event store
+    ) => Rollbackable m event (MixedIndexer store ListIndexer) where
 
-    rewind p indexer = do
-        indexer' <- inMemory (rewind p) indexer
+    rollback p indexer = do
+        indexer' <- inMemory (rollback p) indexer
         if not $ null $ indexer' ^. inMemory . events
             then pure indexer'
-            else inDatabase (rewind p) indexer'
+            else inDatabase (rollback p) indexer'
 
 instance
     ( ResumableResult m event query ListIndexer
