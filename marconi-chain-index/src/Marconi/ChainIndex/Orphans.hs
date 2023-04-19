@@ -25,8 +25,11 @@ import Data.Text.Encoding qualified as Text
 import Data.Typeable (Typeable)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField qualified as SQL
+import Database.SQLite.Simple.FromRow (FromRow (fromRow))
 import Database.SQLite.Simple.Ok qualified as SQL
+import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToField qualified as SQL
+import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Ouroboros.Consensus.Byron.Ledger qualified as O
 import Ouroboros.Consensus.Cardano.Block qualified as O
@@ -69,6 +72,14 @@ instance Pretty C.SlotNo where
 
 deriving newtype instance SQL.ToField C.SlotNo
 deriving newtype instance SQL.FromField C.SlotNo
+
+-- * C.ChainPoint
+instance ToRow C.ChainPoint where
+  toRow C.ChainPointAtGenesis = [SQL.SQLNull]
+  toRow (C.ChainPoint sn bh)  = [toField sn, toField bh]
+
+instance FromRow C.ChainPoint where
+  fromRow = C.ChainPoint <$> SQL.field <*> SQL.field
 
 -- * C.BlockNo
 

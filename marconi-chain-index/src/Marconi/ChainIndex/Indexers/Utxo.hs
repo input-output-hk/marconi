@@ -814,14 +814,6 @@ getScriptDataAndHash (C.TxOutDatumHash _ h)   = (Nothing, Just h)
 getScriptDataAndHash (C.TxOutDatumInTx _ d)   = (Just d, (Just . C.hashScriptData) d)
 getScriptDataAndHash (C.TxOutDatumInline _ d) = (Just d, (Just . C.hashScriptData) d)
 
--- | remove spent transactions
-rmSpent :: Set C.TxIn -> [Utxo] -> [Utxo]
-rmSpent txins = filter (not . isUtxoSpent txins)
-  where
-    isUtxoSpent :: Set C.TxIn -> Utxo -> Bool
-    isUtxoSpent txIns u =
-        C.TxIn (u ^. txId)(u ^. txIx) `Set.member` txIns
-
 getInputsFromTx :: C.Tx era -> Set C.TxIn
 getInputsFromTx (C.Tx txbody _) = getInputs txbody
 

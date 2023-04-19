@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 -- |
@@ -8,14 +7,16 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo.UtxoIndex where
 import Control.Lens (folded, (^.), (^..))
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
+import Data.Functor ((<&>))
 import Data.Set qualified as Set
 
 import Cardano.Api qualified as C
 import Gen.Marconi.ChainIndex.Experimental.Indexers.Utxo (genShelleyEraUtxoEventsAtChainPoint, genTx',
                                                           genTxBodyContentFromTxIns,
-                                                          genTxBodyContentFromTxinsWihtPhase2Validation, genUtxoEvents)
-import Gen.Marconi.ChainIndex.Types (genChainPoint, genChainPoints)
+                                                          genTxBodyContentFromTxinsWihtPhase2Validation)
+import Gen.Marconi.ChainIndex.Types (genBlockNo, genChainPoint', genChainPoints, genSlotNo)
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Marconi.Core.Experiment qualified as Core
 
 import Hedgehog (Gen, Property, forAll, property, (===))
@@ -24,6 +25,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
+
 
 tests :: TestTree
 tests = testGroup "Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo"
@@ -36,6 +38,12 @@ tests = testGroup "Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo"
         "Collateral TxIn should be indexed only, When Phase-2 validation fails."
         "propTxInWhenPhase2ValidationFails"
         propTxInWhenPhase2ValidationFails
+
+   , testPropertyNamed
+        "Roundtrip save and retrieve events by address from storage test."
+        "propSaveAndRetrieveUtxoEvents"
+        propSaveAndRetrieveUtxoEvents
+
   ]
 
 -- | The property verifies that we
@@ -45,7 +53,7 @@ tests = testGroup "Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo"
 propTxInWhenPhase2ValidationFails :: Property
 propTxInWhenPhase2ValidationFails = property $ do
   tx@(C.Tx (C.TxBody C.TxBodyContent {..})_) <- forAll genTxWithCollateral
-  cp <- forAll genChainPoint
+  cp <- forAll $ genChainPoint' genBlockNo genSlotNo
   let event :: Core.TimedEvent Utxo.UtxoEvent = Utxo.getUtxoEvents Nothing [tx] cp
       computedTxins :: [C.TxIn]
       computedTxins = Set.toList $ Set.map Utxo.unSpent (event ^. Core.event . Utxo.ueInputs)
@@ -82,22 +90,50 @@ propUtxoQueryByAddressAndSlot = property $ do
   highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 7 5 20
   chainPoints :: [C.ChainPoint]  <- forAll $ genChainPoints 2 highSlotNo
   forM_ chainPoints (\cp -> do
-                                  eventLix <- forAll $ genShelleyEraUtxoEventsAtChainPoint cp
-                                  let qAddresses :: [C.AddressAny]
-                                      qAddresses = eventLix ^. Core.events ^.. folded . Core.event ^.. folded . Utxo.ueUtxos . folded . Utxo.utxoAddress
-                                      queries :: [Utxo.QueryUtxoByAddress]
-                                      queries = queriesBuilder cp qAddresses
-                                  responses :: [[Core.TimedEvent Utxo.Utxo]] <- liftIO $
-                                    traverse (\q -> Core.resumeResult cp  q eventLix (pure [])) queries
-                                  let
-                                    computedAddresses :: [C.AddressAny]
-                                    computedAddresses = responses ^.. folded  . folded  . Core.event . Utxo.utxoAddress
-                                    computedCp :: Set.Set C.ChainPoint
-                                    computedCp =  Set.fromList $ responses ^.. folded . folded . Core.point
-                                  Hedgehog.footnote $ "cp=" <> show cp
-                                  computedCp === Set.singleton cp
-                                  Hedgehog.assert $ all (== True)[addr `elem` qAddresses | addr <- computedAddresses]
-                              )
+    eventLix <- forAll $ genShelleyEraUtxoEventsAtChainPoint cp
+    let qAddresses :: [C.AddressAny]
+        qAddresses = eventLix ^. Core.events ^.. folded . Core.event ^.. folded . Utxo.ueUtxos . folded . Utxo.utxoAddress
+        queries :: [Utxo.QueryUtxoByAddress]
+        queries = queriesBuilder cp qAddresses
+    responses :: [[Core.TimedEvent Utxo.Utxo]] <- liftIO $
+      traverse (\q -> Core.resumeResult cp  q eventLix (pure [])) queries
+    let
+      computedAddresses :: [C.AddressAny]
+      computedAddresses = responses ^.. folded  . folded  . Core.event . Utxo.utxoAddress
+      computedCp :: Set.Set C.ChainPoint
+      computedCp =  Set.fromList $ responses ^.. folded . folded . Core.point
+    Hedgehog.footnote $ "cp=" <> show cp
+    computedCp === Set.singleton cp
+    Hedgehog.assert $ all (== True)[addr `elem` qAddresses | addr <- computedAddresses]
+                    )
+
+-- | Insert Utxo events in storage, and retrieve the events
+--   The property we're checking here is:
+--    - retrieved at least one unspent utxo
+--    - only retrieve unspent utxo's
+--    - test `spent` filtering at the boundary of in-memory & disk storage
+propSaveAndRetrieveUtxoEvents :: Property
+propSaveAndRetrieveUtxoEvents = property $ do
+  cp <- forAll $ genChainPoint' genBlockNo genSlotNo
+  lixEvents :: [Core.ListIndexer Utxo.UtxoEvent] <-
+    forAll $ Gen.list (Range.constantFrom  4 7 10) $ genShelleyEraUtxoEventsAtChainPoint cp
+  let events :: [Core.TimedEvent Utxo.UtxoEvent] = concat $ lixEvents ^.. folded . Core.events
+      numEvents = length events
+      mySecurityParam = SecurityParam $ fromIntegral $ numEvents `div` 2
+  indexer <- liftIO $ Utxo.initSQLite  ":memory:" <&> flip Utxo.mkMixedIndexer mySecurityParam
+  results :: (Either Core.IndexError (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent) )
+    <- Core.indexAll' events indexer
+  result <- Hedgehog.evalEither results
+
+  let inMemoryEvents = result  ^. Core.inMemory . Core.events
+      cp' = result  ^. Core.inDatabase  . Core.dbLastSync
+  Hedgehog.footnote
+    $ "inmemoryEvents length: " <> show (length inMemoryEvents)
+    <> ", numEvents: " <> show numEvents
+    <> ", this event's chainpoint " <> show cp
+  cp === cp'
+  Hedgehog.assert $ length inMemoryEvents < numEvents
+
 
 queriesBuilder :: C.ChainPoint -> [C.AddressAny ] ->  [Utxo.QueryUtxoByAddress]
 queriesBuilder cp =
