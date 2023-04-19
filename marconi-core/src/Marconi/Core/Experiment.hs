@@ -215,7 +215,7 @@ module Marconi.Core.Experiment
     , Prunable (..)
     , Resumable (..)
     -- ** Errors
-    , IndexerError
+    , IndexerError (..)
     , QueryError (..)
 
     -- * Core Indexers
@@ -341,6 +341,7 @@ module Marconi.Core.Experiment
     , Coordinator
         , lastSync
         , workers
+        , threadIds
         , tokens
         , channel
         , nbWorkers
@@ -433,7 +434,7 @@ import Control.Tracer (Tracer)
 
 import Control.Concurrent.Async (mapConcurrently_)
 import Control.Concurrent.STM (TChan)
-import Control.Exception (Exception, catch, throw)
+import Control.Exception (Exception, catch)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (MonadTrans)
 import Control.Monad.Trans.Class (lift)
@@ -488,6 +489,7 @@ data IndexerError
 instance Exception IndexerError where
 
 deriving stock instance Show IndexerError
+deriving stock instance Eq IndexerError
 
 -- | The base class of an indexer.
 -- The indexer should provide two main functionalities:
@@ -1063,19 +1065,18 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) = let
             if timedEvent `fresherThan` indexerLastPoint
                then hoistError $ index timedEvent indexer
                else pure indexer
-        either raiseError pure result
+        either (raiseError indexer) pure result
 
-    raiseError err = do
+    raiseError indexer err = do
         -- We don't need to check if tryPutMVar succeed
         -- because if @errorBox@ is already full, our job is done anyway
         void $ Con.tryPutMVar errorBox err
         unlockCoordinator
-        throw err
-
+        pure indexer
 
     handleRollback p = Con.modifyMVar_ ix $ \indexer -> do
         result <- runExceptT $ hoistError $ rewind p indexer
-        either raiseError pure result
+        either (raiseError indexer) pure result
 
     swallowPill = do
         indexer <- Con.readMVar ix
@@ -1159,14 +1160,12 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator w
 
         setLastSync e = coordinator & lastSync .~ (e ^. point)
 
-        stopWorkers = traverse_ killThread $ coordinator ^. threadIds
-
         in do
             liftIO $ dispatchNewInput coordinator $ Index timedEvent
             liftIO $ waitWorkers coordinator
             errors <- healthCheck coordinator
             case errors of
-                Just err -> liftIO stopWorkers *> throwError err
+                Just err -> close coordinator *> throwError err
                 Nothing  -> pure $ setLastSync timedEvent
 
 instance MonadIO m => IsSync m event Coordinator where
@@ -1189,10 +1188,15 @@ instance
             liftIO $ waitWorkers c
             errors <- healthCheck c
             case errors of
-                Just err -> throwError err
+                Just err -> close c *> throwError err
                 Nothing  -> pure $ setLastSync c
 
         in rewindWorkers
+
+instance MonadIO m => Closeable m Coordinator where
+
+    close coordinator = liftIO $ do
+      traverse_ killThread (coordinator ^. threadIds)
 
 -- There is no point in providing a 'Queryable' interface for 'CoordinatorIndex' though,
 -- as it's sole interest would be to get the latest synchronisation points,
