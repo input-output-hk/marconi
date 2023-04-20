@@ -265,7 +265,6 @@ test-suite marconi-chain-index-test
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
-    CompareToDbSync
     Spec.Marconi.ChainIndex.CLI
     Spec.Marconi.ChainIndex.Indexers.AddressDatum
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
@@ -305,6 +304,70 @@ test-suite marconi-chain-index-test
     , ouroboros-network
     , plutus-core
     , plutus-ledger-api               ^>=1.1
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                  >=4.9 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , containers
+    , directory
+    , filepath
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , optparse-applicative
+    , postgresql-simple
+    , prettyprinter
+    , serialise
+    , sqlite-simple
+    , stm
+    , streaming
+    , tasty
+    , tasty-golden
+    , tasty-hedgehog
+    , text
+    , transformers
+
+test-suite marconi-chain-index-test-compare-cardano-db-sync
+  import:         lang
+  ghc-options:    -Wno-unused-packages
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: test-compare-cardano-db-sync
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-streaming             >=1.2.0
+    , marconi-chain-index           >=1.2.0
+    , marconi-chain-index-test-lib  >=1.2.0
+    , marconi-core                  >=1.2.0
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api:{cardano-api, gen}
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-testnet
+    , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-network
+    , plutus-core
+    , plutus-ledger-api
     , plutus-tx
     , plutus-tx-plugin
 
