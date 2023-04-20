@@ -111,8 +111,8 @@ convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum ref
             case txOutDatum of
               C.TxOutDatumNone       -> (Nothing, Nothing)
               C.TxOutDatumHash _ dh  -> (Just dh, Nothing)
-              C.TxOutDatumInTx _ d   -> (Just $ C.hashScriptData d, Just d)
-              C.TxOutDatumInline _ d -> (Just $ C.hashScriptData d, Just d)
+              C.TxOutDatumInTx _ d   -> (Just $ C.hashScriptDataBytes d, Just d)
+              C.TxOutDatumInline _ d -> (Just $ C.hashScriptDataBytes d, Just d)
         (scriptHash, script) =
             case refScript of
               C.ReferenceScriptNone -> (Nothing, Nothing)

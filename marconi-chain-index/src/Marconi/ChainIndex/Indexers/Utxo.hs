@@ -808,8 +808,8 @@ getScriptDataAndHash
   -> (Maybe C.ScriptData, Maybe (C.Hash C.ScriptData))
 getScriptDataAndHash C.TxOutDatumNone         = (Nothing, Nothing)
 getScriptDataAndHash (C.TxOutDatumHash _ h)   = (Nothing, Just h)
-getScriptDataAndHash (C.TxOutDatumInTx _ d)   = (Just $ C.getScriptData d, (Just . C.hashScriptData) d)
-getScriptDataAndHash (C.TxOutDatumInline _ d) = (Just $ C.getScriptData d, (Just . C.hashScriptData) d)
+getScriptDataAndHash (C.TxOutDatumInTx _ d)   = (Just $ C.getScriptData d, (Just . C.hashScriptDataBytes) d)
+getScriptDataAndHash (C.TxOutDatumInline _ d) = (Just $ C.getScriptData d, (Just . C.hashScriptDataBytes) d)
 
 -- | remove spent transactions
 rmSpent :: Set C.TxIn -> [Utxo] -> [Utxo]

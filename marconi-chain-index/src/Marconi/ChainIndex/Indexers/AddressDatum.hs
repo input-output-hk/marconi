@@ -221,8 +221,8 @@ toAddressDatumIndexEvent addressFilter txs chainPoint = do
         :: C.TxOutDatum C.CtxTx era
         -> Maybe (C.Hash C.ScriptData, Maybe C.ScriptData)
     getScriptDataFromTxOutDatum (C.TxOutDatumHash _ dh)  = Just (dh, Nothing)
-    getScriptDataFromTxOutDatum (C.TxOutDatumInTx _ d)   = Just (C.hashScriptData d, Just $ C.getScriptData d)
-    getScriptDataFromTxOutDatum (C.TxOutDatumInline _ d) = Just (C.hashScriptData d, Just $ C.getScriptData d)
+    getScriptDataFromTxOutDatum (C.TxOutDatumInTx _ d)   = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
+    getScriptDataFromTxOutDatum (C.TxOutDatumInline _ d) = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
     getScriptDataFromTxOutDatum _                        = Nothing
 
     getPlutusWitDatumsFromTxs :: Map (C.Hash C.ScriptData) C.ScriptData
@@ -236,7 +236,7 @@ toAddressDatumIndexEvent addressFilter txs chainPoint = do
         -- functions to convert 'Ledger.DataHash' to 'C.Hash C.ScriptData'. This should go away once
         -- we fully switch to `cardano-ledger` types.
         Map.fromList
-            $ fmap (\(_, alonzoDat) -> let d = C.fromAlonzoData alonzoDat in (C.hashScriptData d, C.getScriptData d))
+            $ fmap (\(_, alonzoDat) -> let d = C.fromAlonzoData alonzoDat in (C.hashScriptDataBytes d, C.getScriptData d))
             $ Map.toList datum
     getPlutusWitDatumsFromTxBody (C.TxBody _) = Map.empty
 

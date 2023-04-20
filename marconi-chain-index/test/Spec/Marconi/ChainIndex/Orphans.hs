@@ -145,12 +145,12 @@ propSQLFieldRoundtripScriptDataHash = property $ do
 
 propSQLFieldRoundtripScriptData :: Property
 propSQLFieldRoundtripScriptData = property $ do
-    dh <- forAll CGen.genScriptData
+    dh <- forAll $ C.getScriptData <$> CGen.genHashableScriptData
     tripping dh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propJsonRoundtripScriptData :: Property
 propJsonRoundtripScriptData = property $ do
-    d <- forAll CGen.genScriptData
+    d <- forAll $ C.getScriptData <$> CGen.genHashableScriptData
     tripping d Aeson.encode Aeson.decode
 
 propSQLFieldRoundtripTxId :: Property

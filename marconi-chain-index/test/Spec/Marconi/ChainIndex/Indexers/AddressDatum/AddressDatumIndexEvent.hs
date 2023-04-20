@@ -59,9 +59,9 @@ propShouldIndexAddressWithTxOutDatum = property $ do
     cp <- forAll genChainPoint
     let datGen =
             Gen.choice
-                [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptData d) d) CGen.genHashableScriptData
-                , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptData d) d) CGen.genHashableScriptData
-                , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+                [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
+                , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
+                , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
                 ]
     addressesDatum <- forAll $ genAddressesWithDatum datGen
     Hedgehog.cover 30 "At least one address with datum hash in tx out"
@@ -109,16 +109,16 @@ propShouldAlwaysIndexPlutusDatumWitness = property $ do
     cp <- forAll genChainPoint
 
     let txOutDatGen =
-            Gen.choice [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptData d) d) CGen.genHashableScriptData
-                       , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptData d) d) CGen.genHashableScriptData
-                       , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+            Gen.choice [ fmap (\d -> TxOutDatumHashLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
+                       , fmap (\d -> TxOutDatumInTxLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
+                       , fmap (\d -> TxOutDatumInlineLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
                        ]
     addressesDatum1 <- forAll $ genAddressesWithDatum txOutDatGen
     txs1 <- forAll $ Gen.list (Range.constant 1 5)
                    $ C.makeSignedTransaction [] <$> genTxBodyWithAddresses addressesDatum1
 
     let plutusWitDatGen =
-            fmap (\d -> PlutusScriptDatumLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+            fmap (\d -> PlutusScriptDatumLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
     addressesDatum2 <- forAll $ genAddressesWithDatum plutusWitDatGen
     txs2 <- forAll $ Gen.list (Range.constant 1 5)
                    $ C.makeSignedTransaction [] <$> genTxBodyWithAddresses addressesDatum2
@@ -133,7 +133,7 @@ propShouldAlwaysIndexPlutusDatumWitness = property $ do
 propShouldIndexAddressBasedOnFilter :: Property
 propShouldIndexAddressBasedOnFilter = property $ do
     cp <- forAll genChainPoint
-    let datGen = fmap (\d -> TxOutDatumInlineLocation (C.hashScriptData d) d) CGen.genHashableScriptData
+    let datGen = fmap (\d -> TxOutDatumInlineLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
     addressesWithDatum <- forAll $ genAddressesWithDatum datGen
     let filteredAddresses =
             List.nub

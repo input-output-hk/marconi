@@ -182,7 +182,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
 
   pparams <- TN.getProtocolParams @C.AlonzoEra localNodeConnectInfo
   let scriptDatum = C.ScriptDataNumber 42 :: C.ScriptData
-      scriptDatumHash = C.hashScriptData $ C.unsafeHashableScriptData scriptDatum
+      scriptDatumHash = C.hashScriptDataBytes $ C.unsafeHashableScriptData scriptDatum
       amountPaid = 10_000_000 :: C.Lovelace -- 10 ADA
       -- Must return everything that was not paid to script and that didn't went to fees:
       amountReturned = totalLovelace - amountPaid :: C.Lovelace

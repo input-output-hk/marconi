@@ -79,7 +79,7 @@ scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ dats _)
     extractData :: Alonzo.TxDats era -> Map (Hash ScriptData) ScriptData
     extractData (Alonzo.TxDats' xs) =
       Map.fromList
-      . fmap ((\x -> (C.hashScriptData x, C.getScriptData x)) . C.fromAlonzoData)
+      . fmap ((\x -> (C.hashScriptDataBytes x, C.getScriptData x)) . C.fromAlonzoData)
       . Map.elems
       $ xs
 scriptDataFromCardanoTxBody _ = mempty

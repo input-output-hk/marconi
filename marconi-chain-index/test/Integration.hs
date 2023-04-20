@@ -153,7 +153,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
   pparams <- TN.getProtocolParams @C.AlonzoEra localNodeConnectInfo
 
   let scriptDatum = C.ScriptDataNumber 42 :: C.ScriptData
-      scriptDatumHash = C.hashScriptData scriptDatum
+      scriptDatumHash = C.hashScriptDataBytes scriptDatum
 
       tx1fee = 271 :: C.Lovelace
       amountPaid = 10_000_000 :: C.Lovelace -- 10 ADA

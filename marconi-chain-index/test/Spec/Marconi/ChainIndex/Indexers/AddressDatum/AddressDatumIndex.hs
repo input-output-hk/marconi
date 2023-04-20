@@ -360,7 +360,7 @@ genAddressDatumStorableEvent cp = do
     addresses <- fmap addressInEraToAddressAny
              <$> Gen.list (Range.linear 1 5) (genAddressInEra C.BabbageEra)
     addressDatums <- forM addresses $ \address -> do
-        scriptDats <- fmap (\dats -> fmap (\dat -> (C.hashScriptData dat, C.getScriptData dat)) dats)
+        scriptDats <- fmap (\dats -> fmap (\dat -> (C.hashScriptDataBytes dat, C.getScriptData dat)) dats)
                     $ Gen.list (Range.linear 1 5) CGen.genHashableScriptData
         datumMap <- Map.fromList <$> Gen.subsequence scriptDats
         pure (address, Set.fromList $ fmap fst scriptDats, datumMap)
