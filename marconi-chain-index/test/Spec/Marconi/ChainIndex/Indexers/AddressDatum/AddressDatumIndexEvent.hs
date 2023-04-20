@@ -209,7 +209,7 @@ genAddressesWithDatum genDatumLocation = do
 
 genTxBodyWithAddresses :: [(C.AddressInEra C.BabbageEra, DatumLocation)] -> Gen (C.TxBody C.BabbageEra)
 genTxBodyWithAddresses addresses = do
-  res <- C.makeTransactionBody <$> genTxBodyContentWithAddresses addresses
+  res <- C.createAndValidateTransactionBody <$> genTxBodyContentWithAddresses addresses
   case res of
     Left err     -> fail (C.displayError err)
     Right txBody -> pure txBody

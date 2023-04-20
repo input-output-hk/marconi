@@ -117,7 +117,7 @@ genTxBodyWithTxIns
   -> Gen (C.TxBody era)
 genTxBodyWithTxIns era txIns txInsCollateral = do
   txBodyContent <- genTxBodyContentWithTxInsCollateral era txIns txInsCollateral
-  case C.makeTransactionBody txBodyContent of
+  case C.createAndValidateTransactionBody txBodyContent of
     Left err     -> fail $ C.displayError err
     Right txBody -> pure txBody
 

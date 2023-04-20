@@ -204,7 +204,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
     , C.txProtocolParams = C.BuildTxWith $ Just pparams
     }
   let txbc1 = txbc0 { C.txOuts = [txOut1, mkTxOut2 $ amountReturned - tx1fee] }
-  tx1body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody txbc1
+  tx1body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody txbc1
   TN.submitTx localNodeConnectInfo $ C.makeSignedTransaction (map (C.makeShelleyKeyWitness tx1body) keyWitnesses) tx1body
 
 
@@ -247,7 +247,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
         , C.txOuts             = mkTx2Outs $ lovelaceAtScript - tx2fee
         , C.txFee              = C.TxFeeExplicit C.TxFeesExplicitInAlonzoEra tx2fee
         }
-  tx2body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody tx2bodyContent
+  tx2body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody tx2bodyContent
   let tx2 = C.signShelleyTransaction tx2body tx2witnesses
   TN.submitTx localNodeConnectInfo tx2
 

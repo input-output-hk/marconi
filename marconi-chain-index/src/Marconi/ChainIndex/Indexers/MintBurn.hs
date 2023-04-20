@@ -112,11 +112,11 @@ getPolicyData txb (LM.MultiAsset m) = do
   let
     policyIdList = Map.toList m
     getPolicyId index' = policyIdList !! fromIntegral index'
-  ((maryPolicyID, assets), index'', (redeemer, _)) <- map (\(index', data_) -> (getPolicyId index', index', data_)) $ mintRedeemers txb
+  ((maryPolicyID, assets), index'', (redeemer, _)) <- map (\(index', data_) -> (getPolicyId index', index', data_)) $ mintRedeemers
   (assetName, quantity) :: (LM.AssetName, Integer) <- Map.toList assets
   pure (fromMaryPolicyID maryPolicyID, fromMaryAssetName assetName, C.Quantity quantity, index'', fromAlonzoData redeemer)
   where
-    mintRedeemers txb = txRedeemers txb
+    mintRedeemers = txRedeemers txb
       & Map.toList
       & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
       & map (\(LA.RdmrPtr _ w, a) -> (w, a))

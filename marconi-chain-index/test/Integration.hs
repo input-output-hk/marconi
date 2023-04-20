@@ -184,7 +184,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
         , C.txOuts = [txOut1, txOut2]
         , C.txProtocolParams   = C.BuildTxWith $ Just pparams
         }
-  tx1body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody txBodyContent
+  tx1body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody txBodyContent
   let
     kw :: C.KeyWitness C.AlonzoEra
     kw = C.makeShelleyKeyWitness tx1body (C.WitnessPaymentKey $ C.castSigningKey genesisSKey)
@@ -230,7 +230,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
         , C.txOuts             = [TN.mkAddressAdaTxOut address (lovelaceAtScript - tx2fee)]
         }
 
-  tx2body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody tx2bodyContent
+  tx2body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody tx2bodyContent
   let tx2 = C.signShelleyTransaction tx2body [C.WitnessGenesisUTxOKey genesisSKey]
 
   TN.submitTx localNodeConnectInfo tx2

@@ -258,7 +258,7 @@ registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredentia
     , C.txOuts = mkTxOuts 0
     , C.txCertificates = C.TxCertificates C.CertificatesInAlonzoEra [stakeAddressRegCert] (C.BuildTxWith mempty)
     }
-  txBody <- HE.leftFail $ C.makeTransactionBody $ tx { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
+  txBody <- HE.leftFail $ C.createAndValidateTransactionBody $ tx { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
   return (C.signShelleyTransaction txBody keyWitnesses, txBody)
 
 registerPool
@@ -318,7 +318,7 @@ registerPool con networkId pparams tempAbsPath   keyWitnesses stakeCredentials p
        , C.txCertificates = C.TxCertificates C.CertificatesInAlonzoEra ([poolRegistration] <> delegationCertificates)
          (C.BuildTxWith mempty) -- BuildTxWith build (Map StakeCredential (Witness WitCtxStake era))
        }
-     txBody :: C.TxBody C.AlonzoEra <- HE.leftFail $ C.makeTransactionBody $ txbc
+     txBody :: C.TxBody C.AlonzoEra <- HE.leftFail $ C.createAndValidateTransactionBody $ txbc
        { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
      let tx = C.signShelleyTransaction txBody keyWitnesses'
 

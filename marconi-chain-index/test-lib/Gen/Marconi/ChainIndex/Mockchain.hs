@@ -54,7 +54,7 @@ genMockchain' genTxBody = do
     f (utxoSet, mockchain) bh = do
         utxosAsTxInput <- nonEmptySubset utxoSet
         txBodyContent <- genTxBody $ Set.toList utxosAsTxInput
-        txBody <- either (fail . show) pure $ C.makeTransactionBody txBodyContent
+        txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
         let newTx = C.makeSignedTransaction [] txBody
         let txId = C.getTxId txBody
         let newUtxoRefs = Set.fromList

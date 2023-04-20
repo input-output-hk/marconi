@@ -160,6 +160,6 @@ genTx'
 genTx' gen = do
   txIn <- CGen.genTxIn
   txBodyContent  <- gen [txIn]
-  txBody <- either (fail . show) pure $ C.makeTransactionBody txBodyContent
+  txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
   pure $ C.makeSignedTransaction [] txBody
 

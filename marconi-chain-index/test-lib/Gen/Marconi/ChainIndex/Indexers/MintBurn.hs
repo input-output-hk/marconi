@@ -100,7 +100,7 @@ genTxWithMint txMintValue = do
       , C.txProtocolParams = pparams
       }
   pure $ do
-    txb <- C.makeTransactionBody txbc'
+    txb <- C.createAndValidateTransactionBody txbc'
     pure $ C.signShelleyTransaction txb []
 
 -- | Helper to create tx with @commonMintingPolicy@, @assetName@ and @quantity@

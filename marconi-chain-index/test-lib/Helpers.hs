@@ -209,7 +209,7 @@ mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
       { C.txIns = map (, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
       , C.txOuts = [mkAddressAdaTxOut to totalLovelace]
       }
-  txBody0 :: C.TxBody era <- HE.leftFail $ C.makeTransactionBody tx0
+  txBody0 :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx0
   let fee = calculateFee
                 pparams
                 (length $ C.txIns tx0)
@@ -225,7 +225,7 @@ mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
              , C.txOuts = [ mkAddressAdaTxOut to howMuch
                           , mkAddressAdaTxOut from $ totalLovelace - howMuch - fee
                           ]}
-  txBody :: C.TxBody era <- HE.leftFail $ C.makeTransactionBody tx
+  txBody :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx
   return (C.signShelleyTransaction txBody keyWitnesses, txBody)
 
 mkAddressValueTxOut
@@ -266,7 +266,7 @@ calculateAndUpdateTxFee
   => C.ProtocolParameters -> C.NetworkId -> Int -> Int
   -> C.TxBodyContent C.BuildTx C.AlonzoEra -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.AlonzoEra)
 calculateAndUpdateTxFee pparams networkId lengthTxIns lengthKeyWitnesses txbc = do
-  txb <- HE.leftFail $ C.makeTransactionBody txbc
+  txb <- HE.leftFail $ C.createAndValidateTransactionBody txbc
   let
     feeLovelace = calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb :: C.Lovelace
     fee = C.TxFeeExplicit C.TxFeesExplicitInAlonzoEra feeLovelace

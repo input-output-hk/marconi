@@ -365,7 +365,7 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
     , C.txMintValue = txMintValue
     , C.txInsCollateral = C.TxInsCollateral C.CollateralInAlonzoEra txIns
     }
-  txBody :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody $ txbc
+  txBody :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody $ txbc
     { C.txOuts = mkTxOuts $ lovelace - feeLovelace }
   let keyWitnesses' :: [C.KeyWitness C.AlonzoEra]
       keyWitnesses' = map (C.makeShelleyKeyWitness txBody) keyWitnesses
