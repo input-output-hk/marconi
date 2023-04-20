@@ -14,135 +14,18 @@ TODO: If `cardano-api` ever exposes this module, then we should use that.
 -}
 module Marconi.ChainIndex.Node.Client.GenesisConfig where
 
-import Cardano.Binary qualified as CBOR
-import Control.Exception
-import Control.Monad (when)
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Except
-import Control.Monad.Trans.Except.Extra (firstExceptT, handleIOExceptT, hoistEither, left)
-import Control.State.Transition
-import Data.Aeson as Aeson
-import Data.Aeson.Types (Parser)
-import Data.Bifunctor
-import Data.ByteArray (ByteArrayAccess)
-import Data.ByteArray qualified
-import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
-import Data.ByteString.Base16 qualified as Base16
-import Data.ByteString.Lazy qualified as LB
-import Data.ByteString.Short as BSS
-import Data.Foldable
-import Data.IORef
-import Data.Map.Strict (Map)
-import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
-import Data.Proxy (Proxy (Proxy))
-import Data.SOP.Strict (K (..), NP (..), fn, (:.:) (Comp))
-import Data.Sequence (Seq)
-import Data.Sequence qualified as Seq
-import Data.Set (Set)
-import Data.Set qualified as Set
-import Data.Text (Text)
-import Data.Text qualified as Text
-import Data.Text.Encoding qualified as Text
-import Data.Text.Lazy qualified as LT
-import Data.Text.Lazy.Builder (toLazyText)
-import Data.Word
-import Data.Yaml qualified as Yaml
-import Formatting.Buildable (build)
-import GHC.Records (HasField (..))
-import Network.TypedProtocol.Pipelined (Nat (..))
-import System.FilePath
-
-import Cardano.Ledger.Allegra.Translation
-import Cardano.Ledger.Alonzo.Translation
-import Cardano.Ledger.Babbage.Translation
-import Cardano.Ledger.Mary.Translation
-
-import Cardano.Binary (DecoderError, FromCBOR)
-import Cardano.Chain.Genesis qualified
-import Cardano.Chain.Update qualified
-import Cardano.Crypto (ProtocolMagicId (unProtocolMagicId), RequiresNetworkMagic (..))
-import Cardano.Crypto.Hash.Blake2b qualified
-import Cardano.Crypto.Hash.Class qualified
-import Cardano.Crypto.Hashing qualified
-import Cardano.Crypto.ProtocolMagic qualified
-import Cardano.Crypto.VRF qualified as Crypto
-import Cardano.Crypto.VRF.Class qualified as VRF
-import Cardano.Ledger.Alonzo.Genesis (AlonzoGenesis (..))
-import Cardano.Ledger.BHeaderView qualified as Ledger
-import Cardano.Ledger.BaseTypes (Globals (..), Nonce, UnitInterval, (⭒))
-import Cardano.Ledger.BaseTypes qualified as Shelley.Spec
-import Cardano.Ledger.Conway.Genesis (ConwayGenesis (..))
-import Cardano.Ledger.Core qualified as Core
-import Cardano.Ledger.Core qualified as Ledger
-import Cardano.Ledger.Credential qualified as Shelley.Spec
-import Cardano.Ledger.Crypto
-import Cardano.Ledger.Era qualified
-import Cardano.Ledger.Keys qualified as SL
-import Cardano.Ledger.Keys qualified as Shelley.Spec
-import Cardano.Ledger.PoolDistr qualified as SL
-import Cardano.Ledger.SafeHash (HashAnnotated)
-import Cardano.Ledger.Shelley.API qualified as ShelleyAPI
-import Cardano.Ledger.Shelley.Core qualified as Ledger
-import Cardano.Ledger.Shelley.Genesis qualified as Ledger
-import Cardano.Ledger.Shelley.Genesis qualified as Shelley.Spec
-import Cardano.Ledger.Shelley.Translation (emptyFromByronTranslationContext)
-import Cardano.Ledger.Shelley.Tx qualified as Ledger
-import Cardano.Protocol.TPraos.API qualified as TPraos
-import Cardano.Protocol.TPraos.BHeader (checkLeaderNatValue)
-import Cardano.Protocol.TPraos.BHeader qualified as TPraos
-import Cardano.Slotting.EpochInfo (EpochInfo)
-import Cardano.Slotting.EpochInfo.API qualified as Slot
-import Cardano.Slotting.Slot (WithOrigin (At, Origin))
-import Cardano.Slotting.Slot qualified as Slot
-import Ouroboros.Consensus.Block.Abstract qualified as Consensus
-import Ouroboros.Consensus.Byron.Ledger.Block qualified as Byron
-import Ouroboros.Consensus.Byron.Ledger.Ledger qualified as Byron
-import Ouroboros.Consensus.Cardano qualified as Consensus
-import Ouroboros.Consensus.Cardano.Block qualified as Consensus
-import Ouroboros.Consensus.Cardano.CanHardFork qualified as Consensus
-import Ouroboros.Consensus.Cardano.Node qualified as Consensus
-import Ouroboros.Consensus.Config qualified as Consensus
-import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
-import Ouroboros.Consensus.HardFork.Combinator.AcrossEras qualified as HFC
-import Ouroboros.Consensus.HardFork.Combinator.Basics qualified as HFC
-import Ouroboros.Consensus.HardFork.Combinator.Serialisation.Common qualified as HFC
-import Ouroboros.Consensus.Ledger.Abstract qualified as Ledger
-import Ouroboros.Consensus.Ledger.Basics (LedgerResult (lrEvents), lrResult)
-import Ouroboros.Consensus.Ledger.Extended qualified as Ledger
-import Ouroboros.Consensus.Mempool.Capacity qualified as TxLimits
-import Ouroboros.Consensus.Node.ProtocolInfo qualified as Consensus
-import Ouroboros.Consensus.Protocol.Abstract (ChainDepState, ConsensusProtocol (..))
-import Ouroboros.Consensus.Protocol.Abstract qualified as Consensus
-import Ouroboros.Consensus.Protocol.Praos.Common qualified as Consensus
-import Ouroboros.Consensus.Protocol.Praos.VRF (mkInputVRF, vrfLeaderValue)
-import Ouroboros.Consensus.Protocol.TPraos qualified as TPraos
-import Ouroboros.Consensus.Shelley.Eras qualified as Shelley
-import Ouroboros.Consensus.Shelley.Ledger.Block qualified as Shelley
-import Ouroboros.Consensus.Shelley.Ledger.Ledger qualified as Shelley
-import Ouroboros.Consensus.Shelley.Node (ShelleyGenesis (..))
-import Ouroboros.Consensus.Shelley.Node.Praos qualified as Consensus
-import Ouroboros.Consensus.TypeFamilyWrappers (WrapLedgerEvent (WrapLedgerEvent))
-import Ouroboros.Network.Block qualified
-import Ouroboros.Network.Protocol.ChainSync.Client qualified as CS
-import Ouroboros.Network.Protocol.ChainSync.ClientPipelined qualified as CSP
-import Ouroboros.Network.Protocol.ChainSync.PipelineDecision
-
 import Cardano.Chain.Genesis qualified as Byron
 import Cardano.Chain.Update qualified
 import Cardano.Chain.Update qualified as Byron
-import Cardano.Crypto (ProtocolMagicId (unProtocolMagicId), RequiresNetworkMagic (..))
+import Cardano.Crypto (RequiresNetworkMagic)
 import Cardano.Crypto.Hash qualified as Crypto
+import Cardano.Crypto.Hash.Class qualified
 import Cardano.Crypto.Hashing (decodeAbstractHash)
-import Cardano.Crypto.ProtocolMagic (RequiresNetworkMagic)
 import Cardano.Ledger.Alonzo.Genesis qualified as Ledger
-import Cardano.Ledger.BaseTypes (Globals (..), Nonce, UnitInterval, (⭒))
-import Cardano.Ledger.Binary (DecoderError, FromCBOR, mkVersion)
-import Cardano.Ledger.Conway.Genesis (ConwayGenesis (..))
-import Cardano.Ledger.Shelley
+import Cardano.Ledger.Binary (mkVersion)
+import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Shelley.API qualified as Ledger
-import Cardano.Ledger.Shelley.PParams
+import Cardano.Ledger.Shelley.Translation (emptyFromByronTranslationContext)
 import Control.Exception (IOException, catch)
 import Control.Monad (when)
 import Control.Monad.Trans.Except (ExceptT (ExceptT), except)
@@ -162,12 +45,10 @@ import Ouroboros.Consensus.Cardano.Block qualified as Consensus
 import Ouroboros.Consensus.Cardano.Block qualified as HFC
 import Ouroboros.Consensus.Cardano.Node qualified as Consensus
 import Ouroboros.Consensus.Ledger.Extended qualified as Ledger
-import Ouroboros.Consensus.Mempool.TxLimits qualified as TxLimits
+import Ouroboros.Consensus.Mempool qualified as TxLimits
 import Ouroboros.Consensus.Node qualified as Consensus
 import Ouroboros.Consensus.Protocol.Praos.Translate ()
 import Ouroboros.Consensus.Shelley.Eras qualified as Shelley
-import Ouroboros.Consensus.Shelley.Ledger.Block qualified as Shelley
-import Ouroboros.Consensus.Shelley.Ledger.Ledger qualified as Shelley
 import Ouroboros.Consensus.Shelley.Ledger.SupportsProtocol ()
 import Ouroboros.Consensus.Shelley.Node.Praos qualified as Consensus
 import System.FilePath (takeDirectory, (</>))
@@ -241,7 +122,7 @@ renderHash :: Crypto.Hash Crypto.Blake2b_256 ByteString -> Text
 renderHash h = Text.decodeUtf8 $ Base16.encode (Crypto.hashToBytes h)
 
 data ShelleyConfig = ShelleyConfig
-  { scConfig      :: !(Ledger.ShelleyGenesis Consensus.StandardShelley)
+  { scConfig      :: !(Ledger.ShelleyGenesis Shelley.StandardCrypto)
   , scGenesisHash :: !GenesisHashShelley
   }
 
@@ -473,7 +354,7 @@ readShelleyGenesis (GenesisFile file) expectedGenesisHash = do
     checkExpectedGenesisHash genesisHash
     genesis <- firstExceptT (ShelleyGenesisDecodeError file . Text.pack)
                   . hoistEither
-                  $ undefined -- Aeson.eitherDecodeStrict' content
+                  $ Aeson.eitherDecodeStrict' content
     pure $ ShelleyConfig genesis genesisHash
   where
     checkExpectedGenesisHash :: GenesisHashShelley -> ExceptT ShelleyGenesisError IO ()
@@ -505,6 +386,10 @@ renderGenesisConfigError ne =
       mconcat
         [ "Failed reading Alonzo genesis file ", textShow fp, ": ", txt
         ]
+    NEConwayConfig fp txt ->
+      mconcat
+        [ "Failed reading Conway genesis file ", textShow fp, ": ", txt
+        ]
     NECardanoConfig err ->
       mconcat
         [ "With Cardano protocol, Byron/Shelley config mismatch:\n"
@@ -533,7 +418,7 @@ mkProtocolInfoCardano (GenesisCardano dnc byronGenesis shelleyGenesis alonzoGene
             , Consensus.byronMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
             }
           Consensus.ProtocolParamsShelleyBased
-            { Consensus.shelleyBasedGenesis = undefined --  scConfig shelleyGenesis
+            { Consensus.shelleyBasedGenesis = scConfig shelleyGenesis
             , Consensus.shelleyBasedInitialNonce = shelleyPraosNonce shelleyGenesis
             , Consensus.shelleyBasedLeaderCredentials = []
             }
@@ -566,7 +451,7 @@ mkProtocolInfoCardano (GenesisCardano dnc byronGenesis shelleyGenesis alonzoGene
           (ncAllegraToMary dnc)
           (Consensus.ProtocolTransitionParamsShelleyBased alonzoGenesis (ncMaryToAlonzo dnc))
           (Consensus.ProtocolTransitionParamsShelleyBased () (ncAlonzoToBabbage dnc))
-          (Consensus.ProtocolTransitionParamsShelleyBased undefined (ncBabbageToConway dnc))
+          (Consensus.ProtocolTransitionParamsShelleyBased conwayGenesis (ncBabbageToConway dnc))
 
 
 shelleyProtVer :: NodeConfig -> Ledger.ProtVer
