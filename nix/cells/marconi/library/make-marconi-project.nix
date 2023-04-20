@@ -22,10 +22,7 @@ let
     #  source-repository-packages
     sha256map = {
       "https://github.com/input-output-hk/cardano-node"."a158a679690ed8b003ee06e1216ac8acd5ab823d" = "sha256-uY7wPyCgKuIZcGu0+vGacjGw2kox8H5ZsVGsfTNtU0c=";
-      "https://github.com/input-output-hk/cardano-ledger"."f10f06f6ab96b5ee52a28ccc45b41a592efde4b7" = "sha256-Azh0x0OaGnU09ySaIFWCyHrEikW5tBdnwrxj6PQRb+w=";
-      "https://github.com/input-output-hk/fs-sim"."30b3c45907378a470365b5fc1d5c6a2c8003822e" = "sha256-b+H6LZdLRckm5SrGpOqR92TIWa+3GRzvMGPAP0zboyQ=";
-      "https://github.com/input-output-hk/cardano-base"."70a7f0230aaeb23f97069168382383802b5ecfa3" = "sha256-b8RZaQKlmlqJYlBIWkhAu/tgd0ugND7aX3diLdYQ4P0=";
-};
+    };
 
     inputMap = {
       "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.CHaP;
