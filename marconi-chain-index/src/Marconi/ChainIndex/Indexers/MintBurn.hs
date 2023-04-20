@@ -33,6 +33,7 @@ import Cardano.Ledger.Alonzo.Tx qualified as LA
 import Cardano.Ledger.Alonzo.TxWits qualified as LA
 import Cardano.Ledger.Babbage.Tx qualified as LB
 import Cardano.Ledger.Conway.TxBody qualified as LC
+import Cardano.Ledger.Core qualified as Ledger
 import Cardano.Ledger.Mary.Value qualified as LM
 import Control.Lens (makeLenses, view, (&), (^.))
 import Control.Monad.IO.Class (liftIO)
@@ -102,20 +103,9 @@ txbMints txb = case txb of
 
 -- * Helpers
 
--- txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LA.Data era, LA.ExUnits)
--- txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
---   C.TxBodyScriptData _proof _datum redeemers -> LA.unRedeemers redeemers
---   C.TxBodyNoScriptData                       -> mempty
--- txRedeemers _ = mempty
-
-mintRedeemers :: C.TxBody era -> [(Word64, (LA.Data (C.ShelleyLedgerEra era), LA.ExUnits))]
-mintRedeemers txb = undefined -- txRedeemers txb
-  & Map.toList
-  & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
-  & map (\(LA.RdmrPtr _ w, a) -> (w, a))
-
 getPolicyData
-    :: C.TxBody era
+    :: forall era. Ledger.Era (C.ShelleyLedgerEra era)
+    => C.TxBody era
     -> LM.MultiAsset OEra.StandardCrypto
     -> [(C.PolicyId, C.AssetName, C.Quantity, Word64, C.ScriptData)]
 getPolicyData txb (LM.MultiAsset m) = do
@@ -125,6 +115,16 @@ getPolicyData txb (LM.MultiAsset m) = do
   ((maryPolicyID, assets), index'', (redeemer, _)) <- map (\(index', data_) -> (getPolicyId index', index', data_)) $ mintRedeemers txb
   (assetName, quantity) :: (LM.AssetName, Integer) <- Map.toList assets
   pure (fromMaryPolicyID maryPolicyID, fromMaryAssetName assetName, C.Quantity quantity, index'', fromAlonzoData redeemer)
+  where
+    mintRedeemers txb = txRedeemers txb
+      & Map.toList
+      & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
+      & map (\(LA.RdmrPtr _ w, a) -> (w, a))
+
+    txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
+      C.TxBodyScriptData _proof _datum (LA.Redeemers redeemers) -> redeemers
+      C.TxBodyNoScriptData                                      -> mempty
+    txRedeemers _ = mempty
 
 -- ** Copy-paste
 
