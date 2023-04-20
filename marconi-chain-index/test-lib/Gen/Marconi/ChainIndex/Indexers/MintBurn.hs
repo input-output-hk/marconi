@@ -32,11 +32,10 @@ import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Logging ()
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core.Storable qualified as Storable
-import Test.Gen.Cardano.Api.Typed qualified as CGen
--- import PlutusLedgerApi.V1 (MintingPolicy)
 import PlutusLedgerApi.V1 qualified as PlutusV1
 import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 -- | The workhorse of the test: generate an indexer, then generate
 -- transactions to index, then index them.

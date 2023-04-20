@@ -31,29 +31,6 @@ benchmarks: true
 -- 'tasty' output.
 test-show-details: direct
 
-allow-newer:
-  -- cardano-ledger packages need aeson >2, the following packages have a
-  -- too restictive upper bounds on aeson, so we relax them here. The hackage
-  -- trustees can make a revision to these packages cabal file to solve the
-  -- issue permanently.
-  , ekg:aeson
-  , ekg-json:aeson
-  , openapi3:aeson
-  , servant:aeson
-  , servant-client-core:aeson
-  , servant-server:aeson
-  , servant-foreign:lens
-  , blockfrost-api:lens
-
-
-allow-older:
-  -- freer-extras works with lens-5.2 (rather than 5.2.1)
-  , freer-extras:lens
-  -- freer-extras works with resource-pool-0.3.1.0 (rather than 0.4.0.0)
-  , freer-extras:resource-pool
-  -- plutus-ledger works with lens-5.2 (rather than 5.2.1)
-  , plutus-ledger:lens
-
 -- These packages appear in our dependency tree and are very slow to build.
 -- Empirically, turning off optimization shaves off ~50% build time.
 -- It also mildly improves recompilation avoidance.
@@ -66,17 +43,8 @@ package ouroboros-consensus-cardano
   optimization: False
 package cardano-api
   optimization: False
-package cardano-wallet
-  optimization: False
-package cardano-wallet-core
-  optimization: False
-package cardano-wallet-cli
-  optimization: False
-package cardano-wallet-launcher
-  optimization: False
-package cardano-wallet-core-integration
-  optimization: False
 
+-- Pin to the master with 8.0.0 version (not an official release)
 source-repository-package
     type: git
     location: https://github.com/input-output-hk/cardano-node

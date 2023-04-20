@@ -41,11 +41,6 @@ instance Pretty C.ChainPoint where
   pretty C.ChainPointAtGenesis = "ChainPointAtGenesis"
   pretty (C.ChainPoint sn ha)  = "ChainPoint(" <> pretty sn <> "," <+> pretty ha <> ")"
 
--- instance Ord C.ChainPoint where
---    C.ChainPointAtGenesis <= _                  = True
---    _ <= C.ChainPointAtGenesis                  = False
---    (C.ChainPoint sn _) <= (C.ChainPoint sn' _) = sn <= sn'
-
 -- * C.Hash C.BlockHeader
 
 instance Pretty (C.Hash C.BlockHeader) where
