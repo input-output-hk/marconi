@@ -216,8 +216,6 @@ library marconi-chain-index-test-lib
     , streaming
     , temporary
 
-  build-depends:   plutus-tx-plugin
-
 benchmark marconi-chain-index-bench
   import:         lang
   main-is:        BenchQueries.hs
@@ -307,6 +305,7 @@ test-suite marconi-chain-index-test
     , plutus-core
     , plutus-ledger-api               ^>=1.1
     , plutus-tx
+    , plutus-tx-plugin
 
   ------------------------
   -- Non-IOG dependencies
@@ -336,5 +335,3 @@ test-suite marconi-chain-index-test
     , tasty-hedgehog
     , text
     , transformers
-
-  build-depends:  plutus-tx-plugin
