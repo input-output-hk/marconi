@@ -19,6 +19,11 @@ source-repository head
   type:     git
   location: https://github.com/input-output-hk/marconi
 
+flag ci
+  description: Toggle features on/off when in CI
+  manual:      True
+  default:     False
+
 common lang
   default-language:   Haskell2010
   default-extensions:
@@ -342,7 +347,9 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: test-compare-cardano-db-sync
-  buildable:      False
+
+  if flag(ci)
+    buildable: False
 
   --------------------
   -- Local components
