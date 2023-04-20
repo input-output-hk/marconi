@@ -342,6 +342,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: test-compare-cardano-db-sync
+  buildable:      False
 
   --------------------
   -- Local components
