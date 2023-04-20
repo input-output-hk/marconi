@@ -35,8 +35,6 @@ import Marconi.Core.Storable qualified as Storable
 
 import Hedgehog ((===))
 import Hedgehog qualified as H
-import Hedgehog.Gen qualified as Gen
-import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -45,13 +43,11 @@ main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Marconi to cardano-db-sync comparisons"
-  [
-  --   testPropertyNamed
-  --     "Compare *all* epoch nonces between Marconi and cardano-db-sync"
-  --     "propEpochNonce" propEpochNonce
-  -- ,
-    testPropertyNamed
-      "Compare random 10 epoch stakepool sizes between Marconi and cardano-db-sync"
+  [ testPropertyNamed
+      "Compare all epoch nonces between Marconi and cardano-db-sync"
+      "propEpochNonce" propEpochNonce
+  , testPropertyNamed
+      "Compare all epoch stakepool sizes between Marconi and cardano-db-sync"
       "propEpochStakepoolSize" propEpochStakepoolSize
   ]
 
@@ -70,11 +66,7 @@ propEpochStakepoolSize = H.withTests 1 $ H.property $ do
           $ "\nComparing random epoch " <> show epochNo
           <> ", number of stakepools in epoch " <> show (Map.size dbSyncResult)
           <> ", epoch chosen from between " <> show (coerce @_ @Word64 minEpochNo) <> " and " <> show (coerce @_ @Word64 maxEpochNo) <> ")"
-        if dbSyncResult == marconiResult
-          then return ()
-          else H.footnote $ "Failing epoch no" <> show epochNo
-  -- epochNo <- H.forAll $ Gen.integral $ Range.constant minEpochNo maxEpochNo
-  -- compareEpoch epochNo
+        dbSyncResult === marconiResult
   forM_ [minEpochNo .. maxEpochNo] compareEpoch
 
 dbSyncStakepoolSizes :: PG.Connection -> C.EpochNo -> IO (Map.Map C.PoolId C.Lovelace)
