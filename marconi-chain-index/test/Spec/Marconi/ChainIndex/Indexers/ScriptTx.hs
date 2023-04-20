@@ -10,14 +10,11 @@
 
 module Spec.Marconi.ChainIndex.Indexers.ScriptTx (tests) where
 
-import Codec.Serialise (serialise)
 import Control.Concurrent qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
 import Control.Monad (replicateM, void)
 import Control.Monad.IO.Class (liftIO)
-import Data.ByteString.Lazy qualified as LBS
-import Data.ByteString.Short qualified as SBS
 import Data.Coerce (coerce)
 import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -49,13 +46,11 @@ import Marconi.ChainIndex.Indexers qualified as M
 import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
 import Marconi.ChainIndex.Logging ()
 import Marconi.Core.Storable qualified as Storable
-import Test.Gen.Cardano.Api.Typed qualified as CGen
--- import Plutus.V1.Ledger.Scripts qualified as Plutus
-import Hedgehog.Extras.Test.Base qualified as H
 import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
 import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
 import Prettyprinter.Render.Text (renderStrict)
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 import Cardano.Testnet qualified as TN
 import Helpers qualified as TN

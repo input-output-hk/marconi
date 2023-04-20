@@ -17,7 +17,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Gen.Marconi.ChainIndex.Types (genAddressInEra, genChainPoints, genSimpleScriptData)
+import Gen.Marconi.ChainIndex.Types (genAddressInEra, genChainPoints)
 import Hedgehog (Gen, Property, forAll, property, (===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen

@@ -25,8 +25,7 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
-import Gen.Marconi.ChainIndex.Types (genAddressInEra, genChainPoint, genExecutionUnits, genSimpleScriptData,
-                                     genTxOutValue)
+import Gen.Marconi.ChainIndex.Types (genAddressInEra, genChainPoint, genExecutionUnits, genTxOutValue)
 import Marconi.ChainIndex.Indexers.AddressDatum (AddressDatumHandle, StorableEvent (AddressDatumIndexEvent))
 import Marconi.ChainIndex.Indexers.AddressDatum qualified as AddressDatum
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators (genTxBodyContentWithPlutusScripts)
