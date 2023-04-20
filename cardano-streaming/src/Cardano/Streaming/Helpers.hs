@@ -68,6 +68,7 @@ getEpochNo ledgerState' = case ledgerState' of
   C.LedgerStateMary st                     -> fromState st
   C.LedgerStateAlonzo st                   -> fromState st
   CS.LedgerState (O.LedgerStateBabbage st) -> fromState st -- TODO pattern missing from cardano-node: is it there on master? if not create PR.
+  CS.LedgerState (O.LedgerStateConway st)  -> fromState st
   where
     fromState = Just . SL.nesEL . O.shelleyLedgerState
 
