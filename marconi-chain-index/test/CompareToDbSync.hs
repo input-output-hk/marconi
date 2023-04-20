@@ -87,8 +87,8 @@ getEpochStakepoolSizes conn epochNo = do
     rationalToLovelace n | 1 <- denominator n = fromIntegral $ numerator n
                    | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
 
-queryIndexerStakepoolSiz :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
-queryIndexerStakepoolSiz epochNo indexer = do
+queryIndexerStakepoolSize :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
+queryIndexerStakepoolSize epochNo indexer = do
   let query = EpochState.SDDByEpochNoQuery epochNo
   result <- Storable.queryStorage dummyInterval [] (indexer ^. Storable.handle) query
   case result of
