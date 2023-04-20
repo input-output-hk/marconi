@@ -77,7 +77,6 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Coin qualified as Ledger
 import Cardano.Ledger.Compactible qualified as Ledger
-import Cardano.Ledger.Crypto qualified as Ledger
 import Cardano.Ledger.Era qualified as Ledger
 import Cardano.Ledger.Shelley.API qualified as Ledger
 import Cardano.Protocol.TPraos.API qualified as Shelley
@@ -201,6 +200,7 @@ getStakeMap extLedgerState = case O.ledgerState extLedgerState of
   O.LedgerStateMary st    -> getStakeMapFromShelleyBlock st
   O.LedgerStateAlonzo st  -> getStakeMapFromShelleyBlock st
   O.LedgerStateBabbage st -> getStakeMapFromShelleyBlock st
+  O.LedgerStateConway st  -> getStakeMapFromShelleyBlock st
   where
     getStakeMapFromShelleyBlock
       :: forall proto era c
@@ -243,6 +243,7 @@ getEpochNo extLedgerState = case O.ledgerState extLedgerState of
   O.LedgerStateMary st    -> getEpochNoFromShelleyBlock st
   O.LedgerStateAlonzo st  -> getEpochNoFromShelleyBlock st
   O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateConway st  -> getEpochNoFromShelleyBlock st
   where
     getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
 
@@ -293,6 +294,7 @@ getEpochNonce extLedgerState =
       O.ChainDepStateMary st    -> extractNonce st
       O.ChainDepStateAlonzo st  -> extractNonce st
       O.ChainDepStateBabbage st -> extractNoncePraos st
+      O.ChainDepStateConway st  -> extractNoncePraos st
   where
     extractNonce :: O.TPraosState c -> Ledger.Nonce
     extractNonce =

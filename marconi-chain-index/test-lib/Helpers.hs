@@ -322,6 +322,7 @@ txFeesExplicitInShelleyBasedEra shelleyBased =
       C.ShelleyBasedEraMary    -> C.TxFeesExplicitInMaryEra
       C.ShelleyBasedEraAlonzo  -> C.TxFeesExplicitInAlonzoEra
       C.ShelleyBasedEraBabbage -> C.TxFeesExplicitInBabbageEra
+      C.ShelleyBasedEraConway  -> C.TxFeesExplicitInConwayEra
 
 addressAnyToShelley
   :: C.AddressAny

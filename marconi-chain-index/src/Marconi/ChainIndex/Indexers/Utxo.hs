@@ -795,9 +795,6 @@ getRefScriptAndHash refScript = case refScript of
   C.ReferenceScript _ s@(C.ScriptInAnyLang(C.SimpleScriptLanguage) script) ->
       ( Just  s
       , Just . C.hashScript $ script)
-  C.ReferenceScript _ s@(C.ScriptInAnyLang (C.SimpleScriptLanguage) script)->
-    ( Just s
-    , Just . C.hashScript $ script)
   C.ReferenceScript _ s@(C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV1) script)->
     ( Just s
     , Just . C.hashScript $ script)

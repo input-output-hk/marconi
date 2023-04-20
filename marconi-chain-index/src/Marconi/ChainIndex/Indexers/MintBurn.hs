@@ -27,11 +27,12 @@ module Marconi.ChainIndex.Indexers.MintBurn where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.Ledger.Alonzo.Data qualified as LA
 import Cardano.Ledger.Alonzo.Scripts qualified as LA
+import Cardano.Ledger.Alonzo.Scripts.Data qualified as LA
 import Cardano.Ledger.Alonzo.Tx qualified as LA
 import Cardano.Ledger.Alonzo.TxWits qualified as LA
 import Cardano.Ledger.Babbage.Tx qualified as LB
+import Cardano.Ledger.Conway.TxBody qualified as LC
 import Cardano.Ledger.Mary.Value qualified as LM
 import Control.Lens (makeLenses, view, (&), (^.))
 import Control.Monad.IO.Class (liftIO)
@@ -93,6 +94,9 @@ txbMints txb = case txb of
       pure $ MintAsset policyId assetName quantity index' redeemer
     C.ShelleyBasedEraBabbage -> do
       (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LB.btbMint shelleyTx
+      pure $ MintAsset policyId assetName quantity index' redeemer
+    C.ShelleyBasedEraConway -> do
+      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LC.ctbMint shelleyTx
       pure $ MintAsset policyId assetName quantity index' redeemer
   _byronTxBody -> [] -- ByronTxBody is not exported but as it's the only other data constructor then _ matches it.
 

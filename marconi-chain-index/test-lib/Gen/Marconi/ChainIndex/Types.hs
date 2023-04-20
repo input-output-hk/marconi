@@ -235,6 +235,12 @@ genSimpleTxOutDatumHashTxContext era = case era of
                     , C.TxOutDatumInTx C.ScriptDataInBabbageEra <$> CGen.genHashableScriptData
                     , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra <$> CGen.genHashableScriptData
                     ]
+    C.ConwayEra -> Gen.choice
+                    [ pure C.TxOutDatumNone
+                    , C.TxOutDatumHash C.ScriptDataInConwayEra <$> genHashScriptData
+                    , C.TxOutDatumInTx C.ScriptDataInConwayEra <$> CGen.genHashableScriptData
+                    , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInConwayEra <$> CGen.genHashableScriptData
+                    ]
 
 -- Copied from cardano-api. Delete when this function is reexported
 genHashScriptData :: Gen (C.Hash C.ScriptData)

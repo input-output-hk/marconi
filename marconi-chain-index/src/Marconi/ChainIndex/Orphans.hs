@@ -18,11 +18,9 @@ import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce (coerce)
 import Data.Functor ((<&>))
-import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.SOP.Strict (K (K), NP (Nil, (:*)), fn, type (:.:) (Comp))
 import Data.Text.Encoding qualified as Text
-import Data.Typeable (Typeable)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.Ok qualified as SQL
@@ -249,7 +247,7 @@ instance SQL.FromField C.PolicyId where
   fromField = fromFieldViaRawBytes C.AsPolicyId
 
 -- | Helper to deserialize via SerialiseAsRawBytes instance
-fromFieldViaRawBytes :: (C.SerialiseAsRawBytes a, Typeable a) => C.AsType a -> SQL.Field -> SQL.Ok a
+fromFieldViaRawBytes :: (C.SerialiseAsRawBytes a) => C.AsType a -> SQL.Field -> SQL.Ok a
 fromFieldViaRawBytes as f = either (const err) pure . C.deserialiseFromRawBytes as =<< SQL.fromField f
   where err = SQL.returnError SQL.ConversionFailed f "can't deserialise via SerialiseAsRawBytes"
 

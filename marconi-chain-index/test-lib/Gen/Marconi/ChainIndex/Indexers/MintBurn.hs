@@ -15,13 +15,10 @@ where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Codec.Serialise (serialise)
 import Control.Lens ((^.))
 import Control.Monad (foldM, forM, replicateM)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
-import Data.ByteString.Lazy qualified as LBS
-import Data.ByteString.Short qualified as SBS
 import Data.Coerce (coerce)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
