@@ -37,8 +37,7 @@ library
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:
-    , cardano-api        >=8.0
+  build-depends:   cardano-api >=8.0
 
   ------------------------
   -- Non-IOG dependencies
