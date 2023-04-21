@@ -78,7 +78,6 @@ library
     , cardano-binary
     , cardano-crypto-class
     , cardano-crypto-wrapper
-    , cardano-data
     , cardano-ledger-allegra
     , cardano-ledger-alonzo          ^>=1.1
     , cardano-ledger-babbage         ^>=1.1
@@ -95,10 +94,7 @@ library
     , ouroboros-consensus-byron
     , ouroboros-consensus-diffusion
     , ouroboros-consensus-protocol   ^>=0.4
-    , ouroboros-network
     , ouroboros-network-api
-    , ouroboros-network-protocols
-    , typed-protocols
 
   ------------------------
   -- Non-IOG dependencies
@@ -113,9 +109,7 @@ library
     , containers
     , directory
     , filepath
-    , formatting
     , lens
-    , memory
     , mwc-random
     , optparse-applicative
     , ouroboros-consensus-cardano
@@ -123,7 +117,6 @@ library
     , prettyprinter
     , raw-strings-qq
     , serialise
-    , small-steps
     , sqlite-simple
     , stm
     , streaming
@@ -200,10 +193,8 @@ library marconi-chain-index-test-lib
     , cardano-api:{cardano-api, gen}  >=8.0
     , cardano-binary
     , cardano-crypto-class
-    , cardano-ledger-alonzo
     , cardano-ledger-core
     , cardano-testnet                 ^>=8.0
-    , ouroboros-network
     , ouroboros-network-protocols
     , plutus-core
     , plutus-ledger-api               ^>=1.1
@@ -223,7 +214,6 @@ library marconi-chain-index-test-lib
     , hedgehog
     , hedgehog-extras
     , lens
-    , serialise
     , streaming
     , temporary
 
