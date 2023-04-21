@@ -22,13 +22,13 @@ import Cardano.Api.Shelley qualified as Shelley
 -- package dependencies in cabal file) when fromShelleyBasedScript is
 -- exported from cardano-node PR:
 -- https://github.com/input-output-hk/cardano-node/pull/4386
+import Cardano.Ledger.Allegra.Scripts qualified as Timelock
 import Cardano.Ledger.Alonzo.Language qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
 import Cardano.Ledger.Core qualified
 import Cardano.Ledger.Crypto qualified as LedgerCrypto
 import Cardano.Ledger.Keys qualified as LedgerShelley
 import Cardano.Ledger.Shelley.Scripts qualified as LedgerShelley
-import Cardano.Ledger.Allegra.Scripts qualified as Timelock
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint (getPoint),
