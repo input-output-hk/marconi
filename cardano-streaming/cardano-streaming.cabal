@@ -39,7 +39,6 @@ library
   --------------------------
   build-depends:
     , cardano-api        >=8.0
-    , ouroboros-network
 
   ------------------------
   -- Non-IOG dependencies
