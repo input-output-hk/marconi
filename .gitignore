@@ -76,10 +76,9 @@ pkgs/.stack
 **/.spago/
 **/.spago2nix/
 **/.psa-stash
-plutus-pab-executables/demo/pab-nami/client/generated
 
-# Backend config files
-plutus-pab/plutus-pab.yaml
+# Generated doc files
+doc/read-the-docs-site/_build
 
 # Misc
 .history/
@@ -104,11 +103,7 @@ node.sock
 **/node?/db
 .pre-commit-config.yaml
 secrets/*/.gpg-id
-generated-plutus-scripts/
 ghcid.txt
-plutus-pab/test-node/testnet/db
-plutus-pab/test-node/testnet/restore-wallet.json
-plutus-pab/test-node/alonzo-purple/db
 # profiling output files
 *.timelog
 *.stacks

@@ -8,6 +8,12 @@
 
   sphinxemoji = import ./sphinxemoji.nix block;
 
+  read-the-docs-site = import ./read-the-docs-site.nix block;
+
+  build-readthedocs-site = import ./build-readthedocs-site.nix block;
+
+  serve-readthedocs-site = import ./serve-readthedocs-site.nix block;
+
   cabal-install = import ./cabal-install.nix block;
 
   check-the-flake = import ./check-the-flake.nix block;
