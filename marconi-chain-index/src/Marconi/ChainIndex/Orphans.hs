@@ -65,6 +65,14 @@ instance SQL.FromField (C.Hash C.BlockHeader) where
         fromMaybe (error "Cannot deserialise C.Hash C.BlockHeader") .
           C.deserialiseFromRawBytes (C.proxyToAsType Proxy)
 
+-- * Sometime we need to get a count or test if a value exist.{-# LANGUAGE extension #-}
+
+instance ToRow Integer where
+  toRow = SQL.toRow
+
+instance FromRow Integer where
+  fromRow = SQL.field
+
 -- * C.SlotNo
 
 instance Pretty C.SlotNo where

@@ -27,7 +27,8 @@ import Control.Lens.Combinators (imap)
 import Control.Lens.Fold (folded)
 import Control.Lens.Operators ((^.), (^..))
 import Control.Lens.TH (makeLenses)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Either (fromRight)
 import Data.Foldable (foldl')
 import Data.Map (Map)
@@ -35,6 +36,8 @@ import Data.Map qualified as Map
 import Data.Ord ()
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text qualified as Text
+import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
 import Database.SQLite.Simple.ToField (ToField (toField))
@@ -115,14 +118,8 @@ instance MonadIO m => Core.ResumableResult m UtxoEvent QueryUtxoByAddress Core.L
       do
         mem :: (Core.Result QueryUtxoByAddress) <- Core.query cp q events
         disk <- onDiskResult
-        pure $ reduceUtxos (disk <> mem)
+        pure $ reduceUtxos (disk <> mem) -- merging and reduce ondisk & in-memory results
 
-  {- merging the ondisk and in-memory event. -}
-
--- TODO filter the in memmory for the address, then merge with onDisk
-
--- take a look at EvetnAtQuery line 1022, implemenation
--- used in the resume result,
 instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListIndexer  where
   query
     :: Ord (Core.Point UtxoEvent)
@@ -139,7 +136,6 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
       utxoEvents = filter (pointFilter maybeSno) (listXer ^. Core.events) ^.. folded . Core.event
       pnt :: Core.Point UtxoEvent
       pnt = listXer ^. Core.latest
-
 
       pointFilter :: Maybe C.SlotNo -> Core.TimedEvent UtxoEvent -> Bool
       pointFilter ms = maybe (const True) (\s -> isBeforeSlot s . view Core.point )  ms
@@ -355,6 +351,76 @@ instance FromRow (Core.TimedEvent Spent) where
     <$> ( C.ChainPoint <$> field <*> field)
     <*> ( Spent
         <$> (C.TxIn <$> field <*> field))
+
+-----------------------------------------------------------------------
+-- Utxo Address Query
+-----------------------------------------------------------------------
+
+-- | Queryable SQLiteIndexer instance
+--  We connect the query actions to SQLiteIndexer in this instance
+instance (MonadIO m, MonadError (Core.QueryError QueryUtxoByAddress) m)
+    => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.SQLiteIndexer where
+  query
+    :: (MonadError (Core.QueryError QueryUtxoByAddress) m, Ord (Core.Point UtxoEvent))
+    => Core.Point UtxoEvent
+    -> QueryUtxoByAddress
+    -> Core.SQLiteIndexer UtxoEvent
+    -> m (Core.Result QueryUtxoByAddress)
+  query cp q (Core.SQLiteIndexer conn _ _ _) =
+    let
+      action :: SQL.Connection -> IO (Core.Result QueryUtxoByAddress)
+      action = mkUtxoAddressQueryAction cp q
+    in
+      liftIO $ action conn
+
+-- | Here we define our QueryAction functions
+mkUtxoAddressQueryAction
+  :: MonadIO m
+  => Core.Point UtxoEvent -- ^ chain point to compute/query future spent
+  -> QueryUtxoByAddress -- ^ Query
+  -> (SQL.Connection -> m (Core.Result QueryUtxoByAddress)) -- we rerturn a query action funtion
+mkUtxoAddressQueryAction C.ChainPointAtGenesis _ = \_ -> pure []
+mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress (addr, slotNo)) =
+  let
+    _ = futureSpentSlotNo  -- TODO this is place holder to build the `Future Spent` as required by SideChain
+    filterPairs :: ([SQL.Query], [NamedParam])
+    filterPairs = (["u.address = :address"], [":address" := addr])
+      <> maybe mempty (\sno -> (["u.slotNo <= :slotNo"] , [":slotNo" := sno])) slotNo
+      -- TODO build the future spent in the above filer
+
+    mkUtxoAddressQueryAction'
+      :: MonadIO m
+      => [SQL.Query] -- ^ the filter part of the query
+      -> [NamedParam]
+      -> (SQL.Connection -> m (Core.Result QueryUtxoByAddress) )
+    mkUtxoAddressQueryAction' filters params=
+      let builtQuery =
+                [r|SELECT
+                      u.address,
+                      u.txId,
+                      u.txIx,
+                      u.datum,
+                      u.datumHash,
+                      u.value,
+                      u.inlineScript,
+                      u.inlineScriptHash,
+                      u.slotNo,
+                      u.blockHash
+                  FROM
+                      unspent_transactions u
+                  LEFT JOIN spent s ON u.txId = s.txId
+                  AND u.txIx = s.txIx
+                  WHERE
+                      s.txId IS NULL
+                      AND s.txIx IS NULL
+                  AND |] <> SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters) <>
+                [r| ORDER BY
+                    u.slotNo ASC |]
+      in
+        \conn -> liftIO $ SQL.queryNamed conn builtQuery params
+
+  in
+    uncurry mkUtxoAddressQueryAction' filterPairs
 
 -----------------------------------------------------------------------
 -- copy paste from Marconi.ChainIndex.Indexers.Utxo

@@ -7,8 +7,8 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo.UtxoIndex where
 import Control.Lens (folded, (^.), (^..))
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
-import Data.Functor ((<&>))
 import Data.Set qualified as Set
+import Database.SQLite.Simple qualified as SQL
 
 import Cardano.Api qualified as C
 import Gen.Marconi.ChainIndex.Experimental.Indexers.Utxo (genShelleyEraUtxoEventsAtChainPoint, genTx',
@@ -16,6 +16,7 @@ import Gen.Marconi.ChainIndex.Experimental.Indexers.Utxo (genShelleyEraUtxoEvent
                                                           genTxBodyContentFromTxinsWihtPhase2Validation)
 import Gen.Marconi.ChainIndex.Types (genBlockNo, genChainPoint', genChainPoints, genSlotNo)
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Marconi.Core.Experiment qualified as Core
 
@@ -80,7 +81,6 @@ propTxInWhenPhase2ValidationFails = property $ do
           Hedgehog.assert $ all (== True) [u `elem` ins | u <- computedTxins]
       -- -- we should only return txOut collateral
 
-
 -- |  The purpose of this test is to query the in memory part Utxo runIndexers
 -- A property of tht Utxo Indexer QyeryResult is that contains the original ChainPoint and QueryAddress
 -- A property of the genShelleyEraUtxoEventsAtChainPoint is that at least it contains one Utxo after
@@ -90,53 +90,80 @@ propUtxoQueryByAddressAndSlot = property $ do
   highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 7 5 20
   chainPoints :: [C.ChainPoint]  <- forAll $ genChainPoints 2 highSlotNo
   forM_ chainPoints (\cp -> do
-    eventLix <- forAll $ genShelleyEraUtxoEventsAtChainPoint cp
-    let qAddresses :: [C.AddressAny]
-        qAddresses = eventLix ^. Core.events ^.. folded . Core.event ^.. folded . Utxo.ueUtxos . folded . Utxo.utxoAddress
-        queries :: [Utxo.QueryUtxoByAddress]
-        queries = queriesBuilder cp qAddresses
-    responses :: [[Core.TimedEvent Utxo.Utxo]] <- liftIO $
-      traverse (\q -> Core.resumeResult cp  q eventLix (pure [])) queries
+
+    memoryIndexer :: Core.ListIndexer Utxo.UtxoEvent
+      <- forAll $ genShelleyEraUtxoEventsAtChainPoint cp
+    let
+      addressesToQuery :: [C.AddressAny]
+      addressesToQuery = memoryIndexer ^. Core.events ^.. folded . Core.event ^.. folded . Utxo.ueUtxos . folded . Utxo.utxoAddress
+
+      queryUtxos :: [Utxo.QueryUtxoByAddress]
+      queryUtxos = mkUtxoQuery cp addressesToQuery
+
+    queryResponse :: [[Core.TimedEvent Utxo.Utxo]] <- liftIO $
+      traverse (\q -> Core.resumeResult cp  q memoryIndexer (pure [])) queryUtxos
     let
       computedAddresses :: [C.AddressAny]
-      computedAddresses = responses ^.. folded  . folded  . Core.event . Utxo.utxoAddress
+      computedAddresses = queryResponse ^.. folded  . folded  . Core.event . Utxo.utxoAddress
+
       computedCp :: Set.Set C.ChainPoint
-      computedCp =  Set.fromList $ responses ^.. folded . folded . Core.point
+      computedCp =  Set.fromList $ queryResponse ^.. folded . folded . Core.point
+
     Hedgehog.footnote $ "cp=" <> show cp
     computedCp === Set.singleton cp
-    Hedgehog.assert $ all (== True)[addr `elem` qAddresses | addr <- computedAddresses]
+    Hedgehog.assert $ all (== True)[addr `elem` addressesToQuery | addr <- computedAddresses]
+
+
                     )
 
--- | Insert Utxo events in storage, and retrieve the events
+-- | Insert Utxo events in storage
 --   The property we're checking here is:
---    - retrieved at least one unspent utxo
---    - only retrieve unspent utxo's
---    - test `spent` filtering at the boundary of in-memory & disk storage
+--    * store events in both in-memory and in SQLite
+--    * there are events in in-memory post flushing to database
+--    * the indexer latest syncpoint is not genesis
 propSaveAndRetrieveUtxoEvents :: Property
 propSaveAndRetrieveUtxoEvents = property $ do
-  cp <- forAll $ genChainPoint' genBlockNo genSlotNo
+  cp <- forAll $ genChainPoint' genBlockNo genSlotNo -- generate some non genesis chainpoints
   lixEvents :: [Core.ListIndexer Utxo.UtxoEvent] <-
     forAll $ Gen.list (Range.constantFrom  4 7 10) $ genShelleyEraUtxoEventsAtChainPoint cp
-  let events :: [Core.TimedEvent Utxo.UtxoEvent] = concat $ lixEvents ^.. folded . Core.events
-      numEvents = length events
-      mySecurityParam = SecurityParam $ fromIntegral $ numEvents `div` 2
-  indexer <- liftIO $ Utxo.initSQLite  ":memory:" <&> flip Utxo.mkMixedIndexer mySecurityParam
-  results :: (Either Core.IndexError (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent) )
-    <- Core.indexAll' events indexer
-  result <- Hedgehog.evalEither results
+  let
+    events :: [Core.TimedEvent Utxo.UtxoEvent]
+    events = concat $ lixEvents ^.. folded . Core.events
 
-  let inMemoryEvents = result  ^. Core.inMemory . Core.events
-      cp' = result  ^. Core.inDatabase  . Core.dbLastSync
+    numEvents = length events
+
+    mySecurityParam = SecurityParam  --  we set the flush size low to force SQL writes
+        $ fromIntegral
+        $ numEvents `div` 2
+
+  conn <- liftIO $ Utxo.initSQLite  ":memory:"
+  let
+    indexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
+    indexer = Utxo.mkMixedIndexer conn mySecurityParam
+  mixindexerResult :: (Either Core.IndexError (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent) )
+    <- Core.indexAll' events indexer
+  mixindexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
+    <- Hedgehog.evalEither mixindexerResult
+  [utxosInDb] <- liftIO  (SQL.query_ conn "SELECT count(1) from unspent_transactions" :: IO [Integer])
+  let
+    inMemoryEvents = mixindexer ^. Core.inMemory . Core.events
+    inDbSyncPoint = mixindexer  ^. Core.inDatabase  . Core.dbLastSync
+    numberOfEventsInMemroy = length inMemoryEvents
+
   Hedgehog.footnote
     $ "inmemoryEvents length: " <> show (length inMemoryEvents)
     <> ", numEvents: " <> show numEvents
-    <> ", this event's chainpoint " <> show cp
-  cp === cp'
-  Hedgehog.assert $ length inMemoryEvents < numEvents
+    <> ", generated chainpoint used for the generated event:" <> show cp
+    <> ".  utxosInDB: " <> show utxosInDb
+  cp === inDbSyncPoint
+  Hedgehog.assert $ numberOfEventsInMemroy < numEvents
+  -- verify we saved some events to database. Note there is a one-to-many relationship between utxoEvent and utxo
+  -- Thus our expectation is to have more utxo events in DB than there are events
+  Hedgehog.assert $ utxosInDb >= toInteger (numEvents - numberOfEventsInMemroy)
 
 
-queriesBuilder :: C.ChainPoint -> [C.AddressAny ] ->  [Utxo.QueryUtxoByAddress]
-queriesBuilder cp =
+mkUtxoQuery :: C.ChainPoint -> [C.AddressAny ] ->  [Utxo.QueryUtxoByAddress]
+mkUtxoQuery cp =
   fmap (\a -> case cp of
            C.ChainPointAtGenesis -> Utxo.QueryUtxoByAddress (a, Nothing)
            (C.ChainPoint sno _)  -> Utxo.QueryUtxoByAddress (a, Just sno))

@@ -108,6 +108,7 @@ library
     , directory
     , filepath
     , lens
+    , mtl
     , mwc-random
     , optparse-applicative
     , ouroboros-consensus-cardano
