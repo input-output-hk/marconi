@@ -57,6 +57,20 @@ library
   import:          lang
   exposed-modules:
     Marconi.Core.Experiment
+    Marconi.Core.Experiment.Class
+    Marconi.Core.Experiment.Coordinator
+    Marconi.Core.Experiment.Indexer.LastPointIndexer
+    Marconi.Core.Experiment.Indexer.ListIndexer
+    Marconi.Core.Experiment.Indexer.MixedIndexer
+    Marconi.Core.Experiment.Indexer.SQLiteIndexer
+    Marconi.Core.Experiment.Query
+    Marconi.Core.Experiment.Transformer.IndexWrapper
+    Marconi.Core.Experiment.Transformer.WithCache
+    Marconi.Core.Experiment.Transformer.WithDelay
+    Marconi.Core.Experiment.Transformer.WithPruning
+    Marconi.Core.Experiment.Transformer.WithTracer
+    Marconi.Core.Experiment.Type
+    Marconi.Core.Experiment.Worker
     Marconi.Core.Index.VSplit
     Marconi.Core.Index.VSqlite
     Marconi.Core.Storable
