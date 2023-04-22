@@ -1,9 +1,8 @@
-{-# LANGUAGE ApplicativeDo        #-}
-{-# LANGUAGE DerivingVia          #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE StrictData           #-}
+{-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE DerivingVia   #-}
+{-# LANGUAGE LambdaCase    #-}
+{-# LANGUAGE StrictData    #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 {- |
     A transformer that delay insertion of events into an indexer.
@@ -24,11 +23,11 @@ import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
 import Data.Sequence qualified as Seq
 
-import Marconi.Core.Experiment.Class (Closeable, HasGenesis, IsIndex (index), IsSync, Queryable, Resetable (reset),
+import Marconi.Core.Experiment.Class (Closeable, IsIndex (index), IsSync, Queryable, Resetable (reset),
                                       Rollbackable (rollback))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper), indexVia, resetVia, rollbackVia,
                                                          wrappedIndexer, wrapperConfig)
-import Marconi.Core.Experiment.Type (Point, TimedEvent, point)
+import Marconi.Core.Experiment.Type (TimedEvent, point)
 
 data DelayConfig event
     = DelayConfig
@@ -110,8 +109,6 @@ resetBuffer = (delayLength .~ 0) . (delayBuffer .~ Seq.empty)
 instance
     ( Monad m
     , Rollbackable m event indexer
-    , HasGenesis (Point event)
-    , Ord (Point event)
     ) => Rollbackable m event (WithDelay indexer) where
 
     rollback p indexer = let
@@ -130,10 +127,8 @@ instance
 
 instance
     ( Applicative m
-    , HasGenesis (Point event)
     , Resetable m event indexer
-    )
-    => Resetable m event (WithDelay indexer) where
+    ) => Resetable m event (WithDelay indexer) where
     reset indexer = do
         indexer' <- resetVia delayedIndexer indexer
         pure $ resetBuffer indexer'
