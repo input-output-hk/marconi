@@ -27,9 +27,8 @@ import Marconi.Core.Experiment.Type (Point, QueryError, Result, TimedEvent)
 
 -- IsIndex
 
--- | The base class of an indexer.
--- The indexer should provide two main functionalities:
--- indexing events, and providing its last synchronisation point.
+-- | The base class of an indexer, providing its key functionality:
+-- indexing events.
 --
 --     * @indexer@ the indexer implementation type
 --     * @event@ the indexed events
@@ -41,7 +40,7 @@ class Monad m => IsIndex m event indexer where
         :: Eq (Point event)
         => TimedEvent event -> indexer event -> m (indexer event)
 
-    -- | Index a bunch of points, associated to their event, in an indexer
+    -- | Index a bunch of event, associated to their point in time, in an indexer
     indexAll
         :: (Ord (Point event), Traversable f)
         => f (TimedEvent event) -> indexer event -> m (indexer event)
