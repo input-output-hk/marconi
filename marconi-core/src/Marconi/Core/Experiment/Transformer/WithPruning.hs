@@ -15,19 +15,16 @@ module Marconi.Core.Experiment.Transformer.WithPruning
     , pruningPointVia
     , WithPruning
         , withPruning
-        , prunedIndexer
-        , securityParam
-        , pruneEvery
         , nextPruning
         , stepsBeforeNext
         , currentDepth
+    , HasPruningConfig (securityParam, pruneEvery)
     ) where
 
 import Control.Lens (Getter, Lens', makeLenses, set, view)
 import Control.Lens.Operators ((%~), (&), (+~), (-~), (.~), (^.))
 import Control.Monad (guard, unless)
 import Control.Monad.Except (MonadError (throwError))
-import Control.Monad.Trans (MonadTrans)
 import Data.Bifunctor (Bifunctor (first))
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
 import Data.Sequence qualified as Seq
@@ -35,11 +32,9 @@ import Data.Sequence qualified as Seq
 import Marconi.Core.Experiment.Class (Closeable, HasGenesis, IsIndex (index), IsSync, Queryable, Resetable (reset),
                                       Rollbackable (rollback))
 import Marconi.Core.Experiment.Indexer.MixedIndexer (MixedIndexer, inDatabase)
-import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper), indexVia, resetVia, rollbackVia,
-                                                         wrappedIndexer, wrapperConfig)
-import Marconi.Core.Experiment.Transformer.WithCache (WithCache, cachedIndexer)
-import Marconi.Core.Experiment.Transformer.WithDelay (WithDelay, delayedIndexer)
-import Marconi.Core.Experiment.Transformer.WithTracer (WithTracer, tracedIndexer)
+import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper),
+                                                         IndexerTrans (Config, unwrap, wrap), indexVia, resetVia,
+                                                         rollbackVia, wrappedIndexer, wrapperConfig)
 import Marconi.Core.Experiment.Type (IndexerError (RollbackBehindHistory), Point, point)
 
 -- | The indexer can prune old data.
@@ -74,32 +69,13 @@ pruningPointVia
 pruningPointVia l = pruningPoint . view l
 
 
-instance (Functor m, Prunable m event indexer)
-    => Prunable m event (WithTracer m indexer) where
+instance {-# OVERLAPPABLE #-}
+    (IndexerTrans t, Functor m, Prunable m event indexer)
+    => Prunable m event (t indexer) where
 
-    prune = pruneVia tracedIndexer
+    prune = pruneVia unwrap
 
-    pruningPoint = pruningPointVia tracedIndexer
-
-instance
-    ( MonadTrans t
-    , Monad m
-    , Monad (t m)
-    , Prunable (t m) event indexer
-    ) => Prunable (t m) event (WithTracer m indexer) where
-
-    prune = pruneVia tracedIndexer
-
-    pruningPoint = pruningPointVia tracedIndexer
-
-
-instance (Functor m, Prunable m event indexer)
-    => Prunable m event (WithDelay indexer) where
-
-    prune = pruneVia delayedIndexer
-
-    pruningPoint = pruningPointVia delayedIndexer
-
+    pruningPoint = pruningPointVia unwrap
 
 data PruningConfig event
     = PruningConfig
@@ -150,15 +126,6 @@ deriving via (IndexWrapper PruningConfig indexer)
 deriving via (IndexWrapper PruningConfig indexer)
     instance Closeable m indexer => Closeable m (WithPruning indexer)
 
-prunedIndexer :: Lens' (WithPruning indexer event) (indexer event)
-prunedIndexer = pruningWrapper . wrappedIndexer
-
-securityParam :: Lens' (WithPruning indexer event) Word
-securityParam = pruningWrapper . wrapperConfig . configSecurityParam
-
-pruneEvery :: Lens' (WithPruning indexer event) Word
-pruneEvery = pruningWrapper . wrapperConfig . configPruneEvery
-
 nextPruning :: Lens' (WithPruning indexer event) (Seq (Point event))
 nextPruning = pruningWrapper . wrapperConfig . configNextPruning
 
@@ -167,6 +134,31 @@ stepsBeforeNext = pruningWrapper . wrapperConfig . configStepsBeforeNext
 
 currentDepth :: Lens' (WithPruning indexer event) Word
 currentDepth = pruningWrapper . wrapperConfig . configCurrentDepth
+
+class HasPruningConfig indexer where
+
+    securityParam :: Lens' (indexer event) Word
+    pruneEvery :: Lens' (indexer event) Word
+
+instance {-# OVERLAPPING #-} HasPruningConfig (WithPruning indexer) where
+
+    securityParam = pruningWrapper . wrapperConfig . configSecurityParam
+    pruneEvery = pruningWrapper . wrapperConfig . configPruneEvery
+
+instance {-# OVERLAPPABLE #-}
+    (IndexerTrans t, HasPruningConfig indexer)
+    => HasPruningConfig (t indexer) where
+
+    securityParam = unwrap . securityParam
+    pruneEvery = unwrap . pruneEvery
+
+instance IndexerTrans WithPruning where
+
+    type instance Config WithPruning = PruningConfig
+
+    wrap cfg = WithPruning . IndexWrapper cfg
+
+    unwrap = pruningWrapper . wrappedIndexer
 
 pruneAt
     :: WithPruning indexer event
@@ -219,11 +211,11 @@ instance
     => IsIndex m event (WithPruning indexer) where
 
     index timedEvent indexer = do
-        indexer' <- indexVia prunedIndexer timedEvent indexer
+        indexer' <- indexVia unwrap timedEvent indexer
         let (mp, indexer'') = tick (timedEvent ^. point) indexer'
         maybe
           (pure indexer'')
-          (\p -> pruneVia prunedIndexer p indexer)
+          (\p -> pruneVia unwrap p indexer)
           mp
 
 
@@ -261,7 +253,7 @@ instance
 
         isRollbackAfterPruning :: m Bool
         isRollbackAfterPruning = do
-            p' <- pruningPoint $ indexer ^. prunedIndexer
+            p' <- pruningPoint $ indexer ^. unwrap
             pure $ maybe True (p >=) p'
 
         in do
@@ -271,7 +263,7 @@ instance
             countFromPruningPoints
                 . removePruningPointsAfterRollback p
                 . resetStep
-                <$> rollbackVia prunedIndexer p indexer
+                <$> rollbackVia unwrap p indexer
 
 instance
     ( Monad m
@@ -282,18 +274,11 @@ instance
     ) => Resetable m event (WithPruning indexer) where
 
     reset indexer = do
-       indexer' <- resetVia prunedIndexer indexer
+       indexer' <- resetVia unwrap indexer
        pure $ indexer'
            & nextPruning .~ mempty
            & currentDepth .~ 0
 
-
-instance (Functor m, Prunable m event indexer)
-    => Prunable m event (WithCache query indexer) where
-
-    prune = pruneVia cachedIndexer
-
-    pruningPoint = pruningPointVia cachedIndexer
 
 instance (Functor m, Prunable m event store)
     => Prunable m event (MixedIndexer store mem) where

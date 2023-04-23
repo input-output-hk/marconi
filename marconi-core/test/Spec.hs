@@ -45,6 +45,9 @@ experimentTests = testGroup "Experiment"
         [ E.resumeSQLiteLastSyncTest E.sqliteIndexerRunner
         , E.resumeMixedLastSyncTest E.mixedNoMemoryIndexerRunner
         ]
+    , testGroup "Configuration"
+        [ E.memorySizeUpdateTest
+        ]
     ]
 
 traceModelProperties :: TestTree

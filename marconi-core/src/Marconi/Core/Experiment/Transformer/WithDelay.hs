@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase    #-}
 {-# LANGUAGE StrictData    #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
+{-# LANGUAGE RankNTypes    #-}
 
 {- |
     A transformer that delay insertion of events into an indexer.
@@ -12,10 +13,8 @@
 module Marconi.Core.Experiment.Transformer.WithDelay
     ( WithDelay
         , withDelay
-        , delayedIndexer
-        , delayCapacity
-        , delayLength
         , delayBuffer
+    , HasDelayConfig (delayCapacity)
     ) where
 
 import Control.Lens (Lens', makeLenses, view)
@@ -25,8 +24,9 @@ import Data.Sequence qualified as Seq
 
 import Marconi.Core.Experiment.Class (Closeable, IsIndex (index), IsSync, Queryable, Resetable (reset),
                                       Rollbackable (rollback))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper), indexVia, resetVia, rollbackVia,
-                                                         wrappedIndexer, wrapperConfig)
+import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper),
+                                                         IndexerTrans (Config, unwrap, wrap), indexVia, resetVia,
+                                                         rollbackVia, wrappedIndexer, wrapperConfig)
 import Marconi.Core.Experiment.Type (TimedEvent, point)
 
 data DelayConfig event
@@ -67,17 +67,38 @@ deriving via (IndexWrapper DelayConfig indexer)
 deriving via (IndexWrapper DelayConfig indexer)
     instance Queryable m event query indexer => Queryable m event query (WithDelay indexer)
 
+instance IndexerTrans WithDelay where
+
+    type instance Config WithDelay = DelayConfig
+
+    wrap cfg = WithDelay . IndexWrapper cfg
+
+    unwrap = delayedIndexer
+
 delayedIndexer :: Lens' (WithDelay indexer event) (indexer event)
 delayedIndexer = delayWrapper . wrappedIndexer
 
-delayCapacity :: Lens' (WithDelay indexer event) Word
-delayCapacity = delayWrapper . wrapperConfig . configDelayCapacity
+class HasDelayConfig indexer where
 
-delayLength :: Lens' (WithDelay indexer event) Word
-delayLength = delayWrapper . wrapperConfig . configDelayLength
+    delayCapacity :: Lens' (indexer event) Word
+
+instance {-# OVERLAPPING #-}
+    HasDelayConfig (WithDelay indexer) where
+
+    delayCapacity
+        = delayWrapper . wrapperConfig . configDelayCapacity
+
+instance {-# OVERLAPPABLE #-}
+    (IndexerTrans t, HasDelayConfig indexer)
+    => HasDelayConfig (t indexer) where
+
+    delayCapacity = unwrap . delayCapacity
 
 delayBuffer :: Lens' (WithDelay indexer event) (Seq (TimedEvent event))
 delayBuffer = delayWrapper . wrapperConfig . configDelayBuffer
+
+delayLength :: Lens' (WithDelay indexer event) Word
+delayLength = delayWrapper . wrapperConfig . configDelayLength
 
 
 instance
