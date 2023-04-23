@@ -18,7 +18,7 @@ module Marconi.Core.Experiment.Type
     ) where
 
 import Control.Exception (Exception)
-import Control.Lens (makeLenses)
+import Control.Lens (Lens')
 import Data.Text (Text)
 
 -- | A point in time, the concrete type of a point is now derived from an indexer event,
@@ -26,7 +26,8 @@ import Data.Text (Text)
 -- The reason is that you may not want to always carry around a point when you manipulate an event.
 type family Point event
 
--- | A result is a data family from the corresponding query descriptor.
+-- | A 'Result' is a data family for query descriptor.
+--
 -- A query is tied to an indexer by a typeclass, this design choice has two main reasons:
 --     * we want to be able to define different query for the same indexer
 --       (eg. we may want to define two distinct query types for an utxo indexer:
@@ -44,7 +45,13 @@ data TimedEvent event =
 
 deriving stock instance (Show event, Show (Point event)) => Show (TimedEvent event)
 
-makeLenses 'TimedEvent
+-- | When was this event created
+point :: Lens' (TimedEvent event) (Point event)
+point f te = fmap (\_point -> te {_point}) $ f $ _point te
+
+-- | A lens to get the event without its time information
+event :: Lens' (TimedEvent event) event
+event f te = fmap (\_event -> te {_event}) $ f $ _event te
 
 -- | Error that can occur when you index events
 data IndexerError

@@ -190,9 +190,9 @@ module Marconi.Core.Experiment
     -- | Marconi's indexers relies on three main concepts:
     --
     --     1. @event@ the information we index;
-    --     2. @indexer@ that stores relevant (for them) pieces of information
+    --     2. @indexer@ that stores relevant (for it) pieces of information
     --     from the @event@s;
-    --     3. @query@ that define what can be asked to an @indexer@.
+    --     3. @query@ that defines what can be asked to an @indexer@.
     --
       Point
     , Result
@@ -215,7 +215,6 @@ module Marconi.Core.Experiment
     , queryLatest
     , queryLatest'
     , ResumableResult (..)
-    , Prunable (..)
     -- ** Errors
     , IndexerError (..)
     , QueryError (..)
@@ -392,12 +391,13 @@ module Marconi.Core.Experiment
         , delayBuffer
     -- | A type class that give access to the configuration of 'WithDelay'
     , HasDelayConfig (delayCapacity)
-    -- ** Control Pruning
+    -- ** Pruning
     , WithPruning
         , withPruning
         , nextPruning
         , stepsBeforeNext
         , currentDepth
+    , Prunable (..)
     , HasPruningConfig (securityParam, pruneEvery)
     -- ** Caching
     , WithCache
@@ -471,8 +471,9 @@ import Marconi.Core.Experiment.Worker (ProcessedInput (..), Worker, WorkerIndexe
 import Control.Monad.Except (MonadError (catchError, throwError))
 
 
--- | Try to rollback to a given point to resume the indexer
--- if we can't resume from here,
+-- | Try to rollback to a given point to resume the indexer.
+--
+-- If we can't resume from here,
 -- either we allow reset and we restart the indexer from genesis,
 -- or we don't and we throw an error.
 resumeFrom
@@ -483,10 +484,13 @@ resumeFrom
     => HasGenesis (Point event)
     => Ord (Point event)
     => Point event
+    -- ^ expected resume point
     -> Bool
     -- ^ do we allow reset?
     -> indexer event
+    -- ^ the indexer to resume
     -> m (Point event, indexer event)
+    -- ^ the indexer back to the provided given point
 resumeFrom p allowReset indexer = let
 
     handleError = \case
