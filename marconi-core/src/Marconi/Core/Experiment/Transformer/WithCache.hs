@@ -12,7 +12,7 @@ module Marconi.Core.Experiment.Transformer.WithCache
     ( WithCache
         , withCache
         , addCacheFor
-        , cachedIndexer
+    , HasCacheConfig (cache)
     ) where
 
 import Control.Lens (At (at), Getter, Indexable (indexed), IndexedTraversal', Lens', itraverseOf, lens, makeLenses, to)
@@ -23,10 +23,11 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 
 import Marconi.Core.Experiment.Class (Closeable, HasGenesis (genesis), IsIndex (index, indexAll), IsSync,
-                                      Queryable (query), Resetable (reset), Rollbackable (rollback))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper), indexAllVia, indexVia,
-                                                         lastSyncPointVia, queryLatestVia, queryVia, resetVia,
-                                                         rollbackVia, wrappedIndexer, wrapperConfig)
+                                      Queryable (query), Resetable (reset), Rollbackable (rollback), queryLatest)
+import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper),
+                                                         IndexerTrans (Config, unwrap, wrap), indexAllVia, indexVia,
+                                                         lastSyncPointVia, queryVia, resetVia, rollbackVia,
+                                                         wrappedIndexer, wrapperConfig)
 import Marconi.Core.Experiment.Type (IndexerError (OtherIndexError), Point, QueryError (AheadOfLastSync), Result,
                                      TimedEvent)
 
@@ -86,9 +87,21 @@ withCache _configOnForward
 cacheEntries :: IndexedTraversal' query (WithCache query indexer event) (Result query)
 cacheEntries = cacheWrapper . wrapperConfig . configCacheEntries
 
--- | Access to the cache
-cache :: Lens' (WithCache query indexer event) (Map query (Result query))
-cache = cacheWrapper . wrapperConfig . configCache
+class HasCacheConfig query indexer where
+
+    -- | Access to the cache
+    cache :: Lens' (indexer event) (Map query (Result query))
+
+instance {-# OVERLAPPING #-}
+    HasCacheConfig query (WithCache query indexer) where
+
+    cache = cacheWrapper . wrapperConfig . configCache
+
+instance {-# OVERLAPPABLE #-}
+    (IndexerTrans t, HasCacheConfig query indexer)
+    => HasCacheConfig query (t indexer) where
+
+    cache = unwrap . cache
 
 -- | How do we add event to existing cache
 onForward
@@ -97,31 +110,37 @@ onForward
         (TimedEvent event -> Result query -> Result query)
 onForward = cacheWrapper . wrapperConfig . configOnForward
 
--- | Access to the indexer that is cached.
-cachedIndexer :: Lens' (WithCache query indexer event) (indexer event)
-cachedIndexer = cacheWrapper . wrappedIndexer
 
 -- | Add a cache for a specific query.
 --
--- When added, the cache query the underlying indexer to populate the cache for this query.
+-- When added, the 'WithCache' queries the underlying indexer to populate the cache for this query.
 --
--- If you want to add several indexers at the same time, use traverse.
+-- If you want to add several indexers at the same time, use @traverse@.
 addCacheFor
     :: Queryable (ExceptT (QueryError query) m) event query indexer
     => IsSync (ExceptT (QueryError query) m) event indexer
+    => HasCacheConfig query indexer
     => Monad m
     => MonadError IndexerError m
     => Ord query
     => Ord (Point event)
     => query
-    -> WithCache query indexer event
-    -> m (WithCache query indexer event)
+    -> indexer event
+    -> m (indexer event)
 addCacheFor q indexer
     = do
-        initialResult <- runExceptT $ queryLatestVia cachedIndexer q indexer
+        initialResult <- runExceptT $ queryLatest q indexer
         case initialResult of
             Left _err    -> throwError $ OtherIndexError "Can't create cache"
             Right result -> pure $ indexer & cache %~ Map.insert q result
+
+instance IndexerTrans (WithCache query) where
+
+    type instance Config (WithCache query) = CacheConfig query
+
+    wrap cfg = WithCache . IndexWrapper cfg
+
+    unwrap = cacheWrapper . wrappedIndexer
 
 -- | This instances update all the cached queries with the incoming event
 -- and then pass this event to the underlying indexer.
@@ -130,11 +149,11 @@ instance
     => IsIndex m event (WithCache query index) where
 
     index timedEvent indexer = do
-        indexer' <- indexVia cachedIndexer timedEvent indexer
+        indexer' <- indexVia unwrap timedEvent indexer
         pure $ indexer' & cacheEntries %~ (indexer' ^. onForward) timedEvent
 
     indexAll evts indexer = do
-        indexer' <- indexAllVia cachedIndexer evts indexer
+        indexer' <- indexAllVia unwrap evts indexer
         pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
 
 rollbackCache
@@ -147,7 +166,7 @@ rollbackCache
 rollbackCache p indexer
     = itraverseOf
         cacheEntries
-        (\q -> const $ queryVia cachedIndexer p q indexer)
+        (\q -> const $ queryVia unwrap p q indexer)
         indexer
 
 -- | Rollback the underlying indexer, clear the cache,
@@ -160,7 +179,7 @@ instance
     ) => Rollbackable m event (WithCache query index) where
 
     rollback p indexer = do
-        res <- rollbackVia cachedIndexer p indexer
+        res <- rollbackVia unwrap p indexer
         rollbackCache p res
 
 -- | Rollback the underlying indexer, clear the cache,
@@ -174,7 +193,7 @@ instance
     ) => Resetable m event (WithCache query index) where
 
     reset indexer = do
-        res <- resetVia cachedIndexer indexer
+        res <- resetVia unwrap indexer
         rollbackCache genesis res
 
 instance
@@ -193,9 +212,9 @@ instance
     -- If the cache is behind the requested point, send an 'AheadOfLastSync' error
     -- with the cached content.
     query p q indexer = do
-        syncPoint' <- lastSyncPointVia cachedIndexer indexer
+        syncPoint' <- lastSyncPointVia unwrap indexer
         let cached = indexer ^. cache . at q
-        let queryWithoutCache = queryVia cachedIndexer p q indexer
+        let queryWithoutCache = queryVia unwrap p q indexer
         case compare p syncPoint' of
             LT -> queryWithoutCache
             EQ -> maybe queryWithoutCache pure cached

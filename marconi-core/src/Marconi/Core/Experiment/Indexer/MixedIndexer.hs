@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE StrictData           #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -14,6 +15,9 @@ module Marconi.Core.Experiment.Indexer.MixedIndexer
         , standardMixedIndexer
         , inMemory
         , inDatabase
+    , HasMixedConfig (..)
+    , flushSizeVia
+    , keepInMemoryVia
     ) where
 
 import Control.Lens (Lens', makeLenses, to, view)
@@ -22,8 +26,8 @@ import Data.Functor.Compose (Compose (Compose, getCompose))
 import Marconi.Core.Experiment.Class (Closeable (close), HasGenesis, IsIndex (index, indexAll), IsSync (lastSyncPoint),
                                       Queryable (query), ResumableResult (resumeResult), Rollbackable (rollback))
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
-import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper), indexVia, wrappedIndexer,
-                                                         wrapperConfig)
+import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper), IndexerTrans (unwrap), indexVia,
+                                                         wrappedIndexer, wrapperConfig)
 import Marconi.Core.Experiment.Type (Point, TimedEvent)
 
 -- | Define a way to flush old events out of a container
@@ -105,11 +109,40 @@ standardMixedIndexer flushNb keepNb db = do
 
 makeLenses ''MixedIndexer
 
-flushSize :: Lens' (MixedIndexer store mem event) Word
-flushSize = mixedWrapper . wrapperConfig . configFlushSize
+class HasMixedConfig indexer where
 
-keepInMemory :: Lens' (MixedIndexer store mem event) Word
-keepInMemory = mixedWrapper . wrapperConfig . configKeepInMemory
+    flushSize :: Lens' (indexer event) Word
+    keepInMemory :: Lens' (indexer event) Word
+
+flushSizeVia :: HasMixedConfig indexer => Lens' s (indexer event) -> Lens' s Word
+flushSizeVia l = l . flushSize
+
+keepInMemoryVia :: HasMixedConfig indexer => Lens' s (indexer event) -> Lens' s Word
+keepInMemoryVia l = l . keepInMemory
+
+flushSize' :: Lens' (MixedIndexer store mem event) Word
+flushSize' = mixedWrapper . wrapperConfig . configFlushSize
+
+keepInMemory' :: Lens' (MixedIndexer store mem event) Word
+keepInMemory' = mixedWrapper . wrapperConfig . configKeepInMemory
+
+-- Overlapping because we prefer this instance to any other instance
+-- as it access the immediate config
+instance
+    {-# OVERLAPPING #-}
+    HasMixedConfig (MixedIndexer store mem) where
+
+    flushSize = flushSize'
+    keepInMemory = keepInMemory'
+
+-- Overlappable so that we always configure
+-- the outmost instance in case of an overlap
+instance {-# OVERLAPPABLE #-}
+    (IndexerTrans t, HasMixedConfig indexer)
+    => HasMixedConfig (t indexer) where
+
+    flushSize = flushSizeVia unwrap
+    keepInMemory = keepInMemoryVia unwrap
 
 inMemory :: Lens' (MixedIndexer store mem event) (mem event)
 inMemory = mixedWrapper . wrappedIndexer

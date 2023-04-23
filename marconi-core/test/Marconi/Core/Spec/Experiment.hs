@@ -39,6 +39,7 @@ module Marconi.Core.Spec.Experiment
     , stopCoordinatorTest
     , resumeSQLiteLastSyncTest
     , resumeMixedLastSyncTest
+    , memorySizeUpdateTest
     -- * Mock chain
     , DefaultChain
         , defaultChain
@@ -83,7 +84,8 @@ module Marconi.Core.Spec.Experiment
 
 import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
-import Control.Lens (Getter, Lens', filtered, folded, lens, makeLenses, to, use, view, views, (%~), (.=), (^.), (^..))
+import Control.Lens (Getter, Lens', filtered, folded, lens, makeLenses, to, use, view, views, (%~), (-~), (.=), (^.),
+                     (^..))
 
 import Control.Monad (foldM, replicateM, void)
 import Control.Monad.Except (MonadError, runExceptT)
@@ -951,3 +953,34 @@ resumeMixedLastSyncTest runner =
     Tasty.testProperty "MixedIndexer - stop and restart restore lastSyncPoint"
         $ Test.withMaxSuccess 5000
         $ resumeLastSyncProperty (view $ Core.inDatabase . Core.handle) mixedModelNoMemoryIndexer (view defaultChain <$> Test.arbitrary) runner
+
+memorySizeUpdateProperty
+    :: Gen [Item TestEvent]
+    -> Property
+memorySizeUpdateProperty gen = let
+
+    r = mixedLowMemoryIndexerRunner ^. indexerRunner
+
+    indexerEvents indexer
+        = fmap (view Core.event)
+        . fromRight []
+        <$> Core.queryLatest' Core.allEvents indexer
+
+    in Test.forAll gen $ \chain ->
+        Test.forAll (Test.choose (0, length chain)) $ \changeAt -> r $ do
+            let (start, end) = splitAt changeAt chain
+            stillIndexer <- GenM.run $ mixedLowMemoryIndexerRunner ^. indexerGenerator
+            flexibleIndexer <- GenM.run $ mixedLowMemoryIndexerRunner ^. indexerGenerator
+            stillIndexer' <- GenM.run $ foldM (flip process) stillIndexer chain
+            flexibleIndexer' <- GenM.run $ foldM (flip process) flexibleIndexer start
+            let flexibleIndexer'' = flexibleIndexer' & Core.keepInMemory -~ 2
+            flexibleIndexer''' <- GenM.run $ foldM (flip process) flexibleIndexer'' end
+            refEvents :: [TestEvent] <- GenM.run $ indexerEvents stillIndexer'
+            collectedEvents <- GenM.run $ indexerEvents flexibleIndexer'''
+            GenM.stop $ refEvents === collectedEvents
+
+memorySizeUpdateTest :: Tasty.TestTree
+memorySizeUpdateTest =
+    Tasty.testProperty "MixedIndexer can change its size while running"
+        $ Test.withMaxSuccess 10000
+        $ memorySizeUpdateProperty (view defaultChain <$> Test.arbitrary)

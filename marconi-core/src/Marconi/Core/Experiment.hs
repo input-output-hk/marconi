@@ -334,6 +334,8 @@ module Marconi.Core.Experiment
         , standardMixedIndexer
         , inMemory
         , inDatabase
+    -- | A type class that give access to the configuration of a 'MixedIndexer'
+    , HasMixedConfig (flushSize, keepInMemory)
     -- ** LastPointIndexer
     , LastPointIndexer
         , lastPointIndexer
@@ -379,32 +381,29 @@ module Marconi.Core.Experiment
     , allEvents
 
     -- * Indexer Transformers
+    , IndexerTrans (..)
     -- ** Tracer
     , WithTracer
         , withTracer
-        , tracedIndexer
-        , tracer
+    , HasTracerConfig (tracer)
     -- ** Delay
     , WithDelay
         , withDelay
-        , delayedIndexer
-        , delayCapacity
-        , delayLength
         , delayBuffer
+    -- | A type class that give access to the configuration of 'WithDelay'
+    , HasDelayConfig (delayCapacity)
     -- ** Control Pruning
     , WithPruning
         , withPruning
-        , prunedIndexer
-        , securityParam
-        , pruneEvery
         , nextPruning
         , stepsBeforeNext
         , currentDepth
+    , HasPruningConfig (securityParam, pruneEvery)
     -- ** Caching
     , WithCache
         , withCache
         , addCacheFor
-        , cachedIndexer
+    , HasCacheConfig (cache)
     -- ** Index Wrapper
     --
     -- | Wrap an indexer with some extra information to modify its behaviour
@@ -448,23 +447,23 @@ import Marconi.Core.Experiment.Coordinator (Coordinator, channel, lastSync, nbWo
                                             workers)
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
-import Marconi.Core.Experiment.Indexer.MixedIndexer (Flushable (..), MixedIndexer, inDatabase, inMemory,
-                                                     newMixedIndexer, standardMixedIndexer)
+import Marconi.Core.Experiment.Indexer.MixedIndexer (Flushable (..), HasMixedConfig (flushSize, keepInMemory),
+                                                     MixedIndexer, inDatabase, inMemory, newMixedIndexer,
+                                                     standardMixedIndexer)
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (IndexQuery (..), InsertRecord, SQLiteIndexer (..), buildInsert,
                                                       dbLastSync, handle, prepareInsert, querySQLiteIndexerWith,
                                                       querySyncedOnlySQLiteIndexerWith, rollbackSQLiteIndexerWith,
                                                       singleInsertSQLiteIndexer, sqliteIndexer)
 import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
-import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (..), closeVia, indexAllVia, indexVia,
-                                                         lastSyncPointVia, queryLatestVia, queryVia, resetVia,
+import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (..), IndexerTrans (..), closeVia, indexAllVia,
+                                                         indexVia, lastSyncPointVia, queryLatestVia, queryVia, resetVia,
                                                          rollbackVia, wrappedIndexer, wrapperConfig)
-import Marconi.Core.Experiment.Transformer.WithCache (WithCache, addCacheFor, cachedIndexer, withCache)
-import Marconi.Core.Experiment.Transformer.WithDelay (WithDelay, delayBuffer, delayCapacity, delayLength,
-                                                      delayedIndexer, withDelay)
-import Marconi.Core.Experiment.Transformer.WithPruning (Prunable (..), WithPruning, currentDepth, nextPruning,
-                                                        pruneEvery, pruneVia, prunedIndexer, pruningPointVia,
-                                                        securityParam, stepsBeforeNext, withPruning)
-import Marconi.Core.Experiment.Transformer.WithTracer (WithTracer, tracedIndexer, tracer, withTracer)
+import Marconi.Core.Experiment.Transformer.WithCache (HasCacheConfig (cache), WithCache, addCacheFor, withCache)
+import Marconi.Core.Experiment.Transformer.WithDelay (HasDelayConfig (delayCapacity), WithDelay, delayBuffer, withDelay)
+import Marconi.Core.Experiment.Transformer.WithPruning (HasPruningConfig (pruneEvery, securityParam), Prunable (..),
+                                                        WithPruning, currentDepth, nextPruning, pruneEvery, pruneVia,
+                                                        pruningPointVia, securityParam, stepsBeforeNext, withPruning)
+import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
 import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, point)
 import Marconi.Core.Experiment.Worker (ProcessedInput (..), Worker, WorkerIndexer, WorkerM (..), createWorker,
                                        createWorker', createWorkerPure, startWorker)

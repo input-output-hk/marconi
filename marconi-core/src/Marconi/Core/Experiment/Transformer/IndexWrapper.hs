@@ -10,6 +10,7 @@ module Marconi.Core.Experiment.Transformer.IndexWrapper
     ( IndexWrapper (IndexWrapper)
          , wrapperConfig
          , wrappedIndexer
+    , IndexerTrans (..)
     , rollbackVia
     , resetVia
     , indexVia
@@ -33,6 +34,26 @@ data IndexWrapper config indexer event
         }
 
 makeLenses 'IndexWrapper
+
+-- | An indexer transformer: it adds a configurable capability to a tranformer
+class IndexerTrans t where
+
+    -- | The type of the configuration of a transformer
+    type Config t :: * -> *
+
+    -- | Wrap an existing indexer in its transformer
+    wrap :: Config t event -> indexer event -> t indexer event
+
+    -- | Unwray the underlying indexer
+    unwrap :: Lens' (t indexer event) (indexer event)
+
+instance IndexerTrans (IndexWrapper config) where
+
+    type instance Config (IndexWrapper config) = config
+
+    wrap = IndexWrapper
+
+    unwrap = wrappedIndexer
 
 
 -- | Helper to implement the @index@ functon of 'IsIndex' when we use a wrapper.
