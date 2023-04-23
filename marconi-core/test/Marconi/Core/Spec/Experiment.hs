@@ -68,6 +68,7 @@ module Marconi.Core.Spec.Experiment
         , indexerGenerator
     -- ** Testing
     , compareToModelWith
+    , compareIndexers
     , behaveLikeModel
     -- * Instances
     , listIndexerRunner
@@ -692,12 +693,12 @@ withCacheRunner q onForward wRunner
         (wRunner ^. indexerRunner)
         (buildCacheFor q onForward =<< (wRunner ^. indexerGenerator))
 
-pairCacheRunner
+oddCacheRunner
     :: IndexerTestRunner
         (ExceptT Core.IndexerError IO)
         TestEvent
         (Core.WithCache ParityQuery Core.ListIndexer)
-pairCacheRunner = let
+oddCacheRunner = let
     aggregate timedEvent xs
          = let e = timedEvent ^. Core.event
          in if odd e then e:xs else xs
@@ -719,10 +720,10 @@ cacheTestGroup = Tasty.testGroup "Cache"
     [ Tasty.testGroup "With ListIndexer"
         [ Tasty.testProperty "Hit cache"
             $ Test.withMaxSuccess 10000
-            $ cacheHitProperty (view defaultChain <$> Test.arbitrary) pairCacheRunner
+            $ cacheHitProperty (view defaultChain <$> Test.arbitrary) oddCacheRunner
         , Tasty.testProperty "Miss cache"
             $ Test.withMaxSuccess 10000
-            $ cacheMissProperty (view defaultChain <$> Test.arbitrary) pairCacheRunner
+            $ cacheMissProperty (view defaultChain <$> Test.arbitrary) oddCacheRunner
         ]
     , Tasty.testGroup "With SQLiteIndexer"
         [ Tasty.testProperty "Hit cache"
@@ -732,6 +733,7 @@ cacheTestGroup = Tasty.testGroup "Cache"
             $ Test.withMaxSuccess 10000
             $ cacheMissProperty (view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
         ]
+    , cacheUpdateTest
     ]
 
 -- We ask odd elements, which are cached
@@ -745,9 +747,9 @@ cacheHitProperty
 cacheHitProperty gen indexer
     = let
 
-        indexerEvents indexer'
-            = fromRight []
-            <$> Core.queryLatest' OddTestEvent indexer'
+    indexerEvents indexer'
+        = fromRight []
+        <$> Core.queryLatest' OddTestEvent indexer'
 
     in behaveLikeModel
         gen
@@ -954,33 +956,114 @@ resumeMixedLastSyncTest runner =
         $ Test.withMaxSuccess 5000
         $ resumeLastSyncProperty (view $ Core.inDatabase . Core.handle) mixedModelNoMemoryIndexer (view defaultChain <$> Test.arbitrary) runner
 
+compareIndexers
+    :: Monad m
+    => Show src
+    => (src -> refIndexer event -> PropertyM m (refIndexer event))
+    -> (src -> testIndexer event -> PropertyM m (testIndexer event))
+    -> (refIndexer event -> testIndexer event -> PropertyM m Property)
+    -> Gen src
+    -> IndexerTestRunner m event refIndexer
+    -> IndexerTestRunner m event testIndexer
+    -> Property
+compareIndexers processRef processTested test gen refRunner testRunner = let
+
+    r = refRunner ^. indexerRunner
+
+    in Test.forAll gen $ \chain -> r $ do
+        refIndexer <- GenM.run $ refRunner ^. indexerGenerator
+        refResultIndexer <- processRef chain refIndexer
+        testedIndexer <- GenM.run $ testRunner ^. indexerGenerator
+        testedResultIndexer <- processTested chain testedIndexer
+        test refResultIndexer testedResultIndexer
+
 memorySizeUpdateProperty
     :: Gen [Item TestEvent]
     -> Property
 memorySizeUpdateProperty gen = let
 
-    r = mixedLowMemoryIndexerRunner ^. indexerRunner
+    genSplit = do
+      chain <- gen
+      changeAt <- Test.choose (0, length chain)
+      pure (chain, changeAt)
 
     indexerEvents indexer
         = fmap (view Core.event)
         . fromRight []
         <$> Core.queryLatest' Core.allEvents indexer
 
-    in Test.forAll gen $ \chain ->
-        Test.forAll (Test.choose (0, length chain)) $ \changeAt -> r $ do
+    refProcess (chain, _) indexer = GenM.run $ foldM (flip process) indexer chain
+
+    testedProcess (chain, changeAt) indexer
+        = do
             let (start, end) = splitAt changeAt chain
-            stillIndexer <- GenM.run $ mixedLowMemoryIndexerRunner ^. indexerGenerator
-            flexibleIndexer <- GenM.run $ mixedLowMemoryIndexerRunner ^. indexerGenerator
-            stillIndexer' <- GenM.run $ foldM (flip process) stillIndexer chain
-            flexibleIndexer' <- GenM.run $ foldM (flip process) flexibleIndexer start
+            flexibleIndexer' <- GenM.run $ foldM (flip process) indexer start
             let flexibleIndexer'' = flexibleIndexer' & Core.keepInMemory -~ 2
-            flexibleIndexer''' <- GenM.run $ foldM (flip process) flexibleIndexer'' end
-            refEvents :: [TestEvent] <- GenM.run $ indexerEvents stillIndexer'
-            collectedEvents <- GenM.run $ indexerEvents flexibleIndexer'''
-            GenM.stop $ refEvents === collectedEvents
+            GenM.run $ foldM (flip process) flexibleIndexer'' end
+
+    compareIndexed refIndexer testedIndexer = do
+        refEvents :: [TestEvent] <- GenM.run $ indexerEvents refIndexer
+        collectedEvents <- GenM.run $ indexerEvents testedIndexer
+        GenM.stop $ refEvents === collectedEvents
+
+    in compareIndexers
+        refProcess testedProcess compareIndexed
+        genSplit
+        mixedLowMemoryIndexerRunner mixedLowMemoryIndexerRunner
 
 memorySizeUpdateTest :: Tasty.TestTree
 memorySizeUpdateTest =
     Tasty.testProperty "MixedIndexer can change its size while running"
         $ Test.withMaxSuccess 10000
         $ memorySizeUpdateProperty (view defaultChain <$> Test.arbitrary)
+
+instance Applicative m
+    => Core.ResumableResult m TestEvent ParityQuery Core.ListIndexer where
+
+    resumeResult p q indexer res = (++) <$> res <*> Core.query p q indexer
+
+cacheUpdateProperty
+    :: Gen [Item TestEvent]
+    -> Property
+cacheUpdateProperty gen = let
+
+    genSplit = do
+      chain <- gen
+      changeAt <- Test.choose (0, length chain)
+      pure (chain, changeAt)
+
+    indexerEvents indexer
+        = fromRight []
+        <$> Core.queryLatest' OddTestEvent indexer
+
+    refProcess (chain, _) indexer = GenM.run $ foldM (flip process) indexer chain
+
+    testedProcess (chain, changeAt) indexer
+        = do
+            let (start, end) = splitAt changeAt (chain :: [Item TestEvent])
+            flexibleIndexer' <- GenM.run $ foldM (flip process) indexer start
+            flexibleIndexer'' <- GenM.run $ Core.addCacheFor OddTestEvent flexibleIndexer'
+            GenM.run $ foldM (flip process) flexibleIndexer'' end
+
+    aggregate timedEvent xs
+         = let e = timedEvent ^. Core.event
+         in if odd e then e:xs else xs
+
+    compareIndexed refIndexer testedIndexer = do
+        refEvents <- GenM.run $ indexerEvents refIndexer
+        collectedEvents <- GenM.run $ indexerEvents testedIndexer
+        GenM.stop $ refEvents === collectedEvents
+
+    runner = withCacheRunner OddTestEvent aggregate mixedLowMemoryIndexerRunner
+
+    in compareIndexers
+        refProcess testedProcess compareIndexed
+        genSplit
+        runner runner
+
+cacheUpdateTest :: Tasty.TestTree
+cacheUpdateTest =
+    Tasty.testProperty "Adding a cache while indexing dont break anything"
+        $ Test.withMaxSuccess 10000
+        $ cacheUpdateProperty (view defaultChain <$> Test.arbitrary)
+
