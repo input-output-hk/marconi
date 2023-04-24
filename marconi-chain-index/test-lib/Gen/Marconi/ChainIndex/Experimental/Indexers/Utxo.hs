@@ -47,30 +47,27 @@ genUtxoEvents' txOutToUtxo = do
   timedEvents <- fmap fst <$> genUtxoEventsWithTxs' txOutToUtxo
   foldM (flip Core.index) Core.listIndexer timedEvents
 
-
 genUtxoEventsWithTxs :: Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
 
 -- | Generate ShelleyEra Utxo Events
-genShelleyEraUtxoEvents :: Gen (Core.ListIndexer Utxo.UtxoEvent)
+genShelleyEraUtxoEvents :: Gen [Core.TimedEvent Utxo.UtxoEvent]
 genShelleyEraUtxoEvents = do
   events :: [Core.TimedEvent Utxo.UtxoEvent] <-  genUtxoEventsWithTxs <&> fmap fst
-  shelleyEvents ::[Core.TimedEvent Utxo.UtxoEvent] <-
-    forM events (\(Core.TimedEvent cp uev@(Utxo.UtxoEvent utxos _)) -> do
+  forM events (\(Core.TimedEvent cp uev@(Utxo.UtxoEvent utxos _)) -> do
                     utxos' <- forM (Set.toList utxos) (\u -> CGen.genAddressShelley <&> flip utxoAddressOverride u)
-                    let utxoevent = uev{Utxo._ueUtxos = Set.fromList utxos'}
+                    let utxoevent = uev {Utxo._ueUtxos = Set.fromList utxos'}
                     pure $ Core.TimedEvent cp utxoevent)
-  foldM (flip Core.index) Core.listIndexer shelleyEvents
+  -- foldM (flip Core.index) Core.listIndexer shelleyEvents
 
-genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.ListIndexer Utxo.UtxoEvent)
+genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen [Core.TimedEvent Utxo.UtxoEvent]
 genShelleyEraUtxoEventsAtChainPoint  cp = do
   events :: [Core.TimedEvent Utxo.UtxoEvent] <-  genUtxoEventsWithTxs <&> fmap fst
-  shelleyEvents ::[Core.TimedEvent Utxo.UtxoEvent] <-
-    forM events (\(Core.TimedEvent _ uev@(Utxo.UtxoEvent utxos _)) -> do
+  forM events (\(Core.TimedEvent _ uev@(Utxo.UtxoEvent utxos _)) -> do
                     utxos' <- forM (Set.toList utxos) (\u -> CGen.genAddressShelley <&> flip utxoAddressOverride u)
                     let utxoevent = uev{Utxo._ueUtxos = Set.fromList utxos'}
                     pure $ Core.TimedEvent cp utxoevent)
-  foldM (flip Core.index) Core.listIndexer shelleyEvents
+  -- foldM (flip Core.index) Core.listIndexer shelleyEvents
 
 genUtxoEventsWithTxs'
     :: (C.TxIn  -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)

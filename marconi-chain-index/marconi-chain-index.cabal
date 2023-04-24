@@ -321,6 +321,7 @@ test-suite marconi-chain-index-test
     , hedgehog
     , hedgehog-extras
     , lens
+    , mtl
     , optparse-applicative
     , prettyprinter
     , serialise

@@ -88,7 +88,7 @@ genHashBlockHeader = C.HeaderHash . BSS.toShort <$> Gen.bytes (Range.singleton 3
 genChainPoints :: (MonadGen m) => Word64 -> Word64 -> m [C.ChainPoint]
 genChainPoints b e = do
     maxSlots <- Gen.word64 (Range.linear b e)
-    mapM (\s -> C.ChainPoint (C.SlotNo s) <$> genHashBlockHeader) [0..maxSlots]
+    mapM (\s -> C.ChainPoint (C.SlotNo s) <$> genHashBlockHeader) [1..maxSlots]
 
 genChainPoint'
   :: Hedgehog.MonadGen m
