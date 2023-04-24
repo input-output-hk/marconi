@@ -64,11 +64,13 @@ library
     Marconi.Core.Experiment.Indexer.MixedIndexer
     Marconi.Core.Experiment.Indexer.SQLiteIndexer
     Marconi.Core.Experiment.Query
+    Marconi.Core.Experiment.Transformer.Class
     Marconi.Core.Experiment.Transformer.IndexWrapper
     Marconi.Core.Experiment.Transformer.WithCache
     Marconi.Core.Experiment.Transformer.WithDelay
     Marconi.Core.Experiment.Transformer.WithPruning
     Marconi.Core.Experiment.Transformer.WithTracer
+    Marconi.Core.Experiment.Transformer.WithTransform
     Marconi.Core.Experiment.Type
     Marconi.Core.Experiment.Worker
     Marconi.Core.Index.VSplit
