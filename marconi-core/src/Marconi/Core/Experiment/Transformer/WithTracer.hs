@@ -22,6 +22,7 @@ import Control.Tracer qualified as Tracer
 
 import Marconi.Core.Experiment.Class (Closeable, HasGenesis, IsIndex (index), IsSync, Queryable, Resetable (reset),
                                       Rollbackable (rollback))
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper),
                                                          IndexerTrans (Config, unwrap, wrap), indexVia, resetVia,
                                                          rollbackVia, wrapperConfig)
@@ -76,20 +77,26 @@ instance IndexerTrans (WithTracer m) where
 
     unwrap = tracerWrapper . unwrap
 
-class HasTracerConfig m indexer where
+class HasTracerConfig m event indexer where
 
     tracer :: Lens' (indexer event) (Tracer m (ProcessedInput event))
 
 instance {-# OVERLAPPING #-}
-    HasTracerConfig m (WithTracer m indexer) where
+    HasTracerConfig m event (WithTracer m indexer) where
 
     tracer = tracerWrapper . wrapperConfig . unwrapTracer
 
 instance {-# OVERLAPPABLE #-}
-    (IndexerTrans t, HasTracerConfig m indexer)
-    => HasTracerConfig m (t indexer) where
+    (IndexerTrans t, HasTracerConfig m event indexer)
+    => HasTracerConfig m event (t indexer) where
 
     tracer = unwrap . tracer
+
+instance {-# OVERLAPPABLE #-}
+    (IndexerMapTrans t, HasTracerConfig m output indexer)
+    => HasTracerConfig m output (t indexer output) where
+
+    tracer = unwrapMap . tracer
 
 instance
     (Applicative m, IsIndex m event index)

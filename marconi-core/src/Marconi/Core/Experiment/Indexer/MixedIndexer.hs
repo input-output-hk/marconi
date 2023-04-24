@@ -90,8 +90,8 @@ newMixedIndexer
     -> store event
     -> mem event
     -> MixedIndexer store mem event
-newMixedIndexer flushNb keepNb db
-    = MixedIndexer . IndexWrapper (MixedIndexerConfig flushNb keepNb db)
+newMixedIndexer keepNb flushNb db
+    = MixedIndexer . IndexWrapper (MixedIndexerConfig keepNb flushNb db)
 
 standardMixedIndexer
     :: IsSync m event store
@@ -103,9 +103,9 @@ standardMixedIndexer
     -- ^ flush size
     -> store event
     -> m (MixedIndexer store ListIndexer event)
-standardMixedIndexer flushNb keepNb db = do
+standardMixedIndexer keepNb flushNb db = do
     lSync <- lastSyncPoint db
-    pure $ newMixedIndexer flushNb keepNb db (listIndexer & latest .~ lSync)
+    pure $ newMixedIndexer keepNb flushNb db (listIndexer & latest .~ lSync)
 
 makeLenses ''MixedIndexer
 
