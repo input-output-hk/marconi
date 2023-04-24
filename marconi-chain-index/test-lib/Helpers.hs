@@ -264,12 +264,12 @@ calculateFee pparams nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses ne
 calculateAndUpdateTxFee
   :: H.MonadTest m
   => C.ProtocolParameters -> C.NetworkId -> Int -> Int
-  -> C.TxBodyContent C.BuildTx C.AlonzoEra -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.AlonzoEra)
+  -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.BabbageEra)
 calculateAndUpdateTxFee pparams networkId lengthTxIns lengthKeyWitnesses txbc = do
   txb <- HE.leftFail $ C.createAndValidateTransactionBody txbc
   let
     feeLovelace = calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb :: C.Lovelace
-    fee = C.TxFeeExplicit C.TxFeesExplicitInAlonzoEra feeLovelace
+    fee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra feeLovelace
     txbc' = txbc { C.txFee = fee }
   return (feeLovelace, txbc')
 

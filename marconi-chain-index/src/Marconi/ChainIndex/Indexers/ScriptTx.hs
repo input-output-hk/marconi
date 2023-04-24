@@ -18,17 +18,6 @@ import GHC.Generics (Generic)
 import Cardano.Api (BlockHeader, ChainPoint (ChainPoint, ChainPointAtGenesis), Hash, SlotNo)
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as Shelley
--- TODO Remove the following dependencies (and also cardano-ledger-*
--- package dependencies in cabal file) when fromShelleyBasedScript is
--- exported from cardano-node PR:
--- https://github.com/input-output-hk/cardano-node/pull/4386
-import Cardano.Ledger.Allegra.Scripts qualified as Timelock
-import Cardano.Ledger.Alonzo.Language qualified as Alonzo
-import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
-import Cardano.Ledger.Core qualified
-import Cardano.Ledger.Crypto qualified as LedgerCrypto
-import Cardano.Ledger.Keys qualified as LedgerShelley
-import Cardano.Ledger.Shelley.Scripts qualified as LedgerShelley
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint (getPoint),
@@ -156,7 +145,7 @@ getTxBodyScripts body = let
     hashesMaybe = case body of
       Shelley.ShelleyTxBody shelleyBasedEra _ scripts _ _ _ ->
         flip map scripts $ \script ->
-          case fromShelleyBasedScript shelleyBasedEra script of
+          case Shelley.fromShelleyBasedScript shelleyBasedEra script of
             Shelley.ScriptInEra _ script' -> Just $ C.hashScript script'
       _ -> [] -- Byron transactions have no scripts
     hashes = catMaybes hashesMaybe :: [Shelley.ScriptHash]
@@ -311,87 +300,3 @@ open dbPath (Depth k) = do
   SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_grp ON script_transactions (slotNo)"
   emptyState k (ScriptTxHandle c k)
 
--- * Copy-paste
---
--- | TODO: Remove when the following function is exported from Cardano.Api.Script
--- PR: https://github.com/input-output-hk/cardano-node/pull/4386
-fromShelleyBasedScript  :: Shelley.ShelleyBasedEra era
-                        -> Cardano.Ledger.Core.Script (Shelley.ShelleyLedgerEra era)
-                        -> Shelley.ScriptInEra era
-fromShelleyBasedScript era script =
-  case era of
-    Shelley.ShelleyBasedEraShelley ->
-      Shelley.ScriptInEra Shelley.SimpleScriptInShelley $
-      Shelley.SimpleScript $
-      fromShelleyMultiSig script
-    Shelley.ShelleyBasedEraAllegra ->
-      Shelley.ScriptInEra Shelley.SimpleScriptInAllegra $
-      Shelley.SimpleScript $
-      fromAllegraTimelock script
-    Shelley.ShelleyBasedEraMary ->
-      Shelley.ScriptInEra Shelley.SimpleScriptInMary $
-      Shelley.SimpleScript $
-      fromAllegraTimelock script
-    Shelley.ShelleyBasedEraAlonzo ->
-      case script of
-        Alonzo.TimelockScript s ->
-          Shelley.ScriptInEra Shelley.SimpleScriptInAlonzo $
-          Shelley.SimpleScript $
-          fromAllegraTimelock s
-        Alonzo.PlutusScript Alonzo.PlutusV1 s ->
-          Shelley.ScriptInEra Shelley.PlutusScriptV1InAlonzo $
-          Shelley.PlutusScript Shelley.PlutusScriptV1 $
-          Shelley.PlutusScriptSerialised s
-        Alonzo.PlutusScript Alonzo.PlutusV2 _ ->
-          error "fromShelleyBasedScript: PlutusV2 not supported in Alonzo era"
-    Shelley.ShelleyBasedEraBabbage ->
-      case script of
-        Alonzo.TimelockScript s ->
-          Shelley.ScriptInEra Shelley.SimpleScriptInBabbage $
-          Shelley.SimpleScript $
-          fromAllegraTimelock s
-        Alonzo.PlutusScript Alonzo.PlutusV1 s ->
-          Shelley.ScriptInEra Shelley.PlutusScriptV1InBabbage $
-          Shelley.PlutusScript Shelley.PlutusScriptV1 $
-          Shelley.PlutusScriptSerialised s
-        Alonzo.PlutusScript Alonzo.PlutusV2 s ->
-          Shelley.ScriptInEra Shelley.PlutusScriptV2InBabbage $
-          Shelley.PlutusScript Shelley.PlutusScriptV2 $
-          Shelley.PlutusScriptSerialised s
-
-    Shelley.ShelleyBasedEraConway ->
-      case script of
-        Alonzo.TimelockScript s ->
-          Shelley.ScriptInEra Shelley.SimpleScriptInConway
-            . Shelley.SimpleScript $ fromAllegraTimelock  s
-        Alonzo.PlutusScript Alonzo.PlutusV1 s ->
-          Shelley.ScriptInEra Shelley.PlutusScriptV1InConway
-            . Shelley.PlutusScript Shelley.PlutusScriptV1 $ Shelley.PlutusScriptSerialised s
-        Alonzo.PlutusScript Alonzo.PlutusV2 s ->
-          Shelley.ScriptInEra Shelley.PlutusScriptV2InConway
-            . Shelley.PlutusScript Shelley.PlutusScriptV2 $ Shelley.PlutusScriptSerialised s
-
-
-  where
-  fromAllegraTimelock :: (Cardano.Ledger.Core.Era era, Cardano.Ledger.Core.EraCrypto era ~ LedgerCrypto.StandardCrypto)
-                      => Timelock.Timelock era -> Shelley.SimpleScript
-  fromAllegraTimelock = go
-    where
-      go (Timelock.RequireSignature kh) = Shelley.RequireSignature
-                                            (Shelley.PaymentKeyHash (LedgerShelley.coerceKeyRole kh))
-      go (Timelock.RequireTimeExpire t) = Shelley.RequireTimeBefore t
-      go (Timelock.RequireTimeStart  t) = Shelley.RequireTimeAfter t
-      go (Timelock.RequireAllOf      s) = Shelley.RequireAllOf (map go (toList s))
-      go (Timelock.RequireAnyOf      s) = Shelley.RequireAnyOf (map go (toList s))
-      go (Timelock.RequireMOf      i s) = Shelley.RequireMOf i (map go (toList s))
-
-  fromShelleyMultiSig :: (Cardano.Ledger.Core.Era era, Cardano.Ledger.Core.EraCrypto era ~ LedgerCrypto.StandardCrypto)
-                    => LedgerShelley.MultiSig era -> Shelley.SimpleScript
-  fromShelleyMultiSig = go
-    where
-      go (LedgerShelley.RequireSignature kh)
-                                  = Shelley.RequireSignature
-                                      (Shelley.PaymentKeyHash (LedgerShelley.coerceKeyRole kh))
-      go (LedgerShelley.RequireAllOf s) = Shelley.RequireAllOf (map go s)
-      go (LedgerShelley.RequireAnyOf s) = Shelley.RequireAnyOf (map go s)
-      go (LedgerShelley.RequireMOf m s) = Shelley.RequireMOf m (map go s)

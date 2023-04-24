@@ -68,10 +68,6 @@ deriving newtype instance SQL.FromField C.SlotNo
 instance Pretty C.BlockNo where
   pretty (C.BlockNo bn) = "BlockNo" <+> pretty bn
 
--- instance ToJSON C.BlockNo
-
--- instance FromJSON C.BlockNo
-
 -- * C.AddressAny
 
 instance SQL.FromField C.AddressAny where

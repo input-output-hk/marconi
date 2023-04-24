@@ -64,7 +64,7 @@ integration = H.withTests 1 . H.propertyOnce
 tests :: TestTree
 tests = testGroup "Spec.Marconi.ChainIndex.Indexers.ScriptTx"
   [ testPropertyNamed
-    "Transaction with script hash survives `makeTransactionBody`"
+    "Transaction with script hash survives `createAndValidateTransactionBody`"
     "propGetTxBodyScriptsRoundtrip" propGetTxBodyScriptsRoundtrip
   , testPropertyNamed
     "Submitted transactions with script address show up in indexer"
@@ -72,13 +72,13 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.ScriptTx"
   ]
 
 -- | Create @nScripts@ scripts, add them to a transaction body, then
--- generate a transaction with @makeTransactionBody@ and check if the
+-- generate a transaction with @createAndValidateTransactionBody@ and check if the
 -- scripts put in are present in the generated transaction.
 propGetTxBodyScriptsRoundtrip :: Property
 propGetTxBodyScriptsRoundtrip = property $ do
   nScripts <- forAll $ Gen.integral (Range.linear 5 500)
   C.AnyCardanoEra (era :: C.CardanoEra era) <- forAll $
-    Gen.enum (C.AnyCardanoEra C.ShelleyEra) maxBound
+    Gen.enum (C.AnyCardanoEra C.AllegraEra) maxBound
 
   txIns <- replicateM nScripts $ forAll CGen.genTxIn
   witnessesHashes <- replicateM nScripts $ forAll $ genWitnessAndHashInEra era
@@ -110,7 +110,7 @@ propEndToEndScriptTx :: Property
 propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempAbsPath -> do
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
 
-  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.CardanoOnlyTestnetOptions TN.cardanoDefaultTestnetOptions) base tempAbsPath
+  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempAbsPath
   let networkId = TN.getNetworkId runtime
   socketPathAbs <- TN.getSocketPathAbs conf runtime
 
@@ -176,27 +176,27 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
       C.NoStakeAddress :: C.Address C.ShelleyAddr
 
   (tx1in, C.TxOut _ v _ _) <- do
-    utxo <- TN.findUTxOByAddress @C.AlonzoEra localNodeConnectInfo address
+    utxo <- TN.findUTxOByAddress @C.BabbageEra localNodeConnectInfo address
     H.headM $ Map.toList $ C.unUTxO utxo
   let totalLovelace = C.txOutValueToLovelace v
 
-  pparams <- TN.getProtocolParams @C.AlonzoEra localNodeConnectInfo
+  pparams <- TN.getProtocolParams @C.BabbageEra localNodeConnectInfo
   let scriptDatum = C.ScriptDataNumber 42 :: C.ScriptData
       scriptDatumHash = C.hashScriptDataBytes $ C.unsafeHashableScriptData scriptDatum
       amountPaid = 10_000_000 :: C.Lovelace -- 10 ADA
       -- Must return everything that was not paid to script and that didn't went to fees:
       amountReturned = totalLovelace - amountPaid :: C.Lovelace
-      txOut1 :: C.TxOut ctx C.AlonzoEra
+      txOut1 :: C.TxOut ctx C.BabbageEra
       txOut1 = C.TxOut
-        (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraAlonzo) plutusScriptAddr)
-        (C.TxOutValue C.MultiAssetInAlonzoEra $ C.lovelaceToValue amountPaid)
-        (C.TxOutDatumHash C.ScriptDataInAlonzoEra scriptDatumHash)
+        (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) plutusScriptAddr)
+        (C.TxOutValue C.MultiAssetInBabbageEra $ C.lovelaceToValue amountPaid)
+        (C.TxOutDatumHash C.ScriptDataInBabbageEra scriptDatumHash)
         C.ReferenceScriptNone
-      mkTxOut2 :: C.Lovelace -> C.TxOut ctx C.AlonzoEra
+      mkTxOut2 :: C.Lovelace -> C.TxOut ctx C.BabbageEra
       mkTxOut2 lovelace = TN.mkAddressAdaTxOut address lovelace
       keyWitnesses = [C.WitnessPaymentKey $ C.castSigningKey genesisSKey]
       tx1ins = [(tx1in, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending)]
-      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInAlonzoEra)
+      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
 
   (tx1fee, txbc0) <- TN.calculateAndUpdateTxFee pparams networkId (length tx1ins) (length keyWitnesses) (TN.emptyTxBodyContent validityRange pparams)
     { C.txIns = tx1ins
@@ -204,7 +204,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
     , C.txProtocolParams = C.BuildTxWith $ Just pparams
     }
   let txbc1 = txbc0 { C.txOuts = [txOut1, mkTxOut2 $ amountReturned - tx1fee] }
-  tx1body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody txbc1
+  tx1body :: C.TxBody C.BabbageEra <- H.leftFail $ C.createAndValidateTransactionBody txbc1
   TN.submitTx localNodeConnectInfo $ C.makeSignedTransaction (map (C.makeShelleyKeyWitness tx1body) keyWitnesses) tx1body
 
 
@@ -213,10 +213,10 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
 
   _ <- liftIO $ IO.readChan indexedTxs -- wait for the first transaction to be accepted
 
-  tx2collateralTxIn <- H.headM . Map.keys . C.unUTxO =<< TN.findUTxOByAddress @C.AlonzoEra localNodeConnectInfo address
+  tx2collateralTxIn <- H.headM . Map.keys . C.unUTxO =<< TN.findUTxOByAddress @C.BabbageEra localNodeConnectInfo address
 
   (scriptTxIn, C.TxOut _ valueAtScript _ _) <- do
-    scriptUtxo <- TN.findUTxOByAddress @C.AlonzoEra localNodeConnectInfo plutusScriptAddr
+    scriptUtxo <- TN.findUTxOByAddress @C.BabbageEra localNodeConnectInfo plutusScriptAddr
     H.headM $ Map.toList $ C.unUTxO scriptUtxo
 
   let lovelaceAtScript = C.txOutValueToLovelace valueAtScript
@@ -231,9 +231,9 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
       -- then the procedure converges quickly.
       executionUnits = C.ExecutionUnits {C.executionSteps = 500_000, C.executionMemory = 10_000 }
 
-      scriptWitness :: C.Witness C.WitCtxTxIn C.AlonzoEra
+      scriptWitness :: C.Witness C.WitCtxTxIn C.BabbageEra
       scriptWitness = C.ScriptWitness C.ScriptWitnessForSpending $
-        C.PlutusScriptWitness C.PlutusScriptV1InAlonzo C.PlutusScriptV1 (C.PScript plutusScript)
+        C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript plutusScript)
         (C.ScriptDatumForTxIn $ C.unsafeHashableScriptData scriptDatum) redeemer executionUnits
 
       tx2ins = [(scriptTxIn, C.BuildTxWith scriptWitness)]
@@ -243,11 +243,11 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
 
       tx2bodyContent = (TN.emptyTxBodyContent validityRange pparams)
         { C.txIns              = tx2ins
-        , C.txInsCollateral    = C.TxInsCollateral C.CollateralInAlonzoEra [tx2collateralTxIn]
+        , C.txInsCollateral    = C.TxInsCollateral C.CollateralInBabbageEra [tx2collateralTxIn]
         , C.txOuts             = mkTx2Outs $ lovelaceAtScript - tx2fee
-        , C.txFee              = C.TxFeeExplicit C.TxFeesExplicitInAlonzoEra tx2fee
+        , C.txFee              = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra tx2fee
         }
-  tx2body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody tx2bodyContent
+  tx2body :: C.TxBody C.BabbageEra <- H.leftFail $ C.createAndValidateTransactionBody tx2bodyContent
   let tx2 = C.signShelleyTransaction tx2body tx2witnesses
   TN.submitTx localNodeConnectInfo tx2
 
@@ -269,15 +269,15 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
 
   ScriptTx.ScriptTxAddress indexedScriptHash <- H.headM indexedScriptHashes
 
-  indexedTx2 :: C.Tx C.AlonzoEra <- H.leftFail $ C.deserialiseFromCBOR (C.AsTx C.AsAlonzoEra) tx
+  indexedTx2 :: C.Tx C.BabbageEra <- H.leftFail $ C.deserialiseFromCBOR (C.AsTx C.AsBabbageEra) tx
 
   plutusScriptHash === indexedScriptHash
   tx2 === indexedTx2
 
-  queriedTx2 :: C.Tx C.AlonzoEra <- do
+  queriedTx2 :: C.Tx C.BabbageEra <- do
     ScriptTx.ScriptTxResult (ScriptTx.TxCbor txCbor : _) <- liftIO $ do
       ix <- IO.readMVar indexer
       Storable.query Storable.QEverything ix (ScriptTx.ScriptTxAddress plutusScriptHash)
-    H.leftFail $ C.deserialiseFromCBOR (C.AsTx C.AsAlonzoEra) txCbor
+    H.leftFail $ C.deserialiseFromCBOR (C.AsTx C.AsBabbageEra) txCbor
 
   tx2 === queriedTx2
