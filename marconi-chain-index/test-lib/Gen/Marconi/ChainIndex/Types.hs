@@ -271,7 +271,6 @@ genProtocolParametersForPlutusScripts =
     <*> CGen.genRational
     <*> pure Nothing -- Obsolete from babbage onwards
     <*> pure (Map.fromList
-      -- TODO: not sure if it's correct to use `Map.elems` here
       [ (C.AnyPlutusScriptVersion C.PlutusScriptV1, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
       , (C.AnyPlutusScriptVersion C.PlutusScriptV2, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams) ])
     <*> (Just <$> genExecutionUnitPrices)
