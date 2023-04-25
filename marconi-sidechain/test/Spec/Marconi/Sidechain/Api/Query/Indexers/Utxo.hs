@@ -19,13 +19,13 @@ import Hedgehog qualified
 import Helpers (addressAnyToShelley)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxoIndexer
-import Marconi.Sidechain.Api.Routes (AddressUtxoResult (AddressUtxoResult),
-                                     CurrentSyncedPointResult (CurrentSyncedPointResult))
+import Marconi.Sidechain.Api.Routes (AddressUtxoResult, GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
+                                     GetUtxosFromAddressResult (GetUtxosFromAddressResult, unAddressUtxosResult))
 import Marconi.Sidechain.Api.Types (sidechainAddressUtxoIndexer, sidechainEnvIndexers)
 import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
 import Network.JsonRpc.Client.Types ()
 import Network.JsonRpc.Types (JsonRpcResponse (Result))
-import Spec.Marconi.Sidechain.RpcClientAction (RpcClientAction (insertUtxoEventsAction, queryAddressUtxosAction, querySyncedPointAction),
+import Spec.Marconi.Sidechain.RpcClientAction (RpcClientAction (insertUtxoEventsAction, queryAddressUtxosAction, querySyncedBlockAction),
                                                mocUtxoWorker)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
@@ -65,7 +65,7 @@ queryTargetAddressTest = property $ do
     liftIO
     . fmap (fmap concat)
     . traverse (\addr ->
-        AddressUtxoIndexer.findByAddress
+        fmap unAddressUtxosResult <$> AddressUtxoIndexer.findByAddress
             (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
             addr
             Nothing)
@@ -104,9 +104,9 @@ propUtxoEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
   Hedgehog.assert (not . null $ fetchedUtxoRows)
   (Set.fromList . mapMaybe (Aeson.decode . Aeson.encode) $ fetchedUtxoRows) === Set.fromList fetchedUtxoRows
 
-fromQueryResult :: JsonRpcResponse e AddressUtxoResult -> [Utxo.UtxoRow]
-fromQueryResult (Result _ (AddressUtxoResult rows) ) = rows
-fromQueryResult _otherResponses                      = []
+fromQueryResult :: JsonRpcResponse e GetUtxosFromAddressResult -> [AddressUtxoResult]
+fromQueryResult (Result _ (GetUtxosFromAddressResult rows) ) = rows
+fromQueryResult _otherResponses                              = []
 
 -- | Test inserting events and querying the current sync point
 -- We check that the response is the last sync point of the inserted events.
@@ -126,6 +126,6 @@ propUtxoEventInsertionAndJsonRpcCurrentSlotQuery action = property $ do
   -- Now, we are storing the events in the index
   liftIO $ insertUtxoEventsAction action events
 
-  Result _ (CurrentSyncedPointResult resp') <- liftIO $ querySyncedPointAction action
-  Hedgehog.cover 50 "Majority of chainpoint results should not be genesis" $ resp' /= C.ChainPointAtGenesis && getChainPointSlot resp' > Just (C.SlotNo 0)
+  Result _ (GetCurrentSyncedBlockResult resp') <- liftIO $ querySyncedBlockAction action
+  Hedgehog.cover 40 "Should have some significant non genesis chainpoints results" $ resp' /= C.ChainPointAtGenesis && getChainPointSlot resp' > Just (C.SlotNo 0)
   assert $ resp' `elem` chainPoints

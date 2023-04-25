@@ -46,7 +46,7 @@ TODO
 
 The `marconi-sidechain` executable is available as a nix flake.
 
-If inside the `plutus-apps` repository, you can run from the top-level:
+If inside the `marconi` repository, you can run from the top-level:
 
 ```
 $ nix build .#marconi-sidechain
@@ -55,7 +55,7 @@ $ nix build .#marconi-sidechain
 Or you may run from anywhere:
 
 ```
-$ nix build github:input-output-hk/plutus-apps#marconi-sidechain
+$ nix build github:input-output-hk/marconi#marconi-sidechain
 ```
 
 Both commands will produce a `result` directory containing the executable
@@ -66,7 +66,7 @@ Both commands will produce a `result` directory containing the executable
 To build `marconi-sidechain` from the source files, use the following commands:
 
 ```sh
-git clone git@github.com:input-output-hk/plutus-apps.git
+git clone git@github.com:input-output-hk/marconi.git
 nix develop
 cabal clean && cabal update # Optional, but makes sure you start clean
 cabal build marconi-sidechain
@@ -148,10 +148,6 @@ The `id` field should be a random ID representing your request. The response wil
 
 Healthcheck method to test that the JSON-RPC server is responding.
 
-**Parameters**: None
-
-**Returns**: Nothing
-
 **Example**:
 
 ```sh
@@ -167,9 +163,64 @@ $ curl -d '{"jsonrpc": "2.0", "method": "echo", "params": "", "id": 0}' -H 'Cont
 
 Retrieves user provided addresses.
 
-**Parameters**: None
+**JSON Schema request body**
 
-**Returns**: List of Bech32 addresses
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "string"
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+
+**JSON Schema response**
+
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "jsonrpc": {
+      "type": "string"
+    },
+    "result": {
+      "type": "array",
+      "items": [
+        {
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "jsonrpc",
+    "result"
+  ]
+}
+```
 
 **Example**:
 
@@ -184,9 +235,9 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getTargetAddresses" , "params": "", "i
 }
 ```
 
-#### getCurrentSyncedPoint
+#### getCurrentSyncedBlock (PARTIALLY IMPLEMENTED)
 
-Retrieves the chain point from which the indexers are synced at.
+Retrieves the block information from which the indexers are synced at.
 
 It queries the UTXO indexer and doesn't return the last indexed chainpoint, but the one before.
 The reason is that we want to use this query to find a sync point that is common to all the indexers
@@ -198,147 +249,521 @@ As a consequence, if the last chainpoint of the utxo indexer can, at most,
 be ahead of one block compared to other indexers.
 Taking the chainpoint before ensure that we have consistent infomation across all the indexers.
 
-**Parameters**: None
+**JSON Schema request body**
 
-**Returns**: Chain point consisted of a slot number and a block header hash.
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "string"
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+
+**JSON Schema response**
+
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "jsonrpc": {
+      "type": "string"
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "blockNo": {
+          "_comment": "Not available yet",
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockTimestamp": {
+          "_comment": "Not available yet",
+          "type": "string",
+          "minimum": 0,
+          "description": "timestamp in seconds"
+        },
+        "blockHeaderHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "slotNo": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "epochNo": {
+          "_comment": "Not available yet",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "blockNo",
+        "blockTimestamp"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "jsonrpc",
+    "result"
+  ]
+}
+```
 
 **Example**:
 
 ```sh
-$ curl -d '{"jsonrpc": "2.0" , "method": "getCurrentSyncedPoint" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
+$ curl -d '{"jsonrpc": "2.0" , "method": "getCurrentSyncedBlock" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
 {
   "id": 1,
   "jsonrpc": "2.0",
   "result": {
       "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
-      "slotNo": 1,
-      "tag": "ChainPoint"
-  }
-}
-
-OR
-
-{
-  "id": 1,
-  "jsonrpc": "2.0",
-  "result": {
-    "tag": "ChainPointAtGenesis"
+      "slotNo": 1
   }
 }
 ```
 
-#### getUtxoFromAddress
+#### getUtxosFromAddress (PARTIALLY IMPLEMENTED)
 
 Retrieves UTXOs of a given address until a given point in time (measured in slots).
 
-**Parameters**:
+**JSON Schema request body**:
 
-* `address`: address encoded in the Bech32 format
-* `slotNo`: slot number.
-
-**Returns**: List of resolved UTXOs.
-
-**Example**:
-
-```sh
-$ curl -d '{"jsonrpc": "2.0" , "method": "getUtxoFromAddress" , "params": { "address": "addr_test1qz0ru2w9suwv8mcskg8r9ws3zvguekkkx6kpcnn058pe2ql2ym0y64huzhpu0wl8ewzdxya0hj0z5ejyt3g98lpu8xxs8faq0m", "slotNo": 1 }, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
+```JSON
 {
-  "id": 1,
-  "jsonrpc": "2.0",
-  "result": [
-      {
-          "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
-          "slotNo": 1,
-          "utxo": {
-              "address": "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc",
-              "datum": null,
-              "datumHash": null,
-              "inlineScript": null,
-              "inlineScriptHash": null,
-              "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
-              "txIx": 0,
-              "value": {
-                  "lovelace": 10000000
-              }
-          }
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "_comment": "Address encoded in the Bech32 format"
+        },
+        "createdAfterSlotNo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Filter out UTxO that were created during or before that slot."
+        },
+        "unspentBeforeSlotNo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Show only UTxOs that existed at this slot. Said another way, only outputs that were created during or before that slot and were unspent during that slot will be returned."
+        }
       },
-      {
-          "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
-          "slotNo": 1,
-          "utxo": {
-              "address": "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc",
-              "datum": "34",
-              "datumHash": "eb8649214997574e20c464388a172420d25403682bbbb80c496831c8cc1f8f0d",
-              "inlineScript": {
-                  "script": {
-                      "cborHex": "49484701000022220011",
-                      "description": "",
-                      "type": "PlutusScriptV1"
-                  },
-                  "scriptLanguage": "PlutusScriptLanguage PlutusScriptV1"
-              },
-              "inlineScriptHash": "284d60f7e56f5fd54faed4c50fd5cab0307da1c4034d6a92c5dbb940",
-              "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
-              "txIx": 0,
-              "value": {
-                  "lovelace": 10000000
-              }
-          }
-      }
+      "required": [
+        "address",
+        "unspentBeforeSlotNo"
+      ]
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
   ]
 }
 ```
 
-#### getTxWithMintingPolicy (NOT IMPLEMENTED YET)
+**JSON Schema response**:
+
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "jsonrpc": {
+      "type": "string"
+    },
+    "result": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "blockHeaderHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "slotNo": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blockNo": {
+            "_comment: Not available yet",
+            "type": "integer",
+            "minimum": 0
+          },
+          "txIndexInBlock": {
+            "_comment: Not available yet",
+            "type": "integer",
+            "minimum": 0
+          },
+          "address": {
+            "type": "string"
+          },
+          "datum": {
+            "type": "string",
+            "description": "HEX string of the CBOR encoded datum"
+          },
+          "datumHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "txId": {
+            "type": "string"
+          },
+          "txIx": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "spentBy": {
+            "_comment: Not available yet",
+            "type": "object",
+            "properties": {
+              "slotNo": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "txId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [
+              "slotNo",
+              "txId"
+            ]
+          },
+          "txInputs": {
+            "_comment: Not available yet",
+            "type": "array",
+            "description": "List of inputs that were used in the transaction that created this UTxO",
+            "items": {
+              "type": "object",
+              "properties": {
+                "txId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "txIx": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "txId",
+                "txIx"
+              ]
+            }
+          },
+        },
+        "required": [
+          "address",
+          "blockHeaderHash",
+          "blockNo",
+          "datum",
+          "datumHash",
+          "slotNo",
+          "txId",
+          "txInputs"
+          "txIx",
+        ]
+      }
+    }
+  },
+  "required": [
+    "id",
+    "jsonrpc",
+    "result"
+  ]
+}
+```
+
+**Example**:
+
+```sh
+$ curl -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "unspentBeforeSlotNo": 100000000 }, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
+{
+  "id": 1,
+  "jsonrpc": "2.0",
+  "result":
+    [
+        {
+          "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket",
+          "blockHeaderHash": "6b1c0c2ccd1fec376235c6580a667b67be92028e183dc46236eb551f1c40d621",
+          "datum": null,
+          "datumHash": null,
+          "slotNo": 86480,
+          "txId": "a00696a0c2d70c381a265a845e43c55e1d00f96b27c06defc015dc92eb206240",
+          "txIx": 0
+        }
+    ]
+}
+```
+
+#### getTxsBurningAssetId (NOT IMPLEMENTED YET)
 
 Retrieves transactions that include a minting policy for minting/burning tokens until a given point in time (measured in slots).
 
-**Parameters**:
+**JSON Schema request body**:
 
-* `mps`: Hash of the minting policy
-* `slotNo`: slot number
-
-**Returns**: List of transaction IDs
-
-**Example**:
-
-```sh
-$ curl -d '{"jsonrpc": "2.0" , "method": "getTxWithMintingPolicy" , "params": { "mps": "284d60f7e56f5fd54faed4c50fd5cab0307da1c4034d6a92c5dbb940", "slotNo": 1 }, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
+```JSON
 {
-  "id": 1,
-  "jsonrpc": "2.0",
-  "result": [
-      {
-          "assetName": "6d7961737365746e616d65",
-          "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
-          "policyId": "284d60f7e56f5fd54faed4c50fd5cab0307da1c4034d6a92c5dbb940",
-          "quantity": -10,
-          "redeemerData": "34",
-          "redeemerIdx": 0,
-          "slotNo": 1,
-          "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "policyId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Hash of the minting policy"
+        },
+        "assetName": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        },
+        "slotNo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Return the state of the chain at this slot. Effectively it filters out transactions that occured during or after this slot."
+        },
+        "afterTx": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Filters out transaction that occurred before this transaction. The specific transaction must be part of the indexed transactions."
+        }
       },
-      {
-          "assetName": "6d7961737365746e616d65",
-          "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
-          "policyId": "284d60f7e56f5fd54faed4c50fd5cab0307da1c4034d6a92c5dbb940",
-          "quantity": 10,
-          "redeemerData": "34",
-          "redeemerIdx": 0,
-          "slotNo": 1,
-          "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
-      }
+      "required": [
+        "policyId",
+        "assetName",
+        "slotNo",
+      ]
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
   ]
 }
 ```
+
+**JSON Schema response**:
+
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "jsonrpc": {
+      "type": "string"
+    },
+    "result": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "blockHeaderHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "slotNo": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "blockNo": {
+            "_comment: Not available yet",
+            "type": "integer",
+            "minimum": 0
+          },
+          "txId": {
+            "type": "string"
+          },
+          "redeemer": {
+            "type": "string",
+            "pattern": "^([0-9a-f]{2})+$"
+          },
+          "redeemerHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{56}$"
+          },
+          "burnAmount": {
+            "type": "integer"
+            "minimum": 0
+          }
+        },
+        "required": [
+          "blockHeaderHash",
+          "slotNo",
+          "blockNo",
+          "txId",
+          "redeemer",
+          "redeemerHash",
+          "burnAmount"
+        ]
+      }
+    }
+  },
+  "required": [
+    "id",
+    "jsonrpc",
+    "result"
+  ]
+}
+```
+
+**Example**:
+
+Yet to come.
 
 #### getStakePoolDelegationByEpoch
 
 Retrieves the stake pool delegation per epoch.
 
-**Parameters**: Epoch number
+**JSON Schema request body**:
 
-**Returns**: List of stake pool IDs in Bech32 format with the total staked lovelace for that epoch.
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Epoch number"
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+
+**JSON Schema response**:
+
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "jsonrpc": {
+      "type": "string"
+    },
+    "result": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "blockHeaderHash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "blockNo": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "slotNo": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "epochNo": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "poolId": {
+            "type": "string"
+          },
+          "lovelace": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "blockHeaderHash",
+          "blockNo",
+          "slotNo",
+          "epochNo",
+          "poolId",
+          "lovelace"
+        ]
+      }
+    }
+  },
+  "required": [
+    "id",
+    "jsonrpc",
+    "result"
+  ]
+}
+```
 
 **Example**:
 
@@ -381,9 +806,90 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getStakePoolDelegationByEpoch" , "para
 
 Retrieves transactions that include a minting policy for minting/burning tokens.
 
-**Parameters**: Epoch number
+**JSON Schema request body**:
 
-**Returns**: Nonce
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Epoch number"
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+
+**JSON Schema response**:
+
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "integer"
+    },
+    "jsonrpc": {
+      "type": "string"
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "blockHeaderHash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "blockNo": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "epochNo": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "slotNo": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "nonce": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "blockHeaderHash",
+        "blockNo",
+        "epochNo",
+        "nonce",
+        "slotNo"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "jsonrpc",
+    "result"
+  ]
+}
+```
 
 **Example**:
 
@@ -400,7 +906,6 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 4, "id": 
         "nonce": "ce4a80f49c44c21d7114d93fe5f992a2f9de6bad4a03a5df7e7403004ebe16fc",
         "slotNo": 518400
     }
-  }
 }
 ```
 

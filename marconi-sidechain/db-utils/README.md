@@ -49,8 +49,8 @@ The need for this utility is from the desire to test marconi-sidechain in a live
 ### Build
 
 ``` sh
-git clone git@github.com:input-output-hk/plutus-apps.git
-cd plutus-apps
+git clone git@github.com:input-output-hk/marconi.git
+cd marconi
 cabal build marconi
 cabal build marconi-sidechain
 cabal build db-utils
