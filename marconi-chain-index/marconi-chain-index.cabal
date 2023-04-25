@@ -22,7 +22,7 @@ source-repository head
 flag ci
   description: Toggle features on/off when in CI
   manual:      True
-  default:     False
+  default:     True
 
 common lang
   default-language:   Haskell2010
