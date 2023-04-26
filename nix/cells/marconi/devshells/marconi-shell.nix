@@ -87,6 +87,16 @@ inputs.std.lib.dev.mkShell {
       category = "nix";
       help = "Nix code formatter";
     }
+    {
+      package = cell.packages.build-readthedocs-site;
+      category = "docs";
+      help = "Build the docs locally in doc/read-the-docs-site/_build";
+    }
+    {
+      package = cell.packages.serve-readthedocs-site;
+      category = "docs";
+      help = "Start the autobuild server on localhost:8000";
+    }
   ];
 
   packages = [
