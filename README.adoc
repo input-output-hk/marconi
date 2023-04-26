@@ -6,9 +6,9 @@
 
 image:https://img.shields.io/badge/policy-Cardano%20Engineering%20Handbook-informational[link=https://input-output-hk.github.io/cardano-engineering-handbook]
 
-## Introduction
+== Introduction
 
-Marconi is A lightweight customizable solution for indexing and querying the Cardano blockchain.
+Marconi is a lightweight customizable solution for indexing and querying the Cardano blockchain.
 
 [[Architecture]]
 == Architecture

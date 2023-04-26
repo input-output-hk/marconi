@@ -1,0 +1,891 @@
+= JSON-RPC API
+:toc: left
+:toclevels: 2
+
+== HTTP endpoint
+
+In this application, there is a single HTTP endpoing/route: `POST /json-rpc`.
+This endpoint will listen and respond to well-formed link:https://www.jsonrpc.org/specification[JSON-RPC version 2] requests and responses.
+Each of the following subsections reflect the JSON-RPC methods that can be used in the JSON-RPC request.
+
+== JSON-RPC methods
+
+=== getCurrentSyncedBlock
+
+Retrieves the block information from which the indexers are synced at.
+
+It queries the UTXO indexer and doesn't return the last indexed chainpoint, but the one before.
+The reason is that we want to use this query to find a sync point that is common to all the indexers
+that are under the same coordinator.
+Unfortunately, while the coordinator ensures that all the indexer move at the same speed,
+it can't monitor if the last submitted block was indexed by all the indexers or not.
+
+As a consequence, if the last chainpoint of the utxo indexer can, at most,
+be ahead of one block compared to other indexers.
+Taking the chainpoint before ensure that we have consistent infomation across all the indexers.
+
+==== JSON Schema
+
+.HTTP Request body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "string"
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+====
+
+.HTTP Response body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "blockNo": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "blockTimestamp": {
+              "type": "string",
+              "minimum": 0,
+              "description": "timestamp in seconds"
+            },
+            "blockHeaderHash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "slotNo": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "epochNo": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": []
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "result"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "error"
+      ]
+    }
+  ]
+}
+```
+====
+
+==== Pre-conditions
+
+[NOTE]
+====
+In here, we'll document the conditions that need to met in order to get a successful response.
+====
+
+==== Post-conditions
+
+[NOTE]
+====
+In here, we'll document the properties of the successful response.
+====
+
+==== Method-specific errors
+
+This method should never return an error message.
+
+[NOTE]
+====
+In here, we'll document each possible method-specific error code, along with an explaining on when such an error occurs.
+====
+
+==== Rationale
+
+[NOTE]
+====
+In here, we'll document the rationale for having this method => why does the sidechain application need it.
+====
+
+
+=== getUtxosFromAddress
+
+Retrieves UTXOs of a given address until a given point in time (measured in slots).
+
+==== JSON Schema
+
+.HTTP Request body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Show UTxOs belonging to this Shelley address in bech32 format."
+        },
+        "createdAfterSlotNo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Filter out UTxO that were created during or before that slot."
+        },
+        "unspentBeforeSlotNo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Show only UTxOs that existed at this slot. Said another way, only outputs that were created during or before that slot and were unspent during that slot will be returned."
+        }
+      },
+      "required": [
+        "address",
+        "unspentBeforeSlotNo"
+      ]
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+====
+
+.HTTP Response body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "blockHeaderHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "slotNo": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "blockNo": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "txIndexInBlock": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "datum": {
+                "type": "string",
+                "description": "HEX string of the CBOR encoded datum"
+              },
+              "txId": {
+                "type": "string"
+              },
+              "txIx": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "spentBy": {
+                "type": "object",
+                "properties": {
+                  "slotNo": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "txId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "required": [
+                  "slotNo",
+                  "txId"
+                ]
+              },
+              "txInputs": {
+                "type": "array",
+                "description": "List of inputs that were used in the transaction that created this UTxO",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "txId": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "txIx": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "txId",
+                    "txIx"
+                  ]
+                }
+              },
+            },
+            "required": [
+              "blockHeaderHash",
+              "blockNo",
+              "datum",
+              "slotNo",
+              "txId",
+              "txIx",
+              "txIndexInBlock",
+              "txInputs"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "result"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "error"
+      ]
+    }
+  ]
+}
+```
+====
+
+==== Pre-conditions
+
+TBD
+
+==== Post-conditions
+
+TBD
+
+==== Method-specific errors
+
+TBD
+
+==== Rationale
+
+TBD
+
+
+=== getBurnTokensEvents
+
+Retrieves transactions that include a minting policy for minting/burning tokens until a given point in time (measured in slots).
+
+==== JSON Schema
+
+.HTTP Request body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "policyId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Hash of the minting policy"
+        },
+        "assetName": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{2})+$"
+        },
+        "slotNo": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Return the state of the chain at this slot. Effectively it filters out transactions that occured during or after this slot."
+        },
+        "afterTx": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Filters out transaction that occurred before this transaction. The specific transaction must be part of the indexed transactions."
+        }
+      },
+      "required": [
+        "policyId",
+        "assetName",
+        "slotNo",
+      ]
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+====
+
+.HTTP Response body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "blockHeaderHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "slotNo": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "blockNo": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "txId": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "redeemer": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})+$"
+              },
+              "burnAmount": {
+                "type": "integer"
+                "minimum": 0
+              }
+            },
+            "required": [
+              "blockHeaderHash",
+              "slotNo",
+              "blockNo",
+              "txId",
+              "redeemer",
+              "burnAmount"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "result"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "error"
+      ]
+    }
+  ]
+}
+```
+====
+
+==== Pre-conditions
+
+TBD
+
+==== Post-conditions
+
+TBD
+
+==== Method-specific errors
+
+TBD
+
+==== Rationale
+
+TBD
+
+
+=== getNonceByEpoch
+
+Retrieves the nonce per epoch.
+
+==== JSON Schema
+
+.HTTP Request body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Epoch number"
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+====
+
+.HTTP Response body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "blockHeaderHash": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "blockNo": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "epochNo": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "slotNo": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "nonce": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "blockHeaderHash",
+            "blockNo",
+            "epochNo",
+            "nonce",
+            "slotNo"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "result"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "error"
+      ]
+    }
+  ]
+}
+```
+====
+
+==== Pre-conditions
+
+TBD
+
+==== Post-conditions
+
+TBD
+
+==== Method-specific errors
+
+TBD
+
+==== Rationale
+
+TBD
+
+
+=== getStakePoolDelegationByEpoch
+
+Retrieves the stake pool delegation per epoch.
+
+==== JSON Schema
+
+.HTTP Request body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "jsonrpc": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string"
+    },
+    "params": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Epoch number"
+    },
+    "id": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "jsonrpc",
+    "method",
+    "params",
+    "id"
+  ]
+}
+```
+====
+
+.HTTP Response body
+[%collapsible]
+====
+```JSON
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "result": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "blockHeaderHash": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "blockNo": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "slotNo": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "epochNo": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "poolId": {
+                "type": "string"
+              },
+              "lovelace": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "blockHeaderHash",
+              "blockNo",
+              "slotNo",
+              "epochNo",
+              "poolId",
+              "lovelace"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "result"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "jsonrpc": {
+          "type": "string"
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "integer"
+            },
+            "data": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "jsonrpc",
+        "error"
+      ]
+    }
+  ]
+}
+```
+====
+
+==== Pre-conditions
+
+TBD
+
+==== Post-conditions
+
+TBD
+
+==== Method-specific errors
+
+TBD
+
+==== Rationale
+
+TBD
+
