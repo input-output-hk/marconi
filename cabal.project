@@ -44,6 +44,9 @@ package ouroboros-consensus-cardano
 package cardano-api
   optimization: False
 
+package cardano-crypto-praos
+  flags: -external-libsodium-vrf
+
 -- Pin to the master with 8.0.0 version (not an official release)
 source-repository-package
     type: git
