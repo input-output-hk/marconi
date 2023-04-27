@@ -34,9 +34,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (runExceptT)
 import Data.ByteString qualified as BS
 import Data.Coerce (coerce)
-import Data.List qualified
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromJust)
 import Data.Ratio (denominator, numerator)
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple qualified as PG
@@ -65,27 +63,7 @@ import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
 main :: IO ()
--- main = defaultMain tests
-main = defaultMain $ testGroup "group" $ (:[]) $ testPropertyNamed "" "" $ H.withTests 1 $ H.property $ do
-  conn <- getDbSyncPgConnection
-  indexer <- openEpochStateIndexer
-  [(minEpochNo :: C.EpochNo, maxEpochNo :: C.EpochNo)] <- liftIO $ PG.query_ conn "SELECT min(epoch_no), max(epoch_no) FROM epoch_stake"
-  forM_ [339 .. 339] $ debugEpoch conn indexer
-
-debugEpoch conn indexer epochNo = do
-  dbsync <- liftIO $ dbSyncStakepoolSizes conn epochNo
-  marconi <- liftIO $ indexerStakepoolSizes epochNo indexer
-  let keys = Map.keys dbsync
-      (true, false) = Data.List.partition (\key -> f' key dbsync == f' key marconi) keys
-  -- liftIO $ print (epochNo, length true, length false)
-  forM_ false $ \key -> do
-    liftIO $ putStr
-      $ "|" <> show key <> "|" <> f key dbsync <> "|" <> f key marconi <> "|\n"
-  return ()
-  where
-    f' k m = fromJust $ Map.lookup k m
-    f k m = show $ f' k m
-
+main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Marconi to cardano-db-sync comparisons"
@@ -110,17 +88,10 @@ propEpochStakepoolSize = H.withTests 1 $ H.property $ do
         marconiResult <- liftIO $ indexerStakepoolSizes epochNo indexer
         liftIO $ putStr
           $ "\nComparing random epoch " <> show epochNo
-          <> ", result " <> show (dbSyncResult == marconiResult)
-          <> ", # equals " <> show (Map.size dbSyncResult == Map.size marconiResult)
-          <> ", # stakepools, dbsync "  <> show (Map.size dbSyncResult)
-          <> ", # stakepools, marconi " <> show (Map.size marconiResult)
           <> ", number of stakepools in epoch " <> show (Map.size dbSyncResult)
           <> ", epoch chosen from between " <> show (coerce @_ @Word64 minEpochNo) <> " and " <> show (coerce @_ @Word64 maxEpochNo) <> ")"
-
-        -- when (not $ dbSyncResult == marconiResult) $ do
-
-        Map.keysSet dbSyncResult === Map.keysSet marconiResult
-  forM_ [339 .. maxEpochNo] compareEpoch
+        dbSyncResult === marconiResult
+  forM_ [minEpochNo .. maxEpochNo] compareEpoch
 
 dbSyncStakepoolSizes :: PG.Connection -> C.EpochNo -> IO (Map.Map C.PoolId C.Lovelace)
 dbSyncStakepoolSizes conn epochNo = do
