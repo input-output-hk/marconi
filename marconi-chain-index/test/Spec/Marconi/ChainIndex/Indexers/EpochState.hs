@@ -70,7 +70,7 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
         }
   (con, conf, runtime) <- TN.startTestnet testnetOptions base tempAbsPath
   let networkId = TN.getNetworkId runtime
-  socketPath <- TN.getSocketPathAbs conf runtime
+  socketPath <- TN.getPoolSocketPathAbs conf runtime
   pparams <- TN.getProtocolParams @C.BabbageEra con
 
   -- Load genesis keys, these already exist (were already created when testnet started)

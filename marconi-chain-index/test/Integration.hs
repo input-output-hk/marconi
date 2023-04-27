@@ -82,7 +82,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
 
   (localNodeConnectInfo, conf, runtime) <- TN.startTestnet TN.defaultTestnetOptions base tempAbsPath
   let networkId = TN.getNetworkId runtime
-  socketPathAbs <- TN.getSocketPathAbs conf runtime
+  socketPathAbs <- TN.getPoolSocketPathAbs conf runtime
 
   -- Create a channel that is passed into the indexer, such that it
   -- can write index updates to it and we can await for them (also

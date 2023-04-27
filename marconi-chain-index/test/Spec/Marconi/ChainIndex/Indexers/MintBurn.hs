@@ -318,7 +318,7 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
   (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempPath
   let networkId = TN.getNetworkId runtime
-  socketPath <- TN.getSocketPathAbs conf runtime
+  socketPath <- TN.getPoolSocketPathAbs conf runtime
 
   -- This is the channel we wait on to know if the event has been indexed
   indexedTxs <- liftIO IO.newChan
@@ -343,8 +343,8 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   pparams <- TN.getProtocolParams @C.BabbageEra localNodeConnectInfo
   txMintValue <- forAll Gen.genTxMintValue
 
-  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "shelley/utxo-keys/utxo1.vkey"
-  genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "shelley/utxo-keys/utxo1.skey"
+  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.vkey"
+  genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.skey"
   let paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
       address :: C.Address C.ShelleyAddr
       address = C.makeShelleyAddress

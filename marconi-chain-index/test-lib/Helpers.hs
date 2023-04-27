@@ -53,7 +53,7 @@ startTestnet testnetOptions base tempAbsBasePath' = do
   -- of epochSlots is specific to each blockchain instance. This value
   -- what the cardano main and testnet uses. Only applies to the Byron
   -- era.
-  socketPathAbs <- getSocketPathAbs conf tn
+  socketPathAbs <- getPoolSocketPathAbs conf tn
   let epochSlots = C.EpochSlots 21600
       localNodeConnectInfo =
         C.LocalNodeConnectInfo

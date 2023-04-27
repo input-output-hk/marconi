@@ -112,7 +112,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
 
   (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempAbsPath
   let networkId = TN.getNetworkId runtime
-  socketPathAbs <- TN.getSocketPathAbs conf runtime
+  socketPathAbs <- TN.getPoolSocketPathAbs conf runtime
 
   -- Create a channel that is passed into the indexer, such that it
   -- can write index updates to it and we can await for them (also
@@ -163,9 +163,9 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
   -- in order to accomodate this.
 
   genesisVKey :: C.VerificationKey C.GenesisUTxOKey <-
-    TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.vkey"
+    TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempAbsPath </> "utxo-keys/utxo1.vkey"
   genesisSKey :: C.SigningKey C.GenesisUTxOKey <-
-    TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.skey"
+    TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempAbsPath </> "utxo-keys/utxo1.skey"
 
   let
     paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
