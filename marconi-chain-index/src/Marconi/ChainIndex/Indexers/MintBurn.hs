@@ -27,11 +27,13 @@ module Marconi.ChainIndex.Indexers.MintBurn where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.Ledger.Alonzo.Data qualified as LA
 import Cardano.Ledger.Alonzo.Scripts qualified as LA
+import Cardano.Ledger.Alonzo.Scripts.Data qualified as LA
 import Cardano.Ledger.Alonzo.Tx qualified as LA
-import Cardano.Ledger.Alonzo.TxWitness qualified as LA
+import Cardano.Ledger.Alonzo.TxWits qualified as LA
 import Cardano.Ledger.Babbage.Tx qualified as LB
+import Cardano.Ledger.Conway.TxBody qualified as LC
+import Cardano.Ledger.Core qualified as Ledger
 import Cardano.Ledger.Mary.Value qualified as LM
 import Control.Lens (makeLenses, view, (&), (^.))
 import Control.Monad.IO.Class (liftIO)
@@ -89,38 +91,40 @@ txbMints txb = case txb of
     C.ShelleyBasedEraAllegra -> []
     C.ShelleyBasedEraMary -> []
     C.ShelleyBasedEraAlonzo -> do
-      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LA.mint shelleyTx
+      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LA.atbMint shelleyTx
       pure $ MintAsset policyId assetName quantity index' redeemer
     C.ShelleyBasedEraBabbage -> do
-      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LB.mint shelleyTx
+      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LB.btbMint shelleyTx
+      pure $ MintAsset policyId assetName quantity index' redeemer
+    C.ShelleyBasedEraConway -> do
+      (policyId, assetName, quantity, index', redeemer) <- getPolicyData txb $ LC.ctbMint shelleyTx
       pure $ MintAsset policyId assetName quantity index' redeemer
   _byronTxBody -> [] -- ByronTxBody is not exported but as it's the only other data constructor then _ matches it.
 
 -- * Helpers
 
-txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LA.Data (C.ShelleyLedgerEra era), LA.ExUnits)
-txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
-  C.TxBodyScriptData _proof _datum redeemers -> LA.unRedeemers redeemers
-  C.TxBodyNoScriptData                       -> mempty
-txRedeemers _ = mempty
-
-mintRedeemers :: C.TxBody era -> [(Word64, (LA.Data (C.ShelleyLedgerEra era), LA.ExUnits))]
-mintRedeemers txb = txRedeemers txb
-  & Map.toList
-  & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
-  & map (\(LA.RdmrPtr _ w, a) -> (w, a))
-
 getPolicyData
-    :: C.TxBody era
-    -> LM.Value OEra.StandardCrypto
+    :: forall era. Ledger.Era (C.ShelleyLedgerEra era)
+    => C.TxBody era
+    -> LM.MultiAsset OEra.StandardCrypto
     -> [(C.PolicyId, C.AssetName, C.Quantity, Word64, C.ScriptData)]
-getPolicyData txb (LM.Value _ m) = do
+getPolicyData txb (LM.MultiAsset m) = do
   let
     policyIdList = Map.toList m
     getPolicyId index' = policyIdList !! fromIntegral index'
-  ((maryPolicyID, assets), index'', (redeemer, _)) <- map (\(index', data_) -> (getPolicyId index', index', data_)) $ mintRedeemers txb
+  ((maryPolicyID, assets), index'', (redeemer, _)) <- map (\(index', data_) -> (getPolicyId index', index', data_)) $ mintRedeemers
   (assetName, quantity) :: (LM.AssetName, Integer) <- Map.toList assets
   pure (fromMaryPolicyID maryPolicyID, fromMaryAssetName assetName, C.Quantity quantity, index'', fromAlonzoData redeemer)
+  where
+    mintRedeemers = txRedeemers txb
+      & Map.toList
+      & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
+      & map (\(LA.RdmrPtr _ w, a) -> (w, a))
+
+    txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
+      C.TxBodyScriptData _proof _datum (LA.Redeemers redeemers) -> redeemers
+      C.TxBodyNoScriptData                                      -> mempty
+    txRedeemers _ = mempty
 
 -- ** Copy-paste
 

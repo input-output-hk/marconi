@@ -17,7 +17,7 @@ import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Gen.Marconi.ChainIndex.Types (genAddressInEra, genChainPoints, genSimpleScriptData)
+import Gen.Marconi.ChainIndex.Types (genAddressInEra, genChainPoints)
 import Hedgehog (Gen, Property, forAll, property, (===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
@@ -30,6 +30,7 @@ import Marconi.ChainIndex.Indexers.AddressDatum qualified as AddressDatum
 import Marconi.ChainIndex.TestLib.StorableProperties qualified as StorableProperties
 import Marconi.Core.Storable qualified as Storable
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils (addressInEraToAddressAny)
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, localOption, testGroup)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit), testPropertyNamed)
 
@@ -359,8 +360,8 @@ genAddressDatumStorableEvent cp = do
     addresses <- fmap addressInEraToAddressAny
              <$> Gen.list (Range.linear 1 5) (genAddressInEra C.BabbageEra)
     addressDatums <- forM addresses $ \address -> do
-        scriptDats <- fmap (\dats -> fmap (\dat -> (C.hashScriptData dat, dat)) dats)
-                    $ Gen.list (Range.linear 1 5) genSimpleScriptData
+        scriptDats <- fmap (\dats -> fmap (\dat -> (C.hashScriptDataBytes dat, C.getScriptData dat)) dats)
+                    $ Gen.list (Range.linear 1 5) CGen.genHashableScriptData
         datumMap <- Map.fromList <$> Gen.subsequence scriptDats
         pure (address, Set.fromList $ fmap fst scriptDats, datumMap)
     let addressDatumsMap = Map.fromList $ fmap (\(addr, datums, _) -> (addr, datums)) addressDatums

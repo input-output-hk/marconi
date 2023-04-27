@@ -30,10 +30,10 @@ import Hedgehog.Extras.Test.Base qualified as H
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Streaming qualified as CS
+import Cardano.Testnet qualified as TC (Conf (..), ProjectBase (ProjectBase), YamlFilePath (YamlFilePath), mkConf)
+import Cardano.Testnet qualified as TN hiding (testnetMagic)
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
-import Test.Runtime qualified as TN
-import Testnet.Cardano qualified as TN
-import Testnet.Conf qualified as TC (Conf (..), ProjectBase (ProjectBase), YamlFilePath (YamlFilePath), mkConf)
+import Testnet.Util.Runtime qualified as TN
 
 -- | Start a testnet.
 startTestnet
@@ -53,7 +53,7 @@ startTestnet testnetOptions base tempAbsBasePath' = do
   -- of epochSlots is specific to each blockchain instance. This value
   -- what the cardano main and testnet uses. Only applies to the Byron
   -- era.
-  socketPathAbs <- getSocketPathAbs conf tn
+  socketPathAbs <- getPoolSocketPathAbs conf tn
   let epochSlots = C.EpochSlots 21600
       localNodeConnectInfo =
         C.LocalNodeConnectInfo
@@ -76,7 +76,7 @@ getSocketPathAbs conf tn = do
 getPoolSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
 getPoolSocketPathAbs conf tn = do
   let tempAbsPath = TC.tempAbsPath conf
-  socketPath <- IO.sprocketArgumentName <$> H.headM (TN.poolNodeSprocket <$> TN.poolNodes tn)
+  socketPath <- IO.sprocketArgumentName <$> H.headM (TN.poolSprockets tn)
   H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
 
 readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
@@ -209,7 +209,7 @@ mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
       { C.txIns = map (, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
       , C.txOuts = [mkAddressAdaTxOut to totalLovelace]
       }
-  txBody0 :: C.TxBody era <- HE.leftFail $ C.makeTransactionBody tx0
+  txBody0 :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx0
   let fee = calculateFee
                 pparams
                 (length $ C.txIns tx0)
@@ -225,7 +225,7 @@ mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
              , C.txOuts = [ mkAddressAdaTxOut to howMuch
                           , mkAddressAdaTxOut from $ totalLovelace - howMuch - fee
                           ]}
-  txBody :: C.TxBody era <- HE.leftFail $ C.makeTransactionBody tx
+  txBody :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx
   return (C.signShelleyTransaction txBody keyWitnesses, txBody)
 
 mkAddressValueTxOut
@@ -264,12 +264,12 @@ calculateFee pparams nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses ne
 calculateAndUpdateTxFee
   :: H.MonadTest m
   => C.ProtocolParameters -> C.NetworkId -> Int -> Int
-  -> C.TxBodyContent C.BuildTx C.AlonzoEra -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.AlonzoEra)
+  -> C.TxBodyContent C.BuildTx C.BabbageEra -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.BabbageEra)
 calculateAndUpdateTxFee pparams networkId lengthTxIns lengthKeyWitnesses txbc = do
-  txb <- HE.leftFail $ C.makeTransactionBody txbc
+  txb <- HE.leftFail $ C.createAndValidateTransactionBody txbc
   let
     feeLovelace = calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb :: C.Lovelace
-    fee = C.TxFeeExplicit C.TxFeesExplicitInAlonzoEra feeLovelace
+    fee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra feeLovelace
     txbc' = txbc { C.txFee = fee }
   return (feeLovelace, txbc')
 
@@ -322,6 +322,7 @@ txFeesExplicitInShelleyBasedEra shelleyBased =
       C.ShelleyBasedEraMary    -> C.TxFeesExplicitInMaryEra
       C.ShelleyBasedEraAlonzo  -> C.TxFeesExplicitInAlonzoEra
       C.ShelleyBasedEraBabbage -> C.TxFeesExplicitInBabbageEra
+      C.ShelleyBasedEraConway  -> C.TxFeesExplicitInConwayEra
 
 addressAnyToShelley
   :: C.AddressAny

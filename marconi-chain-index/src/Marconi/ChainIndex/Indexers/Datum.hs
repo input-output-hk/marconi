@@ -43,7 +43,7 @@ newtype Depth = Depth Int
 
 instance FromField DatumHash where
   fromField f = fromField f >>=
-    maybe (returnError ConversionFailed f "Cannot deserialise datumhash.")
+    either (const $ returnError ConversionFailed f "Cannot deserialise datumhash.")
            pure
     . C.deserialiseFromRawBytes (C.AsHash C.AsScriptData)
 

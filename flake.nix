@@ -63,7 +63,6 @@
     plutus-core = {
       url = "github:input-output-hk/plutus";
     };
-
   };
 
   # The flake outputs are managed by std.

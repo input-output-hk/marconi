@@ -75,4 +75,5 @@ workaround k Cardano.Api.AllegraEraInCardanoMode = k Cardano.Api.AllegraEraInCar
 workaround k Cardano.Api.MaryEraInCardanoMode    = k Cardano.Api.MaryEraInCardanoMode
 workaround k Cardano.Api.AlonzoEraInCardanoMode  = k Cardano.Api.AlonzoEraInCardanoMode
 workaround k Cardano.Api.BabbageEraInCardanoMode = k Cardano.Api.BabbageEraInCardanoMode
+workaround k Cardano.Api.ConwayEraInCardanoMode  = k Cardano.Api.ConwayEraInCardanoMode
 

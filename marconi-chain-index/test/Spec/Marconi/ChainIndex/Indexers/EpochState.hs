@@ -11,6 +11,7 @@ import Cardano.BM.Configuration.Static (defaultConfigStdout)
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent qualified as STM
 import Control.Concurrent.Async qualified as IO
@@ -23,8 +24,10 @@ import Data.Aeson qualified as J
 import Data.ByteString.Lazy qualified as BL
 import Data.List qualified as List
 import Data.Map qualified as Map
+import GHC.Stack (HasCallStack)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test qualified as HE
+import Hedgehog.Extras.Test.Base qualified as H
 import Helpers qualified as TN
 import Marconi.ChainIndex.Indexers qualified as Indexers
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
@@ -34,10 +37,12 @@ import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.FilePath.Posix ((</>))
-import Test.Base qualified as H
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
-import Testnet.Cardano qualified as TN
+import Testnet.Util.Runtime qualified as TN
+
+integration :: HasCallStack => H.Integration () -> H.Property
+integration = H.withTests 1 . H.propertyOnce
 
 tests :: TestTree
 tests = testGroup "EpochState"
@@ -56,17 +61,17 @@ tests = testGroup "EpochState"
 -- and discovering how cardano-cli implements its command line
 -- interface.
 test :: H.Property
-test = H.integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath -> do
+test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath -> do
 
   -- start testnet
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  let testnetOptions = TN.defaultTestnetOptions
-        { TN.epochLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
+  let testnetOptions = TN.CardanoOnlyTestnetOptions $ TN.cardanoDefaultTestnetOptions
+        { TN.cardanoSlotLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
         }
   (con, conf, runtime) <- TN.startTestnet testnetOptions base tempAbsPath
   let networkId = TN.getNetworkId runtime
-  socketPath <- TN.getSocketPathAbs conf runtime
-  pparams <- TN.getProtocolParams @C.AlonzoEra con
+  socketPath <- TN.getPoolSocketPathAbs conf runtime
+  pparams <- TN.getProtocolParams @C.BabbageEra con
 
   -- Load genesis keys, these already exist (were already created when testnet started)
   genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.vkey"
@@ -89,7 +94,7 @@ test = H.integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath 
       TN.mkTransferTx
           networkId
           con
-          (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInAlonzoEra)
+          (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
           genesisAddress
           paymentAddress
           [C.WitnessGenesisUTxOKey genesisSKey]
@@ -98,7 +103,7 @@ test = H.integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath 
       TN.mkTransferTx
           networkId
           con
-          (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInAlonzoEra)
+          (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
           genesisAddress
           paymentAddress2
           [C.WitnessGenesisUTxOKey genesisSKey]
@@ -234,7 +239,7 @@ createPaymentAndStakeKey networkId = do
 
 registerStakeAddress
   :: C.NetworkId -> C.LocalNodeConnectInfo C.CardanoMode -> C.ProtocolParameters -> C.Address C.ShelleyAddr -> C.SigningKey C.GenesisUTxOKey -> C.StakeCredential
-  -> HE.Integration (C.Tx C.AlonzoEra, C.TxBody C.AlonzoEra)
+  -> HE.Integration (C.Tx C.BabbageEra, C.TxBody C.BabbageEra)
 registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredential = do
 
   -- Create a registration certificate: cardano-cli stake-address registration-certificate
@@ -244,22 +249,22 @@ registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredentia
   -- cardano-cli transaction build
   -- cardano-cli transaction sign
   -- cardano-cli transaction submit
-  (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.AlonzoEra con payerAddress
+  (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
   let keyWitnesses = [C.WitnessGenesisUTxOKey payerSKey]
       mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
-      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInAlonzoEra)
+      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
   (feeLovelace, tx) <- TN.calculateAndUpdateTxFee pparams networkId (length txIns) (length keyWitnesses) (TN.emptyTxBodyContent validityRange pparams)
     { C.txIns = map (, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
     , C.txOuts = mkTxOuts 0
-    , C.txCertificates = C.TxCertificates C.CertificatesInAlonzoEra [stakeAddressRegCert] (C.BuildTxWith mempty)
+    , C.txCertificates = C.TxCertificates C.CertificatesInBabbageEra [stakeAddressRegCert] (C.BuildTxWith mempty)
     }
-  txBody <- HE.leftFail $ C.makeTransactionBody $ tx { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
+  txBody <- HE.leftFail $ C.createAndValidateTransactionBody $ tx { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
   return (C.signShelleyTransaction txBody keyWitnesses, txBody)
 
 registerPool
   :: C.LocalNodeConnectInfo C.CardanoMode -> C.NetworkId -> C.ProtocolParameters -> FilePath
   -> [C.ShelleyWitnessSigningKey] -> [C.StakeCredential] -> C.Address C.ShelleyAddr
-  -> HE.Integration (C.PoolId, C.Tx C.AlonzoEra, C.TxBody C.AlonzoEra)
+  -> HE.Integration (C.PoolId, C.Tx C.BabbageEra, C.TxBody C.BabbageEra)
 registerPool con networkId pparams tempAbsPath   keyWitnesses stakeCredentials payerAddress = do
 
   -- Create the metadata file
@@ -304,16 +309,16 @@ registerPool con networkId pparams tempAbsPath   keyWitnesses stakeCredentials p
       keyWitnesses' = keyWitnesses <> [ C.WitnessStakePoolKey coldSKey ]
 
   -- Create transaction
-  do (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.AlonzoEra con payerAddress
+  do (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
      let mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
-         validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInAlonzoEra)
+         validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
      (feeLovelace, txbc) <- TN.calculateAndUpdateTxFee pparams networkId (length txIns) (length keyWitnesses) (TN.emptyTxBodyContent validityRange pparams)
        { C.txIns = map (, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
        , C.txOuts = mkTxOuts 0
-       , C.txCertificates = C.TxCertificates C.CertificatesInAlonzoEra ([poolRegistration] <> delegationCertificates)
+       , C.txCertificates = C.TxCertificates C.CertificatesInBabbageEra ([poolRegistration] <> delegationCertificates)
          (C.BuildTxWith mempty) -- BuildTxWith build (Map StakeCredential (Witness WitCtxStake era))
        }
-     txBody :: C.TxBody C.AlonzoEra <- HE.leftFail $ C.makeTransactionBody $ txbc
+     txBody :: C.TxBody C.BabbageEra <- HE.leftFail $ C.createAndValidateTransactionBody $ txbc
        { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
      let tx = C.signShelleyTransaction txBody keyWitnesses'
 

@@ -3,15 +3,11 @@
 
 module Orphans where
 
-import Cardano.Api (BlockHeader (BlockHeader), BlockNo, ChainPoint (ChainPoint, ChainPointAtGenesis), ToJSON)
+import Cardano.Api (BlockHeader (BlockHeader), ChainPoint (ChainPoint, ChainPointAtGenesis), ToJSON)
 import Cardano.Streaming (ChainSyncEvent)
 import GHC.Generics (Generic)
 
 deriving instance Generic ChainPoint
-
-instance ToJSON ChainPoint
-
-instance ToJSON BlockNo
 
 deriving instance Generic BlockHeader
 

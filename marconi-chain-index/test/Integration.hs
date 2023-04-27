@@ -82,7 +82,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
 
   (localNodeConnectInfo, conf, runtime) <- TN.startTestnet TN.defaultTestnetOptions base tempAbsPath
   let networkId = TN.getNetworkId runtime
-  socketPathAbs <- TN.getSocketPathAbs conf runtime
+  socketPathAbs <- TN.getPoolSocketPathAbs conf runtime
 
   -- Create a channel that is passed into the indexer, such that it
   -- can write index updates to it and we can await for them (also
@@ -153,7 +153,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
   pparams <- TN.getProtocolParams @C.AlonzoEra localNodeConnectInfo
 
   let scriptDatum = C.ScriptDataNumber 42 :: C.ScriptData
-      scriptDatumHash = C.hashScriptData scriptDatum
+      scriptDatumHash = C.hashScriptDataBytes scriptDatum
 
       tx1fee = 271 :: C.Lovelace
       amountPaid = 10_000_000 :: C.Lovelace -- 10 ADA
@@ -184,7 +184,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
         , C.txOuts = [txOut1, txOut2]
         , C.txProtocolParams   = C.BuildTxWith $ Just pparams
         }
-  tx1body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody txBodyContent
+  tx1body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody txBodyContent
   let
     kw :: C.KeyWitness C.AlonzoEra
     kw = C.makeShelleyKeyWitness tx1body (C.WitnessPaymentKey $ C.castSigningKey genesisSKey)
@@ -230,7 +230,7 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
         , C.txOuts             = [TN.mkAddressAdaTxOut address (lovelaceAtScript - tx2fee)]
         }
 
-  tx2body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody tx2bodyContent
+  tx2body :: C.TxBody C.AlonzoEra <- H.leftFail $ C.createAndValidateTransactionBody tx2bodyContent
   let tx2 = C.signShelleyTransaction tx2body [C.WitnessGenesisUTxOKey genesisSKey]
 
   TN.submitTx localNodeConnectInfo tx2

@@ -18,12 +18,12 @@ import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import GHC.Generics (Generic)
-import Gen.Cardano.Api.Typed qualified as CGen
 import Gen.Marconi.ChainIndex.Mockchain (BlockHeader (BlockHeader), MockBlock (MockBlock), genMockchain,
                                          genTxBodyContentFromTxinsWihtPhase2Validation)
 import Hedgehog (Gen)
 import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 -- | Generates a list of UTXO events.
 --
@@ -111,8 +111,8 @@ convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum ref
             case txOutDatum of
               C.TxOutDatumNone       -> (Nothing, Nothing)
               C.TxOutDatumHash _ dh  -> (Just dh, Nothing)
-              C.TxOutDatumInTx _ d   -> (Just $ C.hashScriptData d, Just d)
-              C.TxOutDatumInline _ d -> (Just $ C.hashScriptData d, Just d)
+              C.TxOutDatumInTx _ d   -> (Just $ C.hashScriptDataBytes d, Just d)
+              C.TxOutDatumInline _ d -> (Just $ C.hashScriptDataBytes d, Just d)
         (scriptHash, script) =
             case refScript of
               C.ReferenceScriptNone -> (Nothing, Nothing)
@@ -122,7 +122,7 @@ convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum ref
             ( C.toAddressAny addr)
               txid
               txix
-              scriptData
+              (C.getScriptData <$> scriptData)
               scriptDataHash
               (C.txOutValueToValue val)
               script
@@ -160,6 +160,6 @@ genTx'
 genTx' gen = do
   txIn <- CGen.genTxIn
   txBodyContent  <- gen [txIn]
-  txBody <- either (fail . show) pure $ C.makeTransactionBody txBodyContent
+  txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
   pure $ C.makeSignedTransaction [] txBody
 

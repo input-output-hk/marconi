@@ -17,7 +17,6 @@ import Cardano.Chain.Genesis qualified
 import Cardano.Crypto (ProtocolMagicId (unProtocolMagicId), RequiresNetworkMagic (RequiresMagic, RequiresNoMagic))
 import Cardano.Ledger.Shelley.LedgerState qualified as SL
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
-import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Cardano.CanHardFork qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras qualified as HFC
@@ -62,12 +61,13 @@ bimSlotNo (C.BlockInMode (C.Block (C.BlockHeader slotNo _ _) _) _) = slotNo
 
 getEpochNo :: C.LedgerState -> Maybe CS.EpochNo
 getEpochNo ledgerState' = case ledgerState' of
-  C.LedgerStateByron _st                   -> Nothing
-  C.LedgerStateShelley st                  -> fromState st
-  C.LedgerStateAllegra st                  -> fromState st
-  C.LedgerStateMary st                     -> fromState st
-  C.LedgerStateAlonzo st                   -> fromState st
-  CS.LedgerState (O.LedgerStateBabbage st) -> fromState st -- TODO pattern missing from cardano-node: is it there on master? if not create PR.
+  C.LedgerStateByron _st  -> Nothing
+  C.LedgerStateShelley st -> fromState st
+  C.LedgerStateAllegra st -> fromState st
+  C.LedgerStateMary st    -> fromState st
+  C.LedgerStateAlonzo st  -> fromState st
+  C.LedgerStateBabbage st -> fromState st
+  C.LedgerStateConway st  -> fromState st
   where
     fromState = Just . SL.nesEL . O.shelleyLedgerState
 

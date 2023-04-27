@@ -11,6 +11,7 @@ import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
@@ -27,6 +28,7 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Word (Word64)
+import GHC.Stack (HasCallStack)
 import Gen.Marconi.ChainIndex.Indexers.MintBurn qualified as Gen
 import Hedgehog (Property, forAll, tripping, (===))
 import Hedgehog qualified as H
@@ -48,17 +50,19 @@ import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.FilePath ((</>))
-import Test.Base qualified as H
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
-import Testnet.Cardano qualified as TN
+
+integration :: HasCallStack => H.Integration () -> H.Property
+integration = H.withTests 1 . H.propertyOnce
+
 
 -- | Each test case is described beside every top level property
 -- declaration.
 tests :: TestTree
 tests = testGroup "MintBurn"
   [ testPropertyNamed
-      "Mints in `TxBodyContent` survive `makeTransactionBody` and end up in expected place in `TxBody`"
+      "Mints in `TxBodyContent` survive `createAndValidateTransactionBody` and end up in expected place in `TxBody`"
       "mintsPreserved" mintsPreserved
   , testPropertyNamed
       "Querying everything should return all indexed event"
@@ -111,13 +115,13 @@ tests = testGroup "MintBurn"
   ]
 
 -- | This is a sanity-check test that turns a TxBodyContent with mint
--- events into a TxBody through `makeTransactionBody` and checks if
+-- events into a TxBody through `createAndValidateTransactionBody` and checks if
 -- the mint events are found in the result. It doesn't test an
 -- indexer.
 mintsPreserved :: Property
 mintsPreserved = H.property $ do
   mintValue <- forAll Gen.genTxMintValue
-  C.Tx txb _ :: C.Tx C.AlonzoEra <- forAll (Gen.genTxWithMint mintValue) >>= \case
+  C.Tx txb _ :: C.Tx C.BabbageEra <- forAll (Gen.genTxWithMint mintValue) >>= \case
     Left err  -> fail $ "TxBodyError: " <> show err
     Right tx' -> return tx'
   -- Index the transaction:
@@ -310,11 +314,11 @@ intervals = H.property $ do
 -- mint event, put it in a transaction and submit it, find the
 -- generated event passed back through the indexer.
 endToEnd :: Property
-endToEnd = H.withShrinks 0 $ H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempPath -> do
+endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempPath -> do
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet TN.defaultTestnetOptions base tempPath
+  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempPath
   let networkId = TN.getNetworkId runtime
-  socketPath <- TN.getSocketPathAbs conf runtime
+  socketPath <- TN.getPoolSocketPathAbs conf runtime
 
   -- This is the channel we wait on to know if the event has been indexed
   indexedTxs <- liftIO IO.newChan
@@ -336,11 +340,11 @@ endToEnd = H.withShrinks 0 $ H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE
         in indexerWorker `catch` handleException :: IO ()
 
   -- Create & submit transaction
-  pparams <- TN.getProtocolParams @C.AlonzoEra localNodeConnectInfo
+  pparams <- TN.getProtocolParams @C.BabbageEra localNodeConnectInfo
   txMintValue <- forAll Gen.genTxMintValue
 
-  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "shelley/utxo-keys/utxo1.vkey"
-  genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "shelley/utxo-keys/utxo1.skey"
+  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.vkey"
+  genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.skey"
   let paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
       address :: C.Address C.ShelleyAddr
       address = C.makeShelleyAddress
@@ -349,21 +353,21 @@ endToEnd = H.withShrinks 0 $ H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE
         C.NoStakeAddress :: C.Address C.ShelleyAddr
 
   value <- H.fromJustM $ getValue txMintValue
-  (txIns, lovelace) <- TN.getAddressTxInsValue @C.AlonzoEra localNodeConnectInfo address
+  (txIns, lovelace) <- TN.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
 
   let keyWitnesses = [C.WitnessPaymentKey $ C.castSigningKey genesisSKey]
-      mkTxOuts lovelace' = [TN.mkAddressValueTxOut address $ C.TxOutValue C.MultiAssetInAlonzoEra $ C.lovelaceToValue lovelace' <> value]
-      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInAlonzoEra)
+      mkTxOuts lovelace' = [TN.mkAddressValueTxOut address $ C.TxOutValue C.MultiAssetInBabbageEra $ C.lovelaceToValue lovelace' <> value]
+      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
   (feeLovelace, txbc) <- TN.calculateAndUpdateTxFee pparams networkId (length txIns) (length keyWitnesses) (TN.emptyTxBodyContent validityRange pparams)
     { C.txIns = map (, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
     , C.txOuts = mkTxOuts 0
     , C.txProtocolParams = C.BuildTxWith $ Just pparams
     , C.txMintValue = txMintValue
-    , C.txInsCollateral = C.TxInsCollateral C.CollateralInAlonzoEra txIns
+    , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra txIns
     }
-  txBody :: C.TxBody C.AlonzoEra <- H.leftFail $ C.makeTransactionBody $ txbc
+  txBody :: C.TxBody C.BabbageEra <- H.leftFail $ C.createAndValidateTransactionBody $ txbc
     { C.txOuts = mkTxOuts $ lovelace - feeLovelace }
-  let keyWitnesses' :: [C.KeyWitness C.AlonzoEra]
+  let keyWitnesses' :: [C.KeyWitness C.BabbageEra]
       keyWitnesses' = map (C.makeShelleyKeyWitness txBody) keyWitnesses
   TN.submitTx localNodeConnectInfo $ C.makeSignedTransaction keyWitnesses' txBody
 
@@ -406,19 +410,19 @@ dummyBlockHeaderHash = fromString "1234567890abcdef1234567890abcdef1234567890abc
 equalSet :: (H.MonadTest m, Show a, Ord a) => [a] -> [a] -> m ()
 equalSet a b = Set.fromList a === Set.fromList b
 
-getPolicyAssets :: C.TxMintValue C.BuildTx C.AlonzoEra -> [(C.PolicyId, C.AssetName, C.Quantity)]
+getPolicyAssets :: C.TxMintValue C.BuildTx C.BabbageEra -> [(C.PolicyId, C.AssetName, C.Quantity)]
 getPolicyAssets txMintValue = case txMintValue of
-  (C.TxMintValue C.MultiAssetInAlonzoEra mintedValues (C.BuildTxWith _policyIdToWitnessMap)) ->
+  (C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith _policyIdToWitnessMap)) ->
     mapMaybe (\(assetId, quantity) -> case assetId of
              C.AssetId policyId assetName -> Just (policyId, assetName, quantity)
              C.AdaAssetId                 -> Nothing
         ) $ C.valueToList mintedValues
   _ -> []
 
-getValue :: C.TxMintValue C.BuildTx C.AlonzoEra -> Maybe C.Value
+getValue :: C.TxMintValue C.BuildTx C.BabbageEra -> Maybe C.Value
 getValue = \case
-  C.TxMintValue C.MultiAssetInAlonzoEra value (C.BuildTxWith _policyIdToWitnessMap) -> Just value
-  _                                                                                 -> Nothing
+  C.TxMintValue C.MultiAssetInBabbageEra value (C.BuildTxWith _policyIdToWitnessMap) -> Just value
+  _                                                                                  -> Nothing
 
 mintsToPolicyAssets :: [MintAsset] -> [(C.PolicyId, C.AssetName, C.Quantity)]
 mintsToPolicyAssets =

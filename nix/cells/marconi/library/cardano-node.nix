@@ -7,8 +7,8 @@ let
       type = "github";
       owner = "input-output-hk";
       repo = "cardano-node";
-      rev = "ebc7be471b30e5931b35f9bbc236d21c375b91bb";
-      narHash = "sha256-WRRzfpDc+YVmTNbN9LNYY4dS8o21p/6NoKxtcZmoAcg=";
+      rev = "a158a679690ed8b003ee06e1216ac8acd5ab823d";
+      narHash = "sha256-uY7wPyCgKuIZcGu0+vGacjGw2kox8H5ZsVGsfTNtU0c=";
     };
   };
 in

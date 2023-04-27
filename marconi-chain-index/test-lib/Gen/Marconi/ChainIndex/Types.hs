@@ -47,12 +47,12 @@ import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Word (Word64)
 import GHC.Natural (Natural)
-import Gen.Cardano.Api.Typed qualified as CGen
 import Hedgehog (Gen, MonadGen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range (Range)
 import Hedgehog.Range qualified as Range
-import PlutusCore (defaultCostModelParams)
+import PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCostModelParams)
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 nonEmptySubset :: (MonadGen m, Ord a) => Set a -> m (Set a)
 nonEmptySubset s = do
@@ -79,7 +79,7 @@ genBlockHeader genB genS = do
   sn <- genS
   bn <- genB
   let (hsh :: C.Hash C.BlockHeader) =
-        fromJust $ C.deserialiseFromRawBytes(C.proxyToAsType Proxy) bs
+        fromJust $ either (const Nothing) Just $ C.deserialiseFromRawBytes(C.proxyToAsType Proxy) bs
   pure (C.BlockHeader sn hsh bn)
 
 genHashBlockHeader :: (MonadGen m) => m (C.Hash C.BlockHeader)
@@ -117,7 +117,7 @@ genTxBodyWithTxIns
   -> Gen (C.TxBody era)
 genTxBodyWithTxIns era txIns txInsCollateral = do
   txBodyContent <- genTxBodyContentWithTxInsCollateral era txIns txInsCollateral
-  case C.makeTransactionBody txBodyContent of
+  case C.createAndValidateTransactionBody txBodyContent of
     Left err     -> fail $ C.displayError err
     Right txBody -> pure txBody
 
@@ -140,7 +140,7 @@ genWitnessAndHashInEra era = do
   C.ScriptInEra scriptLanguageInEra script <- CGen.genScriptInEra era
   witness :: C.Witness C.WitCtxTxIn era1 <- C.ScriptWitness C.ScriptWitnessForSpending <$> case script of
     C.PlutusScript version plutusScript -> do
-      scriptData <- CGen.genScriptData
+      scriptData <- CGen.genHashableScriptData
       executionUnits <- genExecutionUnits
       pure $ C.PlutusScriptWitness
         scriptLanguageInEra
@@ -149,8 +149,8 @@ genWitnessAndHashInEra era = do
         (C.ScriptDatumForTxIn scriptData)
         scriptData
         executionUnits
-    C.SimpleScript version simpleScript ->
-      pure $ C.SimpleScriptWitness scriptLanguageInEra version (C.SScript simpleScript)
+    C.SimpleScript simpleScript ->
+      pure $ C.SimpleScriptWitness scriptLanguageInEra (C.SScript simpleScript)
   pure (witness, C.hashScript script)
 
 -- | TODO Copy-paste from cardano-node: cardano-api/gen/Gen/Cardano/Api/Typed.hs
@@ -227,13 +227,19 @@ genSimpleTxOutDatumHashTxContext era = case era of
     C.AlonzoEra  -> Gen.choice
                     [ pure C.TxOutDatumNone
                     , C.TxOutDatumHash C.ScriptDataInAlonzoEra <$> genHashScriptData
-                    , C.TxOutDatumInTx C.ScriptDataInAlonzoEra <$> genSimpleScriptData
+                    , C.TxOutDatumInTx C.ScriptDataInAlonzoEra <$> CGen.genHashableScriptData
                     ]
     C.BabbageEra -> Gen.choice
                     [ pure C.TxOutDatumNone
                     , C.TxOutDatumHash C.ScriptDataInBabbageEra <$> genHashScriptData
-                    , C.TxOutDatumInTx C.ScriptDataInBabbageEra <$> genSimpleScriptData
-                    , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra <$> genSimpleScriptData
+                    , C.TxOutDatumInTx C.ScriptDataInBabbageEra <$> CGen.genHashableScriptData
+                    , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra <$> CGen.genHashableScriptData
+                    ]
+    C.ConwayEra -> Gen.choice
+                    [ pure C.TxOutDatumNone
+                    , C.TxOutDatumHash C.ScriptDataInConwayEra <$> genHashScriptData
+                    , C.TxOutDatumInTx C.ScriptDataInConwayEra <$> CGen.genHashableScriptData
+                    , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInConwayEra <$> CGen.genHashableScriptData
                     ]
 
 -- Copied from cardano-api. Delete when this function is reexported
@@ -252,8 +258,8 @@ genProtocolParametersForPlutusScripts =
     <*> genNat
     <*> genNat
     <*> genNat
-    <*> genNat
-    <*> genNat
+    <*> CGen.genLovelace
+    <*> CGen.genLovelace
     <*> Gen.maybe CGen.genLovelace
     <*> CGen.genLovelace
     <*> CGen.genLovelace
@@ -265,8 +271,8 @@ genProtocolParametersForPlutusScripts =
     <*> CGen.genRational
     <*> pure Nothing -- Obsolete from babbage onwards
     <*> pure (Map.fromList
-      [ (C.AnyPlutusScriptVersion C.PlutusScriptV1, C.CostModel $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
-      , (C.AnyPlutusScriptVersion C.PlutusScriptV2, C.CostModel $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams) ])
+      [ (C.AnyPlutusScriptVersion C.PlutusScriptV1, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
+      , (C.AnyPlutusScriptVersion C.PlutusScriptV2, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams) ])
     <*> (Just <$> genExecutionUnitPrices)
     <*> (Just <$> genExecutionUnits)
     <*> (Just <$> genExecutionUnits)

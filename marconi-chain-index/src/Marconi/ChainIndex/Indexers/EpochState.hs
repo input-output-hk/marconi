@@ -188,8 +188,8 @@ toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEvent
         isFirstEventOfEpoch
 
 -- | From LedgerState, get epoch stake pool delegation: a mapping of pool ID to amount staked in
--- lovelace. We do this by getting the '_pstakeSet' stake snapshot and then use '_delegations' and
--- '_stake' to resolve it into the desired mapping.
+-- lovelace. We do this by getting the 'ssStakeSet' stake snapshot and then use 'ssDelegations' and
+-- 'ssStake' to resolve it into the desired mapping.
 getStakeMap
     :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
     -> Map C.PoolId C.Lovelace
@@ -200,23 +200,24 @@ getStakeMap extLedgerState = case O.ledgerState extLedgerState of
   O.LedgerStateMary st    -> getStakeMapFromShelleyBlock st
   O.LedgerStateAlonzo st  -> getStakeMapFromShelleyBlock st
   O.LedgerStateBabbage st -> getStakeMapFromShelleyBlock st
+  O.LedgerStateConway st  -> getStakeMapFromShelleyBlock st
   where
     getStakeMapFromShelleyBlock
       :: forall proto era c
-       . (c ~ Ledger.Crypto era, c ~ O.StandardCrypto)
+       . (c ~ Ledger.EraCrypto era, c ~ O.StandardCrypto)
       => O.LedgerState (O.ShelleyBlock proto era)
       -> Map C.PoolId C.Lovelace
     getStakeMapFromShelleyBlock st = sdd
       where
         nes = O.shelleyLedgerState st :: Ledger.NewEpochState era
 
-        stakeSnapshot = Ledger._pstakeSet . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
+        stakeSnapshot = Ledger.ssStakeSet . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
 
         stakes = Ledger.unStake
-               $ Ledger._stake stakeSnapshot
+               $ Ledger.ssStake stakeSnapshot
 
         delegations :: VMap.VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
-        delegations = Ledger._delegations stakeSnapshot
+        delegations = Ledger.ssDelegations stakeSnapshot
 
         sdd :: Map C.PoolId C.Lovelace
         sdd = Map.fromListWith (+)
@@ -242,6 +243,7 @@ getEpochNo extLedgerState = case O.ledgerState extLedgerState of
   O.LedgerStateMary st    -> getEpochNoFromShelleyBlock st
   O.LedgerStateAlonzo st  -> getEpochNoFromShelleyBlock st
   O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateConway st  -> getEpochNoFromShelleyBlock st
   where
     getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
 
@@ -292,6 +294,7 @@ getEpochNonce extLedgerState =
       O.ChainDepStateMary st    -> extractNonce st
       O.ChainDepStateAlonzo st  -> extractNonce st
       O.ChainDepStateBabbage st -> extractNoncePraos st
+      O.ChainDepStateConway st  -> extractNoncePraos st
   where
     extractNonce :: O.TPraosState c -> Ledger.Nonce
     extractNonce =
@@ -636,7 +639,7 @@ chainTipsFromLedgerStateFilePath ledgerStateFilepath =
      parseSlotNo slotNoStr = C.SlotNo <$> readMaybe (Text.unpack slotNoStr)
      parseBlockHeaderHash bhhStr = do
           bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 bhhStr
-          C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
+          either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
      parseBlockNo blockNoStr = C.BlockNo <$> readMaybe (Text.unpack blockNoStr)
 
 open

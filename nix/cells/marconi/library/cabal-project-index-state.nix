@@ -2,4 +2,4 @@
 
 { inputs, cell }:
 
-cell.library.marconi-project.index-state
+cell.library.marconi-project.index-state-max
