@@ -12,14 +12,11 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
-import Gen.Marconi.ChainIndex.Types qualified as CGen
 import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Property, forAll, property, tripping)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Marconi.ChainIndex.Indexers.EpochState (EpochNonceRow (EpochNonceRow), EpochSDDRow (EpochSDDRow))
-import Marconi.ChainIndex.Indexers.MintBurn (TxMintRow (TxMintRow))
-import Marconi.ChainIndex.Indexers.Utxo (Utxo (Utxo), UtxoRow (UtxoRow))
 import Marconi.Sidechain.Api.Routes (AddressUtxoResult (AddressUtxoResult), AssetIdTxResult (AssetIdTxResult),
                                      GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
                                      GetEpochNonceResult (GetEpochNonceResult),
@@ -28,6 +25,7 @@ import Marconi.Sidechain.Api.Routes (AddressUtxoResult (AddressUtxoResult), Asse
                                      GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
                                      GetUtxosFromAddressParams (GetUtxosFromAddressParams),
                                      GetUtxosFromAddressResult (GetUtxosFromAddressResult))
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
 import Test.Tasty.Hedgehog (testPropertyNamed)
@@ -96,7 +94,7 @@ tests = testGroup "Spec.Marconi.Sidechain.Routes"
 
 propJSONRountripCurrentSyncedBlockResult :: Property
 propJSONRountripCurrentSyncedBlockResult = property $ do
-    cp <- GetCurrentSyncedBlockResult <$> forAll CGen.genChainPoint
+    cp <- GetCurrentSyncedBlockResult <$> forAll Gen.genChainPoint
     tripping cp Aeson.encode Aeson.decode
 
 propJSONRountripGetUtxosFromAddressParams :: Property
@@ -110,17 +108,17 @@ propJSONRountripGetUtxosFromAddressResult :: Property
 propJSONRountripGetUtxosFromAddressResult = property $ do
     r <- fmap GetUtxosFromAddressResult $ forAll $ Gen.list (Range.linear 0 10) $ do
         (C.TxIn txId txIx) <- CGen.genTxIn
-        sd <- Gen.maybe CGen.genSimpleScriptData
+        hsd <- Gen.maybe CGen.genHashableScriptData
         AddressUtxoResult
             <$> Gen.genHashBlockHeader
             <*> Gen.genSlotNo
             <*> pure txId
             <*> pure txIx
             <*> (fmap (\(C.AddressInEra _ addr) -> C.toAddressAny addr)
-                      $ CGen.genAddressInEra C.BabbageEra
+                      $ Gen.genAddressInEra C.BabbageEra
                 )
-            <*> pure (fmap C.hashScriptData sd)
-            <*> pure sd
+            <*> pure (fmap C.hashScriptDataBytes hsd)
+            <*> pure (fmap C.getScriptData hsd)
     tripping r Aeson.encode Aeson.decode
 
 propJSONRountripGetTxsBurningAssetIdParams :: Property
@@ -132,13 +130,13 @@ propJSONRountripGetTxsBurningAssetIdParams = property $ do
 propJSONRountripGetTxsBurningAssetIdResult :: Property
 propJSONRountripGetTxsBurningAssetIdResult = property $ do
     r <- fmap GetTxsBurningAssetIdResult $ forAll $ Gen.list (Range.linear 0 10) $ do
-        sd <- Gen.maybe CGen.genSimpleScriptData
+        hsd <- Gen.maybe CGen.genHashableScriptData
         AssetIdTxResult
             <$> Gen.genHashBlockHeader
             <*> Gen.genSlotNo
             <*> CGen.genTxId
-            <*> pure (fmap C.hashScriptData sd)
-            <*> pure sd
+            <*> pure (fmap C.hashScriptDataBytes hsd)
+            <*> pure (fmap C.getScriptData hsd)
             <*> Gen.genQuantity (Range.linear 0 10)
     tripping r Aeson.encode Aeson.decode
 
@@ -214,7 +212,7 @@ goldenAddressUtxoResult = do
                 txId
                 (C.TxIx 0)
                 (C.AddressShelley addr)
-                (Just $ C.hashScriptData datum)
+                (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
                 (Just datum)
             ]
         result = GetUtxosFromAddressResult utxos
@@ -248,14 +246,14 @@ goldenMintingPolicyHashTxResult = do
                 blockHeaderHash
                 (C.SlotNo 1)
                 txId
-                (Just $ C.hashScriptData redeemerData)
+                (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
                 (Just redeemerData)
                 (C.Quantity $ -10)
             , AssetIdTxResult
                 blockHeaderHash
                 (C.SlotNo 1)
                 txId
-                (Just $ C.hashScriptData redeemerData)
+                (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
                 (Just redeemerData)
                 (C.Quantity 10)
             ]
