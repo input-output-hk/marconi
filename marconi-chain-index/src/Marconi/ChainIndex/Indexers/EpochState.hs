@@ -75,7 +75,6 @@ module Marconi.ChainIndex.Indexers.EpochState
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.Ledger.Coin qualified as Ledger
 import Cardano.Ledger.Compactible qualified as Ledger
 import Cardano.Ledger.Era qualified as Ledger
 import Cardano.Ledger.Shelley.API qualified as Ledger

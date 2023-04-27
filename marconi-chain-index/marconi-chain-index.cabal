@@ -19,6 +19,11 @@ source-repository head
   type:     git
   location: https://github.com/input-output-hk/marconi
 
+flag ci
+  description: Toggle features on/off when in CI
+  manual:      True
+  default:     True
+
 common lang
   default-language:   Haskell2010
   default-extensions:
@@ -296,8 +301,11 @@ test-suite marconi-chain-index-test
     , cardano-crypto-class
     , cardano-ledger-alonzo           ^>=1.1
     , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-testnet
     , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
     , ouroboros-network
     , plutus-core
     , plutus-ledger-api               ^>=1.1
@@ -313,6 +321,7 @@ test-suite marconi-chain-index-test
     , base                  >=4.9 && <5
     , base16-bytestring
     , bytestring
+    , cborg
     , containers
     , directory
     , filepath
@@ -320,6 +329,7 @@ test-suite marconi-chain-index-test
     , hedgehog-extras
     , lens
     , optparse-applicative
+    , postgresql-simple
     , prettyprinter
     , serialise
     , sqlite-simple
@@ -329,3 +339,71 @@ test-suite marconi-chain-index-test
     , tasty-golden
     , tasty-hedgehog
     , text
+    , transformers
+
+test-suite marconi-chain-index-test-compare-cardano-db-sync
+  import:         lang
+  ghc-options:    -Wno-unused-packages
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: test-compare-cardano-db-sync
+
+  if flag(ci)
+    buildable: False
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-streaming             >=1.2.0
+    , marconi-chain-index           >=1.2.0
+    , marconi-chain-index-test-lib  >=1.2.0
+    , marconi-core                  >=1.2.0
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api:{cardano-api, gen}
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-testnet
+    , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-network
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                  >=4.9 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , containers
+    , directory
+    , filepath
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , optparse-applicative
+    , postgresql-simple
+    , prettyprinter
+    , serialise
+    , sqlite-simple
+    , stm
+    , streaming
+    , tasty
+    , tasty-golden
+    , tasty-hedgehog
+    , text
+    , transformers
