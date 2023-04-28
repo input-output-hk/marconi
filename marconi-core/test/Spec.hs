@@ -34,6 +34,12 @@ experimentTests = testGroup "Experiment"
         [ E.delayTestGroup "ListIndexer" E.listIndexerRunner
         , E.delayTestGroup "SQLiteIndexer" E.sqliteIndexerRunner
         ]
+    , testGroup "WithTransform"
+        [ E.withTransformTest
+        ]
+    , testGroup "WithAggregate"
+        [ E.withAggregateTest
+        ]
     , testGroup "Performance"
         [ E.indexingPerformanceTest "ListIndexer" E.listIndexerRunner
         , E.indexingPerformanceTest "MixedIndexer" E.mixedHighMemoryIndexerRunner

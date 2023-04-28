@@ -26,6 +26,7 @@ import Data.Functor.Compose (Compose (Compose, getCompose))
 import Marconi.Core.Experiment.Class (Closeable (close), HasGenesis, IsIndex (index, indexAll), IsSync (lastSyncPoint),
                                       Queryable (query), ResumableResult (resumeResult), Rollbackable (rollback))
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper), IndexerTrans (unwrap), indexVia,
                                                          wrappedIndexer, wrapperConfig)
 import Marconi.Core.Experiment.Type (Point, TimedEvent)
@@ -143,6 +144,15 @@ instance {-# OVERLAPPABLE #-}
 
     flushSize = flushSizeVia unwrap
     keepInMemory = keepInMemoryVia unwrap
+
+-- Overlappable so that we always configure
+-- the outmost instance in case of an overlap
+instance {-# OVERLAPPABLE #-}
+    (IndexerMapTrans t, HasMixedConfig indexer)
+    => HasMixedConfig (t indexer output) where
+
+    flushSize = flushSizeVia unwrapMap
+    keepInMemory = keepInMemoryVia unwrapMap
 
 inMemory :: Lens' (MixedIndexer store mem event) (mem event)
 inMemory = mixedWrapper . wrappedIndexer

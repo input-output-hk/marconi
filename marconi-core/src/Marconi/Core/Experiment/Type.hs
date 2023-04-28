@@ -1,3 +1,4 @@
+{-# LANGUAGE StrictData           #-}
 {-# LANGUAGE UndecidableInstances #-}
 {- |
     Base types to index events.
@@ -83,4 +84,3 @@ data QueryError query
      -- ^ The indexer query failed
 
 deriving stock instance Show (Result query) => Show (QueryError query)
-

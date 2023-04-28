@@ -24,6 +24,7 @@ import Data.Sequence qualified as Seq
 
 import Marconi.Core.Experiment.Class (Closeable, IsIndex (index), IsSync, Queryable, Resetable (reset),
                                       Rollbackable (rollback))
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper),
                                                          IndexerTrans (Config, unwrap, wrap), indexVia, resetVia,
                                                          rollbackVia, wrappedIndexer, wrapperConfig)
@@ -93,6 +94,12 @@ instance {-# OVERLAPPABLE #-}
     => HasDelayConfig (t indexer) where
 
     delayCapacity = unwrap . delayCapacity
+
+instance {-# OVERLAPPABLE #-}
+    (IndexerMapTrans t, HasDelayConfig indexer)
+    => HasDelayConfig (t indexer output) where
+
+    delayCapacity = unwrapMap . delayCapacity
 
 delayBuffer :: Lens' (WithDelay indexer event) (Seq (TimedEvent event))
 delayBuffer = delayWrapper . wrapperConfig . configDelayBuffer

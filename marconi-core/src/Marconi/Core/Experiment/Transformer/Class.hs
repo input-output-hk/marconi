@@ -1,3 +1,7 @@
+{- | Typeclass for indexer transformers,
+
+   It allows the generalisation of properties amongst all indexer transformers.
+ -}
 module Marconi.Core.Experiment.Transformer.Class
     ( IndexerTrans (Config, wrap, unwrap)
     , IndexerMapTrans (ConfigMap, wrapMap, unwrapMap)

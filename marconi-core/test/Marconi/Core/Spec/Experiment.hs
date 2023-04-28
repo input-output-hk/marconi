@@ -40,6 +40,8 @@ module Marconi.Core.Spec.Experiment
     , resumeSQLiteLastSyncTest
     , resumeMixedLastSyncTest
     , memorySizeUpdateTest
+    , withTransformTest
+    , withAggregateTest
     -- * Mock chain
     , DefaultChain
         , defaultChain
@@ -113,6 +115,7 @@ import Control.Monad.Trans.Except (ExceptT)
 import Data.Either (fromRight)
 import Data.Maybe (listToMaybe)
 
+import Data.Monoid (Sum (Sum))
 import Database.SQLite.Simple (FromRow)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
@@ -1067,3 +1070,92 @@ cacheUpdateTest =
         $ Test.withMaxSuccess 10000
         $ cacheUpdateProperty (view defaultChain <$> Test.arbitrary)
 
+-- | A runner for a the 'WithTransform' tranformer
+withTransformRunner
+    :: Monad m
+    => (input -> output)
+    -> IndexerTestRunner m output wrapped
+    -> IndexerTestRunner m input (Core.WithTransform wrapped output)
+withTransformRunner f wRunner
+    = IndexerTestRunner
+        (wRunner ^. indexerRunner)
+        (Core.withTransform f <$> wRunner ^. indexerGenerator)
+
+withTransformProperty
+    :: Gen [Item TestEvent]
+    -> Property
+withTransformProperty gen = let
+
+        indexerEvents indexer'
+            = fmap (view Core.event)
+            . fromRight []
+            <$> Core.queryLatest' Core.allEvents indexer'
+
+        modelEvents lastSync
+            = views model (fmap (abs . snd) . filter ((lastSync >=) . fst))
+
+        runner = withTransformRunner abs listIndexerRunner
+
+        r = runner ^. indexerRunner
+        genIndexer = runner ^. indexerGenerator
+
+    in Test.forAll gen $ \chain -> r $ do
+        initialIndexer <- GenM.run genIndexer
+        indexer <- GenM.run $ foldM (flip process) initialIndexer chain
+        iResult <- GenM.run $ indexerEvents indexer
+        lastSyncPoint <- GenM.run $ Core.lastSyncPoint indexer
+        let model' = runModel chain
+            mResult = modelEvents lastSyncPoint model'
+        GenM.stop $  mResult === iResult
+
+withTransformTest :: Tasty.TestTree
+withTransformTest =
+    Tasty.testProperty "WithTransform apply transformation before indexing"
+        $ Test.withMaxSuccess 10000
+        $ withTransformProperty (view defaultChain <$> Test.arbitrary)
+
+-- | A runner for a the 'WithTransform' tranformer
+withAggregateRunner
+    :: Monad m
+    => (input -> output)
+    -> IndexerTestRunner m output wrapped
+    -> IndexerTestRunner m input (Core.WithAggregate wrapped output)
+withAggregateRunner f wRunner
+    = IndexerTestRunner
+        (wRunner ^. indexerRunner)
+        (Core.withAggregate f <$> wRunner ^. indexerGenerator)
+
+deriving via (Sum Int) instance Semigroup TestEvent
+
+withAggregateProperty
+    :: Gen [Item TestEvent]
+    -> Property
+withAggregateProperty gen = let
+
+        indexerEvents indexer'
+            = fmap (view Core.event)
+            . fromRight []
+            <$> Core.queryLatest' Core.allEvents indexer'
+
+        modelEvents lastSync
+            = init . scanr (+) 0 <$> views model (fmap snd . filter ((lastSync >=) . fst))
+
+        runner = withAggregateRunner id listIndexerRunner
+
+        r = runner ^. indexerRunner
+        genIndexer = runner ^. indexerGenerator
+
+    in Test.forAll gen $ \chain -> r $ do
+        initialIndexer <- GenM.run genIndexer
+        indexer <- GenM.run $ foldM (flip process) initialIndexer chain
+        iResult <- GenM.run $ indexerEvents indexer
+        lastSyncPoint <- GenM.run $ Core.lastSyncPoint indexer
+        let model' = runModel chain
+            mResult = modelEvents lastSyncPoint model'
+        GenM.stop $  mResult === iResult
+
+withAggregateTest :: Tasty.TestTree
+withAggregateTest =
+    Tasty.testProperty "WithAggregate apply transformation before indexing"
+        $ Test.withMaxSuccess 10000
+        $ withAggregateProperty (view defaultChain <$> Test.arbitrary)
