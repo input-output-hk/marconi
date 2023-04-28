@@ -24,6 +24,7 @@ import Data.Map qualified as Map
 
 import Marconi.Core.Experiment.Class (Closeable, HasGenesis (genesis), IsIndex (index, indexAll), IsSync,
                                       Queryable (query), Resetable (reset), Rollbackable (rollback), queryLatest)
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper),
                                                          IndexerTrans (Config, unwrap, wrap), indexAllVia, indexVia,
                                                          lastSyncPointVia, queryVia, resetVia, rollbackVia,
@@ -102,6 +103,12 @@ instance {-# OVERLAPPABLE #-}
     => HasCacheConfig query (t indexer) where
 
     cache = unwrap . cache
+
+instance {-# OVERLAPPABLE #-}
+    (IndexerMapTrans t, HasCacheConfig query indexer)
+    => HasCacheConfig query (t indexer output) where
+
+    cache = unwrapMap . cache
 
 -- | How do we add event to existing cache
 onForward

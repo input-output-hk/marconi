@@ -1,5 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 
+{- |
+    A set of queries that can be implemented by any indexer
+
+    See "Marconi.Core.Experiment" for documentation.
+ -}
 module Marconi.Core.Experiment.Query
     ( EventAtQuery (EventAtQuery)
     , EventsMatchingQuery (EventsMatchingQuery)
@@ -28,7 +33,7 @@ instance MonadError (QueryError (EventAtQuery event)) m
 
     query p EventAtQuery ix = do
         let isAtPoint e p' = e ^. point == p'
-        aHeadOfSync <- not <$> isAheadOfSync p ix
+        aHeadOfSync <- isAheadOfSync p ix
         when aHeadOfSync
             $ throwError $ AheadOfLastSync Nothing
         maybe
@@ -65,10 +70,10 @@ instance (MonadError (QueryError (EventsMatchingQuery event)) m, Applicative m)
         let result = ix ^.. events
                          . folded . filtered (isBefore p)
                          . filtered (predicate q . view event)
-        check <- not <$> isAheadOfSync p ix
-        if check
-            then pure result
-            else throwError . AheadOfLastSync . Just $ result
+        aheadOfSync <- isAheadOfSync p ix
+        when aheadOfSync
+            $ throwError . AheadOfLastSync . Just $ result
+        pure result
 
 instance MonadError (QueryError (EventsMatchingQuery event)) m
     => ResumableResult m event (EventsMatchingQuery event) ListIndexer where

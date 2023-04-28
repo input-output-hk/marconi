@@ -3,7 +3,7 @@
 {-# LANGUAGE StrictData      #-}
 
 {- |
-    Workers are wrapper around indexers that hide there complexity.
+    Workers are wrapper around indexers that hide there type parameters..
 
     See "Marconi.Core.Experiment" for documentation.
  -}

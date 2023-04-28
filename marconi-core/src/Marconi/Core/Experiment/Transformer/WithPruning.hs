@@ -32,6 +32,7 @@ import Data.Sequence qualified as Seq
 import Marconi.Core.Experiment.Class (Closeable, HasGenesis, IsIndex (index), IsSync, Queryable, Resetable (reset),
                                       Rollbackable (rollback))
 import Marconi.Core.Experiment.Indexer.MixedIndexer (MixedIndexer, inDatabase)
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (IndexWrapper),
                                                          IndexerTrans (Config, unwrap, wrap), indexVia, resetVia,
                                                          rollbackVia, wrappedIndexer, wrapperConfig)
@@ -76,6 +77,14 @@ instance {-# OVERLAPPABLE #-}
     prune = pruneVia unwrap
 
     pruningPoint = pruningPointVia unwrap
+
+instance {-# OVERLAPPABLE #-}
+    (IndexerMapTrans t, Functor m, Prunable m output indexer)
+    => Prunable m output (t indexer output) where
+
+    prune = pruneVia unwrapMap
+
+    pruningPoint = pruningPointVia unwrapMap
 
 data PruningConfig event
     = PruningConfig

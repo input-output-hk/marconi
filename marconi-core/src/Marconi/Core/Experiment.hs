@@ -381,6 +381,7 @@ module Marconi.Core.Experiment
 
     -- * Indexer Transformers
     , IndexerTrans (..)
+    , IndexerMapTrans (..)
     -- ** Tracer
     , WithTracer
         , withTracer
@@ -404,6 +405,13 @@ module Marconi.Core.Experiment
         , withCache
         , addCacheFor
     , HasCacheConfig (cache)
+    -- ** Transforming input
+    , WithTransform
+        , withTransform
+        , HasTransformConfig (..)
+    , WithAggregate
+        , withAggregate
+        , HasAggregateConfig (..)
     -- ** Index Wrapper
     --
     -- | Wrap an indexer with some extra information to modify its behaviour
@@ -469,6 +477,9 @@ import Marconi.Core.Experiment.Worker (ProcessedInput (..), Worker, WorkerIndexe
                                        createWorker', createWorkerPure, startWorker)
 
 import Control.Monad.Except (MonadError (catchError, throwError))
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
+import Marconi.Core.Experiment.Transformer.WithAggregate (HasAggregateConfig (..), WithAggregate, withAggregate)
+import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
 
 
 -- | Try to rollback to a given point to resume the indexer.
