@@ -88,13 +88,15 @@ sqliteIndexer
 sqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery
     = let
 
-    in do
+    getLastSync = do
         res <- runLastSyncQuery _handle lastSyncQuery
-        _dbLastSync <- case res of
+        case res of
             []     -> pure genesis
             [x]    -> pure x
             _other -> throwError (InvalidIndexer "Ambiguous sync point")
 
+    in do
+        _dbLastSync <- getLastSync
         pure $ SQLiteIndexer
             {_handle
             , _prepareInsert
@@ -119,6 +121,13 @@ singleInsertSQLiteIndexer
     -> m (SQLiteIndexer event)
 singleInsertSQLiteIndexer = sqliteIndexer
 
+handleSQLErrors :: IO a -> IO (Either IndexerError a)
+handleSQLErrors value = fmap Right value
+     `catch` (\(x :: SQL.FormatError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+     `catch` (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+     `catch` (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
+
+
 -- | Run a list of insert queries in one single transaction.
 runIndexQueries
     :: MonadIO m
@@ -131,10 +140,7 @@ runIndexQueries c xs = let
         = SQL.executeMany c insertQuery params
 
     in either throwError pure <=< liftIO
-        $ fmap Right (SQL.withTransaction c $ Async.mapConcurrently_ runIndexQuery xs)
-            `catch` (\(x :: SQL.FormatError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
-            `catch` (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
-            `catch` (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
+        $ handleSQLErrors (SQL.withTransaction c $ Async.mapConcurrently_ runIndexQuery xs)
 
 runLastSyncQuery
     :: MonadError IndexerError m
@@ -145,11 +151,7 @@ runLastSyncQuery
     -> m [r]
 runLastSyncQuery connection lastSyncQuery
         = either throwError pure <=< liftIO
-        $ fmap Right (SQL.query connection lastSyncQuery ())
-    `catch` (\(x :: SQL.FormatError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
-    `catch` (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
-    `catch` (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
-
+        $ handleSQLErrors (SQL.query connection lastSyncQuery ())
 
 instance (MonadIO m, Monoid (InsertRecord event), MonadError IndexerError m)
     => IsIndex m event SQLiteIndexer where
