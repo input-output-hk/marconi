@@ -74,7 +74,6 @@
     * Provide a less naive in-memory indexer implementation than the list one.
       /This is actually debatable, as most of the data manipulation in memory fits very well with the complexity/
       /of the list operations (except if we need to foldr the in memory resume to answer a query)./
-    * Split up this mess in modules.
     * Provide MonadState version of the functions that manipulates the indexer.
     * Add custom error handling at the worker and at the coordinator level,
       even if its likely that the coordinator can't do much aside distributing poison pills.
@@ -448,6 +447,8 @@ module Marconi.Core.Experiment
     , queryLatestVia
     ) where
 
+import Control.Monad.Except (MonadError (catchError, throwError))
+
 import Marconi.Core.Experiment.Class (Closeable (..), HasGenesis (..), IsIndex (..), IsSync (..), Queryable (..),
                                       Resetable (..), ResumableResult (..), Rollbackable (..), index', indexAll',
                                       isAheadOfSync, query', queryLatest, queryLatest')
@@ -463,23 +464,22 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (IndexQuery (..), InsertRec
                                                       querySyncedOnlySQLiteIndexerWith, rollbackSQLiteIndexerWith,
                                                       singleInsertSQLiteIndexer, sqliteIndexer)
 import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (..), IndexerTrans (..), closeVia, indexAllVia,
                                                          indexVia, lastSyncPointVia, queryLatestVia, queryVia, resetVia,
                                                          rollbackVia, wrappedIndexer, wrapperConfig)
+import Marconi.Core.Experiment.Transformer.WithAggregate (HasAggregateConfig (..), WithAggregate, withAggregate)
 import Marconi.Core.Experiment.Transformer.WithCache (HasCacheConfig (cache), WithCache, addCacheFor, withCache)
 import Marconi.Core.Experiment.Transformer.WithDelay (HasDelayConfig (delayCapacity), WithDelay, delayBuffer, withDelay)
 import Marconi.Core.Experiment.Transformer.WithPruning (HasPruningConfig (pruneEvery, securityParam), Prunable (..),
                                                         WithPruning, currentDepth, nextPruning, pruneEvery, pruneVia,
                                                         pruningPointVia, securityParam, stepsBeforeNext, withPruning)
 import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
+import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
 import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, point)
 import Marconi.Core.Experiment.Worker (ProcessedInput (..), Worker, WorkerIndexer, WorkerM (..), createWorker,
                                        createWorker', createWorkerPure, startWorker)
 
-import Control.Monad.Except (MonadError (catchError, throwError))
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
-import Marconi.Core.Experiment.Transformer.WithAggregate (HasAggregateConfig (..), WithAggregate, withAggregate)
-import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
 
 
 -- | Try to rollback to a given point to resume the indexer.
