@@ -1,0 +1,145 @@
+= ADR 1: Stake pool delegation distribution computation
+
+Date: 2023-05-01
+
+== Author(s)
+
+@koslambrou <konstantinos.lambrou@iohk.io>
+
+== Status
+
+Draft
+
+== Context
+
+The Sidechain application needs to know the stake pool delegation distribution (SDD) per epoch.
+Additionnaly, it needs to know the SDD for all epochs from the start of the sidechain in order the select the committee (Sidechain jargon which I'm not familiar with).
+
+Here's list of assumptions:
+
+* `marconi-sidechain` will be run by a Stake Pool Operator (SPO)
+* `marconi-sidechain` will communicate with a relay node (not the block producing node)
+
+The main architectural goal we are trying to achieve is to reduce as much as possible the hardware resource usage of a SPO.
+
+Questions to be answered:
+
+* at what points in time (lower and upper bounds) does Sidechain need to know the SDD per epoch?
+
+== Decision(s)
+
+TBD
+
+== Possible solutions
+
+=== Compute SDD by tracking the `LedgerState`
+
+This is the approach that `cardano-db-sync` currently uses to compute the SDD for each epoch.
+
+Here is a general outline of the steps:
+
+. At the start of `marconi-sidechain`, initialize the `LedgerState` (or `NewEpochState`) given the node genesis file
+. Get block from the chain sync protocol
+. Update the `LedgerState` given the block
+. Compute the SDD from the new LedgerState and store in the database
+. Repeat from step 2
+
+While this approach is the "easiest" to implement, it suffers from major drawbacks such as:
+
+* using 10-16GB of RAM in `marconi-sidechain` on top of the additional 10-16GB used by the local relay node
+* slowing down indexing - computation of the `LedgerState` is _the_ bottleneck in `marconi-sidechain`
+* duplicating the computation of the LedgerState which is already computed by the Cardano node which `marconi-sidechain` is connected to
+
+These drawbacks are significant enough that alternative solutions need to be explored.
+
+=== Add an option to cardano-node for storing LedgerEvents
+
+As we said, `cardano-node` already computes and keeps an up-to-date `LedgerState` while syncing.
+As `marconi-sidechain` is connecting to a Cardano node, it should be possible to get the `LedgerState` directly from the node instead of computing it in `marconi-sidechain`.
+This would result in a significant improvement in memory usage.
+
+However, there is an important issue with this approach.
+Other than the state query client of the node-to-client protocol which only gives you the latest `LedgerState`, there is no support for querying historical `LedgerState` values (i.e. for any block or epoch in the chain).
+
+NOTE: we discuss an alternative solution to the problem using the state query client of the node-to-client protocol in the section below.
+
+Therefore, this solution would require either
+
+* changing `cardano-node` directly to optionally store on disk the `LedgerState` (or more specifically the `LedgerEvent`) for each epoch (or slot, but with the consequence of reducing syncing speed) with a CLI option.
+
+or
+
+* providing a forked node which stores this information (if that change will not be accepted in the `cardano-node` repository)
+
+In either of those case, the SPO would need to replace one of it's relay nodes with a node which
+saves on disk the `LedgerEvent` for each epoch.
+Then, any chain-indexer (like `marconi-sidechain`) will read these `LedgerEvent` and index the required information (the SDD in our scenario).
+
+NOTE: at this stage, it is important to note why we suggest to store `LedgerEvent` and not the full `LedgerState`. A `LedgerEvent` is derived from the `LedgerState` and describes changes to the `LedgerState` after each block is applied. Thus, it is a smaller datastructure when compared to `LedgerState`. See https://github.com/input-output-hk/cardano-ledger/blob/master/docs/LedgerEvents.md for more information.
+
+The benefits:
+
+* no more needing to keep track of the `LedgerState` in `marconi-sidechain` which reduces memory consumption
+* enables any chain-indexers (`cardano-db-sync`, `Kupo`, etc) to read the stored `LedgerEvent` in order to index various information like SDD and rewards without using a large amount of memory
+
+The drawbacks:
+
+* requires a change to `cardano-node` in order to store those LedgerEvents. This implies lots of discussions with the `cardano-node` team to accept such a change.
+* needs the SPO to resync the relay node from scratch in order to save the `LedgerEvent` on disk. However, such a resync will only be required once, even after an upgrade on `marconi-sidechain`.
+* need to maintain a separate fork of the `cardano-node` in the event of the node team not agreeing to merge those changes
+
+=== Index SDD from the state query client of the node-to-client protocol
+
+The alternative solution takes advantage of the only way currently to get the SDD from a `cardano-node` by using the state query client of the node-to-client protocol.
+However, the query will only return the latest SDD given the slot from which the Cardano node is synced to.
+In order to take advantage of this functionnality, we would need to change the deployment method of `marconi-sidechain` to something as follows:
+
+. The SPO needs to stop the relay node and delete the `cardano-node` database
+. Start `marconi-sidechain` which will wait for the node to start
+. Start the relay node
+. Once Marconi has noticed that the node has started syncing, it will start querying the local query state for the SDD for each new epoch and index it in the database.
+
+The benefits:
+
+* no change to `cardano-node` are required
+* uses the existing infrastructure to get the required information
+
+The drawbacks:
+
+* needs the SPO to resync the relay node from scratch
+* any indexing logic or database schema change to Marconi would require reindexing the local node (thus deleting the node database)
+* need to continously poll the relay node when a new epoch occurs
+
+=== Transform `marconi-sidechain` to a Cardano relay node
+
+`marconi-sidechain` could be changed to become _a_ Cardano node and replace the SPO's relay node.
+Then, it would have the same functionnality as a relay (using node-to-node protocol), but also index
+the necessary for the Sidechain team.
+
+The benefits:
+
+* no change to `cardano-node` are required
+* only one computation of `LedgerState` is required
+
+The drawbacks:
+
+* uncertainty of capability to use `cardano-node` as a library
+* this version of `marconi-sidechain` would use the same amount of memory as the relay node. Therefore, it would not be able to be deployed on a AWS small instance as initially requested by the Sidechain team
+
+=== Use Mithril SDD snapshots
+
+A approach that has been proposed would be to use the SDD snapshots provided by Mithril.
+Then, `marconi-sidechain` would simply fetch those snapshots and index them in its database.
+
+However, it is unclear at what points in time the snapshots will available.
+We expect the Sidechain team to need SDD for epochs close to the tip of the Cardano chain.
+Therefore, our intuition is that Mithril could be used to _bootstrap_ `marconi-sidechain` for faster syncing, but we would still need to implement one of the previous solutions to index the SDD that occur on epochs after the latest Mithril snapshot.
+
+== Implications
+
+== Notes
+
+=== 2023/05/03
+
+Discussing with @abailly-iohk, seems like the "ideal" solution would be to transform `marconi-sidechain` to a Cardano node using the node-to-node protocol and replace the SPO's relay node.
+However, we need product input from the Sidechain team given the changes that an SPO would have to do.
