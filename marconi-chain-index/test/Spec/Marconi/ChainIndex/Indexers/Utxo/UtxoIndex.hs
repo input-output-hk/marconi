@@ -130,6 +130,11 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
              "On a rollback, the latest latest sync point is the one we rollback to if the indexer was ahead of it"
              "propLastChainPointOnRewindedIndexer"
              propLastChainPointOnRewindedIndexer
+
+        , testPropertyNamed
+             "Compare Mixed storage with in-memory-only storage"
+             "propCompareRetrieveUtxoEventsFromInMemoryAndSQLite"
+             propCompareRetrieveUtxoEventsFromInMemoryAndSQLite
         ]
     ]
 
@@ -314,6 +319,49 @@ propSaveAndRetrieveUtxoEvents = property $ do
   Hedgehog.assert
     $ all (== True)
     [u `notElem` fromEventsTxIns| u <- fromStorageTxIns]
+
+-- | Insert Utxo events in storage, and retrieve the events
+--   The property we're checking here is:
+--    - retrieved at least one unspent utxo
+--    - only retrieve unspent utxo's
+--    - test `spent` filtering at the boundary of in-memory & disk storage
+propCompareRetrieveUtxoEventsFromInMemoryAndSQLite :: Property
+propCompareRetrieveUtxoEventsFromInMemoryAndSQLite = property $ do
+  highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 7 5 20
+  chainPoints :: [C.ChainPoint]  <- forAll $ genChainPoints 2 highSlotNo
+  events::[StorableEvent Utxo.UtxoHandle] <- forAll $ forM chainPoints genEventWithShelleyAddressAtChainPoint <&> concat
+  -- depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
+  indexerMixed <- liftIO $ Utxo.open ":memory:" (Utxo.Depth 1) False -- don't vacuum sqlite
+             >>= liftIO . Storable.insertMany events
+  indexerMemory <- liftIO $ Utxo.open ":memory:" (Utxo.Depth 2160) False -- don't vacuum sqlite
+             >>= liftIO . Storable.insertMany events
+  let lastSlot = getSlot $ last chainPoints
+      qAddressesAtSlot
+        = List.nub  -- remove duplicate addresses
+        . fmap (flip Utxo.UtxoByAddress lastSlot . Utxo._address)
+        . concatMap (Set.toList . Utxo.ueUtxos)
+        $ events
+      qAddressesAll
+        = List.nub  -- remove duplicate addresses
+        . fmap (flip Utxo.UtxoByAddress Nothing . Utxo._address)
+        . concatMap (Set.toList . Utxo.ueUtxos)
+        $ events
+  -- resultAtSlot <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qAddressesAtSlot
+  qAllresultMixed :: Set Utxo.UtxoRow <-
+    liftIO . fmap getRows . traverse (Storable.query Storable.QEverything indexerMixed) $ qAddressesAll
+  qAllresultMemory :: Set Utxo.UtxoRow <-
+    liftIO . fmap getRows . traverse (Storable.query Storable.QEverything indexerMemory) $ qAddressesAll
+  qSlotresultMixed :: Set Utxo.UtxoRow <-
+    liftIO . fmap getRows . traverse (Storable.query Storable.QEverything indexerMixed) $ qAddressesAtSlot
+  qSlotresultMemory :: Set Utxo.UtxoRow <-
+    liftIO . fmap getRows . traverse (Storable.query Storable.QEverything indexerMemory) $ qAddressesAtSlot
+
+  Hedgehog.assert $ (not . null) qAllresultMixed
+  qAllresultMixed === qAllresultMemory
+
+  Hedgehog.assert $ (not . null) qSlotresultMixed
+  length qSlotresultMixed === length qSlotresultMemory
+  qSlotresultMixed === qSlotresultMemory
 
 -- Insert Utxo events in storage, and retreive the events by address and slot
 -- Note: The property we are checking is:
@@ -544,3 +592,6 @@ propLastChainPointOnRewindedIndexer = property $ do
 getSlot :: C.ChainPoint -> Maybe C.SlotNo
 getSlot C.ChainPointAtGenesis = Nothing
 getSlot (C.ChainPoint s _)    = Just s
+
+getRows :: [Storable.StorableResult Utxo.UtxoHandle] -> Set Utxo.UtxoRow
+getRows = Set.fromList . concatMap Utxo.getUtxoResult

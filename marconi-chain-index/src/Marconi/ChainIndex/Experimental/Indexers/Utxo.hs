@@ -22,7 +22,7 @@
 
 module Marconi.ChainIndex.Experimental.Indexers.Utxo where
 
-import Control.Lens (folded, imap, makeLenses, view, (^.), (^..))
+import Control.Lens (folded, imap, makeLenses, view, (&), (.~), (^.), (^..))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Either (fromRight)
 import Data.Foldable (fold, foldl')
@@ -76,17 +76,18 @@ data UtxoEvent = UtxoEvent
 $(makeLenses ''UtxoEvent)
 
 type instance Core.Point UtxoEvent = C.ChainPoint
-type instance Core.Point Utxo = C.ChainPoint
-type instance Core.Point Spent = C.ChainPoint
+type instance Core.Point Utxo = C.ChainPoint  -- required for the unspent_transaction table SQL mappings
+type instance Core.Point Spent = C.ChainPoint -- required for the spent table SQL mappings
+
 instance Core.HasGenesis C.ChainPoint where
   genesis = C.ChainPointAtGenesis
 
 newtype QueryUtxoByAddress = QueryUtxoByAddress (C.AddressAny, Maybe C.SlotNo)
+  deriving (Eq, Ord, Show)
 
 type instance Core.Result QueryUtxoByAddress = [Core.TimedEvent Utxo] -- use this instead of the utxorow
 
--- | Take the results from both in-memory and SQLite indexers
---  Then, complete the result by merge and reducing the Utxos
+-- | Take the query results from two indexers, merge the results and re-compute Unspent
 instance MonadIO m => Core.ResumableResult m UtxoEvent QueryUtxoByAddress Core.ListIndexer where
   resumeResult
     :: Ord (Core.Point UtxoEvent)
@@ -108,14 +109,13 @@ instance MonadIO m => Core.ResumableResult m UtxoEvent QueryUtxoByAddress Core.L
       utxoEvents :: [UtxoEvent]
       utxoEvents = ix ^. Core.events ^.. folded . Core.event
 
-      balanceUtxos :: Core.Result QueryUtxoByAddress -> Core.Result QueryUtxoByAddress
-      balanceUtxos = filter (\(Core.TimedEvent _ utxo)
+      computeUnspent:: Core.Result QueryUtxoByAddress -> Core.Result QueryUtxoByAddress
+      computeUnspent= filter (\(Core.TimedEvent _ utxo)
                             -> utxo ^. utxoTxIn `notElem` txins)
-    in
-      do
-        mem :: (Core.Result QueryUtxoByAddress) <- Core.query cp q ix
-        disk <- queryResult
-        pure $ balanceUtxos (disk <> mem) -- merging and reduce ondisk & in-memory results
+    in do
+      mem :: (Core.Result QueryUtxoByAddress) <- Core.query cp q ix
+      disk <- queryResult
+      pure . computeUnspent $  disk <> mem -- merging and reduce ondisk & in-memory results
 
 -- | Query the in-memory indexer
 instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListIndexer  where
@@ -149,22 +149,18 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
               utxosAtAddress :: Set Utxo
               utxosAtAddress = Set.filter (\u -> (u ^. utxoAddress) == addr) $ _ueUtxos event
 
-            in
-              [ event {_ueUtxos = utxosAtAddress}
-              | not (null utxosAtAddress) ]
+            in [ event {_ueUtxos = utxosAtAddress} | not (null utxosAtAddress) ]
 
-        in
-          fold
-          . filter (pointFilter maybeSno) -- filter for query slotNo
-          . fmap (Core.TimedEvent (timedutxoevent ^. Core.point)) -- filter for address
-          $ splitEventAtAddress (timedutxoevent ^. Core.event)
+        in fold
+           . filter (pointFilter maybeSno) -- filter for query slotNo
+           . fmap (Core.TimedEvent (timedutxoevent ^. Core.point)) -- filter for address
+           $ splitEventAtAddress (timedutxoevent ^. Core.event)
 
-    in
-      pure
-      . concatMap timedUtxosFromTimedUtxoEvent
-      . fmap (queryTimedUtxoEvent q)
-      . view Core.events
-      $ listindexer
+    in pure
+       . concatMap timedUtxosFromTimedUtxoEvent
+       . fmap (queryTimedUtxoEvent q)
+       . view Core.events
+       $ listindexer
 
 -- | Get Timed Utxo from Timed UtxoEvent
 timedUtxosFromTimedUtxoEvent :: Core.TimedEvent UtxoEvent -> [Core.TimedEvent Utxo]
@@ -224,22 +220,23 @@ sqliteIndexer conn =
       -> Core.InsertRecord UtxoEvent  -- SQL mapping of Utxo and Spent parameters
     prepareInsert' utxoEv =
       let
+
         tUtxos = timedUtxosFromTimedUtxoEvent utxoEv -- timed Utxo
         tSpents = timedSpentsFromTimedUtxoEvent utxoEv -- timed Spent
-      in
-        (tUtxos, tSpents)
+
+      in (tUtxos, tSpents)
 
     buildInsert' :: Core.InsertRecord UtxoEvent -> [Core.IndexQuery]
     buildInsert' (us, ss) =
       [Core.IndexQuery utxoInsertQuery us, Core.IndexQuery spentInsertQuery ss]
-  in
-    Core.SQLiteIndexer
+
+  in Core.SQLiteIndexer
       conn
       prepareInsert'
       buildInsert'
       Core.genesis
 
--- | combine UtxoEvents
+-- | combine UtxoEvents and balance
 instance Semigroup UtxoEvent where
   (UtxoEvent outs ins) <> (UtxoEvent outs' ins') =
     let
@@ -264,9 +261,10 @@ instance Semigroup UtxoEvent where
       spents = Set.map Spent $  foldl'(\txins txin ->
                          if txin `Set.notMember` outsTxins then
                            Set.insert txin txins
-                          else txins) Set.empty insTxins
-    in
-      UtxoEvent utxos spents
+                          else txins
+                                      ) Set.empty insTxins
+
+    in UtxoEvent utxos spents
 
 instance Monoid UtxoEvent where
   mempty = UtxoEvent Set.empty Set.empty
@@ -277,9 +275,8 @@ instance Semigroup (Core.TimedEvent UtxoEvent) where
 
       point = max (te ^. Core.point) (te' ^. Core.point)
       event = (te ^. Core.event) <> (te' ^. Core.event)
-    in
 
-      Core.TimedEvent point event
+    in Core.TimedEvent point event
 
 instance Monoid (Core.TimedEvent UtxoEvent) where
   mempty = Core.TimedEvent Core.ChainPointAtGenesis mempty
@@ -294,7 +291,7 @@ initSQLite dbPath = do
   SQL.execute_ c "PRAGMA journal_mode=WAL"
 
   SQL.execute_ c [r|CREATE TABLE IF NOT EXISTS unspent_transactions
-                      ( address TEXT NOT NULL
+                      ( address BLOB NOT NULL
                       , txId TEXT NOT NULL
                       , txIx INT NOT NULL
                       , datum BLOB
@@ -323,11 +320,11 @@ mkMixedIndexer
   -> Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer UtxoEvent
 mkMixedIndexer conn (SecurityParam w64) =
   let
-    flushsize::Word = fromIntegral w64 -- how often to flush
-    keepinmem::Word = flushsize `div` 6  -- how much to keep in memory to minimize roolback
-    -- TODO need to discuss and poss
-  in
-    mkMixedIndexer' conn keepinmem flushsize
+
+    keepInMemory::Word = fromIntegral w64  -- how much to keep in memory to minimize disk rollbacks
+    flushsize::Word = keepInMemory`div` 6  -- how often to flush to disk
+
+  in mkMixedIndexer' conn keepInMemory flushsize
 
 -- | Make a SQLiteIndexer
 mkMixedIndexer'
@@ -345,12 +342,13 @@ mkMixedIndexer' conn keep flush =
 instance ToRow (Core.TimedEvent Utxo) where
   toRow u =
     let
+
       (C.TxIn txid txix) = u ^. Core.event . utxoTxIn
       (snoField, bhhField) = case u ^. Core.point of
         C.ChainPointAtGenesis  -> (SQL.SQLNull,SQL.SQLNull)
         (C.ChainPoint sno bhh) -> (toField sno, toField bhh)
-    in
-    toRow
+
+    in toRow
     ( toField (u ^. Core.event . utxoAddress)
     , toField txid
     , toField txix
@@ -379,12 +377,13 @@ instance FromRow (Core.TimedEvent Utxo) where
 instance ToRow (Core.TimedEvent Spent) where
   toRow s =
     let
+
       (C.TxIn txid txix) = unSpent . view Core.event $ s
       (snoField, bhhField) = case s ^. Core.point of
         C.ChainPointAtGenesis  -> (SQL.SQLNull,SQL.SQLNull)
         (C.ChainPoint sno bhh) -> (toField sno, toField bhh)
-    in
-          toRow
+
+    in toRow
             ( toField txid
             , toField txix
             , snoField
@@ -414,10 +413,11 @@ instance (MonadIO m)
   --   -> m (Core.Result QueryUtxoByAddress)
   query cp q (Core.SQLiteIndexer conn _ _ _) =
     let
+
       action :: SQL.Connection -> IO (Core.Result QueryUtxoByAddress)
       action = mkUtxoAddressQueryAction cp q
-    in
-      liftIO $ action conn
+
+    in liftIO $ action conn
 
 -- | Here we define our QueryAction functions
 mkUtxoAddressQueryAction
@@ -428,6 +428,7 @@ mkUtxoAddressQueryAction
 mkUtxoAddressQueryAction C.ChainPointAtGenesis _ = \_ -> pure []
 mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress (addr, slotNo)) =
   let
+
     _ = futureSpentSlotNo  -- TODO this is place holder to build the `Future Spent` as required by SideChain
     filterPairs :: ([SQL.Query], [NamedParam])
     filterPairs = (["u.address = :address"], [":address" := addr])
@@ -462,11 +463,26 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
                   AND |] <> SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters) <>
                 [r| ORDER BY
                     u.slotNo ASC |]
-      in
-        \conn -> liftIO $ SQL.queryNamed conn builtQuery params
 
-  in
-    uncurry mkUtxoAddressQueryAction' filterPairs
+      in \conn -> liftIO $ SQL.queryNamed conn builtQuery params
+
+  in uncurry mkUtxoAddressQueryAction' filterPairs
+
+instance MonadIO m => Core.Rewindable m UtxoEvent Core.SQLiteIndexer where
+
+    rewind C.ChainPointAtGenesis ix = do
+      let c = ix ^. Core.handle
+      liftIO $ SQL.execute_ c "DROP TABLE IF EXISTS unspent_transactions"
+      liftIO $ SQL.execute_ c "DROP TABLE IF EXISTS spent"
+
+      pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
+
+    rewind p@(C.ChainPoint sno _) ix = do
+      let c = ix ^. Core.handle
+      liftIO $ SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sno)
+      liftIO $ SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sno)
+      pure $ ix & Core.dbLastSync .~ p
+
 
 -----------------------------------------------------------------------
 -- copy paste from Marconi.ChainIndex.Indexers.Utxo
@@ -533,9 +549,10 @@ getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyC
     txoutToUtxo :: Int -> TxOut -> Map C.TxIn Utxo
     txoutToUtxo ix txout =
       let
+
         txin = C.TxIn txid (C.TxIx (fromIntegral ix))
-      in
-        case getUtxoFromTxOut maybeTargetAddresses txin txout of
+
+      in case getUtxoFromTxOut maybeTargetAddresses txin txout of
           Nothing   -> Map.empty
           Just utxo -> Map.singleton txin utxo
 
@@ -599,13 +616,14 @@ getInputs :: C.TxBody era -> Set C.TxIn
 getInputs (C.TxBody C.TxBodyContent
                  {C.txIns, C.txInsCollateral, C.txScriptValidity }) =
   let
+
     inputs = case txScriptValidityToScriptValidity txScriptValidity of
       C.ScriptValid -> fst <$> txIns
       C.ScriptInvalid -> case txInsCollateral of
         C.TxInsCollateralNone     -> []
         C.TxInsCollateral _ txins -> txins
-  in
-    Set.fromList inputs
+
+  in Set.fromList inputs
 
 
 -- | Duplicated from cardano-api (not exposed in cardano-api)

@@ -21,7 +21,9 @@ import Marconi.ChainIndex.Experimental.Indexers.Utxo (Utxo (Utxo))
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.Core.Experiment qualified as Core
 
+import Control.Lens (folded, (^..))
 import Control.Monad (foldM, forM)
+import Data.Foldable (fold)
 import Data.Functor ((<&>))
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -47,27 +49,32 @@ genUtxoEvents' txOutToUtxo = do
   timedEvents <- fmap fst <$> genUtxoEventsWithTxs' txOutToUtxo
   foldM (flip Core.index) Core.listIndexer timedEvents
 
-genUtxoEventsWithTxs :: Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
-genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
-
--- | Generate ShelleyEra Utxo Events
-genShelleyEraUtxoEvents :: Gen [Core.TimedEvent Utxo.UtxoEvent]
+-- | Generate ShelleyEra UtxoEvent
+genShelleyEraUtxoEvents :: Gen (Core.TimedEvent Utxo.UtxoEvent)
 genShelleyEraUtxoEvents = do
   events :: [Core.TimedEvent Utxo.UtxoEvent] <-  genUtxoEventsWithTxs <&> fmap fst
-  forM events (\(Core.TimedEvent cp uev@(Utxo.UtxoEvent utxos _)) -> do
+  utxoEvents' :: [Utxo.UtxoEvent] <-
+    forM events (\(Core.TimedEvent _ uev@(Utxo.UtxoEvent utxos _)) -> do
                     utxos' <- forM (Set.toList utxos) (\u -> CGen.genAddressShelley <&> flip utxoAddressOverride u)
-                    let utxoevent = uev {Utxo._ueUtxos = Set.fromList utxos'}
-                    pure $ Core.TimedEvent cp utxoevent)
+                    pure $ uev {Utxo._ueUtxos = Set.fromList utxos'})
+  let
+    cp :: C.ChainPoint
+    cp = foldr max C.ChainPointAtGenesis (events ^.. folded . Core.point)
+  pure $ Core.TimedEvent cp (fold utxoEvents')
   -- foldM (flip Core.index) Core.listIndexer shelleyEvents
 
-genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen [Core.TimedEvent Utxo.UtxoEvent]
+genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.TimedEvent Utxo.UtxoEvent)
 genShelleyEraUtxoEventsAtChainPoint  cp = do
-  events :: [Core.TimedEvent Utxo.UtxoEvent] <-  genUtxoEventsWithTxs <&> fmap fst
-  forM events (\(Core.TimedEvent _ uev@(Utxo.UtxoEvent utxos _)) -> do
+  events :: [Core.TimedEvent Utxo.UtxoEvent] <-
+    genUtxoEventsWithTxs <&> fmap fst
+  utxoEvent' :: [Utxo.UtxoEvent] <-
+    forM events (\(Core.TimedEvent _ uev@(Utxo.UtxoEvent utxos _)) -> do
                     utxos' <- forM (Set.toList utxos) (\u -> CGen.genAddressShelley <&> flip utxoAddressOverride u)
-                    let utxoevent = uev{Utxo._ueUtxos = Set.fromList utxos'}
-                    pure $ Core.TimedEvent cp utxoevent)
-  -- foldM (flip Core.index) Core.listIndexer shelleyEvents
+                    pure $ uev{Utxo._ueUtxos = Set.fromList utxos'})
+  pure $ Core.TimedEvent cp (fold utxoEvent')
+
+genUtxoEventsWithTxs :: Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
+genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
 
 genUtxoEventsWithTxs'
     :: (C.TxIn  -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
