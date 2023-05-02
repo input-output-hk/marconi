@@ -382,11 +382,15 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
 
   -- Receive event from the indexer, compare the mint that we
   -- submitted above with the one we got from the indexer.
-  event <- liftIO $ IO.readChan indexedTxs
-  case MintBurn.txMintEventTxAssets event of
-     (_txId, gottenMintEvents :: NonEmpty MintAsset) :| [] -> let
-       in equalSet (mintsToPolicyAssets $ NonEmpty.toList gottenMintEvents) (getPolicyAssets txMintValue)
-     _ -> fail "More than one mint/burn event, but we created only one!"
+  indexer :: MintBurn.MintBurnIndexer <- liftIO $ IO.readChan indexedTxs
+  MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
+    liftIO $ raiseException $ RI.query RI.QEverything indexer $ QueryAllMintBurn Nothing
+  case MintBurn.fromRows txMintRows of
+    event : _ ->  case MintBurn.txMintEventTxAssets event of
+      (_txId, gottenMintEvents :: NonEmpty MintAsset) :| [] -> let
+        in equalSet (mintsToPolicyAssets $ NonEmpty.toList gottenMintEvents) (getPolicyAssets txMintValue)
+      _ -> fail "More than one mint/burn event, but we created only one!"
+    _ -> fail "No events in indexer, but we inserted one!"
 
 propJsonRoundtripTxMintRow :: Property
 propJsonRoundtripTxMintRow = H.property $ do

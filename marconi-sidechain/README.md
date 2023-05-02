@@ -539,7 +539,7 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "ad
 }
 ```
 
-#### getTxsBurningAssetId (NOT IMPLEMENTED YET)
+#### getTxsBurningAssetId
 
 Retrieves transactions that include a minting policy for minting/burning tokens until a given point in time (measured in slots).
 

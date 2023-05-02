@@ -5,6 +5,7 @@ import Marconi.Sidechain.Api.HttpServer (marconiApp)
 import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
 import Network.JsonRpc.Client.Types ()
 import Network.Wai.Handler.Warp qualified as Warp
+import Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Api.Query.Indexers.MintBurn
 import Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Api.Query.Indexers.Utxo
 import Spec.Marconi.Sidechain.CLI qualified as CLI
 import Spec.Marconi.Sidechain.Routes qualified as Routes
@@ -25,4 +26,5 @@ tests rpcClientAction = localOption (HedgehogTestLimit $ Just 200) $
         [ CLI.tests
         , Routes.tests
         , Api.Query.Indexers.Utxo.tests rpcClientAction
+        , Api.Query.Indexers.MintBurn.tests rpcClientAction
         ]

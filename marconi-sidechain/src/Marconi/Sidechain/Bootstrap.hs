@@ -7,16 +7,19 @@ module Marconi.Sidechain.Bootstrap where
 import Cardano.Api qualified as C
 import Control.Concurrent.STM (atomically)
 import Control.Lens ((^.))
-import Marconi.ChainIndex.Indexers (epochStateWorker, runIndexers, utxoWorker)
+import Marconi.ChainIndex.Indexers (epochStateWorker, mintBurnWorker, runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
+import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
-import Marconi.ChainIndex.Types (TargetAddresses, epochStateDbName, utxoDbName)
+import Marconi.ChainIndex.Types (TargetAddresses, epochStateDbName, mintBurnDbName, utxoDbName)
 import Marconi.Core.Storable (State, StorableEvent)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
+import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurn
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxo
 import Marconi.Sidechain.Api.Types (CliArgs (CliArgs), SidechainEnv (SidechainEnv),
                                     SidechainIndexers (SidechainIndexers), epochStateIndexerEnvIndexer,
-                                    sidechainAddressUtxoIndexer, sidechainEnvIndexers, sidechainEpochStateIndexer)
+                                    mintBurnIndexerEnvIndexer, sidechainAddressUtxoIndexer, sidechainEnvIndexers,
+                                    sidechainEpochStateIndexer, sidechainMintBurnIndexer)
 import Network.Wai.Handler.Warp (Port, defaultSettings, setPort)
 import System.FilePath ((</>))
 
@@ -32,6 +35,7 @@ initializeSidechainEnv maybePort targetAddresses = do
         SidechainIndexers
             <$> AddressUtxo.initializeEnv targetAddresses
             <*> EpochState.initializeEnv
+            <*> MintBurn.initializeEnv
     pure $ SidechainEnv httpsettings sidechainIndexers
 
 -- |  Marconi cardano blockchain indexer
@@ -49,12 +53,20 @@ bootstrapIndexers (CliArgs socketPath nodeConfigPath dbPath _ networkId targetAd
           atomically
         . EpochState.updateEnvState (env ^. sidechainEnvIndexers . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer)
         . fst
+  let mintBurnCallback :: State MintBurnHandle -> IO ()
+      mintBurnCallback =
+          atomically
+        . MintBurn.updateEnvState
+            (env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
   let indexers =
           [ ( utxoWorker addressUtxoCallback targetAddresses
             , Just $ dbPath </> utxoDbName
             )
           , ( epochStateWorker nodeConfigPath epochStateCallback
             , Just $ dbPath </> epochStateDbName
+            )
+          , ( mintBurnWorker mintBurnCallback
+            , Just $ dbPath </> mintBurnDbName
             )
           ]
   runIndexers

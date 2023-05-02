@@ -54,7 +54,7 @@ type RpcPastAddressUtxoMethod =
 
 type RpcMintingPolicyHashTxMethod =
     JsonRpc "getTxsBurningAssetId"
-            String
+            GetTxsBurningAssetIdParams
             String
             GetTxsBurningAssetIdResult
 
@@ -164,20 +164,26 @@ instance FromJSON AddressUtxoResult where
             <*> v .: "datum"
     parseJSON _ = mempty
 
-newtype GetTxsBurningAssetIdParams = GetTxsBurningAssetIdParams
-    { policyId :: String
+data GetTxsBurningAssetIdParams
+    = GetTxsBurningAssetIdParams
+    { policyId     :: !C.PolicyId
+    , assetName    :: !C.AssetName
+    , mintBurnSlot :: !(Maybe Word64)
     } deriving (Eq, Show)
 
+
 instance FromJSON GetTxsBurningAssetIdParams where
-    parseJSON (Object v) =
-        GetTxsBurningAssetIdParams
-            <$> (v .: "policyId")
+
+    parseJSON (Object v) = GetTxsBurningAssetIdParams <$> (v .: "policyId") <*> (v .: "assetName") <*> (v .:? "slotNo")
     parseJSON _          = mempty
 
 instance ToJSON GetTxsBurningAssetIdParams where
-    toJSON q = object
-       [ "policyId" .= policyId q
-       ]
+    toJSON q =
+        object $ catMaybes
+           [ Just ("policyId" .= policyId q)
+           , Just ("assetName" .= assetName q)
+           , ("slotNo" .=) <$> mintBurnSlot q
+           ]
 
 newtype GetTxsBurningAssetIdResult =
     GetTxsBurningAssetIdResult [AssetIdTxResult]

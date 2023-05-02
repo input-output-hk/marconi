@@ -10,15 +10,18 @@ module Marconi.Sidechain.Api.HttpServer where
 import Cardano.Api ()
 import Control.Lens ((^.))
 import Control.Monad.IO.Class (liftIO)
-import Data.Bifunctor (first)
+import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, pack)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
+import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (API, GetCurrentSyncedBlockResult, GetEpochNonceResult,
-                                     GetEpochStakePoolDelegationResult, GetTxsBurningAssetIdResult,
+                                     GetEpochStakePoolDelegationResult,
+                                     GetTxsBurningAssetIdParams (assetName, mintBurnSlot, policyId),
+                                     GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
                                      GetUtxosFromAddressParams (queryAddress, queryUnspentAtSlot, queryUnspentAtSlot),
                                      GetUtxosFromAddressResult, JsonRpcAPI, RestAPI)
 import Marconi.Sidechain.Api.Types (QueryExceptions, SidechainEnv, sidechainAddressUtxoIndexer,
@@ -116,9 +119,15 @@ getAddressUtxoHandler env query = liftIO $
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-    -> String           -- ^ Minting policy hash
+    -> GetTxsBurningAssetIdParams
     -> Handler (Either (JsonRpcErr String) GetTxsBurningAssetIdResult)
-getMintingPolicyHashTxHandler _ _ = pure $ Left $ JsonRpcErr 1 "Endpoint not implemented yet" Nothing
+getMintingPolicyHashTxHandler env query = liftIO $
+    bimap toRpcErr GetTxsBurningAssetIdResult <$> do
+        Q.Mint.findByAssetIdAtSlot
+            env
+            (policyId query)
+            (assetName query)
+            (mintBurnSlot query)
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochStakePoolDelegationHandler
