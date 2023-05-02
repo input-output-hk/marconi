@@ -41,6 +41,8 @@ class Monad m => IsIndex m event indexer where
         => TimedEvent event -> indexer event -> m (indexer event)
 
     -- | Index a bunch of event, associated to their point in time, in an indexer
+    --
+    -- The events must be sorted in descending order (the most recent first)
     indexAll
         :: (Ord (Point event), Traversable f)
         => f (TimedEvent event) -> indexer event -> m (indexer event)
