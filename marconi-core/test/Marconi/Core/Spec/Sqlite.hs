@@ -206,10 +206,10 @@ instance Queryable Handle where
     pure $ foldl' ((fst .) . indexedFn f) aggregate es''
 
 instance Rewindable Handle where
-  rewindStorage :: StorablePoint Handle -> Handle -> IO (Maybe Handle)
+  rewindStorage :: StorablePoint Handle -> Handle -> IO Handle
   rewindStorage pt (Handle h) = do
     Sql.execute h "DELETE FROM index_property_cache WHERE point > ?" (Sql.Only pt)
-    pure . Just $ Handle h
+    pure $ Handle h
 
 instance Resumable Handle where
   resumeFromStorage :: Handle -> IO [StorablePoint Handle]
@@ -354,5 +354,5 @@ run (Ix.Rewind n ix) = do
     Nothing        -> pure Nothing
     Just (ix', sq) -> liftIO . runMaybeT $ do
       p         <- lookupPoint n ix'
-      nextState <- MaybeT . liftIO $ Storable.rewind p (ix' ^. state)
+      nextState <- liftIO $ Storable.rewind p (ix' ^. state)
       pure . (,sq) $ ix' { _state = nextState }

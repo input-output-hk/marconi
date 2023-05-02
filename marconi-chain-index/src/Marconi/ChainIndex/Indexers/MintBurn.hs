@@ -36,7 +36,9 @@ import Cardano.Ledger.Conway.TxBody qualified as LC
 import Cardano.Ledger.Core qualified as Ledger
 import Cardano.Ledger.Mary.Value qualified as LM
 import Control.Lens (makeLenses, view, (&), (^.))
+import Control.Monad.Except (ExceptT)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans (MonadTrans (lift))
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.=))
 import Data.ByteString.Short qualified as Short
 import Data.Coerce (coerce)
@@ -52,8 +54,11 @@ import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
+                                 liftSQLError)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.Core.Storable (StorableMonad)
 import Marconi.Core.Storable qualified as RI
 import Ouroboros.Consensus.Shelley.Eras qualified as OEra
 
@@ -287,7 +292,7 @@ type MintBurnIndexer = RI.State MintBurnHandle
 
 type instance RI.StorablePoint MintBurnHandle = C.ChainPoint
 
-type instance RI.StorableMonad MintBurnHandle = IO
+type instance RI.StorableMonad MintBurnHandle = ExceptT IndexerError IO
 
 newtype instance RI.StorableEvent MintBurnHandle
   = MintBurnEvent TxMintEvent
@@ -307,8 +312,9 @@ newtype instance RI.StorableResult MintBurnHandle
   deriving (Show)
 
 instance RI.Queryable MintBurnHandle where
-  queryStorage queryInterval memoryEvents (MintBurnHandle sqlCon _k) query =
-      case query of
+  queryStorage queryInterval memoryEvents (MintBurnHandle sqlCon _k) query
+      = liftSQLError CantQueryIndexer
+      $ case query of
         QueryAllMintBurn slotNo -> do
             let slotCondition =
                     case slotNo of
@@ -354,11 +360,15 @@ instance RI.HasPoint (RI.StorableEvent MintBurnHandle) C.ChainPoint where
   getPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
 
 instance RI.Buffered MintBurnHandle where
-  persistToStorage events h@(MintBurnHandle sqlCon _k) = do
+  persistToStorage events h@(MintBurnHandle sqlCon _k)
+    = liftSQLError CantInsertEvent
+    $ do
     sqliteInsert sqlCon (map coerce $ toList events)
     pure h
 
-  getStoredEvents (MintBurnHandle sqlCon k) = do
+  getStoredEvents (MintBurnHandle sqlCon k)
+    = liftSQLError CantQueryIndexer
+    $ do
     fmap MintBurnEvent . fromRows <$> SQL.query sqlCon query (SQL.Only k)
     where
       query =
@@ -376,7 +386,8 @@ instance RI.Resumable MintBurnHandle where
       getChainPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
 
 instance RI.Rewindable MintBurnHandle where
-  rewindStorage cp h@(MintBurnHandle sqlCon _k) = doRewind >> pure (Just h)
+  rewindStorage cp h@(MintBurnHandle sqlCon _k)
+    = liftSQLError CantRollback $ doRewind >> pure h
     where
       doRewind = case cp of
         C.ChainPoint slotNo _ ->
@@ -384,9 +395,9 @@ instance RI.Rewindable MintBurnHandle where
         C.ChainPointAtGenesis ->
           SQL.execute_ sqlCon "DELETE FROM minting_policy_events"
 
-open :: FilePath -> SecurityParam -> IO MintBurnIndexer
+open :: FilePath -> SecurityParam -> StorableMonad MintBurnHandle MintBurnIndexer
 open dbPath bufferSize = do
-  c <- SQL.open dbPath
-  SQL.execute_ c "PRAGMA journal_mode=WAL"
-  sqliteInit c
+  c <- liftSQLError CantStartIndexer $ SQL.open dbPath
+  lift $ SQL.execute_ c "PRAGMA journal_mode=WAL"
+  lift $ sqliteInit c
   RI.emptyState (fromEnum bufferSize) (MintBurnHandle c bufferSize)

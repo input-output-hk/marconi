@@ -17,7 +17,6 @@ import Data.Aeson qualified as Aeson
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce (coerce)
-import Data.Functor ((<&>))
 import Data.Proxy (Proxy (Proxy))
 import Data.SOP.Strict (K (K), NP (Nil, (:*)), fn, type (:.:) (Comp))
 import Data.Text.Encoding qualified as Text
@@ -50,10 +49,11 @@ instance SQL.ToField (C.Hash C.BlockHeader) where
   toField f = SQL.toField $ C.serialiseToRawBytes f
 
 instance SQL.FromField (C.Hash C.BlockHeader) where
-   fromField f =
-      SQL.fromField f <&>
-        either (error "Cannot deserialise C.Hash C.BlockHeader") id .
-          C.deserialiseFromRawBytes (C.proxyToAsType Proxy)
+   fromField f = do
+       bs <- SQL.fromField f
+       case C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bs of
+           Left _  -> SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.BlockHeader"
+           Right x -> pure x
 
 -- * C.SlotNo
 

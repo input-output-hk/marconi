@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
 
 module Marconi.ChainIndex.Indexers where
@@ -19,21 +20,26 @@ import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Ledger.Alonzo.TxWits qualified as Alonzo
 import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward), ChainSyncEventException (NoIntersectionFound),
                           withChainSyncEventStream)
-import Control.Concurrent (MVar, forkIO, modifyMVar_, newMVar, readMVar)
-import Control.Concurrent.MVar (modifyMVar)
+import Control.Concurrent (MVar, forkIO, isEmptyMVar, modifyMVar, newEmptyMVar, newMVar, readMVar, tryPutMVar,
+                           tryReadMVar)
 import Control.Concurrent.QSemN (QSemN, newQSemN, signalQSemN, waitQSemN)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TChan (TChan, dupTChan, newBroadcastTChanIO, readTChan, writeTChan)
-import Control.Exception (catch)
-import Control.Lens (view)
+import Control.Exception (Exception, catch)
+import Control.Exception.Base (throw)
+import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((^.))
 import Control.Monad (forever, void)
-import Control.Monad.Trans.Except (runExceptT)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Data.Functor (($>))
 import Data.List (findIndex, foldl1', intersect)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text qualified as TS
+import Data.Text qualified as Text
+import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer))
 import Marconi.ChainIndex.Indexers.AddressDatum (AddressDatumDepth (AddressDatumDepth), AddressDatumHandle,
                                                  AddressDatumIndex)
 import Marconi.ChainIndex.Indexers.AddressDatum qualified as AddressDatum
@@ -97,15 +103,19 @@ scriptDataFromCardanoTxBody _ = mempty
 -}
 data Coordinator = Coordinator
   { _channel      :: !(TChan (ChainSyncEvent (BlockInMode CardanoMode)))
+  , _errorVar     :: !(MVar IndexerError)
   , _barrier      :: !QSemN
   , _indexerCount :: !Int
   }
 
+makeLenses 'Coordinator
+
 initialCoordinator :: Int -> IO Coordinator
-initialCoordinator indexerCount =
+initialCoordinator indexerCount' =
   Coordinator <$> newBroadcastTChanIO
+              <*> newEmptyMVar
               <*> newQSemN 0
-              <*> pure indexerCount
+              <*> pure indexerCount'
 
 -- The points should/could provide shared access to the indexers themselves. The result
 -- is a list of points (rather than just one) since it offers more resume possibilities
@@ -113,7 +123,7 @@ initialCoordinator indexerCount =
 type Worker = SecurityParam -> Coordinator -> FilePath -> IO [Storable.StorablePoint ScriptTx.ScriptTxHandle]
 
 datumWorker :: Worker
-datumWorker securityParam Coordinator{_barrier, _channel} path = do
+datumWorker securityParam Coordinator{_barrier, _channel, _errorVar} path = do
   ix <- Datum.open path (Datum.Depth $ fromIntegral securityParam)
   workerChannel <- atomically . dupTChan $ _channel
   void . forkIO $ innerLoop workerChannel ix
@@ -122,6 +132,7 @@ datumWorker securityParam Coordinator{_barrier, _channel} path = do
     innerLoop :: TChan (ChainSyncEvent (BlockInMode CardanoMode)) -> DatumIndex -> IO ()
     innerLoop ch index = do
       signalQSemN _barrier 1
+      failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
         RollForward blk _ct ->
@@ -142,8 +153,8 @@ utxoWorker_
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
   -> IO (IO (), MVar Utxo.UtxoIndexer)
-utxoWorker_ callback depth maybeTargetAddresses Coordinator{_barrier} ch path = do
-  ix <- Utxo.open path depth False -- open SQLite with depth=depth and DO NOT perform SQLite vacuum
+utxoWorker_ callback depth maybeTargetAddresses Coordinator{_barrier, _errorVar} ch path = do
+  ix <- toException $ Utxo.open path depth False -- open SQLite with depth=depth and DO NOT perform SQLite vacuum
   -- TODO consider adding a CLI param to allow user to perfomr Vaccum or not.
   mIndexer <- newMVar ix
   pure (loop mIndexer, mIndexer)
@@ -151,17 +162,19 @@ utxoWorker_ callback depth maybeTargetAddresses Coordinator{_barrier} ch path = 
     loop :: MVar Utxo.UtxoIndexer -> IO ()
     loop index = do
       signalQSemN _barrier 1
+      failWhenFull _errorVar
       readMVar index >>= callback -- refresh the query STM/CPS with new storage pointers/counters state
       event <- atomically . readTChan $ ch
       case event of
         RollForward (BlockInMode block _) _ct -> do
             let utxoEvents = Utxo.getUtxoEventsFromBlock maybeTargetAddresses block
-            modifyMVar_ index (Storable.insert utxoEvents)
+            void $ updateWith index _errorVar $ Storable.insert utxoEvents
             loop index
 
         RollBackward cp _ct -> do
-          modifyMVar_ index $ \ix -> fromMaybe ix <$> Storable.rewind cp ix
-          loop index
+            void $ updateWith index _errorVar $ Storable.rewind cp
+
+      loop index
 
 utxoWorker
   :: (Utxo.UtxoIndexer -> IO ())  -- ^ callback function used in the queryApi thread
@@ -171,7 +184,7 @@ utxoWorker callback maybeTargetAddresses securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, ix) <- utxoWorker_ callback (Utxo.Depth $ fromIntegral securityParam) maybeTargetAddresses coordinator workerChannel path
   void . forkIO $ loop
-  readMVar ix >>= Storable.resumeFromStorage . view Storable.handle
+  readMVar ix >>= toException . Storable.resumeFromStorage . view Storable.handle
 
 addressDatumWorker
   :: (Storable.StorableEvent AddressDatumHandle -> IO [()])
@@ -188,7 +201,7 @@ addressDatumWorker onInsert targetAddresses securityParam coordinator path = do
         workerChannel
         path
   void . forkIO $ loop
-  readMVar ix >>= Storable.resumeFromStorage . view Storable.handle
+  readMVar ix >>= toException . Storable.resumeFromStorage . view Storable.handle
 
 addressDatumWorker_
     :: (Storable.StorableEvent AddressDatumHandle -> IO [()])
@@ -198,14 +211,15 @@ addressDatumWorker_
     -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
     -> FilePath
     -> IO (IO (), MVar AddressDatumIndex)
-addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier} ch path = do
-    index <- AddressDatum.open path depth
+addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorVar} ch path = do
+    index <- toException $ AddressDatum.open path depth
     mIndex <- newMVar index
     pure (innerLoop mIndex, mIndex)
   where
     innerLoop :: MVar AddressDatumIndex -> IO ()
     innerLoop index = do
       signalQSemN _barrier 1
+      failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
         RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _) _ -> do
@@ -215,11 +229,11 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier} ch path
                          targetAddresses
                 addressDatumIndexEvent =
                     AddressDatum.toAddressDatumIndexEvent addressFilter txs (C.ChainPoint slotNo bh)
-            modifyMVar_ index (Storable.insert addressDatumIndexEvent)
+            void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
             void $ onInsert addressDatumIndexEvent
             innerLoop index
         RollBackward cp _ct -> do
-          modifyMVar_ index $ \ix -> fromMaybe ix <$> Storable.rewind cp ix
+          void $ updateWith index _errorVar $ Storable.rewind cp
           innerLoop index
 
 -- * ScriptTx indexer
@@ -231,24 +245,25 @@ scriptTxWorker_
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
   -> IO (IO (), MVar ScriptTx.ScriptTxIndexer)
-scriptTxWorker_ onInsert depth Coordinator{_barrier} ch path = do
-  indexer <- ScriptTx.open path depth
+scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
+  indexer <- toException $ ScriptTx.open path depth
   mIndexer <- newMVar indexer
   pure (loop mIndexer, mIndexer)
   where
     loop :: MVar ScriptTx.ScriptTxIndexer -> IO ()
     loop index = do
       signalQSemN _barrier 1
+      failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
         RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs :: Block era) _ :: BlockInMode CardanoMode) _ct -> do
           let u = ScriptTx.toUpdate txs (ChainPoint slotNo hsh)
-          modifyMVar_ index (Storable.insert u)
+          void $ updateWith index _errorVar $ Storable.insert u
           void $ onInsert u
           loop index
 
         RollBackward cp _ct -> do
-          modifyMVar_ index $ \ix -> fromMaybe ix <$> Storable.rewind cp ix
+          void $ updateWith index _errorVar $ Storable.rewind cp
           loop index
 
 scriptTxWorker
@@ -258,7 +273,7 @@ scriptTxWorker onInsert securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, ix) <- scriptTxWorker_ onInsert (ScriptTx.Depth $ fromIntegral securityParam) coordinator workerChannel path
   void . forkIO $ loop
-  readMVar ix >>= Storable.resumeFromStorage . view Storable.handle
+  readMVar ix >>= toException . Storable.resumeFromStorage . view Storable.handle
 
 -- * Epoch state indexer
 
@@ -274,13 +289,13 @@ epochStateWorker_
         nodeConfigPath
         onInsert
         securityParam
-        Coordinator{_barrier}
+        Coordinator{_barrier, _errorVar}
         ch
         dbPath = do
     nodeConfigE <- runExceptT $ readNetworkConfig (NetworkConfigFile nodeConfigPath)
-    nodeConfig <- either (error . show) pure nodeConfigE
+    nodeConfig <- either (throw . CantStartIndexer . Text.pack . show) pure nodeConfigE
     genesisConfigE <- runExceptT $ readCardanoGenesisConfig nodeConfig
-    genesisConfig <- either (error . show . renderGenesisConfigError) pure genesisConfigE
+    genesisConfig <- either (throw . CantStartIndexer . Text.pack .  show . renderGenesisConfigError) pure genesisConfigE
 
     let initialLedgerState = initExtLedgerStateVar genesisConfig
         topLevelConfig = O.pInfoConfig (mkProtocolInfoCardano genesisConfig)
@@ -288,10 +303,12 @@ epochStateWorker_
 
     let ledgerStateDir = takeDirectory dbPath </> "ledgerStates"
     createDirectoryIfMissing False ledgerStateDir
-    indexerMVar <- newMVar =<< EpochState.open topLevelConfig dbPath ledgerStateDir securityParam
+    indexer <- toException $ EpochState.open topLevelConfig dbPath ledgerStateDir securityParam
+    indexerMVar <- newMVar indexer
 
     let loop currentLedgerState currentEpochNo previousEpochNo = do
             signalQSemN _barrier 1
+            failWhenFull _errorVar
             chainSyncEvent <- atomically $ readTChan ch
 
             newLedgerState <- case chainSyncEvent of
@@ -308,9 +325,7 @@ epochStateWorker_
                             chainTip
                             securityParam
                             isFirstEventOfEpoch
-                  newIndexer <-
-                      modifyMVar indexerMVar
-                        $ \idx -> fmap (\newIdx -> (newIdx, newIdx)) $ Storable.insert storableEvent idx
+                  newIndexer <- updateWith indexerMVar _errorVar $ Storable.insert storableEvent
                   onInsert (newIndexer, storableEvent)
 
                   -- Compute new LedgerState given block and old LedgerState
@@ -321,22 +336,25 @@ epochStateWorker_
                             currentLedgerState
 
               RollBackward C.ChainPointAtGenesis _ct -> do
-                  modifyMVar_ indexerMVar $ \ix -> fromMaybe ix <$> Storable.rewind C.ChainPointAtGenesis ix
+                  void $ updateWith indexerMVar _errorVar $ Storable.rewind C.ChainPointAtGenesis
                   pure initialLedgerState
-              RollBackward cp _ct ->
-                  modifyMVar indexerMVar $ \ix -> do
-                  newIndex <- fromMaybe ix <$> Storable.rewind cp ix
+              RollBackward cp _ct -> do
+                  newIndex <- updateWith indexerMVar _errorVar $ Storable.rewind cp
                   -- We query the LedgerState from disk at the point where we need to rollback to.
                   -- For that to work, we need to be sure that any volatile LedgerState are stored
                   -- on disk. For immutable LedgerStates, they are only stored on disk at the first
                   -- slot of an epoch.
-                  EpochState.LedgerStateAtPointResult maybeLedgerState <-
-                      Storable.query Storable.QEverything newIndex (EpochState.LedgerStateAtPointQuery cp)
+                  maybeLedgerState <-
+                         runExceptT $ Storable.query Storable.QEverything newIndex (EpochState.LedgerStateAtPointQuery cp)
                   case maybeLedgerState of
-                    Nothing ->
-                        error "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
-                    Just ledgerState ->
-                        pure (newIndex, ledgerState)
+                    Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure ledgerState
+                    Right _ -> do
+                        void $ tryPutMVar _errorVar
+                            $ CantRollback "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
+                        pure initialLedgerState
+                    Left err         -> do
+                        void $ tryPutMVar _errorVar err
+                        pure initialLedgerState
 
             loop newLedgerState (EpochState.getEpochNo newLedgerState) currentEpochNo
 
@@ -357,7 +375,7 @@ epochStateWorker nodeConfigPath onInsert securityParam coordinator path = do
         workerChannel
         path
   void $ forkIO loop
-  readMVar ix >>= Storable.resumeFromStorage . view Storable.handle
+  readMVar ix >>= toException . Storable.resumeFromStorage . view Storable.handle
 
 -- * Mint/burn indexer
 
@@ -368,20 +386,21 @@ mintBurnWorker_
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
   -> IO (IO b, MVar MintBurn.MintBurnIndexer)
-mintBurnWorker_ securityParam onInsert Coordinator{_barrier} ch dbPath = do
-  indexerMVar <- newMVar =<< MintBurn.open dbPath securityParam
+mintBurnWorker_ securityParam onInsert Coordinator{_barrier, _errorVar} ch dbPath = do
+  indexerMVar <- newMVar =<< toException (MintBurn.open dbPath securityParam)
   let
     loop = forever $ do
       signalQSemN _barrier 1
+      failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
         RollForward blockInMode _ct
           | Just event' <- MintBurn.toUpdate blockInMode -> do
-              modifyMVar_ indexerMVar $ Storable.insert $ MintBurn.MintBurnEvent event'
+              void $ updateWith indexerMVar _errorVar $ Storable.insert $ MintBurn.MintBurnEvent event'
               void $ onInsert event'
           | otherwise -> pure ()
         RollBackward cp _ct ->
-          modifyMVar_ indexerMVar $ \ix -> fromMaybe ix <$> Storable.rewind cp ix
+          void $ updateWith indexerMVar _errorVar $ Storable.rewind cp
   pure (loop, indexerMVar)
 
 mintBurnWorker :: (MintBurn.TxMintEvent -> IO ()) -> Worker
@@ -389,7 +408,7 @@ mintBurnWorker onInsert securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, ix) <- mintBurnWorker_ securityParam onInsert coordinator workerChannel path
   void $ forkIO loop
-  readMVar ix >>= Storable.resumeFromStorage . view Storable.handle
+  readMVar ix >>= toException . Storable.resumeFromStorage . view Storable.handle
 
 initializeIndexers
   :: SecurityParam
@@ -413,9 +432,17 @@ mkIndexerStream coordinator = S.foldM_ step initial finish
     initial :: IO Coordinator
     initial = pure coordinator
 
+    indexersHealthCheck :: Coordinator -> IO ()
+    indexersHealthCheck Coordinator{_errorVar} = do
+      err <- tryReadMVar _errorVar
+      case err of
+          Nothing -> pure ()
+          Just e  -> throw e
+
     step :: Coordinator -> ChainSyncEvent (BlockInMode CardanoMode) -> IO Coordinator
-    step c@Coordinator{_barrier, _indexerCount, _channel} event = do
+    step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
       waitQSemN _barrier _indexerCount
+      indexersHealthCheck c
       atomically $ writeTChan _channel event
       pure c
 
@@ -430,7 +457,7 @@ runIndexers
   -> [(Worker, Maybe FilePath)]
   -> IO ()
 runIndexers socketPath networkId cliChainPoint traceName list = do
-  securityParam <- Utils.querySecurityParam networkId socketPath
+  securityParam <- toException $ Utils.querySecurityParam networkId socketPath
   (returnedCp, coordinator) <- initializeIndexers securityParam $ mapMaybe sequenceA list
 
   -- If the user specifies the chain point then use that,
@@ -450,3 +477,29 @@ runIndexers socketPath networkId cliChainPoint traceName list = do
               <+> pretty chainPoints <> "."
               <+> "Please check the slot number and the block hash do belong to the chain"
     in io `catch` handleException
+
+toException :: Exception err => ExceptT err IO a -> IO a
+toException mx = do
+    x <- runExceptT mx
+    case x of
+        Left err  -> throw err
+        Right res -> pure res
+
+updateWith
+    :: MVar a
+    -> MVar err
+    -> (a -> ExceptT err IO a)
+    -> IO a
+updateWith xBox errBox f = modifyMVar xBox $ \x -> do
+  res <- runExceptT $ f x
+  case res of
+      Left err -> do
+          tryPutMVar errBox err $> (x, x)
+      Right x' -> pure (x', x')
+
+failWhenFull :: MonadIO m => MVar a -> m ()
+failWhenFull x = do
+  isEmpty <- liftIO $ isEmptyMVar x
+  if isEmpty
+  then pure ()
+  else error "an indexer raised an error"

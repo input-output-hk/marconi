@@ -35,6 +35,7 @@ import Hedgehog (Gen, Property, cover, forAll, property, (===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Marconi.ChainIndex.Error (raiseException)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -158,7 +159,7 @@ allqueryUtxosShouldBeUnspent = property $ do
 
   -- It is crtical that we perform NO vacuum.
   -- With depth at such small numbers, the likelyhood of SQLite vaccume is almost certain in
-  indexer <- liftIO (Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events )
+  indexer <- liftIO $ raiseException (Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events )
   let
     addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
     addressQueries
@@ -166,7 +167,7 @@ allqueryUtxosShouldBeUnspent = property $ do
       . fmap (flip Utxo.UtxoByAddress Nothing . Utxo._address)
       . concatMap (Set.toList . Utxo.ueUtxos)
       $ events
-  results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ addressQueries
+  results <- liftIO . raiseException . traverse (Storable.query Storable.QEverything indexer) $ addressQueries
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
           Utxo.LastSyncPointResult _ -> []
@@ -272,10 +273,10 @@ propSaveToAndRetrieveFromUtxoInMemoryStore :: Property
 propSaveToAndRetrieveFromUtxoInMemoryStore = property $ do
   events <- forAll UtxoGen.genUtxoEvents
   let depth = Utxo.Depth (length events + 1)
-  (storedEvents :: [StorableEvent Utxo.UtxoHandle]) <-
-    (liftIO $ Utxo.open ":memory:" depth False) -- don't vacuum sqlite
-     >>= liftIO . Storable.insertMany events
-     >>= liftIO . Storable.getEvents
+  (storedEvents :: [StorableEvent Utxo.UtxoHandle]) <- liftIO $ raiseException $
+    Utxo.open ":memory:" depth False -- don't vacuum sqlite
+     >>= Storable.insertMany events
+     >>= Storable.getEvents
   Set.fromList storedEvents === Set.fromList events
 
 -- | Insert Utxo events in storage, and retrieve the events
@@ -289,12 +290,13 @@ propSaveAndRetrieveUtxoEvents = property $ do
   events <- forAll genShelleyEraUtxoEvents
   let numOfEvents = length events
   depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
-  indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False
-             >>= liftIO . Storable.insertMany events
+  indexer <- liftIO $ raiseException
+      $ Utxo.open ":memory:" (Utxo.Depth depth) False
+      >>= Storable.insertMany events
   let
     qs :: [StorableQuery Utxo.UtxoHandle]
     qs = List.nub . fmap (flip Utxo.UtxoByAddress Nothing . Utxo._address) . concatMap (Set.toList . Utxo.ueUtxos) $ events
-  results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qs
+  results <- liftIO . raiseException . traverse (Storable.query Storable.QEverything indexer) $ qs
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
           Utxo.LastSyncPointResult _ -> []
@@ -327,15 +329,15 @@ propUtxoQueryByAddressAndSlot = property $ do
   events::[StorableEvent Utxo.UtxoHandle] <- forAll $ forM chainPoints genEventWithShelleyAddressAtChainPoint <&> concat
   let numOfEvents = length events
   depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
-  indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
-             >>= liftIO . Storable.insertMany events
+  indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
+             >>= Storable.insertMany events
   let _slot = getSlot $ chainPoints !! (length chainPoints `div` 2)
       qAddresses
         = List.nub  -- remove duplicate addresses
         . fmap (flip Utxo.UtxoByAddress _slot . Utxo._address)
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
-  results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qAddresses
+  results <- liftIO . raiseException . traverse (Storable.query Storable.QEverything indexer) $ qAddresses
   let filterResult = \case
           Utxo.UtxoResult rs -> rs
           _other             -> []
@@ -354,8 +356,8 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   events::[StorableEvent Utxo.UtxoHandle] <- forAll $ forM chainPoints genEventWithShelleyAddressAtChainPoint <&> concat
   let numOfEvents = length events
   depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
-  indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
-             >>= liftIO . Storable.insertMany events
+  indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
+             >>= Storable.insertMany events
   let lastSlot = getSlot $ last chainPoints
       qAddressesAtSlot
         = List.nub  -- remove duplicate addresses
@@ -368,9 +370,9 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
   resultAtSlot <-
-      liftIO . traverse (Storable.query Storable.QEverything indexer) $ qAddressesAtSlot
+      liftIO . raiseException . traverse (Storable.query Storable.QEverything indexer) $ qAddressesAtSlot
   resultAll <-
-      liftIO . traverse (Storable.query Storable.QEverything indexer) $ qAddressesAll
+      liftIO . raiseException . traverse (Storable.query Storable.QEverything indexer) $ qAddressesAll
   resultAtSlot === resultAll
 
 -- TargetAddresses are the addresses in UTXO that we filter for.
@@ -441,7 +443,7 @@ propResumingShouldReturnAtLeastTheGenesisPoint :: Property
 propResumingShouldReturnAtLeastTheGenesisPoint = property $ do
     events <- forAll UtxoGen.genUtxoEvents
     depth <- forAll $ Gen.int (Range.linear 1 $ length events)
-    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False
+    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
             >>= Storable.insertMany events
     StorableProperties.propResumingShouldReturnAtLeastTheGenesisPoint indexer
 
@@ -464,10 +466,10 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
     depth <- forAll $ Gen.int (Range.linear 1 $ length events - 1)
 
     -- We insert the events in the indexer, but for the test assertions, we discard the events in
-    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum SQLite
-    void $ liftIO $ Storable.insertMany events indexer
+    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
+    void $ liftIO $ raiseException $ Storable.insertMany events indexer
 
-    actualResumablePoints <- liftIO $ Storable.resume indexer
+    actualResumablePoints <- liftIO $ raiseException $ Storable.resume indexer
     -- TODO Given current implementation, we only expect to be able to resume from events which
     -- contain at least one UTXO. In the future, this should be changed to take into account
     Hedgehog.assert $ length actualResumablePoints >= 2
@@ -482,7 +484,7 @@ propResumablePointsShouldBeSortedInDescOrder = property $ do
     Hedgehog.classify "Events are in memory only" $ depth >= length events
     Hedgehog.classify "Events on disk and memory" $ depth < length events
 
-    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vaccum sqlite
+    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vaccum sqlite
            >>= Storable.insertMany events
 
     StorableProperties.propResumablePointsShouldBeSortedInDescOrder indexer
@@ -512,17 +514,17 @@ genEventWithShelleyAddressAtChainPoint cp =
 
 testLastSyncOnFreshIndexer :: Property
 testLastSyncOnFreshIndexer = property $ do
-    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth 50) False
-    result <- liftIO $ Storable.query Storable.QEverything indexer LastSyncPoint
+    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth 50) False
+    result <- liftIO $ raiseException $ Storable.query Storable.QEverything indexer LastSyncPoint
     result === LastSyncPointResult C.ChainPointAtGenesis
 
 propLastChainPointOnRunningIndexer :: Property
 propLastChainPointOnRunningIndexer = property $ do
     events <- forAll UtxoGen.genUtxoEvents
     depth <- forAll $ Gen.int (Range.linear 1 $ length events)
-    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False
-    indexer' <- liftIO $ Storable.insertMany events indexer
-    result <- liftIO $ Storable.query Storable.QEverything indexer' LastSyncPoint
+    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
+    indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
+    result <- liftIO $ raiseException $ Storable.query Storable.QEverything indexer' LastSyncPoint
     result === LastSyncPointResult (Utxo.ueChainPoint $ last $ init events)
 
 propLastChainPointOnRewindedIndexer :: Property
@@ -535,10 +537,10 @@ propLastChainPointOnRewindedIndexer = property $ do
             then C.ChainPointAtGenesis
             else Utxo.ueChainPoint (events !! (ix - 1))
     Hedgehog.annotateShow lastestPointPostRollback
-    indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False
-    indexer' <- liftIO $ Storable.insertMany events indexer
-    Just indexer'' <- liftIO $ Storable.rewind rollbackPoint indexer'
-    result <- liftIO $ Storable.query Storable.QEverything indexer'' LastSyncPoint
+    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
+    indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
+    indexer'' <- liftIO $ raiseException $ Storable.rewind rollbackPoint indexer'
+    result <- liftIO $ raiseException $ Storable.query Storable.QEverything indexer'' LastSyncPoint
     result === LastSyncPointResult lastestPointPostRollback
 
 getSlot :: C.ChainPoint -> Maybe C.SlotNo

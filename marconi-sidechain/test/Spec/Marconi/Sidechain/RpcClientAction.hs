@@ -2,6 +2,7 @@ module Spec.Marconi.Sidechain.RpcClientAction where
 
 import Control.Concurrent.STM (atomically)
 import Control.Lens ((^.))
+import Control.Monad.Except (runExceptT)
 import Data.Proxy (Proxy (Proxy))
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Core.Storable qualified as Storable
@@ -17,6 +18,7 @@ import Network.Wai.Handler.Warp qualified as Warp
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Client (BaseUrl (BaseUrl), ClientEnv, HasClient (Client), Scheme (Http), client, hoistClient,
                        mkClientEnv, runClientM)
+import System.Exit (exitFailure)
 
 -- | Type for the storable action and RPC client Action pair, to simplify the type signatures.
 data RpcClientAction = RpcClientAction
@@ -57,8 +59,11 @@ mocUtxoWorker
 mocUtxoWorker callback events =
   let depth :: Utxo.Depth
       depth = Utxo.Depth (1 + length events) -- use in-memory store
+      handleError = either (const exitFailure) pure
   in
-    Utxo.open ":memory:" depth False >>= Storable.insertMany events >>= callback
+    runExceptT (Utxo.open ":memory:" depth False >>= Storable.insertMany events)
+    >>= handleError
+    >>= callback
 
 -- hoist http servant client from clientM to IO
 mkHoistedHttpRpcClient :: ClientEnv -> Client IO JsonRpcAPI

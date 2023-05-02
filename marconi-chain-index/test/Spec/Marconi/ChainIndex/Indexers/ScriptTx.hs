@@ -54,6 +54,7 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 import Cardano.Testnet qualified as TN
 import Helpers qualified as TN
+import Marconi.ChainIndex.Error (raiseException)
 -- ^ Although these are defined in this cabal component, they are
 -- helpers for interacting with the testnet, thus TN
 
@@ -277,7 +278,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
   queriedTx2 :: C.Tx C.BabbageEra <- do
     ScriptTx.ScriptTxResult (ScriptTx.TxCbor txCbor : _) <- liftIO $ do
       ix <- IO.readMVar indexer
-      Storable.query Storable.QEverything ix (ScriptTx.ScriptTxAddress plutusScriptHash)
+      raiseException $ Storable.query Storable.QEverything ix (ScriptTx.ScriptTxAddress plutusScriptHash)
     H.leftFail $ C.deserialiseFromCBOR (C.AsTx C.AsBabbageEra) txCbor
 
   tx2 === queriedTx2

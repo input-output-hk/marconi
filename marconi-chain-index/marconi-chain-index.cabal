@@ -55,6 +55,7 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.ChainIndex.CLI
+    Marconi.ChainIndex.Error
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
     Marconi.ChainIndex.Indexers.Datum
@@ -115,6 +116,7 @@ library
     , directory
     , filepath
     , lens
+    , mtl
     , mwc-random
     , optparse-applicative
     , ouroboros-consensus-cardano
@@ -219,6 +221,7 @@ library marconi-chain-index-test-lib
     , hedgehog
     , hedgehog-extras
     , lens
+    , mtl
     , streaming
     , temporary
 

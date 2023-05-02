@@ -28,6 +28,7 @@ import Hedgehog (Gen, forAll, (===))
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Logging ()
 import Marconi.ChainIndex.Types (SecurityParam)
@@ -50,8 +51,8 @@ genIndexWithEvents dbPath = do
   H.classify "Buffer doesn't overflow" $ not (null events) && not overflow
   H.classify "Buffer overflows" $ not (null events) && overflow
   indexer <- liftIO $ do
-    indexer <- MintBurn.open dbPath bufferSize
-    foldM (\indexer' event -> Storable.insert (MintBurn.MintBurnEvent event) indexer') indexer events
+    indexer <- raiseException $ MintBurn.open dbPath bufferSize
+    foldM (\indexer' event -> raiseException $ Storable.insert (MintBurn.MintBurnEvent event) indexer') indexer events
   pure (indexer, events, (bufferSize, nTx))
 
 -- | Generate transactions which have mints inside, then extract
@@ -170,7 +171,7 @@ commonMintingPolicy = $$(PlutusTx.compile [||\_ _ -> ()||])
 mkNewIndexerBasedOnOldDb :: Storable.State MintBurn.MintBurnHandle -> IO (Storable.State MintBurn.MintBurnHandle)
 mkNewIndexerBasedOnOldDb indexer = let
     MintBurn.MintBurnHandle sqlCon k = indexer ^. Storable.handle
-  in Storable.emptyState (fromIntegral k) (MintBurn.MintBurnHandle sqlCon k)
+  in raiseException $ Storable.emptyState (fromIntegral k) (MintBurn.MintBurnHandle sqlCon k)
 
 dummyBlockHeaderHash :: C.Hash C.BlockHeader
 dummyBlockHeaderHash = fromString "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" :: C.Hash C.BlockHeader

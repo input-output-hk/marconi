@@ -8,6 +8,7 @@ module Marconi.Sidechain.Api.Query.Indexers.EpochState
 import Cardano.Api qualified as C
 import Control.Concurrent.STM.TMVar (TMVar, newEmptyTMVarIO, tryReadTMVar)
 import Control.Lens ((^.))
+import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM, atomically)
 import Data.Word (Word64)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle, StorableQuery (NonceByEpochNoQuery, SDDByEpochNoQuery),
@@ -49,9 +50,11 @@ querySDDByEpochNo env epochNo = do
 
     where
         query indexer = do
-            (SDDByEpochNoResult epochSddRows) <-
-                Storable.query Storable.QEverything indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
-            pure $ Right $ GetEpochStakePoolDelegationResult epochSddRows
+            res <- runExceptT
+                 $ Storable.query Storable.QEverything indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
+            case res of
+                Right (SDDByEpochNoResult epochSddRows) -> pure $ Right $ GetEpochStakePoolDelegationResult epochSddRows
+                _other                                  -> pure $ Left $ QueryError "Query failed"
 
 -- | Retrieve the nonce associated at the given 'EpochNo'
 -- We return an empty list if the 'EpochNo' is not found.
@@ -71,6 +74,8 @@ queryNonceByEpochNo env epochNo = do
 
     where
         query indexer = do
-            (NonceByEpochNoResult epochNonceRows) <-
-                Storable.query Storable.QEverything indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
-            pure $ Right $ GetEpochNonceResult epochNonceRows
+            res <- runExceptT
+                $ Storable.query Storable.QEverything indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
+            case res of
+                Right (NonceByEpochNoResult epochNonceRows) -> pure $ Right $ GetEpochNonceResult epochNonceRows
+                _other                                      -> pure $ Left $ QueryError "Query failed"

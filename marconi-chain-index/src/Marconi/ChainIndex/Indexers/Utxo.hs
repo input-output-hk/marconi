@@ -42,6 +42,9 @@ import Control.Lens.Combinators (imap)
 import Control.Lens.Operators ((^.))
 import Control.Lens.TH (makeLenses)
 import Control.Monad (unless, when)
+import Control.Monad.Except (throwError)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Except (ExceptT)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Bool, Object), object, (.:), (.=))
 import Data.Either (fromRight)
 import Data.Foldable (fold, foldl', toList)
@@ -67,6 +70,9 @@ import Cardano.Api.Shelley qualified as C
 import Data.Ord (Down (Down, getDown))
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TargetAddresses, TxOut, pattern CurrentEra)
+
+import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
+                                 liftSQLError)
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint,
                               QueryInterval (QEverything, QInterval), Queryable (queryStorage),
                               Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
@@ -100,7 +106,7 @@ data instance StorableQuery UtxoHandle
 
 type QueryableAddresses = NonEmpty (StorableQuery UtxoHandle)
 
-type instance StorableMonad UtxoHandle = IO
+type instance StorableMonad UtxoHandle = ExceptT IndexerError IO
 
 type instance StorablePoint UtxoHandle = C.ChainPoint
 
@@ -321,13 +327,13 @@ open
   :: FilePath   -- ^ SQLite file path
   -> Depth      -- ^ The Depth parameter k, the larger K, the more RAM the indexer uses
   -> Bool       -- ^ whether to perform vacuum
-  -> IO UtxoIndexer
+  -> StorableMonad UtxoHandle UtxoIndexer
 open dbPath (Depth k) isToVacuume = do
-  c <- SQL.open dbPath
+    c <- liftSQLError CantStartIndexer (SQL.open dbPath)
 
-  SQL.execute_ c "PRAGMA journal_mode=WAL"
+    lift $ SQL.execute_ c "PRAGMA journal_mode=WAL"
 
-  SQL.execute_ c [r|CREATE TABLE IF NOT EXISTS unspent_transactions
+    lift $ SQL.execute_ c [r|CREATE TABLE IF NOT EXISTS unspent_transactions
                       ( address TEXT NOT NULL
                       , txId TEXT NOT NULL
                       , txIx INT NOT NULL
@@ -339,18 +345,18 @@ open dbPath (Depth k) isToVacuume = do
                       , slotNo INT NOT NULL
                       , blockHash BLOB NOT NULL)|]
 
-  SQL.execute_ c [r|CREATE TABLE IF NOT EXISTS spent
+    lift $ SQL.execute_ c [r|CREATE TABLE IF NOT EXISTS spent
                       ( txId TEXT NOT NULL
                       , txIx INT NOT NULL
                       , slotNo INT NOT NULL
                       , blockHash BLOB NOT NULL)|]
 
-  SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS
+    lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS
                       spent_slotNo ON spent (slotNo)|]
 
-  SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS
+    lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS
                       unspent_transaction_address ON unspent_transactions (address)|]
-  emptyState k (UtxoHandle c k isToVacuume)
+    emptyState k (UtxoHandle c k isToVacuume)
 
 getSpentFrom :: StorableEvent UtxoHandle -> [Spent]
 getSpentFrom (UtxoEvent _ txIns cp) = case cp of
@@ -365,7 +371,8 @@ instance Buffered UtxoHandle where
     => f (StorableEvent UtxoHandle) -- ^ events to store
     -> UtxoHandle -- ^ handler for storing events
     -> StorableMonad UtxoHandle UtxoHandle
-  persistToStorage events h = do
+  persistToStorage events h
+    = liftSQLError CantInsertEvent $ do
     let rows = concatMap eventToRows events
         spents = concatMap getSpentFrom events
         c = hdlConnection h
@@ -419,7 +426,7 @@ instance Buffered UtxoHandle where
     pure h
 
   getStoredEvents :: UtxoHandle -> StorableMonad UtxoHandle [StorableEvent UtxoHandle]
-  getStoredEvents (UtxoHandle c sz _) = do
+  getStoredEvents (UtxoHandle c sz _) = liftSQLError CantQueryIndexer $ do
     sns <- SQL.query c
         [r|SELECT
               slotNo
@@ -606,7 +613,7 @@ instance Queryable UtxoHandle where
     -> f (StorableEvent UtxoHandle)
     -> UtxoHandle
     -> StorableQuery UtxoHandle
-    -> IO (StorableResult UtxoHandle)
+    -> StorableMonad UtxoHandle (StorableResult UtxoHandle)
   queryStorage qi es (UtxoHandle c _ _) (UtxoByAddress addr slotNo) = let
 
     eventAtQuery :: StorableEvent UtxoHandle = queryBuffer qi addr slotNo es -- query in-memory
@@ -614,7 +621,7 @@ instance Queryable UtxoHandle where
     filters = (["u.address = :address"], [":address" := addr])
            <> maybe mempty (\sno -> (["u.slotNo <= :slotNo"] , [":slotNo" := sno])) slotNo
 
-    in uncurry (utxoAtAddressQuery c es eventAtQuery) filters
+    in liftSQLError CantQueryIndexer $ uncurry (utxoAtAddressQuery c es eventAtQuery) filters
   queryStorage _ es (UtxoHandle c _ _) LastSyncPoint = let
       queryLastSlot = [r|SELECT u.slotNo, u.blockHash
                      FROM unspent_transactions u
@@ -632,17 +639,17 @@ instance Queryable UtxoHandle where
                   _:p:_xs -> p
                   _other  -> C.ChainPointAtGenesis
           -- 1 element in memory
-          (_:_) -> do
-              persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Integer))
-              pure . LastSyncPointResult $ case persisted of
-                  p:_    -> getChainPoint p
-                  _other -> C.ChainPointAtGenesis
+          (_:_) -> liftSQLError CantQueryIndexer $ do
+                  persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Integer))
+                  pure . LastSyncPointResult $ case persisted of
+                      p:_    -> getChainPoint p
+                      _other -> C.ChainPointAtGenesis
           -- 0 element in memory
-          [] -> do
-              persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Integer))
-              pure . LastSyncPointResult $ case persisted of
-                  _:p:_xs -> getChainPoint p
-                  _other  -> C.ChainPointAtGenesis
+          [] -> liftSQLError CantQueryIndexer $ do
+                  persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Integer))
+                  pure . LastSyncPointResult $ case persisted of
+                      _:p:_xs -> getChainPoint p
+                      _other  -> C.ChainPointAtGenesis
 
 -- | Query memory buffer
 queryBuffer
@@ -656,17 +663,18 @@ queryBuffer QEverything addr slotNo      = fold . eventsAtAddress addr slotNo
 queryBuffer (QInterval _ cp) addr slotNo = fold . filter (eventIsBefore cp) . eventsAtAddress addr slotNo
 
 instance Rewindable UtxoHandle where
-  rewindStorage :: C.ChainPoint -> UtxoHandle -> IO (Maybe UtxoHandle)
-  rewindStorage (C.ChainPoint sn _) h@(UtxoHandle c _ _) = do
-    SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sn)
-    SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sn)
-    pure $ Just h
-  rewindStorage C.ChainPointAtGenesis _ = pure Nothing
+  rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle
+  rewindStorage (C.ChainPoint sn _) h@(UtxoHandle c _ _) =  liftSQLError CantRollback
+        $ do
+            SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sn)
+            SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sn)
+            pure h
+  rewindStorage C.ChainPointAtGenesis _ = throwError $ CantStartIndexer "Can't rewindat genesis"
 
 -- For resuming we need to provide a list of points where we can resume from.
 instance Resumable UtxoHandle where
   resumeFromStorage (UtxoHandle c _ _) = do
-    chainPoints <- resumeHelper c
+    chainPoints <- liftSQLError CantQueryIndexer $ resumeHelper c
     -- The ordering here matters. The node will try to find the first point in the
     -- ledger, then move to the next and so on, so we will send the latest point
     -- first.

@@ -73,6 +73,7 @@ library
     , base                  >=4.9 && <5
     , filepath
     , lens
+    , mtl
     , optparse-applicative
     , servant
     , servant-server
@@ -118,6 +119,7 @@ executable examples-json-rpc-server
     , base                  >=4.9 && <5
     , filepath
     , lens
+    , mtl
     , optparse-applicative
     , stm
 
@@ -221,6 +223,7 @@ test-suite marconi-sidechain-test
     , hedgehog
     , http-client
     , lens
+    , mtl
     , optparse-applicative
     , servant
     , servant-client
