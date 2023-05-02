@@ -20,10 +20,10 @@ import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (API, GetCurrentSyncedBlockResult, GetEpochNonceResult,
                                      GetEpochStakePoolDelegationResult,
+                                     GetTxsBurningAssetIdParams (assetName, mintBurnSlot, policyId),
                                      GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
                                      GetUtxosFromAddressParams (queryAddress, queryUnspentAtSlot, queryUnspentAtSlot),
-                                     GetUtxosFromAddressResult, JsonRpcAPI,
-                                     MintingTxQuery (queryAssetName, queryMintBurnSlot, queryPolicyId), RestAPI)
+                                     GetUtxosFromAddressResult, JsonRpcAPI, RestAPI)
 import Marconi.Sidechain.Api.Types (QueryExceptions, SidechainEnv, sidechainAddressUtxoIndexer,
                                     sidechainEnvHttpSettings, sidechainEnvIndexers)
 import Network.JsonRpc.Server.Types ()
@@ -119,15 +119,15 @@ getAddressUtxoHandler env query = liftIO $
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-    -> MintingTxQuery           -- ^ Minting policy hash
+    -> GetTxsBurningAssetIdParams
     -> Handler (Either (JsonRpcErr String) GetTxsBurningAssetIdResult)
 getMintingPolicyHashTxHandler env query = liftIO $
     bimap toRpcErr GetTxsBurningAssetIdResult <$> do
         Q.Mint.findByAssetIdAtSlot
             env
-            (queryPolicyId query)
-            (queryAssetName query)
-            (queryMintBurnSlot query)
+            (policyId query)
+            (assetName query)
+            (mintBurnSlot query)
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochStakePoolDelegationHandler

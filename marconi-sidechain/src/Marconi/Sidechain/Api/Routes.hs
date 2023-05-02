@@ -54,7 +54,7 @@ type RpcPastAddressUtxoMethod =
 
 type RpcMintingPolicyHashTxMethod =
     JsonRpc "getTxsBurningAssetId"
-            MintingTxQuery
+            GetTxsBurningAssetIdParams
             String
             GetTxsBurningAssetIdResult
 
@@ -164,20 +164,26 @@ instance FromJSON AddressUtxoResult where
             <*> v .: "datum"
     parseJSON _ = mempty
 
-newtype GetTxsBurningAssetIdParams = GetTxsBurningAssetIdParams
-    { policyId :: String
+data GetTxsBurningAssetIdParams
+    = GetTxsBurningAssetIdParams
+    { policyId     :: !C.PolicyId
+    , assetName    :: !C.AssetName
+    , mintBurnSlot :: !(Maybe Word64)
     } deriving (Eq, Show)
 
+
 instance FromJSON GetTxsBurningAssetIdParams where
-    parseJSON (Object v) =
-        GetTxsBurningAssetIdParams
-            <$> (v .: "policyId")
+
+    parseJSON (Object v) = GetTxsBurningAssetIdParams <$> (v .: "policyId") <*> (v .: "assetName") <*> (v .:? "slotNo")
     parseJSON _          = mempty
 
 instance ToJSON GetTxsBurningAssetIdParams where
-    toJSON q = object
-       [ "policyId" .= policyId q
-       ]
+    toJSON q =
+        object $ catMaybes
+           [ Just ("policyId" .= policyId q)
+           , Just ("assetName" .= assetName q)
+           , ("slotNo" .=) <$> mintBurnSlot q
+           ]
 
 newtype GetTxsBurningAssetIdResult =
     GetTxsBurningAssetIdResult [AssetIdTxResult]
@@ -222,23 +228,3 @@ newtype GetEpochStakePoolDelegationResult =
 newtype GetEpochNonceResult =
     GetEpochNonceResult (Maybe EpochState.EpochNonceRow)
     deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
-
-data MintingTxQuery
-    = MintingTxQuery
-    { queryPolicyId     :: !C.PolicyId
-    , queryAssetName    :: !C.AssetName
-    , queryMintBurnSlot :: !(Maybe Word64)
-    } deriving Show
-
-instance FromJSON MintingTxQuery where
-
-    parseJSON (Object v) = MintingTxQuery <$> (v .: "policyId") <*> (v .: "assetName") <*> (v .:? "slotNo")
-    parseJSON _          = mempty
-
-instance ToJSON MintingTxQuery where
-    toJSON q =
-        object $ catMaybes
-           [ Just ("policyId" .= queryPolicyId q)
-           , Just ("assetName" .= queryAssetName q)
-           , ("slotNo" .=) <$> queryMintBurnSlot q
-           ]

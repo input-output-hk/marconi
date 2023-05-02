@@ -11,9 +11,10 @@ import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MIQ
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
-import Marconi.Sidechain.Api.Routes (GetCurrentSyncedBlockResult, GetTxsBurningAssetIdResult,
-                                     GetUtxosFromAddressParams (GetUtxosFromAddressParams), GetUtxosFromAddressResult,
-                                     JsonRpcAPI, MintingTxQuery (MintingTxQuery))
+import Marconi.Sidechain.Api.Routes (GetCurrentSyncedBlockResult,
+                                     GetTxsBurningAssetIdParams (GetTxsBurningAssetIdParams),
+                                     GetTxsBurningAssetIdResult, GetUtxosFromAddressParams (GetUtxosFromAddressParams),
+                                     GetUtxosFromAddressResult, JsonRpcAPI)
 import Marconi.Sidechain.Api.Types (SidechainEnv, mintBurnIndexerEnvIndexer, sidechainAddressUtxoIndexer,
                                     sidechainEnvIndexers, sidechainMintBurnIndexer)
 import Network.HTTP.Client (defaultManagerSettings, newManager)
@@ -45,7 +46,7 @@ mkRpcClientAction env port = do
                            (mkInsertMintBurnEventsCallback env)
                            (\a -> rpcUtxos $ GetUtxosFromAddressParams a Nothing)
                            (rpcSyncPoint "")
-                           (\(p,a) -> rpcMinting $ MintingTxQuery p a Nothing)
+                           (\(p,a) -> rpcMinting $ GetTxsBurningAssetIdParams p a Nothing)
 
 baseUrl :: Warp.Port -> BaseUrl
 baseUrl port = BaseUrl Http "localhost" port ""

@@ -12,6 +12,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
+import Data.String (fromString)
 import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Property, forAll, property, tripping)
 import Hedgehog.Gen qualified as Gen
@@ -124,7 +125,9 @@ propJSONRountripGetUtxosFromAddressResult = property $ do
 propJSONRountripGetTxsBurningAssetIdParams :: Property
 propJSONRountripGetTxsBurningAssetIdParams = property $ do
     r <- forAll $ GetTxsBurningAssetIdParams
-            <$> Gen.string (Range.linear 1 10) Gen.alphaNum
+            <$> (C.PolicyId <$> CGen.genScriptHash)
+            <*> (fromString <$> Gen.string (Range.linear 1 10) Gen.alphaNum)
+            <*> (Gen.maybe $ Gen.integral (Range.linear 1 10))
     tripping r Aeson.encode Aeson.decode
 
 propJSONRountripGetTxsBurningAssetIdResult :: Property
