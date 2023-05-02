@@ -40,7 +40,7 @@ genMockchain'
   :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)) -- function that know how generate TxBodyContent
   -> Gen (Mockchain C.BabbageEra)
 genMockchain' genTxBody = do
-    maxSlots <- Gen.word64 (Range.linear 1 5)
+    maxSlots <- Gen.word64 (Range.linear 2 5)
     blockHeaderHash <- genHashBlockHeader
     let blockHeaders =
             fmap (\s -> C.BlockHeader (C.SlotNo s) blockHeaderHash (C.BlockNo s))

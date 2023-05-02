@@ -21,6 +21,7 @@ import Control.Concurrent.STM.TMVar (TMVar)
 import Control.Exception (Exception)
 import Control.Lens (makeLenses)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
+import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
 import Marconi.ChainIndex.Types as Export (TargetAddresses)
 import Marconi.Core.Storable (State, StorableQuery)
@@ -49,6 +50,8 @@ data SidechainIndexers = SidechainIndexers
     -- ^ For query thread to access in-memory utxos
     , _sidechainEpochStateIndexer  :: !EpochStateIndexerEnv
     -- ^ For query thread to access in-memory epoch state data
+    , _sidechainMintBurnIndexer    :: !MintBurnIndexerEnv
+    -- ^ For query thread to access in-memory mintBurn
     }
 
 data AddressUtxoIndexerEnv = AddressUtxoIndexerEnv
@@ -58,6 +61,10 @@ data AddressUtxoIndexerEnv = AddressUtxoIndexerEnv
 
 newtype EpochStateIndexerEnv = EpochStateIndexerEnv
     { _epochStateIndexerEnvIndexer         :: TMVar (State EpochStateHandle)
+    }
+
+newtype MintBurnIndexerEnv = MintBurnIndexerEnv
+    { _mintBurnIndexerEnvIndexer         :: TMVar (State MintBurnHandle)
     }
 
 data QueryExceptions
@@ -70,4 +77,5 @@ data QueryExceptions
 makeLenses ''SidechainEnv
 makeLenses ''SidechainIndexers
 makeLenses ''AddressUtxoIndexerEnv
+makeLenses ''MintBurnIndexerEnv
 makeLenses ''EpochStateIndexerEnv

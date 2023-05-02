@@ -54,7 +54,7 @@ type RpcPastAddressUtxoMethod =
 
 type RpcMintingPolicyHashTxMethod =
     JsonRpc "getTxsBurningAssetId"
-            String
+            MintingTxQuery
             String
             GetTxsBurningAssetIdResult
 
@@ -222,3 +222,23 @@ newtype GetEpochStakePoolDelegationResult =
 newtype GetEpochNonceResult =
     GetEpochNonceResult (Maybe EpochState.EpochNonceRow)
     deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+
+data MintingTxQuery
+    = MintingTxQuery
+    { queryPolicyId     :: !C.PolicyId
+    , queryAssetName    :: !C.AssetName
+    , queryMintBurnSlot :: !(Maybe Word64)
+    } deriving Show
+
+instance FromJSON MintingTxQuery where
+
+    parseJSON (Object v) = MintingTxQuery <$> (v .: "policyId") <*> (v .: "assetName") <*> (v .:? "slotNo")
+    parseJSON _          = mempty
+
+instance ToJSON MintingTxQuery where
+    toJSON q =
+        object $ catMaybes
+           [ Just ("policyId" .= queryPolicyId q)
+           , Just ("assetName" .= queryAssetName q)
+           , ("slotNo" .=) <$> queryMintBurnSlot q
+           ]

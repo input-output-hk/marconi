@@ -41,7 +41,7 @@ import Control.Exception (bracket_)
 import Control.Lens.Combinators (imap)
 import Control.Lens.Operators ((^.))
 import Control.Lens.TH (makeLenses)
-import Control.Monad (unless, when)
+import Control.Monad (guard, unless, when)
 import Control.Monad.Except (throwError)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
@@ -775,9 +775,9 @@ getUtxoFromTxOut
   -> C.TxIn -- ^ unique id and position of this transaction
   -> C.TxOut C.CtxTx era -- ^ Cardano TxOut
   -> Maybe Utxo -- ^ Utxo
-getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr val dtum refScript) =
-  if isAddressInTarget maybeTargetAddresses addrAny
-  then Just $ Utxo
+getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr val dtum refScript) = do
+  guard $ isAddressInTarget maybeTargetAddresses addrAny
+  pure $ Utxo
     { _txId = txid
     , _txIx = txix
     , _address = addrAny
@@ -787,7 +787,6 @@ getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr val dtum 
     , _inlineScript = inlineScript'
     , _inlineScriptHash = inlineScriptHash'
     }
-  else Nothing
   where
     addrAny = toAddr addr
     (datum', datumHash') = getScriptDataAndHash dtum

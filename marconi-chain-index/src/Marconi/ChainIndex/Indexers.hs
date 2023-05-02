@@ -381,12 +381,12 @@ epochStateWorker nodeConfigPath onInsert securityParam coordinator path = do
 
 mintBurnWorker_
   :: SecurityParam
-  -> (MintBurn.TxMintEvent -> IO ())
+  -> (MintBurn.MintBurnIndexer -> IO ())
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
   -> IO (IO b, MVar MintBurn.MintBurnIndexer)
-mintBurnWorker_ securityParam onInsert Coordinator{_barrier, _errorVar} ch dbPath = do
+mintBurnWorker_ securityParam callback Coordinator{_barrier, _errorVar} ch dbPath = do
   indexerMVar <- newMVar =<< toException (MintBurn.open dbPath securityParam)
   let
     loop = forever $ do
@@ -397,16 +397,16 @@ mintBurnWorker_ securityParam onInsert Coordinator{_barrier, _errorVar} ch dbPat
         RollForward blockInMode _ct
           | Just event' <- MintBurn.toUpdate blockInMode -> do
               void $ updateWith indexerMVar _errorVar $ Storable.insert $ MintBurn.MintBurnEvent event'
-              void $ onInsert event'
+              void $ readMVar indexerMVar >>= callback
           | otherwise -> pure ()
         RollBackward cp _ct ->
           void $ updateWith indexerMVar _errorVar $ Storable.rewind cp
   pure (loop, indexerMVar)
 
-mintBurnWorker :: (MintBurn.TxMintEvent -> IO ()) -> Worker
-mintBurnWorker onInsert securityParam coordinator path = do
+mintBurnWorker :: (MintBurn.MintBurnIndexer -> IO ()) -> Worker
+mintBurnWorker callback securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
-  (loop, ix) <- mintBurnWorker_ securityParam onInsert coordinator workerChannel path
+  (loop, ix) <- mintBurnWorker_ securityParam callback coordinator workerChannel path
   void $ forkIO loop
   readMVar ix >>= toException . Storable.resumeFromStorage . view Storable.handle
 
