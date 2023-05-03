@@ -69,6 +69,18 @@ pTestnetMagic = C.NetworkMagic <$> Opt.option Opt.auto
      <> Opt.metavar "NATURAL"
      <> Opt.help "Specify a testnet magic id.")
 
+minIndexingDepth :: Opt.Parser IndexingDepth
+minIndexingDepth = let
+    maxIndexingDepth = Opt.flag' MaxIndexingDepth
+         (Opt.long "max-indexing-depth" <> Opt.help "Only index events that are not volatile")
+    givenIndexingDepth = MinIndexingDepth <$> Opt.option Opt.auto
+        (Opt.long "min-indexing-depth"
+        <> Opt.metavar "NATURAL"
+        <> Opt.help "Depth of an event before it is indexed"
+        <> Opt.value 0)
+
+    in  maxIndexingDepth Opt.<|> givenIndexingDepth
+
 -- | parses CLI params to valid NonEmpty list of Shelley addresses
 -- We error out if there are any invalid addresses
 multiString :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser TargetAddresses
@@ -85,6 +97,8 @@ parseCardanoAddresses =  nub
     where
         deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
 
+data IndexingDepth = MinIndexingDepth !Word | MaxIndexingDepth
+    deriving (Show, Eq)
 
 -- | This executable is meant to exercise a set of indexers (for now datumhash -> datum)
 --     against the mainnet (meant to be used for testing).
@@ -98,6 +112,7 @@ parseCardanoAddresses =  nub
 data Options = Options
   { optionsSocketPath          :: !String,
     optionsNetworkId           :: !NetworkId,
+    optionsMinIndexingDepth    :: !IndexingDepth,
     optionsChainPoint          :: !ChainPoint,
     optionsDbPath              :: !FilePath,    -- ^ SQLite database directory path
     optionsDisableUtxo         :: !Bool,
@@ -124,6 +139,7 @@ optionsParser =
   Options
     <$> commonSocketPath
     <*> pNetworkId
+    <*> minIndexingDepth
     <*> chainPointParser
     <*> commonDbDir
     <*> Opt.switch (  Opt.long "disable-utxo"
