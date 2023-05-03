@@ -73,10 +73,6 @@ tests = localOption (HedgehogTestLimit $ Just 200) $
           "propRewindingWithOldSlotShouldBringIndexInPreviousState "
           propRewindingWithOldSlotShouldBringIndexInPreviousState
     , testPropertyNamed
-          "The points that indexer can be resumed from should return at least the genesis point"
-          "propResumingShouldReturnAtLeastTheGenesisPoint"
-          propResumingShouldReturnAtLeastTheGenesisPoint
-    , testPropertyNamed
           "The points that indexer can be resumed from should return at least non-genesis point when some data was indexed on disk"
           "propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk"
           propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk
@@ -319,19 +315,6 @@ propRewindingWithOldSlotShouldBringIndexInPreviousState = property $ do
               ([], _)     -> C.ChainPointAtGenesis
               (before, _) -> last before
 
--- | The property verifies that the 'Storable.resumeFromStorage' call returns at least the
--- 'C.ChainPointAtGenesis' point.
---
--- TODO: ChainPointAtGenesis should always be returned by default. Don't need this property test.
-propResumingShouldReturnAtLeastTheGenesisPoint :: Property
-propResumingShouldReturnAtLeastTheGenesisPoint = property $ do
-    cps <- forAll $ genChainPoints 2 5
-    events <- forAll $ forM (init cps) genAddressDatumStorableEvent
-    indexer <- liftIO $ raiseException
-        $ AddressDatum.open ":memory:" (AddressDatumDepth 1)
-        >>= Storable.insertMany events
-    StorableProperties.propResumingShouldReturnAtLeastTheGenesisPoint indexer
-
 -- | The property verifies that the 'Storable.resumeFromStorage' call returns at least a point which
 -- is not 'C.ChainPointAtGenesis' when some events are inserted on disk.
 propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk :: Property
@@ -343,19 +326,7 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
         >>= Storable.insert (AddressDatum.toAddressDatumIndexEvent Nothing [] (last cps))
 
     resumablePoints <- liftIO $ raiseException $ Storable.resumeFromStorage $ finalIndex ^. Storable.handle
-    Hedgehog.assert $ length resumablePoints >= 2
-
--- | The property verifies that the 'Storable.resumeFromStorage' call returns a sorted list of chain
--- points in descending order.
-propResumablePointsShouldBeSortedInDescOrder :: Property
-propResumablePointsShouldBeSortedInDescOrder = property $ do
-    cps <- forAll $ genChainPoints 2 5
-    events <- forAll $ forM cps genAddressDatumStorableEvent
-    indexer <-
-        liftIO $ raiseException $ AddressDatum.open ":memory:" (AddressDatumDepth 1)
-               >>= Storable.insertMany events
-               >>= Storable.insert (AddressDatum.toAddressDatumIndexEvent Nothing [] (last cps))
-    StorableProperties.propResumablePointsShouldBeSortedInDescOrder indexer
+    Hedgehog.assert $ length resumablePoints >= 1
 
 genAddressDatumStorableEvent :: C.ChainPoint -> Gen (Storable.StorableEvent AddressDatumHandle)
 genAddressDatumStorableEvent cp = do

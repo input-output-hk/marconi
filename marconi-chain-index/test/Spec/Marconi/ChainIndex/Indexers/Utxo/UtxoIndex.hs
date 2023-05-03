@@ -87,11 +87,6 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
         propUtxoQueryByAddressAndSlot
 
     , testPropertyNamed
-        "The points the indexer can be resumed from should return at least the genesis point"
-        "propResumingShouldReturnAtLeastTheGenesisPoint"
-        propResumingShouldReturnAtLeastTheGenesisPoint
-
-    , testPropertyNamed
         "The points that indexer can be resumed from should return at least non-genesis point when some data was indexed on disk"
         "propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk"
         propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk
@@ -484,16 +479,6 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       -> Maybe TargetAddresses
     mkTargetAddressFromTxOuts txOuts =
         nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
-
--- | The property verifies that the 'Storable.resumeFromStorage' call returns at least the
--- 'C.ChainPointAtGenesis' point.
-propResumingShouldReturnAtLeastTheGenesisPoint :: Property
-propResumingShouldReturnAtLeastTheGenesisPoint = property $ do
-    events <- forAll UtxoGen.genUtxoEvents
-    depth <- forAll $ Gen.int (Range.linear 1 $ length events)
-    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
-            >>= Storable.insertMany events
-    StorableProperties.propResumingShouldReturnAtLeastTheGenesisPoint indexer
 
 -- | The property verifies that the 'Storable.resumeFromStorage' call returns at least a point which
 -- is not 'C.ChainPointAtGenesis' when some events are inserted on disk.

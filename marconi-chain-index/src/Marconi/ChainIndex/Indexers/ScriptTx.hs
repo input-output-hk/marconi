@@ -286,12 +286,7 @@ instance Rewindable ScriptTxHandle where
 -- For resuming we need to provide a list of points where we can resume from.
 
 instance Resumable ScriptTxHandle where
-  resumeFromStorage h = do
-    es <- Storable.getStoredEvents h
-    -- The ordering here matters. The node will try to find the first point in the
-    -- ledger, then move to the next and so on, so we will send the latest point
-    -- first.
-    pure $ map chainPoint es ++ [ChainPointAtGenesis]
+  resumeFromStorage h = map chainPoint <$> Storable.getStoredEvents h
 
 open :: FilePath -> Depth -> StorableMonad ScriptTxHandle ScriptTxIndexer
 open dbPath (Depth k) = do
@@ -305,4 +300,3 @@ open dbPath (Depth k) = do
   -- This index helps with group by
   lift $ SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_grp ON script_transactions (slotNo)"
   emptyState k (ScriptTxHandle c k)
-

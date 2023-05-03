@@ -488,10 +488,9 @@ instance Resumable AddressDatumHandle where
     resumeFromStorage
         :: AddressDatumHandle
         -> StorableMonad AddressDatumHandle [C.ChainPoint]
-    resumeFromStorage h = do
-        es <- Storable.getStoredEvents h
-        pure $ fmap (\(AddressDatumIndexEvent _ _ chainPoint) -> chainPoint) es
-            ++ [C.ChainPointAtGenesis]
+    resumeFromStorage h = map toChainPoint <$> Storable.getStoredEvents h
+        where
+          toChainPoint (AddressDatumIndexEvent _ _ chainPoint) = chainPoint
 
 open
   :: FilePath

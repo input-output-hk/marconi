@@ -628,7 +628,7 @@ instance Resumable EpochStateHandle where
                                                (Set.fromList epochNonceChainPoints)
         pure
             $ List.sortOn Down
-            $ fmap (uncurry C.ChainPoint) resumablePoints ++ [C.ChainPointAtGenesis]
+            $ fmap (uncurry C.ChainPoint) resumablePoints
 
 chainTipsFromLedgerStateFilePath :: FilePath -> Maybe (Bool, C.SlotNo, C.Hash C.BlockHeader, C.BlockNo)
 chainTipsFromLedgerStateFilePath ledgerStateFilepath =

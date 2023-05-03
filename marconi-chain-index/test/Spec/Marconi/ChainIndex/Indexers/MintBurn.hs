@@ -94,10 +94,6 @@ tests = testGroup "MintBurn"
       "propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery"
       propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery
   , testPropertyNamed
-      "The points the indexer can be resumed from should return at least the genesis point"
-      "propResumingShouldReturnAtLeastTheGenesisPoint"
-      propResumingShouldReturnAtLeastTheGenesisPoint
-  , testPropertyNamed
       "The points that indexer can be resumed from should be sorted in descending order"
       "propResumablePointsShouldBeSortedInDescOrder"
       propResumablePointsShouldBeSortedInDescOrder
@@ -250,13 +246,6 @@ propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
   let expected = MintBurn.groupBySlotAndHash $ take (eventsPersisted (fromIntegral bufferSize) (length events)) events
   -- The test: events that were persisted are exactly those we get from the query.
   equalSet expected (MintBurn.fromRows queryResult)
-
--- | The property verifies that the 'Storable.resumeFromStorage' call returns at least the
--- 'C.ChainPointAtGenesis' point.
-propResumingShouldReturnAtLeastTheGenesisPoint :: Property
-propResumingShouldReturnAtLeastTheGenesisPoint = H.property $ do
-    (indexer, _, _) <- Gen.genIndexWithEvents ":memory:"
-    StorableProperties.propResumingShouldReturnAtLeastTheGenesisPoint indexer
 
 -- | The property verifies that the 'Storable.resumeFromStorage' call returns a sorted list of chain
 -- points in descending order.

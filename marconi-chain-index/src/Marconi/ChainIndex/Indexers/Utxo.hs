@@ -674,12 +674,7 @@ instance Rewindable UtxoHandle where
 
 -- For resuming we need to provide a list of points where we can resume from.
 instance Resumable UtxoHandle where
-  resumeFromStorage (UtxoHandle c _ _) = do
-    chainPoints <- liftSQLError CantQueryIndexer $ resumeHelper c
-    -- The ordering here matters. The node will try to find the first point in the
-    -- ledger, then move to the next and so on, so we will send the latest point
-    -- first.
-    pure $ chainPoints ++ [C.ChainPointAtGenesis]
+  resumeFromStorage (UtxoHandle c _ _) = liftSQLError CantQueryIndexer $ resumeHelper c
 
 -- Add pagination to resume
 -- Main reason for adding this is to protect against OOM

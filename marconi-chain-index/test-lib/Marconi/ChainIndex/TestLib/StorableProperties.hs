@@ -13,21 +13,6 @@ import Marconi.ChainIndex.Error (IndexerError, raiseException)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Storable (Resumable, State, StorableMonad, StorablePoint, resume)
 
--- | The property verifies that the 'Storable.resumeFromStorage' call returns at least the
--- 'C.ChainPointAtGenesis' point.
---
--- TODO: ChainPointAtGenesis should always be returned by default. Don't need this property test.
-propResumingShouldReturnAtLeastTheGenesisPoint ::
-    ( Resumable h
-    , StorablePoint h ~ C.ChainPoint
-    , StorableMonad h ~ ExceptT IndexerError IO
-    )
-    => State h
-    -> H.PropertyT IO ()
-propResumingShouldReturnAtLeastTheGenesisPoint indexer = do
-    actualResumablePoints <- liftIO $ raiseException $ resume indexer
-    H.assert $ elem C.ChainPointAtGenesis actualResumablePoints
-
 -- | The property verifies that the 'Storable.resumeFromStorage' call returns a sorted list of chain
 -- points in descending order.
 propResumablePointsShouldBeSortedInDescOrder ::

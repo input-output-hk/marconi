@@ -11,7 +11,7 @@
 module Marconi.ChainIndex.Indexers where
 
 import Cardano.Api (Block (Block), BlockHeader (BlockHeader), BlockInMode (BlockInMode), CardanoMode,
-                    ChainPoint (ChainPoint, ChainPointAtGenesis), Hash, ScriptData, SlotNo, Tx (Tx), chainPointToSlotNo)
+                    ChainPoint (ChainPoint), Hash, ScriptData, SlotNo, Tx (Tx), chainPointToSlotNo)
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Setup (withTrace)
@@ -147,7 +147,7 @@ datumWorker securityParam Coordinator{_barrier, _channel, _errorVar} path = do
   ix <- Datum.open path (Datum.Depth $ fromIntegral securityParam)
   workerChannel <- atomically . dupTChan $ _channel
   void . forkIO $ innerLoop workerChannel ix
-  pure [ChainPointAtGenesis]
+  pure []
   where
     innerLoop :: TChan (ChainSyncEvent (BlockInMode CardanoMode)) -> DatumIndex -> IO ()
     innerLoop ch index = do
@@ -523,10 +523,15 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
   securityParam <- toException $ Utils.querySecurityParam networkId socketPath
   (returnedCp, coordinator) <- initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
 
-  -- If the user specifies the chain point then use that,
-  -- otherwise use what the indexers provide.
   let chainPoints = case cliChainPoint of
-        C.ChainPointAtGenesis -> returnedCp
+        -- User didn't specify a chain point
+        C.ChainPointAtGenesis -> case returnedCp of
+          -- Return chain point intersection that was found between indexers
+          _ : _ -> returnedCp
+          -- Start from genesis otherwise
+          []    -> [C.ChainPointAtGenesis]
+        -- If the user specifies the chain point then use that,
+        -- otherwise use what the indexers provide.
         cliCp                 -> [cliCp]
 
   c <- defaultConfigStdout

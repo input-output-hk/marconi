@@ -379,9 +379,7 @@ instance RI.Buffered MintBurnHandle where
         \  ORDER BY slotNo DESC, txId                                          "
 
 instance RI.Resumable MintBurnHandle where
-  resumeFromStorage h = do
-    events <- RI.getStoredEvents h
-    pure $ map getChainPoint events <> [C.ChainPointAtGenesis]
+  resumeFromStorage h = map getChainPoint <$> RI.getStoredEvents h
     where
       getChainPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
 
