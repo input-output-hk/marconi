@@ -81,7 +81,7 @@ pkgs.haskell-nix.cabalProject' (_: {
 
   src = flakeopts.repoRoot;
 
-  shell.withHoogle = false; 
+  shell.withHoogle = false;
 
   sha256map = {
     "https://github.com/input-output-hk/cardano-node"."a158a679690ed8b003ee06e1216ac8acd5ab823d" = "sha256-uY7wPyCgKuIZcGu0+vGacjGw2kox8H5ZsVGsfTNtU0c=";
