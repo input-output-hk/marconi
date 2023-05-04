@@ -28,17 +28,21 @@ import Control.Concurrent.STM.TChan (TChan, dupTChan, newBroadcastTChanIO, readT
 import Control.Exception (Exception, catch)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
-import Control.Lens.Operators ((^.))
+import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Data.Coerce (coerce)
 import Data.Functor (($>))
 import Data.List (findIndex, foldl1', intersect)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Sequence (Seq)
+import Data.Sequence qualified as Seq
 import Data.Text qualified as TS
 import Data.Text qualified as Text
+import Data.Word (Word64)
 import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer))
 import Marconi.ChainIndex.Indexers.AddressDatum (AddressDatumDepth (AddressDatumDepth), AddressDatumHandle,
                                                  AddressDatumIndex)
@@ -54,7 +58,8 @@ import Marconi.ChainIndex.Logging (logging)
 import Marconi.ChainIndex.Node.Client.GenesisConfig (NetworkConfigFile (NetworkConfigFile), initExtLedgerStateVar,
                                                      mkProtocolInfoCardano, readCardanoGenesisConfig, readNetworkConfig,
                                                      renderGenesisConfigError)
-import Marconi.ChainIndex.Types (SecurityParam, TargetAddresses)
+import Marconi.ChainIndex.Types (IndexingDepth (MaxIndexingDepth, MinIndexingDepth), SecurityParam (SecurityParam),
+                                 TargetAddresses)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Index.VSplit qualified as Ix
 import Marconi.Core.Storable qualified as Storable
@@ -90,6 +95,17 @@ scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ dats _)
       $ xs
 scriptDataFromCardanoTxBody _ = mempty
 
+data Buffer = Buffer
+  { _capacity     :: !Word64
+  , _bufferLength :: !Word64
+  , _content      :: !(Seq (BlockInMode CardanoMode))
+  }
+
+newBuffer :: Word64 -> Buffer
+newBuffer capacity = Buffer capacity 0 Seq.empty
+
+makeLenses 'Buffer
+
 {- | The way we synchronise channel consumption is by waiting on a QSemN for each
      of the spawn indexers to finish processing the current event.
 
@@ -106,16 +122,18 @@ data Coordinator = Coordinator
   , _errorVar     :: !(MVar IndexerError)
   , _barrier      :: !QSemN
   , _indexerCount :: !Int
+  , _buffer       :: !Buffer
   }
 
 makeLenses 'Coordinator
 
-initialCoordinator :: Int -> IO Coordinator
-initialCoordinator indexerCount' =
+initialCoordinator :: Int -> Word64 -> IO Coordinator
+initialCoordinator indexerCount' minIndexingDepth =
   Coordinator <$> newBroadcastTChanIO
               <*> newEmptyMVar
               <*> newQSemN 0
               <*> pure indexerCount'
+              <*> pure (newBuffer minIndexingDepth)
 
 -- The points should/could provide shared access to the indexers themselves. The result
 -- is a list of points (rather than just one) since it offers more resume possibilities
@@ -412,10 +430,14 @@ mintBurnWorker callback securityParam coordinator path = do
 
 initializeIndexers
   :: SecurityParam
+  -> IndexingDepth
   -> [(Worker, FilePath)]
   -> IO ([ChainPoint], Coordinator)
-initializeIndexers securityParam indexers = do
-  coordinator <- initialCoordinator $ length indexers
+initializeIndexers securityParam indexingDepth indexers = do
+  let resolvedDepth = case indexingDepth of
+          MinIndexingDepth w -> w
+          MaxIndexingDepth   -> coerce securityParam
+  coordinator <- initialCoordinator (length indexers) resolvedDepth
   startingPoints <- mapM (\(ix, fp) -> ix securityParam coordinator fp) indexers
   -- We want to use the set of points that are common to all indexers
   -- giving priority to recent ones.
@@ -426,9 +448,12 @@ initializeIndexers securityParam indexers = do
 mkIndexerStream
   :: Coordinator
   -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r
-  -> IO r
-mkIndexerStream = S.mapM_ . step
+  -> IO ()
+mkIndexerStream coordinator = S.foldM_ step initial finish
   where
+    initial :: IO Coordinator
+    initial = pure coordinator
+
     indexersHealthCheck :: Coordinator -> IO ()
     indexersHealthCheck Coordinator{_errorVar} = do
       err <- tryReadMVar _errorVar
@@ -436,22 +461,60 @@ mkIndexerStream = S.mapM_ . step
           Nothing -> pure ()
           Just e  -> throw e
 
-    step :: Coordinator -> ChainSyncEvent (BlockInMode CardanoMode) -> IO ()
+    blockBeforeChainPoint :: ChainPoint -> BlockInMode CardanoMode -> Bool
+    blockBeforeChainPoint ChainPointAtGenesis _                                                     = False
+    blockBeforeChainPoint (ChainPoint slotNo' _) (BlockInMode (Block (BlockHeader slotNo _ _) _) _) = slotNo <= slotNo'
+
+    coordnatorHandleEvent
+        :: Coordinator
+        -> ChainSyncEvent (BlockInMode CardanoMode)
+        -> IO (Coordinator, Maybe (ChainSyncEvent (BlockInMode CardanoMode)))
+    coordnatorHandleEvent c (RollForward bim ct)
+        | c ^. buffer . bufferLength >= c ^. buffer . capacity = case c ^. buffer . content of
+            buff Seq.:|> event' -> do
+                let c' = c & buffer . content .~ (bim Seq.:<| buff)
+                pure (c', Just $ RollForward event' ct)
+            Seq.Empty ->
+                pure (c, Just $ RollForward bim ct)
+        | otherwise = do
+            let c' = c & buffer . content %~ (bim Seq.:<|)
+                       & buffer . bufferLength +~ 1
+            pure (c', Nothing)
+    coordnatorHandleEvent c e@(RollBackward cp _) = case c ^. buffer . content of
+            buff Seq.:|> event' -> let
+                content' = Seq.dropWhileL (blockBeforeChainPoint cp) buff
+                c' = c & buffer . content .~ content'
+                       & buffer . bufferLength .~ fromIntegral (length content')
+                in if blockBeforeChainPoint cp event'
+                    then pure (c', Nothing)
+                    else pure (c', Just e)
+            Seq.Empty -> pure (c, Just e)
+
+    step :: Coordinator -> ChainSyncEvent (BlockInMode CardanoMode) -> IO Coordinator
     step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
       waitQSemN _barrier _indexerCount
       indexersHealthCheck c
-      atomically $ writeTChan _channel event
+      (c', mevent) <- coordnatorHandleEvent c event
+      case mevent of
+          Nothing -> pure c'
+          Just event' -> do
+              atomically $ writeTChan _channel event'
+              pure c'
+
+    finish :: Coordinator -> IO ()
+    finish _ = pure ()
 
 runIndexers
   :: FilePath
   -> C.NetworkId
   -> ChainPoint
+  -> IndexingDepth
   -> TS.Text
   -> [(Worker, Maybe FilePath)]
   -> IO ()
-runIndexers socketPath networkId cliChainPoint traceName list = do
+runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
   securityParam <- toException $ Utils.querySecurityParam networkId socketPath
-  (returnedCp, coordinator) <- initializeIndexers securityParam $ mapMaybe sequenceA list
+  (returnedCp, coordinator) <- initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
 
   -- If the user specifies the chain point then use that,
   -- otherwise use what the indexers provide.

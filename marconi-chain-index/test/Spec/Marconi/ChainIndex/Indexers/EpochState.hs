@@ -130,7 +130,7 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
   -- This is the channel we wait on to know if the event has been indexed
   indexedTxs <- liftIO IO.newChan
   -- Start indexer
-  coordinator <- liftIO $ Indexers.initialCoordinator 1
+  coordinator <- liftIO $ Indexers.initialCoordinator 1 0
   ch <- liftIO $ STM.atomically . STM.dupTChan $ Indexers._channel coordinator
   let dbPath = tempAbsPath </> "epoch_stakepool_sizes.db"
   (loop, _indexerMVar) <- liftIO $ Indexers.epochStateWorker_

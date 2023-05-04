@@ -22,4 +22,5 @@ parserCliArgs = CliArgs
   <*> Cli.commonDbDir
   <*> Cli.commonMaybePort
   <*> Cli.pNetworkId
+  <*> Cli.commonMinIndexingDepth
   <*> Cli.commonMaybeTargetAddress

@@ -2,7 +2,6 @@
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 {-# LANGUAGE GADTs      #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiWayIf #-}
 module Cardano.Streaming.Helpers where
 
 import Control.Concurrent.Async qualified as IO
