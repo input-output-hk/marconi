@@ -9,7 +9,7 @@
 module Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo.UtxoIndex where
 
 import Cardano.Api qualified as C
-import Control.Lens (folded, (%~), (&), (^.), (^..))
+import Control.Lens (folded, traversed, (%~), (&), (^.), (^..))
 import Control.Monad (foldM, forM_)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.List.NonEmpty (nonEmpty)
@@ -42,6 +42,11 @@ tests :: TestTree
 tests = testGroup "Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo"
   [
     testPropertyNamed
+        "All queried UTXOs by address should be unspent."
+        "allqueryUtxosShouldBeUnspent"
+        allqueryUtxosShouldBeUnspent
+
+  ,  testPropertyNamed
         "Collateral TxIn should be indexed only, When Phase-2 validation fails."
         "propTxInWhenPhase2ValidationFails"
         propTxInWhenPhase2ValidationFails
@@ -96,6 +101,55 @@ instance Eq e => Eq (Core.TimedEvent e) where
 
 instance Ord e => Ord (Core.TimedEvent e) where
   u `compare` u' = (u ^. Core.event) `compare` (u' ^. Core.event)
+
+-- | The purpose of test is to make sure All Queried Utxo's are unSpent.
+--  The Utxo store consists of:
+--  * in-memory store:  UtxoEvents before they're flushed to SQlite
+--  * SQL-database store:  UtxoRows that are stored in SQLite
+--  In this test, We want to make sure:
+--    (1) all utxo query results from SQL-database store are unspent
+--    (2) all utxos query results from in-memory store are unspent
+--    (3) the edge case where although we satisfy (1) and (2),
+--        one or many of the query results from SQLite store may have `Spent` in the in-memory store.
+--    (4) furthermore, we want to prove that there is always at least one utxoRow returned from sotre.
+--  Point (4) is a consequence of the `genShelleyEraUtxoEvents` specifications:  __there is only Spent for previous generated UtxoEvent__
+-- Assumption:  SQLite vacuum is disabled, so that we can accouhnt for generated Spents
+-- Note:        We expect this test to fail in this branch.
+allqueryUtxosShouldBeUnspent :: Property
+allqueryUtxosShouldBeUnspent = property $ do
+  cp <- forAll $ genChainPoint' genBlockNo genSlotNo -- generate some non genesis chainpoints
+  timedUtxoEvent :: Core.TimedEvent Utxo.UtxoEvent
+    <-  forAll $ genShelleyEraUtxoEventsAtChainPoint cp
+  conn <- liftIO $ Utxo.initSQLite  ":memory:"
+  let
+    (keep,flush) = (1,1) -- small memory to force SQL flush
+    indexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
+    indexer = Utxo.mkMixedIndexer' conn keep flush
+  mixedIndexer <- Core.index' timedUtxoEvent indexer
+    >>= Hedgehog.evalEither
+  let
+    unprocessedUtxos :: [Core.TimedEvent Utxo.Utxo]
+    unprocessedUtxos  = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
+
+    queryUtxos :: [Utxo.QueryUtxoByAddress]
+    queryUtxos = mkQuery unprocessedUtxos cp
+
+  retrievedUtxos :: [Core.TimedEvent Utxo.Utxo] <-
+    liftIO $ concat . filter (not . null) <$> traverse (\q -> Core.query cp q mixedIndexer) queryUtxos
+
+  let
+    inputsFromTimedUtxoEvent :: [C.TxIn]    -- get all the TxIn from quried UtxoRows
+    inputsFromTimedUtxoEvent =
+      (Set.toList $ timedUtxoEvent ^. Core.event . Utxo.ueInputs) & traversed %~ Utxo.unSpent
+
+    txInsFromRetrieved :: [C.TxIn]
+    txInsFromRetrieved = retrievedUtxos  ^.. folded . Core.event . Utxo.utxoTxIn
+
+  Hedgehog.assert (not . null $ retrievedUtxos)
+-- There should be no `Spent` in the retrieved UtxoRows
+  Hedgehog.footnote "Regression test must return at least one Utxo. Utxo's may not have any Spent in the Orig. event"
+  Hedgehog.assert $
+    and [u `notElem` inputsFromTimedUtxoEvent | u <- txInsFromRetrieved]
 
 -- | The property verifies that we
 --    * process/store all TxIns for valid transactions

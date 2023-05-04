@@ -61,8 +61,8 @@ data Utxo = Utxo
 $(makeLenses ''Utxo)
 
 instance Ord Utxo where
-  compare (Utxo addr txin _ _ _ _ _) (Utxo addr' txin' _ _ _ _ _) =
-     compare (addr, txin) (addr', txin')
+  compare (Utxo _ txin _ _ _ _ _) (Utxo _ txin' _ _ _ _ _) =
+    compare txin txin'
 
 newtype Spent = Spent
   { unSpent ::  C.TxIn
@@ -472,8 +472,8 @@ instance MonadIO m => Core.Rewindable m UtxoEvent Core.SQLiteIndexer where
 
     rewind C.ChainPointAtGenesis ix = do
       let c = ix ^. Core.handle
-      liftIO $ SQL.execute_ c "DROP TABLE IF EXISTS unspent_transactions"
-      liftIO $ SQL.execute_ c "DROP TABLE IF EXISTS spent"
+      liftIO $ SQL.execute_ c "DELETE FROM TABLE unspent_transactions"
+      liftIO $ SQL.execute_ c "DELETE FROM TABLE spent"
 
       pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
 
