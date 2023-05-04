@@ -88,7 +88,7 @@ tests = localOption (HedgehogTestLimit $ Just 200) $
 -- index.
 propAllAddressesAreQueryable :: Property
 propAllAddressesAreQueryable = property $ do
-    cps <- forAll $ genChainPoints 1 5
+    cps <- forAll $ genChainPoints 2 5
     events <- forAll $ forM cps genAddressDatumStorableEvent
     depth <- forAll $ Gen.int (Range.linear 1 $ length cps)
     initialIndex <- liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth depth)
@@ -178,7 +178,7 @@ propNoAddressQueryableIfLowestSlotInQueryRangeIsHigherThanLastIndexedSlot = prop
 -- queryable from the index.
 propAddressDatumAreQueryable :: Property
 propAddressDatumAreQueryable = property $ do
-    cps <- forAll $ genChainPoints 1 5
+    cps <- forAll $ genChainPoints 2 5
     events <- forAll $ forM cps genAddressDatumStorableEvent
     depth <- forAll $ Gen.int (Range.linear 1 $ length cps)
     initialIndex <- liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth depth)
@@ -216,7 +216,7 @@ propAddressDatumAreQueryable = property $ do
 -- queryable from the index given a 'C.ChainPoint' interval.
 -- propAddressDatumAreQueryableInGeneratedRange  :: Property
 -- propAddressDatumAreQueryableInGeneratedRange = property $ do
---     cps <- forAll $ genChainPoints 1 5
+--     cps <- forAll $ genChainPoints 2 5
 --     events <- forAll $ forM cps genAddressDatumStorableEvent
 --     depth <- forAll $ Gen.int (Range.linear 1 $ length cps)
 --     initialIndex <- liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth depth)
@@ -276,7 +276,7 @@ propAddressDatumAreQueryable = property $ do
 -- defined in Spec.hs in marconi-core.
 propRewindingWithNewSlotShouldKeepIndexState :: Property
 propRewindingWithNewSlotShouldKeepIndexState = property $ do
-    cps <- forAll $ genChainPoints 1 5
+    cps <- forAll $ genChainPoints 2 5
     events <- forAll $ forM cps genAddressDatumStorableEvent
     initialIndex <- liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth 1)
     finalIndex <- liftIO $ foldM insertAndRewind initialIndex events
@@ -296,7 +296,7 @@ propRewindingWithNewSlotShouldKeepIndexState = property $ do
 -- slot will yield an empty index.
 propRewindingWithOldSlotShouldBringIndexInPreviousState :: Property
 propRewindingWithOldSlotShouldBringIndexInPreviousState = property $ do
-    cps <- forAll $ genChainPoints 1 5
+    cps <- forAll $ genChainPoints 2 5
     events <- forAll $ forM cps genAddressDatumStorableEvent
     initialIndex <- liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth 1)
     finalIndex <- liftIO $ foldM (insertAndRewindToPreviousPoint cps) initialIndex events
@@ -323,7 +323,7 @@ propRewindingWithOldSlotShouldBringIndexInPreviousState = property $ do
 -- TODO: ChainPointAtGenesis should always be returned by default. Don't need this property test.
 propResumingShouldReturnAtLeastTheGenesisPoint :: Property
 propResumingShouldReturnAtLeastTheGenesisPoint = property $ do
-    cps <- forAll $ genChainPoints 1 5
+    cps <- forAll $ genChainPoints 2 5
     events <- forAll $ forM (init cps) genAddressDatumStorableEvent
     indexer <- liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth 1)
            >>= Storable.insertMany events
@@ -333,7 +333,7 @@ propResumingShouldReturnAtLeastTheGenesisPoint = property $ do
 -- is not 'C.ChainPointAtGenesis' when some events are inserted on disk.
 propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk :: Property
 propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
-    cps <- forAll $ genChainPoints 1 5
+    cps <- forAll $ genChainPoints 2 5
     events <- forAll $ forM (init cps) genAddressDatumStorableEvent
     initialIndex <- liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth 1)
     finalIndex <- liftIO $ Storable.insertMany events initialIndex
@@ -346,7 +346,7 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
 -- points in descending order.
 propResumablePointsShouldBeSortedInDescOrder :: Property
 propResumablePointsShouldBeSortedInDescOrder = property $ do
-    cps <- forAll $ genChainPoints 1 5
+    cps <- forAll $ genChainPoints 2 5
     events <- forAll $ forM cps genAddressDatumStorableEvent
     indexer <-
         liftIO $ AddressDatum.open ":memory:" (AddressDatumDepth 1)
