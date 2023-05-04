@@ -20,6 +20,7 @@ import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Ledger.Alonzo.TxWits qualified as Alonzo
 import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward), ChainSyncEventException (NoIntersectionFound),
                           withChainSyncEventStream)
+import Cardano.Streaming.Helpers (bimSlotNo)
 import Control.Concurrent (MVar, forkIO, isEmptyMVar, modifyMVar, newEmptyMVar, newMVar, readMVar, tryPutMVar,
                            tryReadMVar)
 import Control.Concurrent.QSemN (QSemN, newQSemN, signalQSemN, waitQSemN)
@@ -29,10 +30,9 @@ import Control.Exception (Exception, catch)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
-import Data.Coerce (coerce)
 import Data.Functor (($>))
 import Data.List (findIndex, foldl1', intersect)
 import Data.Map (Map)
@@ -433,12 +433,14 @@ initializeIndexers
   -> IndexingDepth
   -> [(Worker, FilePath)]
   -> IO ([ChainPoint], Coordinator)
-initializeIndexers securityParam indexingDepth indexers = do
+initializeIndexers (SecurityParam sec) indexingDepth indexers = do
   let resolvedDepth = case indexingDepth of
           MinIndexingDepth w -> w
-          MaxIndexingDepth   -> coerce securityParam
+          MaxIndexingDepth   -> sec
+  when (resolvedDepth > sec)
+      $ fail "Indexing depth is greater than security param"
   coordinator <- initialCoordinator (length indexers) resolvedDepth
-  startingPoints <- mapM (\(ix, fp) -> ix securityParam coordinator fp) indexers
+  startingPoints <- mapM (\(ix, fp) -> ix (SecurityParam sec) coordinator fp) indexers
   -- We want to use the set of points that are common to all indexers
   -- giving priority to recent ones.
   pure ( foldl1' intersect startingPoints
@@ -462,15 +464,17 @@ mkIndexerStream coordinator = S.foldM_ step initial finish
           Just e  -> throw e
 
     blockBeforeChainPoint :: ChainPoint -> BlockInMode CardanoMode -> Bool
-    blockBeforeChainPoint ChainPointAtGenesis _                                                     = False
-    blockBeforeChainPoint (ChainPoint slotNo' _) (BlockInMode (Block (BlockHeader slotNo _ _) _) _) = slotNo <= slotNo'
+    blockBeforeChainPoint ChainPointAtGenesis _      = False
+    blockBeforeChainPoint (ChainPoint slotNo' _) bim = bimSlotNo bim <= slotNo'
+
+    bufferIsFull c = c ^. buffer . bufferLength >= c ^. buffer . capacity
 
     coordnatorHandleEvent
         :: Coordinator
         -> ChainSyncEvent (BlockInMode CardanoMode)
         -> IO (Coordinator, Maybe (ChainSyncEvent (BlockInMode CardanoMode)))
     coordnatorHandleEvent c (RollForward bim ct)
-        | c ^. buffer . bufferLength >= c ^. buffer . capacity = case c ^. buffer . content of
+        | bufferIsFull c = case c ^. buffer . content of
             buff Seq.:|> event' -> do
                 let c' = c & buffer . content .~ (bim Seq.:<| buff)
                 pure (c', Just $ RollForward event' ct)
