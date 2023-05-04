@@ -178,7 +178,7 @@ toStorableEvent
     -> C.BlockNo
     -> C.ChainTip
     -> SecurityParam
-    -> Bool -- ^ Is the last event of the current epoch
+    -> Bool -- ^ Is the first event of the current epoch
     -> StorableEvent EpochStateHandle
 toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEventOfEpoch = do
     let doesStoreLedgerState =
