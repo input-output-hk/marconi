@@ -376,6 +376,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , iohk-monitoring
     , ouroboros-consensus
     , ouroboros-consensus-cardano
+    , ouroboros-consensus-diffusion
     , ouroboros-network
     , plutus-core
     , plutus-ledger-api
