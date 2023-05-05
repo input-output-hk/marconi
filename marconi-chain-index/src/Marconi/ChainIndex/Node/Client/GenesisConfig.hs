@@ -62,11 +62,67 @@ data GenesisConfig
       !Ledger.AlonzoGenesis
       !(ConwayGenesis Shelley.StandardCrypto)
 
+data GenesisConfigError
+  = NEError !Text
+  | NEByronConfig !FilePath !Byron.ConfigurationError
+  | NEShelleyConfig !FilePath !Text
+  | NEAlonzoConfig !FilePath !Text
+  | NEConwayConfig !FilePath !Text
+  | NECardanoConfig !Text
+
+renderGenesisConfigError :: GenesisConfigError -> Text
+renderGenesisConfigError ne =
+  case ne of
+    NEError t -> "Error: " <> t
+    NEByronConfig fp ce ->
+      mconcat
+        [ "Failed reading Byron genesis file ", textShow fp, ": ", textShow ce
+        ]
+    NEShelleyConfig fp txt ->
+      mconcat
+        [ "Failed reading Shelley genesis file ", textShow fp, ": ", txt
+        ]
+    NEAlonzoConfig fp txt ->
+      mconcat
+        [ "Failed reading Alonzo genesis file ", textShow fp, ": ", txt
+        ]
+    NEConwayConfig fp txt ->
+      mconcat
+        [ "Failed reading Conway genesis file ", textShow fp, ": ", txt
+        ]
+    NECardanoConfig err ->
+      mconcat
+        [ "With Cardano protocol, Byron/Shelley config mismatch:\n"
+        , "   ", err
+        ]
+
 data ShelleyGenesisError
      = ShelleyGenesisReadError !FilePath !Text
      | ShelleyGenesisHashMismatch !GenesisHashShelley !GenesisHashShelley -- actual, expected
      | ShelleyGenesisDecodeError !FilePath !Text
      deriving Show
+
+renderShelleyGenesisError :: ShelleyGenesisError -> Text
+renderShelleyGenesisError sge =
+    case sge of
+      ShelleyGenesisReadError fp err ->
+        mconcat
+          [ "There was an error reading the genesis file: ", Text.pack fp
+          , " Error: ", err
+          ]
+
+      ShelleyGenesisHashMismatch actual expected ->
+        mconcat
+          [ "Wrong Shelley genesis file: the actual hash is ", renderHash (unGenesisHashShelley actual)
+          , ", but the expected Shelley genesis hash given in the node "
+          , "configuration file is ", renderHash (unGenesisHashShelley expected), "."
+          ]
+
+      ShelleyGenesisDecodeError fp err ->
+        mconcat
+          [ "There was an error parsing the genesis file: ", Text.pack fp
+          , " Error: ", err
+          ]
 
 data AlonzoGenesisError
      = AlonzoGenesisReadError !FilePath !Text
@@ -96,23 +152,29 @@ renderAlonzoGenesisError sge =
           , " Error: ", err
           ]
 
-renderShelleyGenesisError :: ShelleyGenesisError -> Text
-renderShelleyGenesisError sge =
+data ConwayGenesisError
+     = ConwayGenesisReadError !FilePath !Text
+     | ConwayGenesisHashMismatch !GenesisHashConway !GenesisHashConway -- actual, expected
+     | ConwayGenesisDecodeError !FilePath !Text
+     deriving Show
+
+renderConwayGenesisError :: ConwayGenesisError -> Text
+renderConwayGenesisError sge =
     case sge of
-      ShelleyGenesisReadError fp err ->
+      ConwayGenesisReadError fp err ->
         mconcat
           [ "There was an error reading the genesis file: ", Text.pack fp
           , " Error: ", err
           ]
 
-      ShelleyGenesisHashMismatch actual expected ->
+      ConwayGenesisHashMismatch actual expected ->
         mconcat
-          [ "Wrong Shelley genesis file: the actual hash is ", renderHash (unGenesisHashShelley actual)
-          , ", but the expected Shelley genesis hash given in the node "
-          , "configuration file is ", renderHash (unGenesisHashShelley expected), "."
+          [ "Wrong Conway genesis file: the actual hash is ", renderHash (unGenesisHashConway actual)
+          , ", but the expected Conway genesis hash given in the node "
+          , "configuration file is ", renderHash (unGenesisHashConway expected), "."
           ]
 
-      ShelleyGenesisDecodeError fp err ->
+      ConwayGenesisDecodeError fp err ->
         mconcat
           [ "There was an error parsing the genesis file: ", Text.pack fp
           , " Error: ", err
@@ -278,6 +340,7 @@ readNetworkConfig (NetworkConfigFile ncf) = do
       { ncByronGenesisFile = adjustGenesisFilePath (mkAdjustPath ncf) (ncByronGenesisFile ncfg)
       , ncShelleyGenesisFile = adjustGenesisFilePath (mkAdjustPath ncf) (ncShelleyGenesisFile ncfg)
       , ncAlonzoGenesisFile = adjustGenesisFilePath (mkAdjustPath ncf) (ncAlonzoGenesisFile ncfg)
+      , ncConwayGenesisFile = adjustGenesisFilePath (mkAdjustPath ncf) (ncConwayGenesisFile ncfg)
       }
 
 adjustGenesisFilePath :: (FilePath -> FilePath) -> GenesisFile -> GenesisFile
@@ -321,6 +384,23 @@ readShelleyGenesisConfig enc = do
   firstExceptT (NEShelleyConfig file . renderShelleyGenesisError)
     $ readShelleyGenesis (GenesisFile file) (ncShelleyGenesisHash enc)
 
+readShelleyGenesis
+    :: GenesisFile -> GenesisHashShelley
+    -> ExceptT ShelleyGenesisError IO ShelleyConfig
+readShelleyGenesis (GenesisFile file) expectedGenesisHash = do
+    content <- handleIOExceptT (ShelleyGenesisReadError file . textShow) $ BS.readFile file
+    let genesisHash = GenesisHashShelley (Cardano.Crypto.Hash.Class.hashWith id content)
+    checkExpectedGenesisHash genesisHash
+    genesis <- firstExceptT (ShelleyGenesisDecodeError file . Text.pack)
+                  . hoistEither
+                  $ Aeson.eitherDecodeStrict' content
+    pure $ ShelleyConfig genesis genesisHash
+  where
+    checkExpectedGenesisHash :: GenesisHashShelley -> ExceptT ShelleyGenesisError IO ()
+    checkExpectedGenesisHash actual =
+      when (actual /= expectedGenesisHash) $
+        left (ShelleyGenesisHashMismatch actual expectedGenesisHash)
+
 readAlonzoGenesisConfig
     :: NodeConfig
     -> ExceptT GenesisConfigError IO Ledger.AlonzoGenesis
@@ -345,56 +425,29 @@ readAlonzoGenesis (GenesisFile file) expectedGenesisHash = do
       when (actual /= expectedGenesisHash) $
         left (AlonzoGenesisHashMismatch actual expectedGenesisHash)
 
-readShelleyGenesis
-    :: GenesisFile -> GenesisHashShelley
-    -> ExceptT ShelleyGenesisError IO ShelleyConfig
-readShelleyGenesis (GenesisFile file) expectedGenesisHash = do
-    content <- handleIOExceptT (ShelleyGenesisReadError file . textShow) $ BS.readFile file
-    let genesisHash = GenesisHashShelley (Cardano.Crypto.Hash.Class.hashWith id content)
+readConwayGenesisConfig
+    :: NodeConfig
+    -> ExceptT GenesisConfigError IO (ConwayGenesis Shelley.StandardCrypto)
+readConwayGenesisConfig enc = do
+  let file = unGenesisFile $ ncConwayGenesisFile enc
+  firstExceptT (NEConwayConfig file . renderConwayGenesisError)
+    $ readConwayGenesis (GenesisFile file) (ncConwayGenesisHash enc)
+
+readConwayGenesis
+    :: GenesisFile -> GenesisHashConway
+    -> ExceptT ConwayGenesisError IO (ConwayGenesis Shelley.StandardCrypto)
+readConwayGenesis (GenesisFile file) expectedGenesisHash = do
+    content <- handleIOExceptT (ConwayGenesisReadError file . textShow) $ BS.readFile file
+    let genesisHash = GenesisHashConway (Crypto.hashWith id content)
     checkExpectedGenesisHash genesisHash
-    genesis <- firstExceptT (ShelleyGenesisDecodeError file . Text.pack)
+    firstExceptT (ConwayGenesisDecodeError file . Text.pack)
                   . hoistEither
                   $ Aeson.eitherDecodeStrict' content
-    pure $ ShelleyConfig genesis genesisHash
   where
-    checkExpectedGenesisHash :: GenesisHashShelley -> ExceptT ShelleyGenesisError IO ()
+    checkExpectedGenesisHash :: GenesisHashConway -> ExceptT ConwayGenesisError IO ()
     checkExpectedGenesisHash actual =
       when (actual /= expectedGenesisHash) $
-        left (ShelleyGenesisHashMismatch actual expectedGenesisHash)
-
-data GenesisConfigError
-  = NEError !Text
-  | NEByronConfig !FilePath !Byron.ConfigurationError
-  | NEShelleyConfig !FilePath !Text
-  | NEAlonzoConfig !FilePath !Text
-  | NEConwayConfig !FilePath !Text
-  | NECardanoConfig !Text
-
-renderGenesisConfigError :: GenesisConfigError -> Text
-renderGenesisConfigError ne =
-  case ne of
-    NEError t -> "Error: " <> t
-    NEByronConfig fp ce ->
-      mconcat
-        [ "Failed reading Byron genesis file ", textShow fp, ": ", textShow ce
-        ]
-    NEShelleyConfig fp txt ->
-      mconcat
-        [ "Failed reading Shelley genesis file ", textShow fp, ": ", txt
-        ]
-    NEAlonzoConfig fp txt ->
-      mconcat
-        [ "Failed reading Alonzo genesis file ", textShow fp, ": ", txt
-        ]
-    NEConwayConfig fp txt ->
-      mconcat
-        [ "Failed reading Conway genesis file ", textShow fp, ": ", txt
-        ]
-    NECardanoConfig err ->
-      mconcat
-        [ "With Cardano protocol, Byron/Shelley config mismatch:\n"
-        , "   ", err
-        ]
+        left (ConwayGenesisHashMismatch actual expectedGenesisHash)
 
 initExtLedgerStateVar :: GenesisConfig -> Ledger.ExtLedgerState (HFC.HardForkBlock (Consensus.CardanoEras Consensus.StandardCrypto))
 initExtLedgerStateVar genesisConfig = Consensus.pInfoInitLedger protocolInfo
@@ -473,55 +526,3 @@ readByteString fp cfgType = ExceptT $
   catch (Right <$> BS.readFile fp) $ \(_ :: IOException) ->
     return $ Left $ mconcat
       [ "Cannot read the ", cfgType, " configuration file at : ", Text.pack fp ]
-
-readConwayGenesisConfig
-    :: NodeConfig
-    -> ExceptT GenesisConfigError IO (ConwayGenesis Shelley.StandardCrypto)
-readConwayGenesisConfig enc = do
-  let file = unGenesisFile $ ncConwayGenesisFile enc
-  firstExceptT (NEAlonzoConfig file . renderConwayGenesisError)
-    $ readConwayGenesis (GenesisFile file) (ncConwayGenesisHash enc)
-
-readConwayGenesis
-    :: GenesisFile -> GenesisHashConway
-    -> ExceptT ConwayGenesisError IO (ConwayGenesis Shelley.StandardCrypto)
-readConwayGenesis (GenesisFile file) expectedGenesisHash = do
-    content <- handleIOExceptT (ConwayGenesisReadError file . textShow) $ BS.readFile file
-    let genesisHash = GenesisHashConway (Crypto.hashWith id content)
-    checkExpectedGenesisHash genesisHash
-    firstExceptT (ConwayGenesisDecodeError file . Text.pack)
-                  . hoistEither
-                  $ Aeson.eitherDecodeStrict' content
-  where
-    checkExpectedGenesisHash :: GenesisHashConway -> ExceptT ConwayGenesisError IO ()
-    checkExpectedGenesisHash actual =
-      when (actual /= expectedGenesisHash) $
-        left (ConwayGenesisHashMismatch actual expectedGenesisHash)
-
-data ConwayGenesisError
-     = ConwayGenesisReadError !FilePath !Text
-     | ConwayGenesisHashMismatch !GenesisHashConway !GenesisHashConway -- actual, expected
-     | ConwayGenesisDecodeError !FilePath !Text
-     deriving Show
-
-renderConwayGenesisError :: ConwayGenesisError -> Text
-renderConwayGenesisError sge =
-    case sge of
-      ConwayGenesisReadError fp err ->
-        mconcat
-          [ "There was an error reading the genesis file: ", Text.pack fp
-          , " Error: ", err
-          ]
-
-      ConwayGenesisHashMismatch actual expected ->
-        mconcat
-          [ "Wrong Conway genesis file: the actual hash is ", renderHash (unGenesisHashConway actual)
-          , ", but the expected Conway genesis hash given in the node "
-          , "configuration file is ", renderHash (unGenesisHashConway expected), "."
-          ]
-
-      ConwayGenesisDecodeError fp err ->
-        mconcat
-          [ "There was an error parsing the genesis file: ", Text.pack fp
-          , " Error: ", err
-          ]
