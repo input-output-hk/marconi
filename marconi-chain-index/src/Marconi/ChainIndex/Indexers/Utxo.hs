@@ -42,7 +42,6 @@ import Control.Lens.Combinators (imap)
 import Control.Lens.Operators ((^.))
 import Control.Lens.TH (makeLenses)
 import Control.Monad (guard, unless, when)
-import Control.Monad.Except (throwError)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Bool, Object), object, (.:), (.=))
@@ -664,12 +663,14 @@ queryBuffer (QInterval _ cp) addr slotNo = fold . filter (eventIsBefore cp) . ev
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle
-  rewindStorage (C.ChainPoint sn _) h@(UtxoHandle c _ _) =  liftSQLError CantRollback
-        $ do
-            SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sn)
-            SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sn)
-            pure h
-  rewindStorage C.ChainPointAtGenesis _ = throwError $ CantStartIndexer "Can't rewindat genesis"
+  rewindStorage (C.ChainPoint sn _) h@(UtxoHandle c _ _) =  liftSQLError CantRollback $ do
+    SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sn)
+    SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sn)
+    pure h
+  rewindStorage C.ChainPointAtGenesis h@(UtxoHandle c _ _) = liftSQLError CantRollback $ do
+    SQL.execute_ c "DELETE FROM unspent_transactions"
+    SQL.execute_ c "DELETE FROM spent"
+    pure h
 
 -- For resuming we need to provide a list of points where we can resume from.
 instance Resumable UtxoHandle where
@@ -799,7 +800,7 @@ getRefScriptAndHash
   -> (Maybe C.ScriptInAnyLang, Maybe C.ScriptHash)
 getRefScriptAndHash refScript = case refScript of
   C.ReferenceScriptNone -> (Nothing, Nothing)
-  C.ReferenceScript _ s@(C.ScriptInAnyLang(C.SimpleScriptLanguage) script) ->
+  C.ReferenceScript _ s@(C.ScriptInAnyLang C.SimpleScriptLanguage script) ->
       ( Just  s
       , Just . C.hashScript $ script)
   C.ReferenceScript _ s@(C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV1) script)->
