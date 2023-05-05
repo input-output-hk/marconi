@@ -1,65 +1,28 @@
 # marconi-sidechain
 
 `marconi-sidechain` is a lightweight chain follower application for the Sidechain project to index and query specific information from the Cardano blockchain.
+The interface for querying the indexed information uses [JSON-RPC](https://www.jsonrpc.org/specification) over HTTP.
 
-## Purpose
-
-The purpose of ``marconi-sidechain`` is to encapsulate a subset of the indexers provided in [Marconi Chain Index](../marconi-chain-index) into a cohesive set which are required by the Sidechain team and which provides an interface to allow non-Haskell applications to query the indexed information.
-
-## Interface
-
-The interface for marconi-sidechain uses [JSON-RPC](http://www.simple-is-better.org/rpc/#differences-between-1-0-and-2-0) over HTTP built on top of [Marconi Chain Index](../marconi-chain-index/README.md).
-
-```
-             Running on a single machine                    Internet
-+----------------------------------------------------+
-|                                                    |                  +-------------+
-|   +----------------+                +-----------+  |                  |             |
-|   |                | node-to-client |           |  |     JSON-RPC     |  sidechain  |
-|   |  cardano-node  +----------------+  marconi  +--+------------------+ application |
-|   |                |      IPC       | sidechain |  |       HTTP       |             |
-|   +----------------+                +----+------+  |                  +------------ +
-|                                          |         |
-|                                          |         |
-|                                      +---+----+    |
-|                                      | SQLite |    |
-|                                      +--------+    |
-|                                                    |
-+----------------------------------------------------+
-```
+See the [architecture documentation](./doc/ARCHITECTURE.adoc) for more information on how this application was build.
 
 ## Prerequisites
 
+If using `Nix`:
+
+* [Nix](https://nixos.org/download.html) (`>=2.5.1`)
+  * Enable IOHK's binary cache or else you will build the world! Refer to [this section](../CONTRIBUTING.adoc#how-to-get-a-shell-environment-with-tools) on how to achieve this.
+
+If *not* using `Nix`:
+
 * [GHC](https://www.haskell.org/downloads/) (`==8.10.7`)
 * [Cabal](https://www.haskell.org/cabal/download.html) (`>=3.4.0.0`)
-* [Nix](https://nixos.org/download.html) (`>=2.5.1`)
-  * Enable [IOHK's binary cache](https://iohk.zendesk.com/hc/en-us/articles/900000673963-Installing-Nix-on-Linux-distribution-and-setting-up-IOHK-binaries) or else you will build the world!
 * [cardano-node](https://github.com/input-output-hk/cardano-node/releases/tag/1.35.4) (`==1.35.4`) running on preview testnet, pre-production testnet or mainnet
 
 ## How to build from source
 
 ### Cabal build
 
-TODO
-
-### Nix build
-
-The `marconi-sidechain` executable is available as a nix flake.
-
-If inside the `marconi` repository, you can run from the top-level:
-
-```
-$ nix build .#marconi-sidechain
-```
-
-Or you may run from anywhere:
-
-```
-$ nix build github:input-output-hk/marconi#marconi-sidechain
-```
-
-Both commands will produce a `result` directory containing the executable
-`result/bin/marconi-sidechain`.
+TBD
 
 ### Cabal+Nix build
 
@@ -83,6 +46,25 @@ Or you can run the executable directly with:
 ```sh
 cabal run marconi-sidechain:exe:marconi-sidechain -- --help
 ```
+
+### Nix build
+
+The `marconi-sidechain` executable is available as a nix flake.
+
+If inside the `marconi` repository, you can run from the top-level:
+
+```
+$ nix build .#marconi-sidechain
+```
+
+Or you may run from anywhere:
+
+```
+$ nix build github:input-output-hk/marconi#marconi-sidechain
+```
+
+Both commands will produce a `result` directory containing the executable
+`result/bin/marconi-sidechain`.
 
 ## Command line summary
 
@@ -142,13 +124,13 @@ The body of HTTP request must contain a JSON of the following format:
 
 The `id` field should be a random ID representing your request. The response will have that same ID.
 
-### JSON-RPC API Methods
+### JSON-RPC API method examples
+
+All of the following example are actual results from the Cardano pre-production testnet.
 
 #### echo
 
 Healthcheck method to test that the JSON-RPC server is responding.
-
-**Example**:
 
 ```sh
 $ curl -d '{"jsonrpc": "2.0", "method": "echo", "params": "", "id": 0}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
@@ -163,67 +145,6 @@ $ curl -d '{"jsonrpc": "2.0", "method": "echo", "params": "", "id": 0}' -H 'Cont
 
 Retrieves user provided addresses.
 
-**JSON Schema request body**
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "jsonrpc": {
-      "type": "string"
-    },
-    "method": {
-      "type": "string"
-    },
-    "params": {
-      "type": "string"
-    },
-    "id": {
-      "type": "integer"
-    }
-  },
-  "required": [
-    "jsonrpc",
-    "method",
-    "params",
-    "id"
-  ]
-}
-```
-
-**JSON Schema response**
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "integer"
-    },
-    "jsonrpc": {
-      "type": "string"
-    },
-    "result": {
-      "type": "array",
-      "items": [
-        {
-          "type": "string"
-        }
-      ]
-    }
-  },
-  "required": [
-    "id",
-    "jsonrpc",
-    "result"
-  ]
-}
-```
-
-**Example**:
-
 Assuming the user started the `marconi-sidechain` executable with the address `addr_test1qz0ru2w9suwv8mcskg8r9ws3zvguekkkx6kpcnn058pe2ql2ym0y64huzhpu0wl8ewzdxya0hj0z5ejyt3g98lpu8xxs8faq0m` as the address to index.
 
 ```sh
@@ -236,104 +157,6 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getTargetAddresses" , "params": "", "i
 ```
 
 #### getCurrentSyncedBlock (PARTIALLY IMPLEMENTED)
-
-Retrieves the block information from which the indexers are synced at.
-
-It queries the UTXO indexer and doesn't return the last indexed chainpoint, but the one before.
-The reason is that we want to use this query to find a sync point that is common to all the indexers
-that are under the same coordinator.
-Unfortunately, while the coordinator ensures that all the indexer move at the same speed,
-it can't monitor if the last submitted block was indexed by all the indexers or not.
-
-As a consequence, if the last chainpoint of the utxo indexer can, at most,
-be ahead of one block compared to other indexers.
-Taking the chainpoint before ensure that we have consistent infomation across all the indexers.
-
-**JSON Schema request body**
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "jsonrpc": {
-      "type": "string"
-    },
-    "method": {
-      "type": "string"
-    },
-    "params": {
-      "type": "string"
-    },
-    "id": {
-      "type": "integer"
-    }
-  },
-  "required": [
-    "jsonrpc",
-    "method",
-    "params",
-    "id"
-  ]
-}
-```
-
-**JSON Schema response**
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "integer"
-    },
-    "jsonrpc": {
-      "type": "string"
-    },
-    "result": {
-      "type": "object",
-      "properties": {
-        "blockNo": {
-          "_comment": "Not available yet",
-          "type": "integer",
-          "minimum": 0
-        },
-        "blockTimestamp": {
-          "_comment": "Not available yet",
-          "type": "string",
-          "minimum": 0,
-          "description": "timestamp in seconds"
-        },
-        "blockHeaderHash": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
-        },
-        "slotNo": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "epochNo": {
-          "_comment": "Not available yet",
-          "type": "integer",
-          "minimum": 0
-        }
-      },
-      "required": [
-        "blockNo",
-        "blockTimestamp"
-      ]
-    }
-  },
-  "required": [
-    "id",
-    "jsonrpc",
-    "result"
-  ]
-}
-```
-
-**Example**:
 
 ```sh
 $ curl -d '{"jsonrpc": "2.0" , "method": "getCurrentSyncedBlock" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
@@ -348,176 +171,6 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getCurrentSyncedBlock" , "params": "",
 ```
 
 #### getUtxosFromAddress (PARTIALLY IMPLEMENTED)
-
-Retrieves UTXOs of a given address until a given point in time (measured in slots).
-
-**JSON Schema request body**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "jsonrpc": {
-      "type": "string"
-    },
-    "method": {
-      "type": "string"
-    },
-    "params": {
-      "type": "object",
-      "properties": {
-        "address": {
-          "type": "string",
-          "_comment": "Address encoded in the Bech32 format"
-        },
-        "createdAfterSlotNo": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Filter out UTxO that were created during or before that slot."
-        },
-        "unspentBeforeSlotNo": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Show only UTxOs that existed at this slot. Said another way, only outputs that were created during or before that slot and were unspent during that slot will be returned."
-        }
-      },
-      "required": [
-        "address",
-        "unspentBeforeSlotNo"
-      ]
-    },
-    "id": {
-      "type": "integer"
-    }
-  },
-  "required": [
-    "jsonrpc",
-    "method",
-    "params",
-    "id"
-  ]
-}
-```
-
-**JSON Schema response**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "integer"
-    },
-    "jsonrpc": {
-      "type": "string"
-    },
-    "result": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "blockHeaderHash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "slotNo": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "blockNo": {
-            "_comment: Not available yet",
-            "type": "integer",
-            "minimum": 0
-          },
-          "txIndexInBlock": {
-            "_comment: Not available yet",
-            "type": "integer",
-            "minimum": 0
-          },
-          "address": {
-            "type": "string"
-          },
-          "datum": {
-            "type": "string",
-            "description": "HEX string of the CBOR encoded datum"
-          },
-          "datumHash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "txId": {
-            "type": "string"
-          },
-          "txIx": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "spentBy": {
-            "_comment: Not available yet",
-            "type": "object",
-            "properties": {
-              "slotNo": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "txId": {
-                "type": "string",
-                "pattern": "^[0-9a-f]{64}$"
-              }
-            },
-            "required": [
-              "slotNo",
-              "txId"
-            ]
-          },
-          "txInputs": {
-            "_comment: Not available yet",
-            "type": "array",
-            "description": "List of inputs that were used in the transaction that created this UTxO",
-            "items": {
-              "type": "object",
-              "properties": {
-                "txId": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                },
-                "txIx": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              },
-              "required": [
-                "txId",
-                "txIx"
-              ]
-            }
-          },
-        },
-        "required": [
-          "address",
-          "blockHeaderHash",
-          "blockNo",
-          "datum",
-          "datumHash",
-          "slotNo",
-          "txId",
-          "txInputs"
-          "txIx",
-        ]
-      }
-    }
-  },
-  "required": [
-    "id",
-    "jsonrpc",
-    "result"
-  ]
-}
-```
-
-**Example**:
 
 ```sh
 $ curl -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "unspentBeforeSlotNo": 100000000 }, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
@@ -541,231 +194,9 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "ad
 
 #### getTxsBurningAssetId
 
-Retrieves transactions that include a minting policy for minting/burning tokens until a given point in time (measured in slots).
-
-**JSON Schema request body**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "jsonrpc": {
-      "type": "string"
-    },
-    "method": {
-      "type": "string"
-    },
-    "params": {
-      "type": "object",
-      "properties": {
-        "policyId": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$",
-          "description": "Hash of the minting policy"
-        },
-        "assetName": {
-          "type": "string",
-          "pattern": "^([0-9a-f]{2})+$"
-        },
-        "slotNo": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Return the state of the chain at this slot. Effectively it filters out transactions that occured during or after this slot."
-        },
-        "afterTx": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$",
-          "description": "Filters out transaction that occurred before this transaction. The specific transaction must be part of the indexed transactions."
-        }
-      },
-      "required": [
-        "policyId",
-        "assetName",
-        "slotNo",
-      ]
-    },
-    "id": {
-      "type": "integer"
-    }
-  },
-  "required": [
-    "jsonrpc",
-    "method",
-    "params",
-    "id"
-  ]
-}
-```
-
-**JSON Schema response**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "integer"
-    },
-    "jsonrpc": {
-      "type": "string"
-    },
-    "result": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "blockHeaderHash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "slotNo": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "blockNo": {
-            "_comment: Not available yet",
-            "type": "integer",
-            "minimum": 0
-          },
-          "txId": {
-            "type": "string"
-          },
-          "redeemer": {
-            "type": "string",
-            "pattern": "^([0-9a-f]{2})+$"
-          },
-          "redeemerHash": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{56}$"
-          },
-          "burnAmount": {
-            "type": "integer"
-            "minimum": 0
-          }
-        },
-        "required": [
-          "blockHeaderHash",
-          "slotNo",
-          "blockNo",
-          "txId",
-          "redeemer",
-          "redeemerHash",
-          "burnAmount"
-        ]
-      }
-    }
-  },
-  "required": [
-    "id",
-    "jsonrpc",
-    "result"
-  ]
-}
-```
-
-**Example**:
-
-Yet to come.
+Example yet to come.
 
 #### getStakePoolDelegationByEpoch
-
-Retrieves the stake pool delegation per epoch.
-
-**JSON Schema request body**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "jsonrpc": {
-      "type": "string"
-    },
-    "method": {
-      "type": "string"
-    },
-    "params": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Epoch number"
-    },
-    "id": {
-      "type": "integer"
-    }
-  },
-  "required": [
-    "jsonrpc",
-    "method",
-    "params",
-    "id"
-  ]
-}
-```
-
-**JSON Schema response**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "integer"
-    },
-    "jsonrpc": {
-      "type": "string"
-    },
-    "result": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "blockHeaderHash": {
-            "pattern": "^[0-9a-f]{64}$",
-            "type": "string"
-          },
-          "blockNo": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "slotNo": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "epochNo": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "poolId": {
-            "type": "string"
-          },
-          "lovelace": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "blockHeaderHash",
-          "blockNo",
-          "slotNo",
-          "epochNo",
-          "poolId",
-          "lovelace"
-        ]
-      }
-    }
-  },
-  "required": [
-    "id",
-    "jsonrpc",
-    "result"
-  ]
-}
-```
-
-**Example**:
 
 ```sh
 $ curl -d '{"jsonrpc": "2.0" , "method": "getStakePoolDelegationByEpoch" , "params": 6, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
@@ -804,95 +235,6 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getStakePoolDelegationByEpoch" , "para
 
 #### getNonceByEpoch
 
-Retrieves transactions that include a minting policy for minting/burning tokens.
-
-**JSON Schema request body**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "jsonrpc": {
-      "type": "string"
-    },
-    "method": {
-      "type": "string"
-    },
-    "params": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Epoch number"
-    },
-    "id": {
-      "type": "integer"
-    }
-  },
-  "required": [
-    "jsonrpc",
-    "method",
-    "params",
-    "id"
-  ]
-}
-```
-
-**JSON Schema response**:
-
-```JSON
-{
-  "$schema": "http://json-schema.org/draft-04/schema#",
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "integer"
-    },
-    "jsonrpc": {
-      "type": "string"
-    },
-    "result": {
-      "type": "object",
-      "properties": {
-        "blockHeaderHash": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        "blockNo": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "epochNo": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "slotNo": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "nonce": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        }
-      },
-      "required": [
-        "blockHeaderHash",
-        "blockNo",
-        "epochNo",
-        "nonce",
-        "slotNo"
-      ]
-    }
-  },
-  "required": [
-    "id",
-    "jsonrpc",
-    "result"
-  ]
-}
-```
-
-**Example**:
-
 ```sh
 $ curl -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 4, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
 {
@@ -909,4 +251,8 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 4, "id": 
 }
 ```
 
-[test-json-rpc.http](./examples/test-json-rpc.http) contains additional example usage.
+### Other documentation
+
+See [test-json-rpc.http](./examples/test-json-rpc.http) for additional example usages.
+
+See [API](./doc/API.adoc) for the full API documentation.
