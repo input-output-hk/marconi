@@ -37,7 +37,7 @@
 module Marconi.ChainIndex.Indexers.Utxo where
 
 import Control.Concurrent.Async (concurrently_)
-import Control.Exception (bracket_)
+import Control.Exception (Exception, bracket_, throw)
 import Control.Lens.Combinators (imap)
 import Control.Lens.Operators ((^.))
 import Control.Lens.TH (makeLenses)
@@ -88,6 +88,47 @@ import Marconi.Core.Storable qualified as Storable
  - indexers. Taking the chainpoint before ensure that we have consistent infomation across all the indexers.
  -}
 
+-- | Not comprehensive, only supported intervals
+data Interval r
+  = GreaterOrEqual !r
+  | BothOpen !r !r
+   deriving (Eq, Show)
+
+interval
+  :: (Ord r)
+  => r -- ^ lower bound
+  -> Maybe r  -- ^ upper bound
+  -> Interval r
+
+interval p Nothing   = GreaterOrEqual p
+interval p (Just p') =
+  let
+
+--  Enforce the internal invariant
+-- 'BothOpen'.
+    wrap :: Ord r => (r -> r -> Interval r) -> r -> r -> Interval r
+    wrap f x y
+      | x < y = f x y
+      | otherwise = throw $ QueryError "Invalid Interval!"
+
+  in wrap BothOpen p p'
+
+isInInterval :: Interval C.SlotNo -> C.ChainPoint -> Bool
+isInInterval = \case
+    (GreaterOrEqual sno) -> \case
+      C.ChainPointAtGenesis -> True
+      (C.ChainPoint sno' _) ->  sno <= sno'
+    (BothOpen l h) -> \case
+      C.ChainPointAtGenesis -> True
+      (C.ChainPoint sno' _) ->  l <= sno' &&  h >= sno'
+
+data QueryExceptions
+    = AddressConversionError !QueryExceptions
+    | QueryError !String
+    | UnexpectedQueryResult !(StorableQuery UtxoHandle)
+    deriving stock Show
+    deriving anyclass  Exception
+
 type UtxoIndexer = Storable.State UtxoHandle
 
 data UtxoHandle = UtxoHandle
@@ -96,10 +137,16 @@ data UtxoHandle = UtxoHandle
   , toVacuume     :: !Bool            -- ^ weather to perform SQLite vacuum to release space
   }
 
+data QueryUtxoByAddress where
+  QueryUtxoByAddress :: !C.AddressAny
+                        -> !(Maybe C.SlotNo)
+                        -> QueryUtxoByAddress
+  deriving (Show, Eq)
+
 data instance StorableQuery UtxoHandle
-    = UtxoByAddress C.AddressAny (Maybe C.SlotNo)
+    = QueryWrapper QueryUtxoByAddress
     | LastSyncPoint
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq)
 
 type QueryableAddresses = NonEmpty (StorableQuery UtxoHandle)
 
@@ -523,11 +570,10 @@ eventToRows (UtxoEvent utxos _ (C.ChainPoint sn bhsh)) =
 -- | Filter for events at the given address
 eventsAtAddress
   :: Foldable f
-  => C.AddressAny -- ^ Address query
-  -> Maybe C.SlotNo -- ^ Latest included chainpoint
+  => QueryUtxoByAddress
   -> f (StorableEvent UtxoHandle) -- ^ Utxo event
   -> [StorableEvent UtxoHandle] -- ^ Utxo event at thegiven address
-eventsAtAddress addr p = let
+eventsAtAddress (QueryUtxoByAddress addr maybeSno) = let
 
     splitEventAtAddress :: StorableEvent UtxoHandle -> [StorableEvent UtxoHandle]
     splitEventAtAddress event =
@@ -551,7 +597,7 @@ eventsAtAddress addr p = let
         utxosAtAddress :: Set Utxo
         utxosAtAddress = Set.filter addressFilter $ ueUtxos event
 
-      in [event {ueUtxos = utxosAtAddress} | not (null utxosAtAddress) && pointFilter p event]
+      in [event {ueUtxos = utxosAtAddress} | not (null utxosAtAddress) && pointFilter maybeSno event]
 
    in concatMap splitEventAtAddress
 
@@ -563,7 +609,10 @@ addressFilteredRows
   -> f (StorableEvent UtxoHandle)   -- ^ Utxo Event
   -> [UtxoRow]                      -- ^ Rows at the query
 addressFilteredRows addr slotNo =
-    concatMap eventToRows . eventsAtAddress addr slotNo . toList
+  let
+    q = QueryUtxoByAddress addr slotNo
+  in
+    concatMap eventToRows . eventsAtAddress q . toList
 
 utxoAtAddressQuery
     :: Foldable f
@@ -613,9 +662,9 @@ instance Queryable UtxoHandle where
     -> UtxoHandle
     -> StorableQuery UtxoHandle
     -> IO (StorableResult UtxoHandle)
-  queryStorage qi es (UtxoHandle c _ _) (UtxoByAddress addr slotNo) = let
+  queryStorage qi es (UtxoHandle c _ _) (QueryWrapper q@(QueryUtxoByAddress addr slotNo)) = let
 
-    eventAtQuery :: StorableEvent UtxoHandle = queryBuffer qi addr slotNo es -- query in-memory and conver to row
+    eventAtQuery :: StorableEvent UtxoHandle = queryBuffer qi q es -- query in-memory and conver to row
 
     filters = (["u.address = :address"], [":address" := addr])
            <> maybe mempty (\sno -> (["u.slotNo <= :slotNo"] , [":slotNo" := sno])) slotNo
@@ -655,12 +704,11 @@ instance Queryable UtxoHandle where
 queryBuffer
   :: Foldable f
   => QueryInterval C.ChainPoint
-  -> C.AddressAny -- ^ Query
-  -> Maybe C.SlotNo -- ^ Latest included point
+  -> QueryUtxoByAddress
   -> f (StorableEvent UtxoHandle) -- ^ Utxo events
   -> StorableEvent UtxoHandle
-queryBuffer QEverything addr slotNo      = fold . eventsAtAddress addr slotNo
-queryBuffer (QInterval _ cp) addr slotNo = fold . filter (eventIsBefore cp) . eventsAtAddress addr slotNo
+queryBuffer QEverything q      = fold . eventsAtAddress q
+queryBuffer (QInterval _ cp) q = fold . filter (eventIsBefore cp) . eventsAtAddress q
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> IO (Maybe UtxoHandle)
@@ -821,7 +869,7 @@ isAddressInTarget' targetAddresses utxo =
       C.AddressShelley addr' -> addr' `elem` targetAddresses
 
 mkQueryableAddresses :: TargetAddresses -> QueryableAddresses
-mkQueryableAddresses = fmap (flip UtxoByAddress Nothing . C.toAddressAny)
+mkQueryableAddresses = fmap  (QueryWrapper . flip QueryUtxoByAddress Nothing . C.toAddressAny)
 
 txOutBalanceFromTxs :: [C.Tx era] -> TxOutBalance
 txOutBalanceFromTxs = foldMap txOutBalanceFromTx
@@ -859,3 +907,4 @@ convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum ref
             , _inlineScript = script
             , _inlineScriptHash = scriptHash
             }
+

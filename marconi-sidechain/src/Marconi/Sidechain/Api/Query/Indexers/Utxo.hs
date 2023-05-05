@@ -49,7 +49,7 @@ findByAddress
     -> C.AddressAny -- ^ Cardano address to query
     -> Maybe C.SlotNo -- ^ The upper slot number we want to query
     -> IO (Either QueryExceptions [Utxo.UtxoRow])
-findByAddress env addr slot = withQueryAction env (Utxo.UtxoByAddress addr slot)
+findByAddress env addr slot = withQueryAction env (Utxo.QueryWrapper $ Utxo.QueryUtxoByAddress addr slot)
 
 -- | Retrieve the current synced point of the utxo indexer
 currentSyncedPoint

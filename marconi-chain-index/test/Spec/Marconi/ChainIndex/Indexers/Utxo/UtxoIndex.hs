@@ -152,7 +152,7 @@ allqueryUtxosShouldBeUnspent = property $ do
     addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
     addressQueries
       = List.nub
-      . fmap (flip Utxo.UtxoByAddress Nothing . Utxo._address)
+      . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress Nothing . Utxo._address)
       . concatMap (Set.toList . Utxo.ueUtxos)
       $ events
   results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ addressQueries
@@ -227,7 +227,7 @@ propSaveAndRetrieveUtxoEvents = property $ do
              >>= liftIO . Storable.insertMany events
   let
     qs :: [StorableQuery Utxo.UtxoHandle]
-    qs = List.nub . fmap (flip Utxo.UtxoByAddress Nothing . Utxo._address) . concatMap (Set.toList . Utxo.ueUtxos) $ events
+    qs = List.nub . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress Nothing . Utxo._address) . concatMap (Set.toList . Utxo.ueUtxos) $ events
   results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qs
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
@@ -267,7 +267,7 @@ propUtxoQueryByAddressAndSlot = property $ do
   let _slot = getSlot $ chainPoints !! (length chainPoints `div` 2)
       qAddresses
         = List.nub  -- remove duplicate addresses
-        . fmap (flip Utxo.UtxoByAddress _slot . Utxo._address)
+        . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress _slot . Utxo._address)
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
   results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qAddresses
@@ -294,12 +294,12 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   let lastSlot = getSlot $ last chainPoints
       qAddressesAtSlot
         = List.nub  -- remove duplicate addresses
-        . fmap (flip Utxo.UtxoByAddress lastSlot . Utxo._address)
+        . fmap (Utxo.QueryWrapper. flip Utxo.QueryUtxoByAddress lastSlot . Utxo._address)
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
       qAddressesAll
         = List.nub  -- remove duplicate addresses
-        . fmap (flip Utxo.UtxoByAddress Nothing . Utxo._address)
+        . fmap (Utxo.QueryWrapper. flip Utxo.QueryUtxoByAddress Nothing . Utxo._address)
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
   resultAtSlot <-
@@ -315,8 +315,9 @@ propComputeEventsAtAddress = property $ do
     event <- head <$> forAll UtxoGen.genUtxoEvents
     let (addresses :: [C.AddressAny]) =
           map Utxo._address $ Set.toList $ Utxo.ueUtxos event
+        addressQuery = Utxo.QueryUtxoByAddress (head addresses) Nothing
         sameAddressEvents :: [StorableEvent Utxo.UtxoHandle]
-        sameAddressEvents =  Utxo.eventsAtAddress (head addresses) Nothing [event]
+        sameAddressEvents =  Utxo.eventsAtAddress addressQuery [event]
         targetAddress =  head addresses
         (computedAddresses :: [C.AddressAny])
           = toListOf (folded . Utxo.address)

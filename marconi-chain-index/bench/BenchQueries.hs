@@ -46,8 +46,8 @@ import Database.SQLite.Simple.ToField (ToField)
 import Database.SQLite.Simple.ToRow (ToRow)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
-import Marconi.ChainIndex.Indexers.Utxo (StorableQuery (UtxoByAddress), StorableResult (UtxoResult, getUtxoResult),
-                                         UtxoHandle, UtxoIndexer)
+import Marconi.ChainIndex.Indexers.Utxo (QueryUtxoByAddress (QueryUtxoByAddress), StorableQuery (QueryWrapper),
+                                         StorableResult (UtxoResult, getUtxoResult), UtxoHandle, UtxoIndexer)
 import Marconi.Core.Storable (QueryInterval (QEverything))
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
@@ -137,7 +137,7 @@ tests databaseDir indexerTVar = do
             Storable.query @UtxoHandle
                 QEverything
                 utxoIndexer
-                (UtxoByAddress addressWithMostUtxos Nothing)
+                (QueryWrapper $ QueryUtxoByAddress addressWithMostUtxos Nothing)
 
     let countRows = \case
             UtxoResult rows -> length rows
