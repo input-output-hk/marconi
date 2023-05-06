@@ -2,7 +2,6 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo
     ( initializeEnv
     , currentSyncedPoint
     , findByAddress
-    , findByBech32Address
     , findByBech32AddressAtSlot
     , reportQueryAddresses
     , Utxo.UtxoRow(..)
@@ -46,10 +45,9 @@ initializeEnv targetAddresses = do
 --  Address conversion error from Bech32 may occur
 findByAddress
     :: AddressUtxoIndexerEnv -- ^ Query run time environment
-    -> C.AddressAny -- ^ Cardano address to query
-    -> Maybe C.SlotNo -- ^ The upper slot number we want to query
+    -> Utxo.QueryUtxoByAddress
     -> IO (Either QueryExceptions [Utxo.UtxoRow])
-findByAddress env addr slot = withQueryAction env (Utxo.QueryWrapper $ Utxo.QueryUtxoByAddress addr slot)
+findByAddress env = withQueryAction env . Utxo.QueryWrapper
 
 -- | Retrieve the current synced point of the utxo indexer
 currentSyncedPoint
@@ -71,26 +69,24 @@ currentSyncedPoint env = do
 
 -- | Retrieve Utxos associated with the given address
 -- We return an empty list if no address is not found
-findByBech32Address
-    :: AddressUtxoIndexerEnv -- ^ Query run time environment
-    -> Text -- ^ Bech32 Address
-    -> IO (Either QueryExceptions AddressUtxoResult)  -- ^ Plutus address conversion error may occur
-findByBech32Address env addressText
-    = findByBech32AddressAtSlot env addressText Nothing
-
--- | Retrieve Utxos associated with the given address
--- We return an empty list if no address is not found
 findByBech32AddressAtSlot
     :: AddressUtxoIndexerEnv -- ^ Query run time environment
     -> Text -- ^ Bech32 Address
-    -> Maybe Word64 -- ^ Slot number to look at
+    -> Word64 -- slotNo lower bound query
+    -> Maybe Word64 -- slotNo upper bound query
     -> IO (Either QueryExceptions AddressUtxoResult) -- ^ Plutus address conversion error may occur
-findByBech32AddressAtSlot env addressText slotWord
-    = let
+findByBech32AddressAtSlot env addressText slotNoLow slotNoHigh =
+  let
 
-        toQueryExceptions e = QueryError (unpack  addressText <> " generated error: " <> show e)
+    toQueryExceptions e = QueryError (unpack  addressText <> " generated error: " <> show e)
+    slotInterval :: Utxo.Interval C.SlotNo
+    slotInterval = Utxo.interval (Just . C.SlotNo $ slotNoLow) (C.SlotNo <$> slotNoHigh)
 
-        queryAtAddress addr = fmap AddressUtxoResult <$> findByAddress env addr (fromIntegral <$> slotWord)
+    utxoQuery :: C.AddressAny -> Utxo.QueryUtxoByAddress
+    utxoQuery = flip Utxo.QueryUtxoByAddress slotInterval
+
+    queryAtAddress :: C.AddressAny -> IO (Either QueryExceptions AddressUtxoResult)
+    queryAtAddress addr = fmap AddressUtxoResult <$> findByAddress env (utxoQuery addr)
 
     in either (pure . Left) queryAtAddress
         $ bimap toQueryExceptions C.toAddressAny

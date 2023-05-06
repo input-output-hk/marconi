@@ -48,6 +48,7 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.Utxo (QueryUtxoByAddress (QueryUtxoByAddress), StorableQuery (QueryWrapper),
                                          StorableResult (UtxoResult, getUtxoResult), UtxoHandle, UtxoIndexer)
+import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Core.Storable (QueryInterval (QEverything))
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
@@ -137,7 +138,7 @@ tests databaseDir indexerTVar = do
             Storable.query @UtxoHandle
                 QEverything
                 utxoIndexer
-                (QueryWrapper $ QueryUtxoByAddress addressWithMostUtxos Nothing)
+                (QueryWrapper $ QueryUtxoByAddress addressWithMostUtxos Utxo.intervalAtGenesis)
 
     let countRows = \case
             UtxoResult rows -> length rows

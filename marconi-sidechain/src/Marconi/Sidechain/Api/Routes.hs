@@ -132,20 +132,27 @@ newtype EpochNonceResult =
     EpochNonceResult (Maybe EpochState.EpochNonceRow)
     deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
+-- |
 data TxOutAtQuery
     = TxOutAtQuery
-    { queryAddress :: !String
-    , querySlot    :: !(Maybe Word64)
+    { queryAddress             :: !String -- ^ address to query for
+    , queryCreatedAfterSlotNo  :: !Word64 -- ^ lower bound slotNo to query for
+    , queryUnspentBeforeSlotNo :: !(Maybe Word64) -- ^ optional upper bound slotNo to query for
     } deriving Show
 
 instance FromJSON TxOutAtQuery where
 
-    parseJSON (Object v) = TxOutAtQuery <$> (v .: "address")  <*> (v .:? "slotNo")
-    parseJSON _          = mempty
+    parseJSON (Object v)
+      = TxOutAtQuery
+      <$> (v .: "address")
+      <*> (v .: "createdAfterSlotNot")
+      <*> (v .:? "unspentBeforeSlotNo")
+    parseJSON _ = mempty
 
 instance ToJSON TxOutAtQuery where
     toJSON q =
         object $ catMaybes
            [ Just ("address" .= queryAddress q)
-           , ("slotNo" .=) <$> querySlot q
+           , Just ("createdAfterSlotNot" .= queryCreatedAfterSlotNo q)
+           , ("unspentBeforeSlotNo" .=) <$> queryUnspentBeforeSlotNo q
            ]

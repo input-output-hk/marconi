@@ -5,7 +5,7 @@
 module Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex (tests) where
 
 import Cardano.Api qualified as C
-import Control.Lens (each, filtered, folded, toListOf, (%~), (&), (^.))
+import Control.Lens (each, filtered, folded, toListOf, (%~), (&), (^.), (^..))
 import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
@@ -152,7 +152,7 @@ allqueryUtxosShouldBeUnspent = property $ do
     addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
     addressQueries
       = List.nub
-      . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress Nothing . Utxo._address)
+      . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress Utxo.intervalAtGenesis . Utxo._address)
       . concatMap (Set.toList . Utxo.ueUtxos)
       $ events
   results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ addressQueries
@@ -227,7 +227,7 @@ propSaveAndRetrieveUtxoEvents = property $ do
              >>= liftIO . Storable.insertMany events
   let
     qs :: [StorableQuery Utxo.UtxoHandle]
-    qs = List.nub . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress Nothing . Utxo._address) . concatMap (Set.toList . Utxo.ueUtxos) $ events
+    qs = List.nub . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress Utxo.intervalAtGenesis . Utxo._address) . concatMap (Set.toList . Utxo.ueUtxos) $ events
   results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qs
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
@@ -258,16 +258,20 @@ propSaveAndRetrieveUtxoEvents = property $ do
 propUtxoQueryByAddressAndSlot :: Property
 propUtxoQueryByAddressAndSlot = property $ do
   highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 7 5 20
-  chainPoints :: [C.ChainPoint]  <- forAll $ genChainPoints 2 highSlotNo
+  chainPoints :: [C.ChainPoint]  <- forAll $ genChainPoints 5 highSlotNo
   events::[StorableEvent Utxo.UtxoHandle] <- forAll $ forM chainPoints genEventWithShelleyAddressAtChainPoint <&> concat
   let numOfEvents = length events
   depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
   indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
              >>= liftIO . Storable.insertMany events
-  let _slot = getSlot $ chainPoints !! (length chainPoints `div` 2)
-      qAddresses
+  let
+    _slot :: Maybe C.SlotNo
+    _slot = getSlot $ chainPoints !! (length chainPoints `div` 2)
+    interval :: Utxo.Interval C.SlotNo
+    interval = Utxo.interval  _slot Nothing
+    qAddresses
         = List.nub  -- remove duplicate addresses
-        . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress _slot . Utxo._address)
+        . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress interval . Utxo._address)
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
   results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qAddresses
@@ -275,12 +279,12 @@ propUtxoQueryByAddressAndSlot = property $ do
           Utxo.UtxoResult rs -> rs
           _other             -> []
       fetchedRows = concatMap filterResult results
-      slotNoFromStorage = List.sort . fmap Utxo._urSlotNo $ fetchedRows
+      slotNoFromStorage = List.sort $ fetchedRows ^.. folded . Utxo.urSlotNo
 
   Hedgehog.classify "Query both in-memory and storage " $ depth <= numOfEvents
   Hedgehog.classify "Query in-memory only" $ depth > numOfEvents
 
-  Just (last slotNoFromStorage) === _slot
+  Just (head slotNoFromStorage) === _slot -- we shouldn not see anyting before this slot
 
 propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll :: Property
 propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
@@ -291,15 +295,22 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
   indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
              >>= liftIO . Storable.insertMany events
-  let lastSlot = getSlot $ last chainPoints
-      qAddressesAtSlot
+  let
+    lstSlotNo :: [C.ChainPoint] -> Maybe C.SlotNo
+    lstSlotNo = getSlot . last
+    slotInterval :: Utxo.Interval C.SlotNo
+    slotInterval = maybe
+       Utxo.intervalAtGenesis
+       (\sno -> Utxo.interval Nothing (Just sno))
+       (lstSlotNo chainPoints)
+    qAddressesAtSlot
         = List.nub  -- remove duplicate addresses
-        . fmap (Utxo.QueryWrapper. flip Utxo.QueryUtxoByAddress lastSlot . Utxo._address)
+        . fmap (Utxo.QueryWrapper. flip Utxo.QueryUtxoByAddress slotInterval . Utxo._address)
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
-      qAddressesAll
+    qAddressesAll
         = List.nub  -- remove duplicate addresses
-        . fmap (Utxo.QueryWrapper. flip Utxo.QueryUtxoByAddress Nothing . Utxo._address)
+        . fmap (Utxo.QueryWrapper. flip Utxo.QueryUtxoByAddress Utxo.intervalAtGenesis . Utxo._address)
         . concatMap (Set.toList . Utxo.ueUtxos)
         $ events
   resultAtSlot <-
@@ -315,7 +326,7 @@ propComputeEventsAtAddress = property $ do
     event <- head <$> forAll UtxoGen.genUtxoEvents
     let (addresses :: [C.AddressAny]) =
           map Utxo._address $ Set.toList $ Utxo.ueUtxos event
-        addressQuery = Utxo.QueryUtxoByAddress (head addresses) Nothing
+        addressQuery = Utxo.QueryUtxoByAddress (head addresses) Utxo.intervalAtGenesis
         sameAddressEvents :: [StorableEvent Utxo.UtxoHandle]
         sameAddressEvents =  Utxo.eventsAtAddress addressQuery [event]
         targetAddress =  head addresses

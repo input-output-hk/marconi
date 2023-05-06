@@ -33,7 +33,7 @@ main = do
   -- RPC calls
   msg <- rpcEcho "marconi client calling ???" --  return the echo message
   addresses <- rpcTargets ""                  --  get the targetAddresss
-  utxos <- rpcUtxos $ TxOutAtQuery bech32Address Nothing             --  get utxos for this address
+  utxos <- rpcUtxos $ TxOutAtQuery bech32Address 0 Nothing            --  get utxos for this address
   printResults msg
   printResults addresses
   printResults utxos

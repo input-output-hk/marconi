@@ -131,8 +131,8 @@ queryTargetAddressTest = property $ do
     . traverse (\addr ->
         AddressUtxoIndexer.findByAddress
             (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
-            addr
-            Nothing)
+            (Utxo.QueryUtxoByAddress addr Utxo.intervalAtGenesis)
+            )
     . Set.toList . Set.fromList  -- required to remove the potential duplicate addresses
     . fmap Utxo._address
     . concatMap (Set.toList . Utxo.ueUtxos)
@@ -158,7 +158,7 @@ queryUtxoFromRpcServer address port = do
   -- test will fail if these RPC methods fail.
   void $ rpcEcho "client calling "
   void $ rpcTargets ""
-  rpcUtxos $ TxOutAtQuery address Nothing
+  rpcUtxos $ TxOutAtQuery address 0 Nothing
 
 -- | Create http JSON-RPC client function to test RPC route and handlers
 queryCurrentSyncPointFromRpcServer

@@ -19,7 +19,7 @@ import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (API, AddressUtxoResult, CurrentSyncedPointResult, EpochNonceResult,
                                      EpochStakePoolDelegationResult, JsonRpcAPI, MintingPolicyHashTxResult, RestAPI,
-                                     TxOutAtQuery (queryAddress, querySlot))
+                                     TxOutAtQuery (queryAddress, queryCreatedAfterSlotNo, queryUnspentBeforeSlotNo))
 import Marconi.Sidechain.Api.Types (QueryExceptions, SidechainEnv, sidechainAddressUtxoIndexer,
                                     sidechainEnvHttpSettings, sidechainEnvIndexers)
 import Network.JsonRpc.Server.Types ()
@@ -100,17 +100,18 @@ getCurrentSyncedPointHandler env _ = liftIO $
     <$> Q.Utxo.currentSyncedPoint
            (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
 
--- | Handler for retrieving UTXOs by Address
+-- | Handler for retrieving UTXOs by Address and slotNo interval
 getAddressUtxoHandler
     :: SidechainEnv -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
     -> TxOutAtQuery -- ^ Bech32 addressCredential and a slotNumber
     -> Handler (Either (JsonRpcErr String) AddressUtxoResult)
-getAddressUtxoHandler env query = liftIO $
+getAddressUtxoHandler env q = liftIO $
     first toRpcErr <$> do
         Q.Utxo.findByBech32AddressAtSlot
             (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
-            (pack $ queryAddress query)
-            (querySlot query)
+            (pack $ queryAddress q)
+            (queryCreatedAfterSlotNo q)
+            (queryUnspentBeforeSlotNo q)
 
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler
