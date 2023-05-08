@@ -47,6 +47,8 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam), TargetAddresses, TxOut, pattern CurrentEra)
 import Marconi.Core.Experiment qualified as Core
+import Marconi.Core.Experiment.Indexer.ListIndexer (listIndexer)
+import Marconi.Core.Experiment.Indexer.MixedIndexer (newMixedIndexer)
 
 data Utxo = Utxo
   { _utxoAddress          :: !C.AddressAny
@@ -333,7 +335,7 @@ mkMixedIndexer'
   -> Word -- ^ flush size
   -> Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer UtxoEvent
 mkMixedIndexer' conn keep flush =
-    Core.mixedIndexer keep flush (sqliteIndexer conn) Core.listIndexer
+    newMixedIndexer keep flush (sqliteIndexer conn) listIndexer
 
 -----------------------------------------------------------------------
 -- SQL table mappings
@@ -468,16 +470,16 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
 
   in uncurry mkUtxoAddressQueryAction' filterPairs
 
-instance MonadIO m => Core.Rewindable m UtxoEvent Core.SQLiteIndexer where
+instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
 
-    rewind C.ChainPointAtGenesis ix = do
+    rollback C.ChainPointAtGenesis ix = do
       let c = ix ^. Core.handle
       liftIO $ SQL.execute_ c "DELETE FROM TABLE unspent_transactions"
       liftIO $ SQL.execute_ c "DELETE FROM TABLE spent"
 
       pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
 
-    rewind p@(C.ChainPoint sno _) ix = do
+    rollback p@(C.ChainPoint sno _) ix = do
       let c = ix ^. Core.handle
       liftIO $ SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sno)
       liftIO $ SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sno)

@@ -469,7 +469,7 @@ propLastSyncPointIsUpdatedOnInserts = property $ do
   let
     fromDbSlotNos :: [C.SlotNo] = fmap (C.SlotNo . fromIntegral) fromDbSlotNos'
     inMemSyncPoint = mixedIndexer ^. Core.inMemory . Core.latest
-  inMemResumePoints <- Core.syncPoints $ mixedIndexer ^. Core.inMemory
+  inMemResumePoints <- Core.lastSyncPoint $ mixedIndexer ^. Core.inMemory
 
   dbLastSyncSlotNo <- case mixedIndexer ^. Core.inDatabase . Core.dbLastSync of
     (C.ChainPoint s _ ) -> pure s
@@ -507,7 +507,7 @@ propLastChainPointOnRewindIndexer = property $ do
   let
       rewindTo :: C.ChainPoint = C.ChainPoint (dbLastSyncSlotNo - 1) b  -- rewind by 1 slot
 
-  rewoundMixedIndexer <- Core.rewind rewindTo mixedIndexer
+  rewoundMixedIndexer <- Core.rollback rewindTo mixedIndexer
   fromDbSlotNosAfter<- liftIO (SQL.query_ conn "SELECT DISTINCT slotNo from unspent_transactions ORDER by slotNo DESC" :: IO [Integer])
   let rewoundDbLastSync = rewoundMixedIndexer ^. Core.inDatabase . Core.dbLastSync
   (C.ChainPoint rewoundDbLastSyncSlotNo _) <- evalChainPoint rewoundDbLastSync
