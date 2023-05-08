@@ -12,9 +12,10 @@
 
 3. Run this test by setting the env variables:
 
-     - CARDANO_NODE_SOCKET_PATH:
+     - CARDANO_NODE_SOCKET_PATH
      - CARDANO_NODE_CONFIG_PATH
      - MARCONI_DB_DIRECTORY_PATH
+     - DBSYNC_PGPASSWORD: The default password for cardano-db-sync's postgres database is in its repo in the file: config/secrets/postgres_password
 
    And then run the command:
 
