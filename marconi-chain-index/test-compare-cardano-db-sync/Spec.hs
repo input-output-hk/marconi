@@ -16,6 +16,7 @@
      - CARDANO_NODE_CONFIG_PATH
      - MARCONI_DB_DIRECTORY_PATH
      - DBSYNC_PGPASSWORD: The default password for cardano-db-sync's postgres database is in its repo in the file: config/secrets/postgres_password
+     - NETWORK_MAGIC: "mainnet" or number
 
    And then run the command:
 
@@ -44,6 +45,7 @@ import Database.PostgreSQL.Simple.FromField qualified as PG
 import Database.PostgreSQL.Simple.ToField qualified as PG
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
+import Text.Read (readMaybe)
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
@@ -159,8 +161,14 @@ openEpochStateIndexer = do
   socketPath <- envOrFail "CARDANO_NODE_SOCKET_PATH"
   nodeConfigPath <- envOrFail "CARDANO_NODE_CONFIG_PATH"
   dbDir <- envOrFail "MARCONI_DB_DIRECTORY_PATH"
+  networkMagicStr <- envOrFail "NETWORK_MAGIC"
+  networkMagic <- case networkMagicStr of
+    "mainnet" -> return C.Mainnet
+    _ -> case readMaybe networkMagicStr of
+      Nothing     -> fail $ "Can't parse network magic: " <> networkMagicStr
+      Just word32 -> return $ C.Testnet $ C.NetworkMagic word32
   liftIO $ do
-    securityParam <- throwIndexerError $ Utils.querySecurityParamEra C.BabbageEraInCardanoMode C.Mainnet socketPath
+    securityParam <- throwIndexerError $ Utils.querySecurityParamEra C.BabbageEraInCardanoMode networkMagic socketPath
     topLevelConfig <- topLevelConfigFromNodeConfig nodeConfigPath
     let dbPath = dbDir </> epochStateDbName
         ledgerStateDirPath = dbDir </> "ledgerStates"
