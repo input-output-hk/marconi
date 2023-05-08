@@ -2,6 +2,8 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex (tests) where
 
 import Cardano.Api qualified as C
@@ -37,6 +39,7 @@ import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
+
 tests :: TestTree
 tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
       [ testPropertyNamed
@@ -71,8 +74,8 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
 
     , testPropertyNamed
         "Save and retrieve events by address and slot number from storage test."
-        "propUtxoQueryByAddressAndSlot"
-        propUtxoQueryByAddressAndSlot
+        "propUtxoQueryByAddressAndSlotInterval"
+        propUtxoQueryByAddressAndSlotInterval
 
     , testPropertyNamed
         "The points the indexer can be resumed from should return at least the genesis point"
@@ -121,6 +124,8 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
              propLastChainPointOnRewindedIndexer
         ]
     ]
+
+deriving instance Ord (StorableResult Utxo.UtxoHandle)
 
 -- | The purpose of test is to make sure All Queried Utxo's are unSpent.
 --  The Utxo store consists of:
@@ -249,42 +254,77 @@ propSaveAndRetrieveUtxoEvents = property $ do
     $ all (== True)
     [u `notElem` fromEventsTxIns| u <- fromStorageTxIns]
 
-
--- Insert Utxo events in storage, and retreive the events by address and slot
+-- Insert Utxo events in storage, and retreive the events by address and slotNo Interval
 -- Note: The property we are checking is:
 --   - Insert many events at various chainPoints
---   - Fetch for all the evenent addresses
---   - There should not be any results with ChainPoint > highChainPoint
-propUtxoQueryByAddressAndSlot :: Property
-propUtxoQueryByAddressAndSlot = property $ do
-  highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 7 5 20
+--   - retrieve for all addresses starting from genesis, is the same as retrieving for all address prior to last observed SlotNo
+--   - retrieve all addresses in a given open interval should not have any slotNo outside of the query interval
+propUtxoQueryByAddressAndSlotInterval :: Property
+propUtxoQueryByAddressAndSlotInterval = property $ do
+  highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 10 8 15
   chainPoints :: [C.ChainPoint]  <- forAll $ genChainPoints 5 highSlotNo
-  events::[StorableEvent Utxo.UtxoHandle] <- forAll $ forM chainPoints genEventWithShelleyAddressAtChainPoint <&> concat
-  let numOfEvents = length events
-  depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
-  indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
+  forM_ chainPoints (
+    \cp -> do
+      events :: [StorableEvent Utxo.UtxoHandle] <-
+        forAll $ genEventWithShelleyAddressAtChainPoint cp
+      indexer <- liftIO $ Utxo.open ":memory:" (Utxo.Depth 1) False -- don't vacuum sqlite
              >>= liftIO . Storable.insertMany events
-  let
-    _slot :: Maybe C.SlotNo
-    _slot = getSlot $ chainPoints !! (length chainPoints `div` 2)
-    interval :: Utxo.Interval C.SlotNo
-    interval = Utxo.interval  _slot Nothing
-    qAddresses
-        = List.nub  -- remove duplicate addresses
-        . fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress interval . Utxo._address)
-        . concatMap (Set.toList . Utxo.ueUtxos)
-        $ events
-  results <- liftIO . traverse (Storable.query Storable.QEverything indexer) $ qAddresses
-  let filterResult = \case
+      let
+        addresses :: [C.AddressAny]
+        addresses = concatMap (\e -> Utxo.ueUtxos e ^.. folded . Utxo.address) events
+
+      upperBoundSlotNo@(C.SlotNo upperBoundSlotNoWord) <- mgetSlot cp
+
+    -- pick a slotNo less than highPoint and more than genesis
+      sno <- forAll $ Gen.word64 $ Range.linear 0 upperBoundSlotNoWord
+      let
+        queryFromGenesis :: [StorableQuery Utxo.UtxoHandle] =
+          mkUtxoQueries Utxo.intervalAtGenesis addresses
+        queryBeforeOrAtUpperBound :: [StorableQuery Utxo.UtxoHandle] =
+          mkUtxoQueries (Utxo.interval Nothing (Just upperBoundSlotNo)) addresses
+      let
+        lowerBoundSlotNo = C.SlotNo sno
+      -- set queryInterval for the open interval [lowerBoundSlotno, upperBoundSlotNo]
+        queryInterval :: [StorableQuery Utxo.UtxoHandle]
+        queryInterval =
+          mkUtxoQueries (Utxo.interval (Just lowerBoundSlotNo) (Just upperBoundSlotNo)) addresses
+        filterResult :: StorableResult Utxo.UtxoHandle  -> [Utxo.UtxoRow]
+        filterResult = \case
           Utxo.UtxoResult rs -> rs
           _other             -> []
-      fetchedRows = concatMap filterResult results
-      slotNoFromStorage = List.sort $ fetchedRows ^.. folded . Utxo.urSlotNo
 
-  Hedgehog.classify "Query both in-memory and storage " $ depth <= numOfEvents
-  Hedgehog.classify "Query in-memory only" $ depth > numOfEvents
+      genesisResult <-
+        liftIO
+        . traverse (Storable.query Storable.QEverything indexer)
+        $ queryFromGenesis
+      upperBoundResult <-
+        liftIO
+        . traverse (Storable.query Storable.QEverything indexer)
+        $ queryBeforeOrAtUpperBound
 
-  Just (head slotNoFromStorage) === _slot -- we shouldn not see anyting before this slot
+      openIntervalResult <-
+        liftIO
+        . traverse (Storable.query Storable.QEverything indexer)
+        $ queryInterval
+
+      let rows :: [Utxo.UtxoRow] = concatMap filterResult openIntervalResult
+          cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . Utxo.urSlotNo
+          (retrievedLowSlotNo, retrievedHighSlotNo) = (head cps, last cps)
+      -- Show we did not retrieve any slotNo before the queryInterval [low, ]
+      Hedgehog.assert (retrievedLowSlotNo >= lowerBoundSlotNo)
+      Hedgehog.assert (retrievedHighSlotNo <= upperBoundSlotNo)
+
+      Set.fromList genesisResult === Set.fromList upperBoundResult
+    )
+
+-- | make unique queries
+mkUtxoQueries
+  :: Utxo.Interval C.SlotNo
+  -> [C.AddressAny]
+  -> [StorableQuery Utxo.UtxoHandle]
+mkUtxoQueries slotInterval =
+  fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress slotInterval)  . Set.toList . Set.fromList
+
 
 propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll :: Property
 propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
@@ -491,3 +531,7 @@ propLastChainPointOnRewindedIndexer = property $ do
 getSlot :: C.ChainPoint -> Maybe C.SlotNo
 getSlot C.ChainPointAtGenesis = Nothing
 getSlot (C.ChainPoint s _)    = Just s
+
+mgetSlot :: Hedgehog.MonadTest m => C.ChainPoint -> m C.SlotNo
+mgetSlot C.ChainPointAtGenesis = Hedgehog.failure -- this particular generator only generates non-genesis chainpoints
+mgetSlot (C.ChainPoint s _)    = pure s

@@ -100,7 +100,7 @@ intervalAtGenesis :: Interval r
 intervalAtGenesis = Empty
 
 interval
-  :: (Ord r)
+  :: (Ord r, Show r)
   => Maybe r -- ^ lower bound
   -> Maybe r  -- ^ upper bound
   -> Interval r
@@ -112,10 +112,15 @@ interval (Just p) (Just p') =
 
 --  Enforce the internal invariant
 -- 'BothOpen'.
-    wrap :: Ord r => (r -> r -> Interval r) -> r -> r -> Interval r
+    wrap :: (Ord r, Show r) => (r -> r -> Interval r) -> r -> r -> Interval r
     wrap f x y
-      | x < y = f x y
-      | otherwise = throw $ QueryError "Invalid Interval!"
+      | x <= y = f x y
+      | otherwise = throw
+          $ QueryError
+          ( "Invalid Interval. LowerBound, "
+            <> show x
+            <> " is not less than or equal to upperBound "
+            <> show y)
 
   in wrap BothOpen p p'
 
@@ -659,9 +664,9 @@ instance Queryable UtxoHandle where
       GreaterOrEqual sno -> (["u.slotNo >= :slotNo"] , [":slotNo" := sno])
       LessThanOrEqual sno -> (["u.slotNo <= :slotNo"] , [":slotNo" := sno])
       BothOpen lowerBound upperBound ->
-        (["u.slotNo >= :slotNo"] , [":slotNo" := lowerBound])
+        (["u.slotNo >= :slotNoLow"] , [":slotNoLow" := lowerBound])
         <>
-        (["u.slotNo <= :slotNo"] , [":slotNo" := upperBound])
+        (["u.slotNo <= :slotNoHigh"] , [":slotNoHigh" := upperBound])
     filters = addressFilter <> slotFilter
 
     in uncurry (utxoAtAddressQuery c es eventAtQuery) filters
