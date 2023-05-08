@@ -89,10 +89,12 @@ propEpochStakepoolSize = H.withTests 1 $ H.property $ do
         dbSyncResult <- liftIO $ dbSyncStakepoolSizes conn epochNo
         marconiResult <- liftIO $ indexerStakepoolSizes epochNo indexer
         liftIO $ putStr
-          $ "\nComparing random epoch " <> show epochNo
+          $ "\nComparing epoch " <> show epochNo
           <> ", number of stakepools in epoch " <> show (Map.size dbSyncResult)
-          <> ", epoch chosen from between " <> show (coerce @_ @Word64 minEpochNo) <> " and " <> show (coerce @_ @Word64 maxEpochNo) <> ")"
         dbSyncResult === marconiResult
+  liftIO $ putStrLn
+     $ "Min and max epoch in cardano-db-sync postgres: "
+    <> show (coerce @_ @Word64 minEpochNo) <> " and " <> show (coerce @_ @Word64 maxEpochNo) <> ")"
   forM_ [minEpochNo .. maxEpochNo] compareEpoch
 
 dbSyncStakepoolSizes :: PG.Connection -> C.EpochNo -> IO (Map.Map C.PoolId C.Lovelace)
