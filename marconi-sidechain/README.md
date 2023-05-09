@@ -76,7 +76,8 @@ See [this automatically generated golden file](./test/Spec/Golden/Cli/marconi-si
 
 We are assuming that:
 
-* you have a local running cardano-node instance.
+* you have a local running cardano-node instance
+  * since we upgraded to v8.0.0, you need to use the config file available in the `config` directory of the `marconi` repository, or else you will get some Conway exceptions.
 * you've set the following environment variables:
   * `CARDANO_NODE_SOCKET_PATH`: socket path of your local cardano-node instance
   * `MARCONI_DB_DIRECTORY`: directory in which to create the various SQLite database files
