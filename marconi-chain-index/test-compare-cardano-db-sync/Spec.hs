@@ -28,10 +28,11 @@
 
 module Main where
 
+import Control.Exception (throw)
 import Control.Lens ((^.))
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Except (runExceptT)
+import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.ByteString qualified as BS
 import Data.Coerce (coerce)
 import Data.Map.Strict qualified as Map
@@ -51,6 +52,7 @@ import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.Node qualified as O
 
+import Marconi.ChainIndex.Error qualified as Marconi
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Node.Client.GenesisConfig qualified as GenesisConfig
 import Marconi.ChainIndex.Types (epochStateDbName)
@@ -113,7 +115,7 @@ dbSyncStakepoolSizes conn epochNo = do
 indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
 indexerStakepoolSizes epochNo indexer = do
   let query = EpochState.SDDByEpochNoQuery epochNo
-  result <- Storable.queryStorage dummyInterval [] (indexer ^. Storable.handle) query
+  result <- throwIndexerError $ Storable.queryStorage dummyInterval [] (indexer ^. Storable.handle) query
   case result of
     EpochState.SDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
     _                                  -> return undefined
@@ -144,7 +146,7 @@ propEpochNonce = H.withTests 1 $ H.property $ do
 queryIndexerEpochNonce :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Maybe Ledger.Nonce)
 queryIndexerEpochNonce epochNo indexer = do
   let query = EpochState.NonceByEpochNoQuery epochNo
-  res' <- Storable.queryStorage dummyInterval [] (indexer ^. Storable.handle) query
+  res' <- throwIndexerError $ Storable.queryStorage dummyInterval [] (indexer ^. Storable.handle) query
   case res' of
     EpochState.NonceByEpochNoResult res -> return $ EpochState.epochNonceRowNonce <$> res
     _                                   -> return Nothing
@@ -155,11 +157,14 @@ openEpochStateIndexer = do
   nodeConfigPath <- envOrFail "CARDANO_NODE_CONFIG_PATH"
   dbDir <- envOrFail "MARCONI_DB_DIRECTORY_PATH"
   liftIO $ do
-    securityParam <- Utils.querySecurityParamEra C.BabbageEraInCardanoMode C.Mainnet socketPath
+    securityParam <- throwIndexerError $ Utils.querySecurityParamEra C.BabbageEraInCardanoMode C.Mainnet socketPath
     topLevelConfig <- topLevelConfigFromNodeConfig nodeConfigPath
     let dbPath = dbDir </> epochStateDbName
         ledgerStateDirPath = dbDir </> "ledgerStates"
-    EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam
+    throwIndexerError $ EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam
+
+throwIndexerError :: Monad m => ExceptT Marconi.IndexerError m a -> m a
+throwIndexerError action = either throw return =<< runExceptT action
 
 -- | Connect to cardano-db-sync postgres with password from
 -- DBSYNC_PGPASSWORD env variable.
@@ -209,12 +214,9 @@ instance PG.FromField Ledger.Nonce where
     bsToMaybeNonce bs = Ledger.Nonce <$> Crypto.hashFromBytes bs
 
 instance PG.FromField C.PoolId where
-  fromField f meta = bsToMaybePoolId <$> PG.fromField f meta >>= \case
-    Just a -> return a
-    _      -> PG.returnError PG.ConversionFailed f "Can't parse PoolId"
-    where
-    bsToMaybePoolId :: BS.ByteString -> Maybe C.PoolId
-    bsToMaybePoolId = C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey)
+  fromField f meta = C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) <$> PG.fromField f meta >>= \case
+    Right a  -> return a
+    Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse PoolId, error: " <> show err
 
 deriving newtype instance Real C.EpochNo
 deriving newtype instance Integral C.EpochNo
