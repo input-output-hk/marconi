@@ -95,13 +95,13 @@ scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ dats _)
       $ xs
 scriptDataFromCardanoTxBody _ = mempty
 
-data Buffer = Buffer
+data Buffer a = Buffer
   { _capacity     :: !Word64
   , _bufferLength :: !Word64
-  , _content      :: !(Seq (BlockInMode CardanoMode))
+  , _content      :: !(Seq a)
   }
 
-newBuffer :: Word64 -> Buffer
+newBuffer :: Word64 -> Buffer a
 newBuffer capacity = Buffer capacity 0 Seq.empty
 
 makeLenses 'Buffer
@@ -117,17 +117,19 @@ makeLenses 'Buffer
      The indexer count is where we save the number of running indexers so we know for
      how many we are waiting.
 -}
-data Coordinator = Coordinator
-  { _channel      :: !(TChan (ChainSyncEvent (BlockInMode CardanoMode)))
+data Coordinator' a = Coordinator
+  { _channel      :: !(TChan (ChainSyncEvent a))
   , _errorVar     :: !(MVar IndexerError)
   , _barrier      :: !QSemN
   , _indexerCount :: !Int
-  , _buffer       :: !Buffer
+  , _buffer       :: !(Buffer a)
   }
 
 makeLenses 'Coordinator
 
-initialCoordinator :: Int -> Word64 -> IO Coordinator
+type Coordinator = Coordinator' (BlockInMode CardanoMode)
+
+initialCoordinator :: Int -> Word64 -> IO (Coordinator' a)
 initialCoordinator indexerCount' minIndexingDepth =
   Coordinator <$> newBroadcastTChanIO
               <*> newEmptyMVar
@@ -447,32 +449,27 @@ initializeIndexers (SecurityParam sec) indexingDepth indexers = do
        , coordinator
        )
 
-mkIndexerStream
-  :: Coordinator
-  -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r
+mkIndexerStream'
+  :: (a -> SlotNo)
+  -> Coordinator' a
+  -> S.Stream (S.Of (ChainSyncEvent a)) IO r
   -> IO ()
-mkIndexerStream coordinator = S.foldM_ step initial finish
+mkIndexerStream' f coordinator = S.foldM_ step initial finish
   where
-    initial :: IO Coordinator
     initial = pure coordinator
 
-    indexersHealthCheck :: Coordinator -> IO ()
+    indexersHealthCheck :: Coordinator' a -> IO ()
     indexersHealthCheck Coordinator{_errorVar} = do
       err <- tryReadMVar _errorVar
       case err of
           Nothing -> pure ()
           Just e  -> throw e
 
-    blockBeforeChainPoint :: ChainPoint -> BlockInMode CardanoMode -> Bool
     blockBeforeChainPoint ChainPointAtGenesis _      = False
-    blockBeforeChainPoint (ChainPoint slotNo' _) bim = bimSlotNo bim <= slotNo'
+    blockBeforeChainPoint (ChainPoint slotNo' _) bim = f bim <= slotNo'
 
     bufferIsFull c = c ^. buffer . bufferLength >= c ^. buffer . capacity
 
-    coordnatorHandleEvent
-        :: Coordinator
-        -> ChainSyncEvent (BlockInMode CardanoMode)
-        -> IO (Coordinator, Maybe (ChainSyncEvent (BlockInMode CardanoMode)))
     coordnatorHandleEvent c (RollForward bim ct)
         | bufferIsFull c = case c ^. buffer . content of
             buff Seq.:|> event' -> do
@@ -494,7 +491,6 @@ mkIndexerStream coordinator = S.foldM_ step initial finish
                     else pure (c', Just e)
             Seq.Empty -> pure (c, Just e)
 
-    step :: Coordinator -> ChainSyncEvent (BlockInMode CardanoMode) -> IO Coordinator
     step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
       waitQSemN _barrier _indexerCount
       indexersHealthCheck c
@@ -505,8 +501,13 @@ mkIndexerStream coordinator = S.foldM_ step initial finish
               atomically $ writeTChan _channel event'
               pure c'
 
-    finish :: Coordinator -> IO ()
     finish _ = pure ()
+
+mkIndexerStream
+  :: Coordinator
+  -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r
+  -> IO ()
+mkIndexerStream = mkIndexerStream' bimSlotNo
 
 runIndexers
   :: FilePath

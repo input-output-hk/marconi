@@ -5,6 +5,7 @@ module Main (main) where
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
 import Spec.Marconi.ChainIndex.CLI qualified as CLI
+import Spec.Marconi.ChainIndex.Coordinator qualified as Coordinator
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum qualified as Indexers.AddressDatum
 import Spec.Marconi.ChainIndex.Indexers.ScriptTx qualified as Indexers.ScriptTx
 -- TODO see tests below
@@ -20,6 +21,7 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "Marconi"
   [ Orphans.tests
+  , Coordinator.tests
   , Indexers.Utxo.tests
   , Indexers.MintBurn.tests
   , Indexers.AddressDatum.tests
