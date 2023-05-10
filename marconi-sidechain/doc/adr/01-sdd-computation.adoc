@@ -34,9 +34,12 @@ We will describe all the potential and discussed solutions to index the SDD of e
 As a summary, we provide the following caracteristics table and indicate how each solution responds to them.
 This assessment is measured in regards to two components: Cardano Node and Marconi.
 
+
+
+.Comparison of solutions using a list of caracteristics
 [cols="1,1,1,1,1"]
 |===
-|Caracteristics | Solution 1 | Solution 2 | Solution 3 | Solution 4
+|Caracteristics | Marconi LedgerState computation | Read LedgerEvents from node | SDD using N2C | Marconi as a node
 
 |Number of LedgerState computations | 2 | 1 | 1 | 1
 |Initial node resync required | No | Yes | Yes | Yes
@@ -44,6 +47,7 @@ This assessment is measured in regards to two components: Cardano Node and Marco
 |Change to cardano-node | No | Yes | No | No
 |===
 
+.Description of the caracteristics
 [cols="1,1"]
 |===
 |Caracteristics | Description
@@ -148,6 +152,9 @@ In order to take advantage of this functionality, we would need to change the de
 . Start the relay node
 . Once Marconi has noticed that the node has started syncing, it will start querying the local query state for the SDD for each new epoch and index it in the database.
 
+Is is important to note that any changes in the indexers of `marconi-sidechain` would require a complete resync of `marconi-sidechain`.
+As a direct consequence of this solution, the user would be required to delete the node database in order to reindex everything.
+
 The container diagram is the same as the link:#compute-sdd-by-tracking-the-ledgerstate[Compute SDD by tracking the LedgerState] solution.
 
 The benefits:
@@ -158,14 +165,20 @@ The benefits:
 The drawbacks:
 
 * needs the SPO to resync the relay node from scratch
-* any indexing logic or database schema change to Marconi would require reindexing the local node (thus deleting the node database)
-* need to continuously poll the relay node when a new epoch occurs
+* any change in the indexing logic of `marconi-sidechain` would require resyncing from scratch the local node (thus deleting the node database)
+* overhead of needing to continuously poll the relay node to identify when a new epoch occurs
+* race condition between node and `marconi-sidechain`. If a node syncs too fast and `marconi-sidechain` is stalled because of some heavy processing, we might miss an epoch (unlikely, but possible).
 
 === 4. Transform `marconi-sidechain` to a Cardano relay node
 
 `marconi-sidechain` could be changed to become _a_ Cardano node and replace the SPO's relay node.
 Then, it would have the same functionality as a relay (using node-to-node protocol), but also index
 the necessary for the Sidechain team.
+
+Ultimately, the `marconi-sidechain` process would run two computations in parallel: the N2N protocol
+and the indexers.
+Then, we would need to find a way to get the `LedgerState` that's computed by the node's consensus
+layer and wire it to the indexers.
 
 A container diagram of this solution would look like:
 
@@ -179,10 +192,8 @@ The benefits:
 The drawbacks:
 
 * uncertainty of capability to use `cardano-node` as a library
-* this version of `marconi-sidechain` would use the same amount of memory as the relay node.
-  Therefore, it would not be able to be deployed on an AWS small instance as initially requested by the Sidechain team
+* any change in the indexing logic of `marconi-sidechain` would require resyncing from scratch the local node (thus deleting the node database)
 * needs the SPO to resync the relay node from scratch
-* any indexing logic or database schema change to Marconi would require reindexing the Marconi node (thus deleting the node database)
 
 === 5. Use Mithril SDD snapshots
 
