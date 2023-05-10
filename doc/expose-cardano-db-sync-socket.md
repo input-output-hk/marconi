@@ -19,11 +19,19 @@
 
 2. Create host folder for the bind mount: `mkdir node-ipc`
 
-3. Run `docker-compose up -d && docker-compose logs -f` to run the containers
+3. If you already ran `docker-compose` with the old `docker-compose.yaml` config, then you need to
+   delete old containers and volumes for the new configuration to take effect.
+   Therefore, you would need to do something along the lines of:
 
-4. Change socket owner to yourself: `sudo chmod your-user node-ipc/node.socket` (it's root otherwise)
+   ```sh
+   $ docker-compose down && docker container prune && docker volume prune
+   ```
 
-5. Run any indexer on the socket, which is now in ./node-ipc/node.socket
+4. Run `docker-compose up -d && docker-compose logs -f` to run the containers
+
+5. Change socket owner to yourself: `sudo chown your-user node-ipc/node.socket` (it's root otherwise)
+
+6. Run any indexer on the socket, which is now in ./node-ipc/node.socket
 
 (The ./node-ipc folder specified in docker-compose.yaml can be any path)
 
