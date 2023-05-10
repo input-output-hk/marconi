@@ -193,7 +193,7 @@ Our Haskell packages come from two package repositories:
 
 The "index state" of each repository is pinned to a particular time in `cabal.project`.
 This tells Cabal to treat the repository "as if" it was the specified time, ensuring reproducibility.
-If you want to use a package version from repository X which was added after the pinned index state time, you need to bump the index state for X.
+If you want to use a package version from repository X which was added _after_ the pinned index state time, you need to bump the index state for X.
 This is not a big deal, since all it does is change what packages `cabal` considers to be available when doing solving, but it will change what package versions cabal picks for the plan, and so will likely result in significant recompilation, and potentially some breakage.
 That typically just means that we need to fix the breakage (and add a lower-bound on the problematic package), or add an upper-bound on the problematic package.
 
@@ -204,6 +204,8 @@ This is represented by some pinned inputs in our flake (see xref:update-nix-pins
 You can update these by running:
 - `nix flake lock --update-input hackage-nix` for Hackage
 - `nix flake lock --update-input CHaP` for CHaP
+
+After updating these, you should also consider updating `haskell.nix` with `nix flake lock --update-input haskell-nix` (although that is not mandatory).
 
 ==== Use of `source-repository-package`s
 
@@ -228,10 +230,15 @@ Specifically, you will probably want to say `nix flake lock --update-input <inpu
 
 Do *not* use `nix flake update`, as that will update all the inputs, which we typically don't want to do.
 
+[WARNING]
+====
+Do *not* delete the `flake.lock` and regenerate it by running `nix build` or `nix develop`.
+You will get the latest revision for *all* your flake inputs (similar to what `nix flake update` does) which, again, we typically don't want to do.
+====
+
 === How to build the code with profiling
 
 TODO: Currently not available, coming soon
-
 
 [WARNING]
 ====
