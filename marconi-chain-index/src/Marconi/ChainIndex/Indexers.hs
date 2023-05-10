@@ -465,8 +465,8 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
           Nothing -> pure ()
           Just e  -> throw e
 
-    blockBeforeChainPoint ChainPointAtGenesis _      = False
-    blockBeforeChainPoint (ChainPoint slotNo' _) bim = f bim <= slotNo'
+    blockAfterChainPoint ChainPointAtGenesis _bim   = True
+    blockAfterChainPoint (ChainPoint slotNo' _) bim = f bim > slotNo'
 
     bufferIsFull c = c ^. buffer . bufferLength >= c ^. buffer . capacity
 
@@ -475,20 +475,20 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
             buff Seq.:|> event' -> do
                 let c' = c & buffer . content .~ (bim Seq.:<| buff)
                 pure (c', Just $ RollForward event' ct)
-            Seq.Empty ->
+            Seq.Empty -> do
                 pure (c, Just $ RollForward bim ct)
         | otherwise = do
             let c' = c & buffer . content %~ (bim Seq.:<|)
                        & buffer . bufferLength +~ 1
             pure (c', Nothing)
     coordnatorHandleEvent c e@(RollBackward cp _) = case c ^. buffer . content of
-            buff Seq.:|> event' -> let
-                content' = Seq.dropWhileL (blockBeforeChainPoint cp) buff
+            buff@(_ Seq.:|> event') -> let
+                content' = Seq.dropWhileL (blockAfterChainPoint cp) buff
                 c' = c & buffer . content .~ content'
                        & buffer . bufferLength .~ fromIntegral (length content')
-                in if blockBeforeChainPoint cp event'
-                    then pure (c', Nothing)
-                    else pure (c', Just e)
+                in if blockAfterChainPoint cp event'
+                    then pure (c', Just e)
+                    else pure (c', Nothing)
             Seq.Empty -> pure (c, Just e)
 
     step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
@@ -496,7 +496,9 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
       indexersHealthCheck c
       (c', mevent) <- coordnatorHandleEvent c event
       case mevent of
-          Nothing -> pure c'
+          Nothing -> do
+              signalQSemN _barrier _indexerCount
+              pure c'
           Just event' -> do
               atomically $ writeTChan _channel event'
               pure c'

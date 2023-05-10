@@ -51,7 +51,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Word (Word64)
-import Debug.Trace qualified
 import GHC.Natural (Natural)
 import Hedgehog (Gen, MonadGen)
 import Hedgehog.Gen qualified as Gen
@@ -80,9 +79,15 @@ validByteSizeLength = 32
 genChainSyncEvents
   :: Hedgehog.MonadGen m
   => (a -> C.ChainPoint)
+  -- ^ exctract the chainpoint from the event
   -> (a -> m a)
+  -- ^ generator for an event based on the last event
   -> a
-  -> Word64 -> Word64
+  -- ^ the initial event
+  -> Word64
+  -- ^ minimal number of generated events
+  -> Word64
+  -- ^ maximal number of generated events
   -> m [ChainSyncEvent a]
 genChainSyncEvents getChainPoint f start lo hi = do
   nbOfEvents <- Gen.word64 $ Range.linear lo hi
@@ -91,7 +96,6 @@ genChainSyncEvents getChainPoint f start lo hi = do
       go n xs | n <= 0 = pure xs
               | otherwise = do
           next <- genChainSyncEvent getChainPoint f
-          Debug.Trace.traceShowM n
           go (n - 1) (cons next xs)
 
 genChainSyncEvent
@@ -107,8 +111,10 @@ genChainSyncEvent getChainPoint f = do
 
     created <- lift genNext
     case created of
-        RollForward y _  -> modify (cons y)
-        RollBackward y _ -> modify (fromList . dropWhile ((y >) . getChainPoint) . toList)
+        RollForward y _  ->
+            modify (cons y)
+        RollBackward y _ ->
+            modify (fromList . dropWhile ((y >) . getChainPoint) . toList)
     pure created
     where
         genRollBackward xs = RollBackward <$> (getChainPoint <$> Gen.element (NE.init xs)) <*> pure C.ChainTipAtGenesis
