@@ -43,7 +43,7 @@ bootstrapIndexers
     :: CliArgs
     -> SidechainEnv
     -> IO ()
-bootstrapIndexers (CliArgs socketPath nodeConfigPath dbPath _ networkId targetAddresses) env = do
+bootstrapIndexers (CliArgs socketPath nodeConfigPath dbPath _ networkId minIndexingDepth targetAddresses) env = do
   let addressUtxoCallback :: State UtxoHandle -> IO ()
       addressUtxoCallback =
           atomically
@@ -73,5 +73,6 @@ bootstrapIndexers (CliArgs socketPath nodeConfigPath dbPath _ networkId targetAd
     socketPath
     networkId
     C.ChainPointAtGenesis
+    minIndexingDepth
     "marconi-sidechain"
     indexers
