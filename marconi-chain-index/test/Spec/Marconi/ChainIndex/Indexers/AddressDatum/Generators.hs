@@ -34,6 +34,8 @@ genTxBodyContentWithPlutusScripts = do
   let txUpdateProposal = C.TxUpdateProposalNone
   let txMintValue = C.TxMintNone
   let txScriptValidity = C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid
+  let txGovernanceActions = C.TxGovernanceActionsNone
+  let txVotes = C.TxVotesNone
 
   pure $
     C.TxBodyContent
@@ -54,6 +56,8 @@ genTxBodyContentWithPlutusScripts = do
       , C.txUpdateProposal
       , C.txMintValue
       , C.txScriptValidity
+      , C.txGovernanceActions
+      , C.txVotes
       }
   where
     -- Copied from cardano-api. Delete when this function is reexported

@@ -45,14 +45,8 @@ instance IO.Exception RollbackException
 
 -- * Orphans
 
-instance IO.Exception C.LedgerStateError
-
 instance IO.Exception C.FoldBlocksError
 deriving instance Show C.FoldBlocksError
-
-instance IO.Exception C.InitialLedgerStateError
-deriving instance Show C.InitialLedgerStateError
-deriving instance Show CS.GenesisConfigError
 
 -- * Block
 
@@ -91,7 +85,7 @@ mkLocalNodeConnectInfo networkId socketPath =
   C.LocalNodeConnectInfo
     { C.localConsensusModeParams = C.CardanoModeParams epochSlots
     , C.localNodeNetworkId = networkId
-    , C.localNodeSocketPath = socketPath
+    , C.localNodeSocketPath = C.File socketPath
     }
   where
     -- This a parameter needed only for the Byron era. Since the Byron
@@ -106,7 +100,7 @@ mkConnectInfo env socketPath =
   C.LocalNodeConnectInfo
     { C.localConsensusModeParams = cardanoModeParams
     , C.localNodeNetworkId = networkId'
-    , C.localNodeSocketPath = socketPath
+    , C.localNodeSocketPath = C.File socketPath
     }
   where
     -- Derive the NetworkId as described in network-magic.md from the

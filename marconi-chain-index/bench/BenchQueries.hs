@@ -216,7 +216,7 @@ waitUntilSynced databaseDir nodeSocketPath = do
           C.LocalNodeConnectInfo
             { C.localConsensusModeParams = C.CardanoModeParams (EpochSlots 21600)
             , C.localNodeNetworkId = C.Testnet $ C.NetworkMagic 1 -- TODO This should be provded as a CLI param
-            , C.localNodeSocketPath = nodeSocketPath
+            , C.localNodeSocketPath = C.File nodeSocketPath
             }
       -- TODO This should change. We should not query the slotNo with SQLite directly, because:
       --   * we're getting "SQLite3 returned ErrorBusy"

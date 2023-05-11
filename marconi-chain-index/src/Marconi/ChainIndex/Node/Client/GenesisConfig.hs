@@ -14,6 +14,7 @@ TODO: If `cardano-api` ever exposes this module, then we should use that.
 -}
 module Marconi.ChainIndex.Node.Client.GenesisConfig where
 
+import Cardano.Api.Byron qualified as C
 import Cardano.Chain.Genesis qualified as Byron
 import Cardano.Chain.Update qualified
 import Cardano.Chain.Update qualified as Byron
@@ -22,6 +23,7 @@ import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Hash.Class qualified
 import Cardano.Crypto.Hashing (decodeAbstractHash)
 import Cardano.Ledger.Alonzo.Genesis qualified as Ledger
+import Cardano.Ledger.BaseTypes qualified as Ledger
 import Cardano.Ledger.Binary (mkVersion)
 import Cardano.Ledger.Conway.Genesis (ConwayGenesis)
 import Cardano.Ledger.Shelley.API qualified as Ledger
@@ -47,6 +49,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Yaml qualified as Yaml
+import Ouroboros.Consensus.Block.Forging qualified as O
 import Ouroboros.Consensus.Cardano qualified as Consensus
 import Ouroboros.Consensus.Cardano.Block qualified as Consensus
 import Ouroboros.Consensus.Cardano.Block qualified as HFC
@@ -510,17 +513,25 @@ readConwayGenesis (GenesisFile file) expectedGenesisHash = do
 initExtLedgerStateVar
   :: GenesisConfig
   -> Ledger.ExtLedgerState (HFC.HardForkBlock (Consensus.CardanoEras Consensus.StandardCrypto))
-initExtLedgerStateVar genesisConfig = Consensus.pInfoInitLedger protocolInfo
+initExtLedgerStateVar genesisConfig = Consensus.pInfoInitLedger $ fst protocolInfo
   where
     protocolInfo = mkProtocolInfoCardano genesisConfig
 
+-- Copied from cardano-api
 mkProtocolInfoCardano
   :: GenesisConfig
-  -> Consensus.ProtocolInfo
-      IO
-      ( HFC.HardForkBlock
-          (Consensus.CardanoEras Consensus.StandardCrypto)
-      )
+  -> ( Consensus.ProtocolInfo
+        ( HFC.HardForkBlock
+            (Consensus.CardanoEras Consensus.StandardCrypto)
+        )
+     , IO
+        [ O.BlockForging
+            IO
+            ( HFC.HardForkBlock
+                (Consensus.CardanoEras Consensus.StandardCrypto)
+            )
+        ]
+     )
 mkProtocolInfoCardano (GenesisCardano dnc byronGenesis shelleyGenesis alonzoGenesis conwayGenesis) =
   Consensus.protocolInfoCardano
     Consensus.ProtocolParamsByron
@@ -528,7 +539,7 @@ mkProtocolInfoCardano (GenesisCardano dnc byronGenesis shelleyGenesis alonzoGene
       , Consensus.byronPbftSignatureThreshold =
           Consensus.PBftSignatureThreshold <$> ncPBftSignatureThreshold dnc
       , Consensus.byronProtocolVersion = ncByronProtocolVersion dnc
-      , Consensus.byronSoftwareVersion = ncByronSoftwareVersion dnc
+      , Consensus.byronSoftwareVersion = C.softwareVersion
       , Consensus.byronLeaderCredentials = Nothing
       , Consensus.byronMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
       }
@@ -538,27 +549,27 @@ mkProtocolInfoCardano (GenesisCardano dnc byronGenesis shelleyGenesis alonzoGene
       , Consensus.shelleyBasedLeaderCredentials = []
       }
     Consensus.ProtocolParamsShelley
-      { Consensus.shelleyProtVer = shelleyProtVer dnc
+      { Consensus.shelleyProtVer = Consensus.ProtVer (Ledger.natVersion @3) 0
       , Consensus.shelleyMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
       }
     Consensus.ProtocolParamsAllegra
-      { Consensus.allegraProtVer = shelleyProtVer dnc
+      { Consensus.allegraProtVer = Consensus.ProtVer (Ledger.natVersion @4) 0
       , Consensus.allegraMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
       }
     Consensus.ProtocolParamsMary
-      { Consensus.maryProtVer = shelleyProtVer dnc
+      { Consensus.maryProtVer = Consensus.ProtVer (Ledger.natVersion @5) 0
       , Consensus.maryMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
       }
     Consensus.ProtocolParamsAlonzo
-      { Consensus.alonzoProtVer = shelleyProtVer dnc
+      { Consensus.alonzoProtVer = Consensus.ProtVer (Ledger.natVersion @7) 0
       , Consensus.alonzoMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
       }
     Consensus.ProtocolParamsBabbage
-      { Consensus.babbageProtVer = shelleyProtVer dnc
+      { Consensus.babbageProtVer = Consensus.ProtVer (Ledger.natVersion @9) 0
       , Consensus.babbageMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
       }
     Consensus.ProtocolParamsConway
-      { Consensus.conwayProtVer = shelleyProtVer dnc
+      { Consensus.conwayProtVer = Consensus.ProtVer (Ledger.natVersion @10) 0
       , Consensus.conwayMaxTxCapacityOverrides = TxLimits.mkOverrides TxLimits.noOverridesMeasure
       }
     (ncByronToShelley dnc)

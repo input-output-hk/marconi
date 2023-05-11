@@ -185,7 +185,20 @@ genTxBodyContentWithTxInsCollateral
   -> Gen (C.TxBodyContent C.BuildTx era)
 genTxBodyContentWithTxInsCollateral era txIns txInsCollateral = do
   txbody <- CGen.genTxBodyContent era
-  txProtocolParams <- C.BuildTxWith . Just <$> CGen.genProtocolParameters
+  initialPP <- CGen.genProtocolParameters C.BabbageEra
+  let txProtocolParams =
+        C.BuildTxWith $
+          Just $
+            initialPP
+              { C.protocolParamUTxOCostPerWord = Just 1
+              , C.protocolParamUTxOCostPerByte = Just 1
+              , C.protocolParamPrices = Just $ C.ExecutionUnitPrices 1 1
+              , C.protocolParamMaxTxExUnits = Just $ C.ExecutionUnits 1 1
+              , C.protocolParamMaxBlockExUnits = Just $ C.ExecutionUnits 1 1
+              , C.protocolParamMaxValueSize = Just 1
+              , C.protocolParamCollateralPercent = Just 1
+              , C.protocolParamMaxCollateralInputs = Just 1
+              }
   pure $
     txbody
       { C.txIns
@@ -215,6 +228,8 @@ genTxBodyContentForPlutusScripts = do
   let txUpdateProposal = C.TxUpdateProposalNone
   let txMintValue = C.TxMintNone
   let txScriptValidity = C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid
+  let txGovernanceActions = C.TxGovernanceActionsNone
+  let txVotes = C.TxVotesNone
 
   pure $
     C.TxBodyContent
@@ -235,6 +250,8 @@ genTxBodyContentForPlutusScripts = do
       , C.txUpdateProposal
       , C.txMintValue
       , C.txScriptValidity
+      , C.txGovernanceActions
+      , C.txVotes
       }
   where
     -- Copied from cardano-api. Delete when this function is reexported

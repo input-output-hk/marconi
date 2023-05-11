@@ -3,7 +3,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 {-# HLINT ignore "Redundant bracket" #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
@@ -11,18 +10,6 @@
 module Spec.Marconi.ChainIndex.Indexers.MintBurn (tests) where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Trace (logError)
-import Cardano.BM.Tracing (defaultConfigStdout)
-import Cardano.Streaming (
-  ChainSyncEventException (NoIntersectionFound),
-  withChainSyncEventEpochNoStream,
- )
-import Cardano.Testnet qualified as TN
-import Control.Concurrent qualified as IO
-import Control.Concurrent.Async qualified as IO
-import Control.Concurrent.STM qualified as IO
-import Control.Exception (catch)
 import Control.Lens (each, traversed, view, (%~), (&), (^.), (^..))
 import Control.Monad (forM, forM_, guard, unless, void)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -37,19 +24,13 @@ import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Word (Word64)
-import GHC.Stack (HasCallStack)
 import Gen.Marconi.ChainIndex.Indexers.MintBurn qualified as Gen
 import Hedgehog (Property, forAll, tripping, (===))
 import Hedgehog qualified as H
-import Hedgehog.Extras.Test qualified as HE
-import Hedgehog.Extras.Test.Base qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Helpers qualified as TN
 import Marconi.ChainIndex.Error (raiseException)
-import Marconi.ChainIndex.Indexers qualified as M
 import Marconi.ChainIndex.Indexers.MintBurn (
-  MintAsset,
   MintBurnHandle (MintBurnHandle),
   StorableQuery (QueryAllMintBurn, QueryByAssetId),
   StorableResult (MintBurnResult),
@@ -57,16 +38,11 @@ import Marconi.ChainIndex.Indexers.MintBurn (
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Logging ()
 import Marconi.Core.Storable qualified as RI
-import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
-import Prettyprinter.Render.Text (renderStrict)
-import Streaming.Prelude qualified as S
-import System.Directory qualified as IO
-import System.FilePath ((</>))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
-integration :: (HasCallStack) => H.Integration () -> H.Property
-integration = H.withTests 1 . H.propertyOnce
+-- integration :: HasCallStack => H.Integration () -> H.Property
+-- integration = H.withTests 1 . H.propertyOnce
 
 {- | Each test case is described beside every top level property
  declaration.
@@ -131,10 +107,10 @@ tests =
         "Event extraction filters out the non-targeted assets"
         "propFilterIncludeTargetAssets"
         propFilterExcludeNonTargetAssets
-    , testPropertyNamed
-        "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
-        "endToEnd"
-        endToEnd
+        -- , testPropertyNamed
+        --     "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
+        --     "endToEnd"
+        --     endToEnd
     ]
 
 {- | This is a sanity-check test that turns a TxBodyContent with mint
@@ -337,109 +313,103 @@ rewind = H.property $ do
       expected = filter isBeforeRollback events
   equalSet expected (MintBurn.fromRows queryResult)
 
+-- See Note [cardano-testnet update] on why the code was commented out.
+
 {- | Start testnet, start mint/burn indexer on it, create a single
  mint event, put it in a transaction and submit it, find the
  generated event passed back through the indexer.
 -}
-endToEnd :: Property
-endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempPath -> do
-  base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  (localNodeConnectInfo, conf, runtime) <-
-    TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempPath
-  let networkId = TN.getNetworkId runtime
-  socketPath <- TN.getPoolSocketPathAbs conf runtime
 
-  -- This is the channel we wait on to know if the event has been indexed
-  indexerChan <- liftIO IO.newChan
-  -- Start indexer
-  liftIO $ do
-    coordinator <- M.initialCoordinator 1 0
-    ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
-    (loop, _indexerMVar) <-
-      M.mintBurnWorker_ 123 (IO.writeChan indexerChan) Nothing coordinator ch (tempPath </> "db.db")
-    void $ IO.async loop
-    -- Receive ChainSyncEvents and pass them on to indexer's channel
-    void $ IO.async $ do
-      let chainPoint = C.ChainPointAtGenesis :: C.ChainPoint
-      c <- defaultConfigStdout
-      withTrace c "marconi" $ \trace ->
-        let indexerWorker = withChainSyncEventEpochNoStream socketPath networkId [chainPoint] $
-              S.mapM_ $
-                \chainSyncEvent -> IO.atomically $ IO.writeTChan ch chainSyncEvent
-            handleException NoIntersectionFound =
-              logError trace $
-                renderStrict $
-                  layoutPretty defaultLayoutOptions $
-                    "No intersection found for chain point" <+> pretty chainPoint <> "."
-         in indexerWorker `catch` handleException :: IO ()
+-- endToEnd :: Property
+-- endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempPath -> do
+--  base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
+--  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempPath
+--  let networkId = TN.getNetworkId runtime
+--  socketPath <- TN.getPoolSocketPathAbs conf runtime
 
-  -- Create & submit transaction
-  pparams <- TN.getProtocolParams @C.BabbageEra localNodeConnectInfo
-  txMintValue <- forAll Gen.genTxMintValue
+--  -- This is the channel we wait on to know if the event has been indexed
+--  indexerChan <- liftIO IO.newChan
+--  -- Start indexer
+--  liftIO $ do
+--    coordinator <- M.initialCoordinator 1 0
+--    ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
+--    (loop, _indexerMVar) <- M.mintBurnWorker_ 123 (IO.writeChan indexerChan) Nothing coordinator ch (tempPath </> "db.db")
+--    void $ IO.async loop
+--    -- Receive ChainSyncEvents and pass them on to indexer's channel
+--    void $ IO.async $ do
+--      let chainPoint = C.ChainPointAtGenesis :: C.ChainPoint
+--      c <- defaultConfigStdout
+--      withTrace c "marconi" $ \trace ->
+--        let indexerWorker = withChainSyncEventStream socketPath networkId [chainPoint] $
+--              S.mapM_ $
+--                \chainSyncEvent -> IO.atomically $ IO.writeTChan ch chainSyncEvent
+--            handleException NoIntersectionFound =
+--              logError trace $
+--                renderStrict $
+--                  layoutPretty defaultLayoutOptions $
+--                    "No intersection found for chain point" <+> pretty chainPoint <> "."
+--         in indexerWorker `catch` handleException :: IO ()
 
-  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <-
-    TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.vkey"
-  genesisSKey :: C.SigningKey C.GenesisUTxOKey <-
-    TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.skey"
-  let paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
-      address :: C.Address C.ShelleyAddr
-      address =
-        C.makeShelleyAddress
-          networkId
-          (C.PaymentCredentialByKey (C.verificationKeyHash paymentKey :: C.Hash C.PaymentKey))
-          C.NoStakeAddress
-          :: C.Address C.ShelleyAddr
+--  -- Create & submit transaction
+--  pparams <- TN.getProtocolParams @C.BabbageEra localNodeConnectInfo
+--  txMintValue <- forAll Gen.genTxMintValue
 
-  value <- H.fromJustM $ getValue txMintValue
-  (txIns, lovelace) <- TN.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+--  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.vkey"
+--  genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.skey"
+--  let paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
+--      address :: C.Address C.ShelleyAddr
+--      address =
+--        C.makeShelleyAddress
+--          networkId
+--          (C.PaymentCredentialByKey (C.verificationKeyHash paymentKey :: C.Hash C.PaymentKey))
+--          C.NoStakeAddress
+--        :: C.Address C.ShelleyAddr
 
-  let keyWitnesses = [C.WitnessPaymentKey $ C.castSigningKey genesisSKey]
-      mkTxOuts lovelace' =
-        [ TN.mkAddressValueTxOut address $
-            C.TxOutValue C.MultiAssetInBabbageEra $
-              C.lovelaceToValue lovelace' <> value
-        ]
-      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-  (feeLovelace, txbc) <-
-    TN.calculateAndUpdateTxFee
-      pparams
-      networkId
-      (length txIns)
-      (length keyWitnesses)
-      (TN.emptyTxBodyContent validityRange pparams)
-        { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
-        , C.txOuts = mkTxOuts 0
-        , C.txProtocolParams = C.BuildTxWith $ Just pparams
-        , C.txMintValue = txMintValue
-        , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra txIns
-        }
-  txBody :: C.TxBody C.BabbageEra <-
-    H.leftFail $
-      C.createAndValidateTransactionBody $
-        txbc
-          { C.txOuts = mkTxOuts $ lovelace - feeLovelace
-          }
-  let keyWitnesses' :: [C.KeyWitness C.BabbageEra]
-      keyWitnesses' = map (C.makeShelleyKeyWitness txBody) keyWitnesses
-  TN.submitTx localNodeConnectInfo $ C.makeSignedTransaction keyWitnesses' txBody
+--  value <- H.fromJustM $ getValue txMintValue
+--  (txIns, lovelace) <- TN.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
 
-  -- Receive event from the indexer, compare the mint that we submitted above with the one we got
-  -- from the indexer.
-  --
-  -- We assume the minted token will be part of 20 first events (ad-hoc number).
-  -- Ugly solution, but it will be changed once indexers support notifications which will replace
-  -- callbacks.
-  indexer :: MintBurn.MintBurnIndexer <-
-    fmap (last . take 20) <$> liftIO $ IO.getChanContents indexerChan
-  MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
-    liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
+--  let keyWitnesses = [C.WitnessPaymentKey $ C.castSigningKey genesisSKey]
+--      mkTxOuts lovelace' = [TN.mkAddressValueTxOut address $ C.TxOutValue C.MultiAssetInBabbageEra $ C.lovelaceToValue lovelace' <> value]
+--      validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+--  (feeLovelace, txbc) <-
+--    TN.calculateAndUpdateTxFee
+--      pparams
+--      networkId
+--      (length txIns)
+--      (length keyWitnesses)
+--      (TN.emptyTxBodyContent validityRange pparams)
+--        { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
+--        , C.txOuts = mkTxOuts 0
+--        , C.txProtocolParams = C.BuildTxWith $ Just pparams
+--        , C.txMintValue = txMintValue
+--        , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra txIns
+--        }
+--  txBody :: C.TxBody C.BabbageEra <-
+--    H.leftFail $
+--      C.createAndValidateTransactionBody $
+--        txbc
+--          { C.txOuts = mkTxOuts $ lovelace - feeLovelace
+--          }
+--  let keyWitnesses' :: [C.KeyWitness C.BabbageEra]
+--      keyWitnesses' = map (C.makeShelleyKeyWitness txBody) keyWitnesses
+--  TN.submitTx localNodeConnectInfo $ C.makeSignedTransaction keyWitnesses' txBody
 
-  let checkEvent event = case MintBurn.txMintEventTxAssets event of
-        [MintBurn.TxMintInfo _txId _txIx gottenMintEvents] ->
-          mintsToPolicyAssets (NonEmpty.toList gottenMintEvents) == getPolicyAssets txMintValue
-        _ -> False
-      retrievedEvents = MintBurn.fromRows txMintRows
-  H.assert $ any checkEvent retrievedEvents
+--  -- Receive event from the indexer, compare the mint that we submitted above with the one we got
+--  -- from the indexer.
+--  --
+--  -- We assume the minted token will be part of 20 first events (ad-hoc number).
+--  -- Ugly solution, but it will be changed once indexers support notifications which will replace
+--  -- callbacks.
+--  indexer :: MintBurn.MintBurnIndexer <- fmap (last . take 20) <$> liftIO $ IO.getChanContents indexerChan
+--  MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
+--    liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
+
+--  let checkEvent event = case MintBurn.txMintEventTxAssets event of
+--        [MintBurn.TxMintInfo _txId _txIx gottenMintEvents] ->
+--          mintsToPolicyAssets (NonEmpty.toList gottenMintEvents) == getPolicyAssets txMintValue
+--        _ -> False
+--      retrievedEvents = MintBurn.fromRows txMintRows
+--  H.assert $ any checkEvent retrievedEvents
 
 propJsonRoundtripTxMintRow :: Property
 propJsonRoundtripTxMintRow = H.property $ do
@@ -602,17 +572,14 @@ getPolicyAssets txMintValue = case txMintValue of
       $ C.valueToList mintedValues
   _ -> []
 
-getValue :: C.TxMintValue C.BuildTx C.BabbageEra -> Maybe C.Value
-getValue = \case
-  C.TxMintValue C.MultiAssetInBabbageEra value (C.BuildTxWith _policyIdToWitnessMap) -> Just value
-  _ -> Nothing
+-- getValue :: C.TxMintValue C.BuildTx C.BabbageEra -> Maybe C.Value
+-- getValue = \case
+--   C.TxMintValue C.MultiAssetInBabbageEra value (C.BuildTxWith _policyIdToWitnessMap) -> Just value
+--   _ -> Nothing
 
-mintsToPolicyAssets :: [MintAsset] -> [(C.PolicyId, C.AssetName, C.Quantity)]
-mintsToPolicyAssets =
-  map
-    ( \mint ->
-        (MintBurn.mintAssetPolicyId mint, MintBurn.mintAssetAssetName mint, MintBurn.mintAssetQuantity mint)
-    )
+-- mintsToPolicyAssets :: [MintAsset] -> [(C.PolicyId, C.AssetName, C.Quantity)]
+-- mintsToPolicyAssets =
+--   map (\mint -> (MintBurn.mintAssetPolicyId mint, MintBurn.mintAssetAssetName mint, MintBurn.mintAssetQuantity mint))
 
 -- | Getting all AssetIds from generated events
 getAssetIds :: [MintBurn.TxMintEvent] -> [(C.PolicyId, C.AssetName)]

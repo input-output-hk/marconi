@@ -335,7 +335,8 @@ foldLedgerStateEvents env initialLedgerStateHistory validationMode = loop initia
 
 getEnvAndInitialLedgerStateHistory :: FilePath -> IO (C.Env, LedgerStateHistory)
 getEnvAndInitialLedgerStateHistory configPath = do
-  (env, initialLedgerState) <- either IO.throw pure =<< (runExceptT $ C.initialLedgerState configPath)
+  (env, initialLedgerState) <-
+    either IO.throw pure =<< (runExceptT $ C.initialLedgerState $ C.File configPath)
   let initialLedgerStateHistory = singletonLedgerStateHistory initialLedgerState
   return (env, initialLedgerStateHistory)
 
