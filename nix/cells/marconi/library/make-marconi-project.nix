@@ -109,7 +109,6 @@ let
 
             # Broken due to warnings, unclear why the setting that fixes this for the build doesn't work here.
             iohk-monitoring.doHaddock = false;
-            cardano-wallet.doHaddock = false;
 
             # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
             cardano-streaming.ghcOptions = [ "-Werror" ];
