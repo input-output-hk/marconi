@@ -470,7 +470,7 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
 
     bufferIsFull c = c ^. buffer . bufferLength >= c ^. buffer . capacity
 
-    coordnatorHandleEvent c (RollForward bim ct)
+    coordinatorHandleEvent c (RollForward bim ct)
         | bufferIsFull c = case c ^. buffer . content of
             buff Seq.:|> event' -> do
                 let c' = c & buffer . content .~ (bim Seq.:<| buff)
@@ -481,7 +481,7 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
             let c' = c & buffer . content %~ (bim Seq.:<|)
                        & buffer . bufferLength +~ 1
             pure (c', Nothing)
-    coordnatorHandleEvent c e@(RollBackward cp _) = case c ^. buffer . content of
+    coordinatorHandleEvent c e@(RollBackward cp _) = case c ^. buffer . content of
             buff@(_ Seq.:|> event') -> let
                 content' = Seq.dropWhileL (blockAfterChainPoint cp) buff
                 c' = c & buffer . content .~ content'
@@ -494,7 +494,7 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
     step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
       waitQSemN _barrier _indexerCount
       indexersHealthCheck c
-      (c', mevent) <- coordnatorHandleEvent c event
+      (c', mevent) <- coordinatorHandleEvent c event
       case mevent of
           Nothing -> do
               signalQSemN _barrier _indexerCount

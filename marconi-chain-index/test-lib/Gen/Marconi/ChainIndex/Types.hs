@@ -79,7 +79,7 @@ validByteSizeLength = 32
 genChainSyncEvents
   :: Hedgehog.MonadGen m
   => (a -> C.ChainPoint)
-  -- ^ exctract the chainpoint from the event
+  -- ^ extract the chainpoint from the event
   -> (a -> m a)
   -- ^ generator for an event based on the last event
   -> a
