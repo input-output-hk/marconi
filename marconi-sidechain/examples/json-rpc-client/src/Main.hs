@@ -34,7 +34,7 @@ main = do
   msg <- rpcEcho "marconi client calling ???" --  return the echo message
   addresses <- rpcTargets ""                  --  get the targetAddresss
   --  get utxos for this address
-  utxos <- rpcUtxos $ GetUtxosFromAddressParams bech32Address Nothing
+  utxos <- rpcUtxos $ GetUtxosFromAddressParams bech32Address Nothing  maxBound
   printResults msg
   printResults addresses
   printResults utxos

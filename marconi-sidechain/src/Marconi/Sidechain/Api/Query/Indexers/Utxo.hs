@@ -2,7 +2,6 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo
     ( initializeEnv
     , currentSyncedBlock
     , findByAddress
-    , findByBech32Address
     , findByBech32AddressAtSlot
     , reportQueryAddresses
     , Utxo.UtxoIndexer
@@ -12,6 +11,7 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo
     ) where
 
 import Cardano.Api qualified as C
+import Control.Arrow (left)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, tryReadTMVar)
 import Control.Lens ((^.))
@@ -22,6 +22,7 @@ import Data.Functor ((<&>))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text, unpack)
 import GHC.Word (Word64)
+import Marconi.ChainIndex.Error (IndexerError)
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
 import Marconi.ChainIndex.Indexers.Utxo (address, datum, datumHash, txId, txIx, urBlockHash, urSlotNo, urUtxo)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
@@ -49,10 +50,9 @@ initializeEnv targetAddresses = do
 --  Address conversion error from Bech32 may occur
 findByAddress
     :: AddressUtxoIndexerEnv -- ^ Query run time environment
-    -> C.AddressAny -- ^ Cardano address to query
-    -> Maybe C.SlotNo -- ^ The upper slot number we want to query
+    -> Utxo.QueryUtxoByAddress
     -> IO (Either QueryExceptions GetUtxosFromAddressResult)
-findByAddress env addr slot = withQueryAction env (Utxo.UtxoByAddress addr slot)
+findByAddress env = withQueryAction env . Utxo.QueryWrapper
 
 -- | Retrieve the current synced point of the utxo indexer
 currentSyncedBlock
@@ -71,33 +71,50 @@ currentSyncedBlock env = do
                   _other                              -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncPoint
          Nothing -> pure . Right $ GetCurrentSyncedBlockResult C.ChainPointAtGenesis
 
-
--- | Retrieve Utxos associated with the given address
--- We return an empty list if no address is not found
-findByBech32Address
-    :: AddressUtxoIndexerEnv -- ^ Query run time environment
-    -> Text -- ^ Bech32 Address
-    -> IO (Either QueryExceptions GetUtxosFromAddressResult)  -- ^ Plutus address conversion error may occur
-findByBech32Address env addressText
-    = findByBech32AddressAtSlot env addressText Nothing
-
 -- | Retrieve Utxos associated with the given address
 -- We return an empty list if no address is not found
 findByBech32AddressAtSlot
     :: AddressUtxoIndexerEnv -- ^ Query run time environment
     -> Text -- ^ Bech32 Address
-    -> Maybe Word64 -- ^ Slot number to look at
+    -> Word64 -- ^ slotNo upper bound query
+    -> Maybe Word64 -- ^ slotNo lower bound query
     -> IO (Either QueryExceptions GetUtxosFromAddressResult) -- ^ Plutus address conversion error may occur
-findByBech32AddressAtSlot env addressText slotWord
+findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo
     = let
 
         toQueryExceptions e = QueryError (unpack  addressText <> " generated error: " <> show e)
 
-        queryAtAddress addr = findByAddress env addr (fromIntegral <$> slotWord)
+        intervalWrapper :: Maybe C.SlotNo -> C.SlotNo -> Either QueryExceptions (Utxo.Interval C.SlotNo)
+        intervalWrapper s s' =
 
-    in either (pure . Left) queryAtAddress
-        $ bimap toQueryExceptions C.toAddressAny
-        $ C.deserialiseFromBech32 C.AsShelleyAddress addressText
+          let
+            f :: IndexerError -> QueryExceptions
+            f = QueryError . show
+
+          in left f (Utxo.interval s s')
+
+        slotInterval :: Either QueryExceptions (Utxo.Interval C.SlotNo)
+        slotInterval = intervalWrapper
+             (C.SlotNo <$> lowerBoundSlotNo)
+             (C.SlotNo upperBoundSlotNo)
+
+        utxoQuery :: C.AddressAny -> Utxo.Interval C.SlotNo  -> Utxo.QueryUtxoByAddress
+        utxoQuery addr = Utxo.QueryUtxoByAddress addr
+
+        queryAtAddressAndSlot :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
+        queryAtAddressAndSlot = findByAddress env
+
+        query :: Either QueryExceptions Utxo.QueryUtxoByAddress
+        query = do
+          si <- slotInterval
+          addr <-
+            bimap toQueryExceptions C.toAddressAny
+            $ C.deserialiseFromBech32 C.AsShelleyAddress addressText
+          pure $ utxoQuery addr si
+
+      in case query of
+           Right q -> queryAtAddressAndSlot q
+           Left e  -> pure $ Left e
 
 -- | Execute the query function
 -- We must stop the utxo inserts before doing the query

@@ -67,9 +67,8 @@ queryTargetAddressTest = property $ do
     . traverse (\addr ->
         fmap unAddressUtxosResult <$> AddressUtxoIndexer.findByAddress
             (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
-            addr
-            Nothing)
-    . Set.toList . Set.fromList  -- required to remove the potential duplicate addresses
+            (Utxo.QueryUtxoByAddress addr (Utxo.LessThanOrEqual $ C.SlotNo maxBound) ))
+    . Set.toList . Set.fromList  -- remove the potential duplicate addresses
     . fmap Utxo._address
     . concatMap (Set.toList . Utxo.ueUtxos)
     $ events

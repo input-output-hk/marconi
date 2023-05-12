@@ -103,6 +103,7 @@ propJSONRountripGetUtxosFromAddressParams = property $ do
     r <- forAll $ GetUtxosFromAddressParams
             <$> Gen.string (Range.linear 1 10) Gen.alphaNum
             <*> Gen.maybe (Gen.word64 (Range.linear 1 100))
+            <*> Gen.word64 (Range.linear 101 200)
     tripping r Aeson.encode Aeson.decode
 
 propJSONRountripGetUtxosFromAddressResult :: Property

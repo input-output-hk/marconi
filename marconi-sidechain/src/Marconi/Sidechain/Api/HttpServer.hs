@@ -22,7 +22,7 @@ import Marconi.Sidechain.Api.Routes (API, GetCurrentSyncedBlockResult, GetEpochN
                                      GetEpochStakePoolDelegationResult,
                                      GetTxsBurningAssetIdParams (assetName, mintBurnSlot, policyId),
                                      GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
-                                     GetUtxosFromAddressParams (queryAddress, queryUnspentAtSlot, queryUnspentAtSlot),
+                                     GetUtxosFromAddressParams (queryAddress, queryCreatedAfterSlotNo, queryUnspentBeforeSlotNo),
                                      GetUtxosFromAddressResult, JsonRpcAPI, RestAPI)
 import Marconi.Sidechain.Api.Types (QueryExceptions, SidechainEnv, sidechainAddressUtxoIndexer,
                                     sidechainEnvHttpSettings, sidechainEnvIndexers)
@@ -114,7 +114,8 @@ getAddressUtxoHandler env query = liftIO $
         Q.Utxo.findByBech32AddressAtSlot
             (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
             (pack $ queryAddress query)
-            (queryUnspentAtSlot query)
+            (queryUnspentBeforeSlotNo query)
+            (queryCreatedAfterSlotNo query)
 
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler

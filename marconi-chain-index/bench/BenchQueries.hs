@@ -47,7 +47,8 @@ import Database.SQLite.Simple.ToRow (ToRow)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
-import Marconi.ChainIndex.Indexers.Utxo (StorableQuery (UtxoByAddress), StorableResult (UtxoResult, getUtxoResult),
+import Marconi.ChainIndex.Indexers.Utxo (Interval (LessThanOrEqual), QueryUtxoByAddress (QueryUtxoByAddress),
+                                         StorableQuery (QueryWrapper), StorableResult (UtxoResult, getUtxoResult),
                                          UtxoHandle, UtxoIndexer)
 import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth))
 import Marconi.Core.Storable (QueryInterval (QEverything))
@@ -140,7 +141,10 @@ tests databaseDir indexerTVar = do
             Storable.query @UtxoHandle
                 QEverything
                 utxoIndexer
-                (UtxoByAddress addressWithMostUtxos Nothing)
+                . QueryWrapper
+                . QueryUtxoByAddress addressWithMostUtxos
+                . LessThanOrEqual
+                $ C.SlotNo 2000000 -- maxBound will create SQL.Integer overflow, see PLT 5937
 
     let countRows = \case
             UtxoResult rows -> length rows
