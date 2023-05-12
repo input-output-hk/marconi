@@ -56,6 +56,7 @@ library
   exposed-modules:
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Experimental.Indexers.Utxo
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
     Marconi.ChainIndex.Indexers.Datum
@@ -178,6 +179,7 @@ library marconi-chain-index-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
+    Gen.Marconi.ChainIndex.Experimental.Indexers.Utxo
     Gen.Marconi.ChainIndex.Indexers.MintBurn
     Gen.Marconi.ChainIndex.Indexers.Utxo
     Gen.Marconi.ChainIndex.Mockchain
@@ -274,6 +276,8 @@ test-suite marconi-chain-index-test
   hs-source-dirs: test
   other-modules:
     Spec.Marconi.ChainIndex.CLI
+    Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo
+    Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo.UtxoIndex
     Spec.Marconi.ChainIndex.Indexers.AddressDatum
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent
@@ -399,6 +403,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , hedgehog
     , hedgehog-extras
     , lens
+    , mtl
     , optparse-applicative
     , postgresql-simple
     , prettyprinter

@@ -2,6 +2,7 @@ import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.QuickCheck (testProperty, withMaxSuccess)
 
 import Marconi.Core.Model qualified as Ix
+import Marconi.Core.Spec.Experiment qualified as E
 import Marconi.Core.Spec.Sqlite qualified as S
 import Marconi.Core.Spec.TracedSqlite qualified as TS
 import Marconi.Core.Spec.VSplit qualified as V
@@ -9,7 +10,7 @@ import Marconi.Core.Spec.VSqlite qualified as VS
 import Marconi.Core.Trace qualified as Ix
 
 tests :: TestTree
-tests = testGroup "Everything" [ indexTests, traceTests ]
+tests = testGroup "Everything" [ indexTests, traceTests, experimentTests ]
 
 indexTests :: TestTree
 indexTests = testGroup "Index" [ ixProperties, sProperties, viProperties, vsProperties
@@ -17,6 +18,43 @@ indexTests = testGroup "Index" [ ixProperties, sProperties, viProperties, vsProp
 
 traceTests :: TestTree
 traceTests = testGroup "Trace" [ traceModelProperties, traceIndexerProperties ]
+
+experimentTests :: TestTree
+experimentTests = testGroup "Experiment"
+    [ testGroup "Indexing"
+        [ E.indexingTestGroup "ListIndexer" E.listIndexerRunner
+        , E.indexingTestGroup "SQLiteIndexer" E.sqliteIndexerRunner
+        , E.indexingTestGroup "MixedIndexer - low memory" E.mixedLowMemoryIndexerRunner
+        , E.indexingTestGroup "MixedIndexer - high memory" E.mixedHighMemoryIndexerRunner
+        , E.indexingTestGroup "WithTracer" $ E.withTracerRunner E.listIndexerRunner
+        , E.indexingTestGroup "Coordinator" $ E.coordinatorIndexerRunner E.listIndexerRunner
+        ]
+    , E.cacheTestGroup
+    , testGroup "WithDelay"
+        [ E.delayTestGroup "ListIndexer" E.listIndexerRunner
+        , E.delayTestGroup "SQLiteIndexer" E.sqliteIndexerRunner
+        ]
+    , testGroup "WithTransform"
+        [ E.withTransformTest
+        ]
+    , testGroup "WithAggregate"
+        [ E.withAggregateTest
+        ]
+    , testGroup "Performance"
+        [ E.indexingPerformanceTest "ListIndexer" E.listIndexerRunner
+        , E.indexingPerformanceTest "MixedIndexer" E.mixedHighMemoryIndexerRunner
+        ]
+    , testGroup "Error handling"
+        [ E.stopCoordinatorTest  E.listIndexerRunner
+        ]
+    , testGroup "Resuming"
+        [ E.resumeSQLiteLastSyncTest E.sqliteIndexerRunner
+        , E.resumeMixedLastSyncTest E.mixedNoMemoryIndexerRunner
+        ]
+    , testGroup "Configuration"
+        [ E.memorySizeUpdateTest
+        ]
+    ]
 
 traceModelProperties :: TestTree
 traceModelProperties = testGroup "Model traces"
