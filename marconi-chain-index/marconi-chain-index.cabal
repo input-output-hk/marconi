@@ -276,9 +276,9 @@ test-suite marconi-chain-index-test
   hs-source-dirs: test
   other-modules:
     Spec.Marconi.ChainIndex.CLI
+    Spec.Marconi.ChainIndex.Coordinator
     Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo
     Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo.UtxoIndex
-    Spec.Marconi.ChainIndex.Coordinator
     Spec.Marconi.ChainIndex.Indexers.AddressDatum
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent
