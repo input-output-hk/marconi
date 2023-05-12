@@ -157,7 +157,7 @@ allqueryUtxosShouldBeUnspent = property $ do
     addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
     addressQueries
       = List.nub
-      . fmap (Utxo.QueryWrapper
+      . fmap (Utxo.QueryUtxoByAddressWrapper
               . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual $ C.SlotNo 20000) --  maxBound will overflow. See TODO below
               . Utxo._address)
       . concatMap (Set.toList . Utxo.ueUtxos)
@@ -219,7 +219,7 @@ propTxInWhenPhase2ValidationFails = property $ do
           -- Note: Post transaction balancing, C.TxIns of Spent,
           -- are a subset of of the Collateral TxIns for the same reason as previous note
           -- empty list of computedTxis is a valid subset of collateral txins
-          Hedgehog.assert $ all (== True) [u `elem` ins | u <- computedTxins]
+          Hedgehog.assert $ and [u `elem` ins | u <- computedTxins]
       -- -- we should only return txOut collateral
 
 {-|
@@ -607,4 +607,4 @@ mkUtxoQueries events slotInterval =
       . concatMap (\e -> Utxo.ueUtxos e ^.. folded . Utxo.address)
       $ events
   in
-    fmap (Utxo.QueryWrapper . flip Utxo.QueryUtxoByAddress slotInterval) qAddresses
+    fmap (Utxo.QueryUtxoByAddressWrapper . flip Utxo.QueryUtxoByAddress slotInterval) qAddresses

@@ -52,7 +52,7 @@ findByAddress
     :: AddressUtxoIndexerEnv -- ^ Query run time environment
     -> Utxo.QueryUtxoByAddress
     -> IO (Either QueryExceptions GetUtxosFromAddressResult)
-findByAddress env = withQueryAction env . Utxo.QueryWrapper
+findByAddress env = withQueryAction env . Utxo.QueryUtxoByAddressWrapper
 
 -- | Retrieve the current synced point of the utxo indexer
 currentSyncedBlock

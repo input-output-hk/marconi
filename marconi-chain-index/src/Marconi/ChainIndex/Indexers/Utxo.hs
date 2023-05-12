@@ -144,7 +144,7 @@ data QueryUtxoByAddress = QueryUtxoByAddress !C.AddressAny !(Interval C.SlotNo)
   deriving (Show, Eq)
 
 data instance StorableQuery UtxoHandle
-    = QueryWrapper QueryUtxoByAddress
+    = QueryUtxoByAddressWrapper QueryUtxoByAddress
     | LastSyncPoint
     deriving (Show, Eq)
 
@@ -386,13 +386,13 @@ open dbPath (Depth k) isToVacuume = do
                       , value BLOB
                       , inlineScript BLOB
                       , inlineScriptHash BLOB
-                      , slotNo NUMERIC NOT NULL
+                      , slotNo INT NOT NULL
                       , blockHash BLOB NOT NULL)|]
 
     lift $ SQL.execute_ c [r|CREATE TABLE IF NOT EXISTS spent
                       ( txId TEXT NOT NULL
                       , txIx INT NOT NULL
-                      , slotNo NUMERIC NOT NULL
+                      , slotNo INT NOT NULL
                       , blockHash BLOB NOT NULL)|]
 
     lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS
@@ -483,7 +483,7 @@ instance Buffered UtxoHandle where
            LIMIT ?|] (SQL.Only sz) :: IO [[Word64]]
 
     -- Take the slot number of the sz'th slot
-    let sn::Word64 = if null sns
+    let sn = if null sns
                 then 0
                 else head . last $ take sz sns
 
@@ -650,7 +650,7 @@ instance Queryable UtxoHandle where
     -> StorableQuery UtxoHandle
     -> StorableMonad UtxoHandle (StorableResult UtxoHandle)
 
-  queryStorage qi es (UtxoHandle c _ _) (QueryWrapper q@(QueryUtxoByAddress addr slotInterval)) =
+  queryStorage qi es (UtxoHandle c _ _) (QueryUtxoByAddressWrapper q@(QueryUtxoByAddress addr slotInterval)) =
     let
       eventAtQuery :: StorableEvent UtxoHandle -- query in-memory
       eventAtQuery = queryBuffer qi q es

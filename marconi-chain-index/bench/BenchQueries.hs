@@ -48,8 +48,8 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.Utxo (Interval (LessThanOrEqual), QueryUtxoByAddress (QueryUtxoByAddress),
-                                         StorableQuery (QueryWrapper), StorableResult (UtxoResult, getUtxoResult),
-                                         UtxoHandle, UtxoIndexer)
+                                         StorableQuery (QueryUtxoByAddressWrapper),
+                                         StorableResult (UtxoResult, getUtxoResult), UtxoHandle, UtxoIndexer)
 import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth))
 import Marconi.Core.Storable (QueryInterval (QEverything))
 import Marconi.Core.Storable qualified as Storable
@@ -141,7 +141,7 @@ tests databaseDir indexerTVar = do
             Storable.query @UtxoHandle
                 QEverything
                 utxoIndexer
-                . QueryWrapper
+                . QueryUtxoByAddressWrapper
                 . QueryUtxoByAddress addressWithMostUtxos
                 . LessThanOrEqual
                 $ C.SlotNo 2000000 -- maxBound will create SQL.Integer overflow, see PLT 5937
