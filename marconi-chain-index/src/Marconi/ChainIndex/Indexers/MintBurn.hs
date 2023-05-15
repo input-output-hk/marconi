@@ -293,6 +293,12 @@ data instance RI.StorableQuery MintBurnHandle
   | QueryAllMintBurn (Maybe C.SlotNo)
   -- ^ Query all transactions that minted 'AssetId's until an upper bound slot in the blockchain. If
   -- the upper bound slot is 'Nothing', then we return everything.
+  | QueryBurnByAssetId C.PolicyId C.AssetName (Maybe C.SlotNo)
+  -- ^ Query all transactions that burned a specific 'AssetId' until an upper bound slot in the
+  -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
+  | QueryAllBurn (Maybe C.SlotNo)
+  -- ^ Query all transactions that burned 'AssetId's until an upper bound slot in the blockchain. If
+  -- the upper bound slot is 'Nothing', then we return everything.
   deriving (Show)
 
 newtype instance RI.StorableResult MintBurnHandle
@@ -300,49 +306,78 @@ newtype instance RI.StorableResult MintBurnHandle
   deriving (Show)
 
 instance RI.Queryable MintBurnHandle where
-  queryStorage memoryEvents (MintBurnHandle sqlCon _k) query
-      = liftSQLError CantQueryIndexer
-      $ case query of
-        QueryAllMintBurn slotNo -> do
-            let slotCondition =
-                    case slotNo of
-                      Nothing -> ([], [])
-                      Just s  -> (["slotNo <= :slotNo"] , [":slotNo" := s])
-                conditions = slotCondition
-            toResult slotNo <$> queryStoredTxMintEvents sqlCon conditions
-        QueryByAssetId policyId assetName slotNo -> do
-            let slotCondition =
-                    case slotNo of
-                      Nothing -> ([], [])
-                      Just s  -> (["slotNo <= :slotNo"] , [":slotNo" := s])
-            let assetIdConditions =
-                    ( ["policyId = :policyId AND assetName = :assetName"]
-                    , [":policyId" := policyId, ":assetName" := assetName]
-                    )
-                conditions = assetIdConditions <> slotCondition
-            toResult slotNo <$> queryStoredTxMintEvents sqlCon conditions
-        where
-          toResult querySlotNo storedEvents = MintBurnResult $ do
-            let memoryEventsList = fmap coerce $ toList memoryEvents
-            let filteredMemoryEvents =
-                    case querySlotNo of
-                      Nothing -> memoryEventsList
-                      Just sn -> filter (\e -> txMintEventSlotNo e <= sn) memoryEventsList
-            TxMintEvent slotNo blockHeaderHash txAssets <- filteredMemoryEvents <> storedEvents
-            (txId, mintAssets) <- NE.toList txAssets
-            MintAsset policyId assetName quantity redeemerIx redeemerData <- NE.toList mintAssets
-            pure $
-                TxMintRow
-                    slotNo
-                    blockHeaderHash
-                    txId
-                    policyId
-                    assetName
-                    quantity
-                    redeemerIx
-                    redeemerData
+  queryStorage memoryEvents (MintBurnHandle sqlCon _k) query = liftSQLError CantQueryIndexer $ do
+    storedEvents <- queryStoredTxMintEvents sqlCon $ mkSqliteConditions query
+    pure $ MintBurnResult $ do
+      TxMintEvent slotNo blockHeaderHash txAssets <- filteredMemoryEvents <> storedEvents
+      (txId, mintAssets) <- NE.toList txAssets
+      MintAsset policyId assetName quantity redeemerIx redeemerData <- NE.toList mintAssets
+      pure $ TxMintRow
+        slotNo
+        blockHeaderHash
+        txId
+        policyId
+        assetName
+        quantity
+        redeemerIx
+        redeemerData
 
+    where
+      filteredMemoryEvents :: [TxMintEvent]
+      filteredMemoryEvents = coerce $ fromRows $ filter rowFilter $ toRows =<< (coerce $ toList memoryEvents)
 
+      -- Applies every predicate to row, when all are True, then result is True.
+      rowFilter :: TxMintRow -> Bool
+      rowFilter row = let filters = mkRowPredicates query in all ($ row) filters
+
+      -- * Filter in-memory events
+
+      upToSlot :: Maybe C.SlotNo -> [TxMintRow -> Bool]
+      upToSlot = \case
+        Just slotNo -> [\row -> _txMintRowSlotNo row <= slotNo]
+        Nothing     -> []
+
+      matchesAssetId :: C.PolicyId -> C.AssetName -> TxMintRow -> Bool
+      matchesAssetId policyId assetName row =
+        _txMintRowPolicyId row == policyId && _txMintRowAssetName row == assetName
+
+      isBurn :: TxMintRow -> Bool
+      isBurn row = _txMintRowQuantity row < 0
+
+      mkRowPredicates :: RI.StorableQuery MintBurnHandle -> [TxMintRow -> Bool]
+      mkRowPredicates = \case
+        QueryAllMintBurn maybeSlotNo -> upToSlot maybeSlotNo
+        QueryAllBurn     maybeSlotNo -> upToSlot maybeSlotNo <> [isBurn]
+        QueryByAssetId policyId assetName maybeSlotNo     -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName]
+        QueryBurnByAssetId policyId assetName maybeSlotNo -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName, isBurn]
+
+      -- * Filter sqlite events
+
+      mkSqliteConditions :: RI.StorableQuery MintBurnHandle -> ([SQL.Query], [NamedParam])
+      mkSqliteConditions = \case
+        QueryAllMintBurn slotNo ->
+          mkUpperBoundCondition slotNo
+        QueryByAssetId policyId assetName slotNo ->
+          mkUpperBoundCondition slotNo
+          <> mkAssetIdCondition policyId assetName
+        QueryAllBurn slotNo ->
+          mkUpperBoundCondition slotNo
+          <> (["quantity < 0"], [])
+        QueryBurnByAssetId policyId assetName slotNo ->
+          mkUpperBoundCondition slotNo
+          <> mkAssetIdCondition policyId assetName
+          <> (["quantity < 0"], [])
+
+      mkAssetIdCondition :: C.PolicyId -> C.AssetName -> ([SQL.Query], [NamedParam])
+      mkAssetIdCondition policyId assetName =
+        ( ["policyId = :policyId", "assetName = :assetName"]
+        , [":policyId" := policyId, ":assetName" := assetName]
+        )
+
+      mkUpperBoundCondition :: Maybe C.SlotNo -> ([SQL.Query], [NamedParam])
+      mkUpperBoundCondition = \case
+        Nothing -> ([], [])
+        Just s  -> (["slotNo <= :slotNo"] , [":slotNo" := s])
 
 instance RI.HasPoint (RI.StorableEvent MintBurnHandle) C.ChainPoint where
   getPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
