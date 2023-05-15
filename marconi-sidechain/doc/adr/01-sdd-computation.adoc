@@ -31,26 +31,24 @@ TBD
 
 We will describe all the potential and discussed solutions to index the SDD of each epoch in the following sections.
 
-As a summary, we provide the following caracteristics table and indicate how each solution responds to them.
-This assessment is measured in regards to two components: Cardano Node and Marconi.
+As a summary, we provide the following characteristics table and indicate how each solution responds to them.
+This assessment is measured in regard to two components: Cardano Node and Marconi.
 
-
-
-.Comparison of solutions using a list of caracteristics
+.Comparison of solutions using a list of characteristics
 [cols="1,1,1,1,1"]
 |===
-|Caracteristics | Marconi LedgerState computation | Read LedgerEvents from node | SDD using N2C | Marconi as a node
+|Characteristics | Marconi LedgerState computation | Read LedgerEvents from node | SDD using N2C | Marconi as a node
 
 |Number of LedgerState computations | 2 | 1 | 1 | 1
 |Initial node resync required | No | Yes | Yes | Yes
-|Required node resync after Marconi logic change | No | No | Yes | Yes
+|Required node resync after Marconi logic change | No | No | Yes | No
 |Change to cardano-node | No | Yes | No | No
 |===
 
-.Description of the caracteristics
+.Description of the characteristics
 [cols="1,1"]
 |===
-|Caracteristics | Description
+|Characteristics | Description
 
 |Number of LedgerState computations
 |As it suggest, corresponds to total number of independent computations of the LedgerState.
@@ -72,10 +70,6 @@ For more details, read the sections below.
 
 This is the approach that `cardano-db-sync` currently uses to compute the SDD for each epoch.
 
-A container diagram of this solution would look like:
-
-image::http://www.plantuml.com/plantuml/png/jL0_Q-Cm5D_zANIU4ZZ7SDnqKovkbz8w9g5pKAJNM4H_XFJKr9H-zqfAunfAe4ityNx_jVH87GObYrz2Cnaua1xH-dzrxUXfSH3OXttmu9ZH21eNpAZQIggJflB8fTZNpT-gIwV7X_jQKO_WucdNH0KL6jp2_eZ_3LXf1fL4EQ1e3OUPj-OtARVTcl0HB-VajIZ6FZEd8sK3aWuaQShv1DlR1AwaOKVIESC34_fmeQr4L6NvcHRBgg05emYUdEAMCXxRFosnpg1XHaRDn5lHD5D4piUhye83woCQYSbwPEIAJu2iZywPKVb1CmBFeD6VOvehCQDf-eZBc_otzXmonJyRCIfbzhtRhjjgqpNZt0dTNHdzjKtnLXJRmIEetUqBpY0h6-eurOPem9Dnnp4Xe-wx7xe4pOEIxm00[]
-
 Here is a general outline of the computation of the `LedgerState`:
 
 . At the start of `marconi-sidechain`, initialize the `LedgerState` (or `NewEpochState`) given the node genesis file
@@ -84,7 +78,11 @@ Here is a general outline of the computation of the `LedgerState`:
 . Compute the SDD from the new LedgerState and store in the database
 . Repeat from step 2
 
-While this approach is the "easiest" to implement, it suffers from major drawbacks such as:
+A container diagram of this solution would look like:
+
+image::http://www.plantuml.com/plantuml/png/jL0_Q-Cm5D_zANIU4ZZ7SDnqKovkbz8w9g5pKAJNM4H_XFJKr9H-zqfAunfAe4ityNx_jVH87GObYrz2Cnaua1xH-dzrxUXfSH3OXttmu9ZH21eNpAZQIggJflB8fTZNpT-gIwV7X_jQKO_WucdNH0KL6jp2_eZ_3LXf1fL4EQ1e3OUPj-OtARVTcl0HB-VajIZ6FZEd8sK3aWuaQShv1DlR1AwaOKVIESC34_fmeQr4L6NvcHRBgg05emYUdEAMCXxRFosnpg1XHaRDn5lHD5D4piUhye83woCQYSbwPEIAJu2iZywPKVb1CmBFeD6VOvehCQDf-eZBc_otzXmonJyRCIfbzhtRhjjgqpNZt0dTNHdzjKtnLXJRmIEetUqBpY0h6-eurOPem9Dnnp4Xe-wx7xe4pOEIxm00[]
+
+While this approach is the "easiest" to implement, it suffers from major drawbacks, such as:
 
 * adding an additional 10-16GB of RAM in `marconi-sidechain` just from computing the `LedgerState`
 * slowing down indexing.
@@ -130,12 +128,12 @@ A container diagram of this solution would look like:
 
 image::http://www.plantuml.com/plantuml/png/jL7DRfmm4Bxp52ud8fL5gdhgAGsRIvKIb5NFaR67nOf_B7ieHLNVlRPtbmLfLVMI0vAPxsU-cRdtI1sEIcOVX6Pov406HEk_L9MZq-ueS1YxqODZHYDet36ZAYkfZfhI8vUYg-hFPHjBFxu_LOfw11TAhtLGKA71xUox-E_1IZEhA4eDiiPmABmr7qb-Q9y9N_3yZlpEiYLFuNIWl82aCucQ_6w5TJQ23zAmDz8wmqSczF52Un11bUGdMWYhHYqOHV1a2hFaeTXyQeXr1WqpCcYktlkkqC7d2VWHtEDFqBZl0d_rxmF_qk4MTN82OUDPA1fN9m9uVfLUS613GCzc2oEDtGEo8QHDZDBFcX58hK_HwoNwLdqxZmFAjt6Mvl48bpVvQcsqZrzFUpf1VtPVqQ-3C2fbYlFjyDoKBsszR7v5T__O_sQ8Frbsc3s2UdtyXGKaNKqTfzeG3JWPzxRu9zJzxsNlGVDHoRy0[]
 
-The benefits:
+To summarize, the benefits are:
 
 * removal of the additional 10-16GB of memory needed to compute the `LedgerState` in `marconi-sidechain`
 * enables any chain-indexers (`cardano-db-sync`, `Kupo`, etc) to read the stored `LedgerEvent` in order to index various information like SDD and rewards without using a large amount of memory
 
-The drawbacks:
+and the drawbacks are:
 
 * requires a change to `cardano-node` in order to store those LedgerEvents. This implies lots of discussions with the `cardano-node` team to accept such a change.
 * needs the SPO to resync the relay node from scratch in order to save the `LedgerEvent` on disk. However, such a resync will only be required once, even after an upgrade on `marconi-sidechain`.
@@ -157,12 +155,12 @@ As a direct consequence of this solution, the user would be required to delete t
 
 The container diagram is the same as the link:#compute-sdd-by-tracking-the-ledgerstate[Compute SDD by tracking the LedgerState] solution.
 
-The benefits:
+To summarize, the benefits are:
 
 * no change to `cardano-node` are required
 * uses the existing infrastructure to get the required information
 
-The drawbacks:
+and the drawbacks:
 
 * needs the SPO to resync the relay node from scratch
 * any change in the indexing logic of `marconi-sidechain` would require resyncing from scratch the local node (thus deleting the node database)
@@ -172,27 +170,27 @@ The drawbacks:
 === 4. Transform `marconi-sidechain` to a Cardano relay node
 
 `marconi-sidechain` could be changed to become _a_ Cardano node and replace the SPO's relay node.
-Then, it would have the same functionality as a relay (using node-to-node protocol), but also index
-the necessary for the Sidechain team.
+Then, it would have the same functionality as a relay (using node-to-node protocol), but also index the necessary data for the Sidechain team.
 
-Ultimately, the `marconi-sidechain` process would run two computations in parallel: the N2N protocol
-and the indexers.
-Then, we would need to find a way to get the `LedgerState` that's computed by the node's consensus
-layer and wire it to the indexers.
+Ultimately, the `marconi-sidechain` process would run two computations in parallel: the N2N protocol and the indexers.
+Then, we would need to find a way to get the `LedgerState` (used to compute the SDD) that's computed by the node's consensus layer and wire it to the indexers.
+Lastly, we would need a resuming strategy for the indexer.
+The node already keeps the volatile `LedgerState` in memory, therefore any rollbacks to the `LedgerState` would be automatically handled.
+However, in the case of the SDD indexer, we would need to checkpoint the `LedgerState` at the beginning of the latest epoch in order to support resuming.
 
 A container diagram of this solution would look like:
 
 image::http://www.plantuml.com/plantuml/png/jO_1JW8n48RlVOgw9qY4JOmdJyZgnSYoWNWcfPr0GzjfsccG6D_TLW8BYIPUl4sdt_pppIII29IiOJVQIPCKy2sHZmzr7SH-lD6qJUiK8KXq18x64ctjZN1bPXH96Rskc_jHLrflizVQYaWGSclLe2EX7OIn_vVy9_063xOCVIzWBIeOH8-tl5fsSwxE_zMGVp1szXcilSlCrA3SyIwWIbAx3I_ZrV2Iiw9ewSpEZXLVW1674pdL-Tb3nrI9rYQdfI28V9_FgtAplMkv3qWeqLolY5g1tEQwI9zg_kXznahwnNzl8uKniUI-BEVjQD4rHvaVyT-LcYkbJyQMXqXWLy_lD81GX1eHb7387T0Um-wy1KAV_yUJ9-1KikOB[]
 
-The benefits:
+To summarize, the benefits are:
 
 * no change to `cardano-node` are required
 * only one computation of `LedgerState` is required
 
-The drawbacks:
+and the drawbacks:
 
 * uncertainty of capability to use `cardano-node` as a library
-* any change in the indexing logic of `marconi-sidechain` would require resyncing from scratch the local node (thus deleting the node database)
+* need to checkpoint (save on disk) the `LedgerState` at regular interval
 * needs the SPO to resync the relay node from scratch
 
 === 5. Use Mithril SDD snapshots
@@ -210,5 +208,5 @@ Therefore, our intuition is that Mithril could be used to _bootstrap_ `marconi-s
 
 === 2023/05/03
 
-Discussing with @abailly-iohk, seems like the "ideal" solution would be to transform `marconi-sidechain` to a Cardano node using the node-to-node protocol and replace the SPO's relay node.
+Discussing with @abailly-iohk and the Marconi team, it seems like the "ideal" solution would be to transform `marconi-sidechain` to a Cardano node using the node-to-node protocol and replace the SPO's relay node.
 However, we require product input from the Sidechain team given the changes that an SPO would have to do.
