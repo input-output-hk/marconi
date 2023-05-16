@@ -20,9 +20,10 @@ let
 
   packages = {
     # These rely on the plutus-tx-plugin
-    marconi-sidechain.package.buildable = !isCross;
     marconi-chain-index.components.tests.marconi-chain-index-test.buildable = lib.mkForce (!isCross);
     marconi-chain-index.components.sublibs.marconi-chain-index-test-lib.buildable = lib.mkForce (!isCross);
+    marconi-sidechain.package.buildable = !isCross;
+    marconi-tutorial.package.buildable = !isCross;
 
     marconi-core.doHaddock = meta.enableHaddock;
     marconi-core.flags.defer-plugin-errors = meta.enableHaddock;
@@ -32,6 +33,9 @@ let
 
     marconi-sidechain.doHaddock = meta.enableHaddock;
     marconi-sidechain.flags.defer-plugin-errors = meta.enableHaddock;
+
+    marconi-tutorial.doHaddock = meta.enableHaddock;
+    marconi-tutorial.flags.defer-plugin-errors = meta.enableHaddock;
 
     # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
     # is necessary to prevent the error
@@ -55,6 +59,7 @@ let
     marconi-chain-index.ghcOptions = [ "-Werror" ];
     marconi-core.ghcOptions = [ "-Werror" ];
     marconi-sidechain.ghcOptions = [ "-Werror" ];
+    marconi-tutorial.ghcOptions = [ "-Werror" ];
   };
 
 
@@ -65,4 +70,4 @@ let
 
 in
 
-project 
+project

@@ -32,9 +32,9 @@ main = do
             Nothing -> []
 
   Indexers.runIndexers
-    (Cli.optionsSocketPath o)
-    (Cli.optionsNetworkId o)
-    (Cli.optionsChainPoint o)
-    (Cli.optionsMinIndexingDepth o)
+    (Cli.optionsSocketPath $ Cli.commonOptions o)
+    (Cli.optionsNetworkId $ Cli.commonOptions o)
+    (Cli.optionsChainPoint $ Cli.commonOptions o)
+    (Cli.optionsMinIndexingDepth $ Cli.commonOptions o)
     "marconi-chain-index"
     indexers

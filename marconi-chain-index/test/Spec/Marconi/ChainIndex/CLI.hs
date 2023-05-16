@@ -60,7 +60,7 @@ parseAssets = property $ do
       parsed =
         Opt.execParserPure
           (Opt.prefs mempty)
-          (Opt.info CLI.commonMaybeTargetAsset mempty)
+          (Opt.info CLI.commonMaybeTargetAssetParser mempty)
           ["--match-asset-id", assetsText]
       expected = Just $ List.nub assets
       result = toList <$> join (Opt.getParseResult parsed)

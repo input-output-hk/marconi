@@ -23,6 +23,7 @@ module Marconi.Core.Experiment.Type (
 import Control.Exception (Exception)
 import Control.Lens (Lens, Lens')
 import Data.Text (Text)
+import GHC.Generics (Generic)
 
 {- | A point in time, the concrete type of a point is now derived from an indexer event,
  instead of an event.
@@ -53,6 +54,7 @@ deriving stock instance (Ord event, Ord point) => Ord (Timed point event)
 deriving stock instance Functor (Timed point)
 deriving stock instance Foldable (Timed point)
 deriving stock instance Traversable (Timed point)
+deriving stock instance Generic (Timed point event)
 
 -- | When was this event created
 point :: Lens' (Timed point event) point

@@ -192,6 +192,7 @@ executable marconi-chain-index-experimental
   build-depends:
     , base       >=4.9 && <5
     , directory
+    , filepath
 
 library marconi-chain-index-test-lib
   import:          lang
