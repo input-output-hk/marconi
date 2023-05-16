@@ -43,9 +43,9 @@ inputs.std.lib.dev.mkShell {
       help = "Format all cabal files in-place";
     }
     {
-      package = cell.packages.fix-stylish-haskell;
+      package = cell.packages.fix-fourmolu;
       category = "haskell";
-      help = "Run stylish-haskell on all haskell files in-place";
+      help = "Run fourmolu on all haskell files in-place";
     }
     {
       package = cell.packages.check-the-flake;
@@ -71,8 +71,8 @@ inputs.std.lib.dev.mkShell {
       help = "Haskell linting tool";
     }
     {
-      package = cell.packages.stylish-haskell;
-      name = "stylish-haskell";
+      package = cell.packages.fourmolu;
+      name = "fourmolu";
       category = "haskell";
       help = "Haskell code formatter";
     }
@@ -103,7 +103,6 @@ inputs.std.lib.dev.mkShell {
     cell.packages.hie-bios
     cell.packages.sphinx-toolchain
     cell.packages.hlint
-    cell.packages.stylish-haskell
     cell.packages.haskell-language-server-wrapper
     cell.packages.cabal-install
     cell.packages.cabal-fmt
