@@ -1,6 +1,6 @@
 = ADR 1: Stake pool delegation distribution computation
 
-Date: 2023-05-01
+Date: 2023-05-16
 
 == Author(s)
 
@@ -27,6 +27,13 @@ Therefore, indexing the SDD per epoch should be as resource efficient as possibl
 
 TBD
 
+Thus far, we believe the best options are solution 2, 4 and 5.
+However, each of them come with drawbacks that need to be discussed with the Sidechain team before going forward.
+
+== Rationale
+
+TBD
+
 == Possible solutions
 
 We will describe all the potential and discussed solutions to index the SDD of each epoch in the following sections.
@@ -35,14 +42,15 @@ As a summary, we provide the following characteristics table and indicate how ea
 This assessment is measured in regard to two components: Cardano Node and Marconi.
 
 .Comparison of solutions using a list of characteristics
-[cols="1,1,1,1,1"]
+[cols="1,1,1,1,1,1"]
 |===
-|Characteristics | Marconi LedgerState computation | Read LedgerEvents from node | SDD using N2C | Marconi as a node
+|Characteristics | Marconi LedgerState computation | Read LedgerEvents from node | SDD using N2C | Marconi as a node | Reimplementation of the SDD ledger logic
 
-|Number of LedgerState computations | 2 | 1 | 1 | 1
-|Initial node resync required | No | Yes | Yes | Yes
-|Required node resync after Marconi logic change | No | No | Yes | No
-|Change to cardano-node | No | Yes | No | No
+|Number of LedgerState computations | 2 | 1 | 1 | 1 | 1
+|Initial node resync required | No | Yes | Yes | Yes | No
+|Required node resync after Marconi logic change | No | No | Yes | No | No
+|Change to cardano-node | No | Yes | No | No | No
+|Maintenance burden | Low | Medium | Low | Low | High
 |===
 
 .Description of the characteristics
@@ -61,6 +69,9 @@ This assessment is measured in regard to two components: Cardano Node and Marcon
 
 |Change to cardano-node
 |Yes if the solution requires a change to the cardano-node codebase.
+
+|Maintenance burden
+|The amout of required effort of a solution relative to the other solutions
 
 |===
 
@@ -135,9 +146,8 @@ To summarize, the benefits are:
 
 and the drawbacks are:
 
-* requires a change to `cardano-node` in order to store those LedgerEvents. This implies lots of discussions with the `cardano-node` team to accept such a change.
+* need to maintain a separate fork of the `cardano-node` to store those `LedgerEvent` (with the future possibility of upstreaming the changes)
 * needs the SPO to resync the relay node from scratch in order to save the `LedgerEvent` on disk. However, such a resync will only be required once, even after an upgrade on `marconi-sidechain`.
-* need to maintain a separate fork of the `cardano-node` in the event of the node team not agreeing to merge those changes
 
 === 3. Index SDD from the state query client of the node-to-client protocol
 
@@ -193,7 +203,37 @@ and the drawbacks:
 * need to checkpoint (save on disk) the `LedgerState` at regular interval
 * needs the SPO to resync the relay node from scratch
 
-=== 5. Use Mithril SDD snapshots
+=== 5. Reimplementation of the SDD ledger logic
+
+The above solutions all rely on the fact that we can compute the SDD using the `LedgerState` logic that `cardano-ledger` provides us.
+However, an alternative solution would be to reimplement the SDD logic ourselves.
+
+We already implemented the Address-Utxo indexer using a similar idea.
+Instead of using the `LedgerState` to provide us the set of UTXOs after applying a given block, we reimplemented the cardano-ledger logic to maintain the UTXO state.
+The main reasons we did that was to reduce memory usage, and that the re-implementation of the UTXO ledger rule is not overly complicated (although it does add a maintenance burden).
+
+Similary to the UTXO rule, to compute the SDD, we can use the blocks we receive from the chain-sync client from the N2C protocol.
+Those blocks contain transactions which include certificates, such as:
+
+* stake address registration and deregistration certificates
+* stake address delegation to stake pool certificate
+* take pool registration and deregistration certificates
+
+Using those certificates, alongside the Address-Utxo indexer, we can compute the SDD for each stake pool in an epoch.
+
+To summarize, the benefits are:
+
+* no change to `cardano-node` are required
+* remove the need to use the `LedgerState`
+* no change to the client infrastructure: `marconi-sidechain` would be a client application which communicates with the local node using the N2C protocol.
+
+and the drawbacks:
+
+* burden of maintaining the SDD ledger rule following changes to cardano-ledger
+* error-prone implementation
+* not future-proof: if new requirements need other parts of the `LedgerState`, then we would need to reimplement the ledger rules for those
+
+=== 6. Use Mithril SDD snapshots
 
 An approach that has been proposed would be to use the SDD snapshots provided by Mithril.
 Then, `marconi-sidechain` would simply fetch those snapshots and index them in its database.
