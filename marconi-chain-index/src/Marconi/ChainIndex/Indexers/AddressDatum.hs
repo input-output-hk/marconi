@@ -61,15 +61,14 @@ module Marconi.ChainIndex.Indexers.AddressDatum
   , AddressDatumResult
   , AddressDatumDepth (..)
   , open
+  , toDatumRow
   ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as C
-import Cardano.Ledger.Alonzo.TxWits qualified as Ledger
-import Control.Applicative ((<|>))
 import Control.Monad (forM, forM_)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT)
+import Data.Either (rights)
 import Data.Foldable (Foldable (foldl'), fold, toList)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
@@ -83,6 +82,7 @@ import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
                                  liftSQLError)
+import Marconi.ChainIndex.Extract.Datum qualified as Datum
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), Queryable (queryStorage), Resumable,
@@ -114,7 +114,7 @@ data instance StorableEvent AddressDatumHandle =
         (Map C.AddressAny (Set (C.Hash C.ScriptData)))
         (Map (C.Hash C.ScriptData) C.ScriptData)
         !C.ChainPoint
-    deriving (Eq, Show)
+    deriving (Eq, Show, Ord)
 
 instance Semigroup (StorableEvent AddressDatumHandle) where
     AddressDatumIndexEvent ad1 d1 c1 <> AddressDatumIndexEvent ad2 d2 c2 =
@@ -167,82 +167,24 @@ instance SQL.ToRow AddressDatumHashRow where
 
 deriving anyclass instance SQL.FromRow AddressDatumHashRow
 
-data DatumRow = DatumRow
-    { datumRowDatumHash :: C.Hash C.ScriptData
-    , datumRowDatum     :: C.ScriptData
-    } deriving (Show, Generic)
-
-instance SQL.ToRow DatumRow where
-  toRow (DatumRow dh d) = [SQL.toField dh, SQL.toField d]
-
-deriving anyclass instance SQL.FromRow DatumRow
-
 toAddressDatumIndexEvent
     :: Maybe (C.Address C.ShelleyAddr -> Bool)
     -> [C.Tx era]
     -> C.ChainPoint
     -> StorableEvent AddressDatumHandle
-toAddressDatumIndexEvent addressFilter txs chainPoint = do
-    let datumsPerAddr = getDatumsPerAddressFromTxs
-        filterFun =
-            case addressFilter of
-              Nothing -> id
-              Just f -> Map.filterWithKey $ \k _ ->
-                  case k of
-                      -- Target addresses filter are only shelley addresses. Therefore, as we
-                      -- encounter Byron addresses with datum, we don't filter them. However, that
-                      -- is highly improbable as Byron addresses are almost never used anymore.
-                      C.AddressByron _      -> True
-                      C.AddressShelley addr -> f addr
-        filteredDatumsPerAddr = filterFun datumsPerAddr
-        datumMap = Map.fromList
-                 $ mapMaybe (\(dh, d) -> fmap (dh,) d)
-                 $ concatMap (\datums -> Map.toList datums)
-                 $ Map.elems filteredDatumsPerAddr
-     in AddressDatumIndexEvent
-            (fmap Map.keysSet filteredDatumsPerAddr)
-            (Map.union datumMap getPlutusWitDatumsFromTxs)
-            chainPoint
- where
-    getDatumsPerAddressFromTxs :: Map C.AddressAny (Map (C.Hash C.ScriptData) (Maybe C.ScriptData))
-    getDatumsPerAddressFromTxs =
-         Map.filter (not . Map.null)
-            $ Map.fromListWith (Map.unionWith (<|>))
-            $ concatMap getDatumsPerAddressFromTx txs
+toAddressDatumIndexEvent addressFilter txs chainPoint = AddressDatumIndexEvent addressDatumHashMap (Map.union filteredTxOutDatums plutusDatums) chainPoint
+  where
+    plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+    plutusDatums = Datum.txsPlutusDatumsMap txs
 
-    getDatumsPerAddressFromTx
-        :: C.Tx era
-        -> [(C.AddressAny, Map (C.Hash C.ScriptData) (Maybe C.ScriptData))]
-    getDatumsPerAddressFromTx (C.Tx (C.TxBody C.TxBodyContent { C.txOuts }) _) =
-         fmap
-            (\(C.TxOut (C.AddressInEra _ addr) _ dat _) ->
-                ( C.toAddressAny addr
-                , maybe Map.empty (uncurry Map.singleton) $ getScriptDataFromTxOutDatum dat
-                ))
-            txOuts
+    filteredAddressDatums :: [(C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))]
+    filteredAddressDatums = Datum.filteredAddressDatums addressFilter txs
 
-    getScriptDataFromTxOutDatum
-        :: C.TxOutDatum C.CtxTx era
-        -> Maybe (C.Hash C.ScriptData, Maybe C.ScriptData)
-    getScriptDataFromTxOutDatum (C.TxOutDatumHash _ dh)  = Just (dh, Nothing)
-    getScriptDataFromTxOutDatum (C.TxOutDatumInTx _ d)   = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
-    getScriptDataFromTxOutDatum (C.TxOutDatumInline _ d) = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
-    getScriptDataFromTxOutDatum _                        = Nothing
+    filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+    filteredTxOutDatums = Map.fromList $ rights $ map snd filteredAddressDatums
 
-    getPlutusWitDatumsFromTxs :: Map (C.Hash C.ScriptData) C.ScriptData
-    getPlutusWitDatumsFromTxs =
-        foldr (\acc x -> Map.union acc x) Map.empty
-        $ fmap (\(C.Tx txBody _) -> getPlutusWitDatumsFromTxBody txBody) txs
-
-    getPlutusWitDatumsFromTxBody :: C.TxBody era -> Map (C.Hash C.ScriptData) C.ScriptData
-    getPlutusWitDatumsFromTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (Ledger.TxDats' datum) _) _ _) =
-        -- TODO I'm recomputing the ScriptHash hash, because cardano-api doesn't provide the correct
-        -- functions to convert 'Ledger.DataHash' to 'C.Hash C.ScriptData'. This should go away once
-        -- we fully switch to `cardano-ledger` types.
-        Map.fromList
-            $ fmap (\(_, alonzoDat) -> let d = C.fromAlonzoData alonzoDat in (C.hashScriptDataBytes d, C.getScriptData d))
-            $ Map.toList datum
-    getPlutusWitDatumsFromTxBody (C.TxBody _) = Map.empty
+    addressDatumHashMap :: Map C.AddressAny (Set (C.Hash C.ScriptData))
+    addressDatumHashMap = Map.fromListWith Set.union $ map (fmap (Set.singleton . either id fst)) filteredAddressDatums
 
 instance Buffered AddressDatumHandle where
   persistToStorage
@@ -265,14 +207,7 @@ instance Buffered AddressDatumHandle where
               , block_hash
               )
              VALUES (?, ?, ?, ?)|]
-    forM_ datumRows $
-      -- We ignore inserts that introduce duplicate datum hashes in the table
-      SQL.execute c
-        [r|INSERT OR IGNORE INTO datumhash_datum
-            ( datum_hash
-            , datum
-            )
-           VALUES (?, ?)|]
+    Datum.insertRows c datumRows
     SQL.execute_ c "COMMIT"
     pure h
     where
@@ -282,9 +217,6 @@ instance Buffered AddressDatumHandle where
           (addr, dhs) <- Map.toList addressDatumHashMap
           dh <- Set.toList dhs
           pure $ AddressDatumHashRow addr dh sl bh
-      toDatumRow :: StorableEvent AddressDatumHandle -> [DatumRow]
-      toDatumRow (AddressDatumIndexEvent _ datumMap _) =
-          fmap (uncurry DatumRow) $ Map.toList datumMap
 
   getStoredEvents
     :: AddressDatumHandle
@@ -313,6 +245,10 @@ instance Buffered AddressDatumHandle where
                ORDER BY slot_no DESC, address, datumhash_datum.datum_hash|]
             (SQL.Only (sn :: Integer))
       pure $ asEvents res
+
+toDatumRow :: StorableEvent AddressDatumHandle -> [Datum.DatumRow]
+toDatumRow (AddressDatumIndexEvent _ datumMap _) =
+    fmap (uncurry Datum.DatumRow) $ Map.toList datumMap
 
 -- | This function recomposes the in-memory format from the database records.
 asEvents
@@ -404,9 +340,9 @@ instance Queryable AddressDatumHandle where
     let unresolvedDatumHashes =
             Set.toList $ fold (Map.elems addressDatumMap) `Set.difference` Map.keysSet datumMap
     datums <- forM unresolvedDatumHashes $ \dh -> do
-        (datum :: Maybe DatumRow) <- listToMaybe <$> SQL.query c
+        (datum :: Maybe Datum.DatumRow) <- listToMaybe <$> SQL.query c
           "SELECT datum_hash, datum FROM datumhash_datum WHERE datum_hash = ?" (SQL.Only dh)
-        pure $ fmap (\(DatumRow _ d) -> (dh, d)) datum
+        pure $ fmap (\(Datum.DatumRow _ d) -> (dh, d)) datum
     let resolvedDatumHashes = Map.fromList $ catMaybes datums
 
     pure $ AddressDatumResult
@@ -469,11 +405,7 @@ open dbPath (AddressDatumDepth k) = do
             , slot_no INT NOT NULL
             , block_hash BLOB NOT NULL
             )|]
-    lift $ SQL.execute_ c
-        [r|CREATE TABLE IF NOT EXISTS datumhash_datum
-            ( datum_hash BLOB PRIMARY KEY
-            , datum BLOB
-            )|]
+    lift $ Datum.createTable c
     lift $ SQL.execute_ c
         [r|CREATE INDEX IF NOT EXISTS address_datums_index
            ON address_datums (address)|]

@@ -57,6 +57,7 @@ library
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
     Marconi.ChainIndex.Experimental.Indexers.Utxo
+    Marconi.ChainIndex.Extract.Datum
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
     Marconi.ChainIndex.Indexers.EpochState
