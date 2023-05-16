@@ -68,7 +68,7 @@ instance SQL.FromField (C.Hash C.BlockHeader) where
            Left _  -> SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.BlockHeader"
            Right x -> pure x
 
--- * Sometime we need to get a count or test if a value exist.{-# LANGUAGE extension #-}
+-- * Sometime we need to get a count or test if a value exist.
 
 instance ToRow Integer where
   toRow = SQL.toRow

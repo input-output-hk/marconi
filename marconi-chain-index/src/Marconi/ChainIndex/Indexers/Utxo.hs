@@ -19,9 +19,9 @@
 -- + table: unspent_transactions
 --
 -- @
---      |---------+------+-------+-----------+-------+-------+------------------+--------------+------|
---      | Address | TxId | TxIx  | DatumHash | Datum | Value | InlineScriptHash | InlineScript | Slot |
---      |---------+------+-------+-----------+-------+-------+------------------+--------------+------|
+--      |---------+------+-------+-----------+-------+-------+------------------+--------------+------+-----------+----------------|
+--      | Address | TxId | TxIx  | DatumHash | Datum | Value | InlineScriptHash | InlineScript | Slot | BlockHash | TxIndexInBlock |
+--      |---------+------+-------+-----------+-------+-------+------------------+--------------+------+-----------+----------------|
 -- @
 --
 -- + table: spent
@@ -59,7 +59,7 @@ import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
-import Database.SQLite.Simple.ToField (ToField (toField))
+import Database.SQLite.Simple.ToField (ToField (toField), toField)
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
 import System.Random.MWC (createSystemRandom, uniformR)
@@ -69,7 +69,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Data.Ord (Down (Down, getDown))
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (TargetAddresses, TxOut, pattern CurrentEra)
+import Marconi.ChainIndex.Types (TargetAddresses, TxIndexInBlock, TxOut, pattern CurrentEra)
 import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 
 import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
@@ -165,12 +165,13 @@ data Utxo = Utxo
   , _value            :: !C.Value
   , _inlineScript     :: !(Maybe C.ScriptInAnyLang)
   , _inlineScriptHash :: !(Maybe C.ScriptHash)
+  , _txIndexInBlock   :: !TxIndexInBlock
   } deriving (Show, Eq, Generic)
 
 $(makeLenses ''Utxo)
 
 instance Ord Utxo where
-  compare (Utxo addr txid txix _ _ _ _ _) (Utxo addr' txid' txix' _ _ _ _ _) =
+  compare (Utxo addr txid txix _ _ _ _ _ _) (Utxo addr' txid' txix' _ _ _ _ _ _) =
      compare (addr, C.TxIn txid txix) (addr', C.TxIn txid' txix')
 
 instance FromJSON Utxo where
@@ -184,10 +185,11 @@ instance FromJSON Utxo where
             <*> v .: "value"
             <*> v .: "inlineScript"
             <*> v .: "inlineScriptHash"
+            <*> v .: "txIndexInBlock"
     parseJSON _ = mempty
 
 instance ToJSON Utxo where
-  toJSON (Utxo addr txid txix dtum dtumHash val scrpt scrptHash) = object
+  toJSON (Utxo addr txid txix dtum dtumHash val scrpt scrptHash txIndexInBlock') = object
     [ "address"           .= addr
     , "txId"              .= txid
     , "txIx"              .= txix
@@ -197,6 +199,7 @@ instance ToJSON Utxo where
     -- Uses ToJSON instance of cardano-api which serialises using the 'C.HasTextEnvelope' typeclass.
     , "inlineScript"      .= scrpt
     , "inlineScriptHash"  .= scrptHash
+    , "txIndexInBlock"        .= txIndexInBlock'
     ]
 
 newtype ChainPointRow
@@ -330,7 +333,7 @@ instance HasPoint (StorableEvent UtxoHandle) C.ChainPoint where
 
 instance ToRow UtxoRow where
   toRow u = toRow
-    ( toField (u ^. urUtxo . address)
+    [ toField (u ^. urUtxo . address)
     , toField (u ^. urUtxo . txId)
     , toField (u ^. urUtxo . txIx)
     , toField (u ^. urUtxo . datum)
@@ -340,13 +343,14 @@ instance ToRow UtxoRow where
     , toField (u ^. urUtxo . inlineScriptHash)
     , toField (u ^. urSlotNo)
     , toField (u ^. urBlockHash)
-    )
+    , toField (u ^. urUtxo . txIndexInBlock)
+    ]
 
 instance FromRow UtxoRow where
   fromRow = UtxoRow
       <$> (Utxo <$> field
            <*> field <*> field
-           <*> field <*> field <*> field <*> field <*> field)
+           <*> field <*> field <*> field <*> field <*> field <*> field)
       <*> field <*> field
 
 instance FromRow Spent where
@@ -387,7 +391,8 @@ open dbPath (Depth k) isToVacuume = do
                       , inlineScript BLOB
                       , inlineScriptHash BLOB
                       , slotNo INT NOT NULL
-                      , blockHash BLOB NOT NULL)|]
+                      , blockHash BLOB NOT NULL
+                      , txIndexInBlock INT NOT NULL )|]
 
     lift $ SQL.execute_ c [r|CREATE TABLE IF NOT EXISTS spent
                       ( txId TEXT NOT NULL
@@ -438,9 +443,10 @@ instance Buffered UtxoHandle where
                  inlineScript,
                  inlineScriptHash,
                  slotNo,
-                 blockHash
+                 blockHash,
+                 txIndexInBlock
               ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|] rows))
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|] rows))
          (unless
           (null spents)
           (SQL.executeMany c
@@ -497,6 +503,7 @@ instance Buffered UtxoHandle where
               u.value,
               u.inlineScript,
               u.inlineScriptHash,
+              u.txIndexInBlock,
               u.slotNo,
               u.blockHash
            FROM
@@ -620,6 +627,7 @@ utxoAtAddressQuery c es eventAtQuery filters params
                   u.value,
                   u.inlineScript,
                   u.inlineScriptHash,
+                  u.txIndexInBlock,
                   u.slotNo,
                   u.blockHash
                FROM
@@ -767,7 +775,7 @@ getUtxoEvents
   -> C.ChainPoint
   -> StorableEvent UtxoHandle -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
 getUtxoEvents maybeTargetAddresses txs cp =
-  let (TxOutBalance utxos spentTxOuts) = foldMap (balanceUtxoFromTx maybeTargetAddresses) txs
+  let (TxOutBalance utxos spentTxOuts) = foldMap (balanceUtxoFromTx maybeTargetAddresses) $ zip txs [0..]
       resolvedUtxos :: Set Utxo
       resolvedUtxos = Set.fromList $ Map.elems utxos
   in
@@ -793,8 +801,9 @@ getUtxosFromTxBody
   :: (C.IsCardanoEra era)
   => Maybe TargetAddresses
   -> C.TxBody era
+  -> TxIndexInBlock
   -> Map C.TxIn Utxo
-getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyContent{} )=
+getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) txIndexInBlock' =
   fromRight Map.empty (getUtxos $ getTxOutFromTxBodyContent txBodyContent)
   where
     getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
@@ -808,7 +817,7 @@ getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyC
       let
         txin = C.TxIn txid (C.TxIx (fromIntegral ix))
       in
-        case getUtxoFromTxOut maybeTargetAddresses txin txout of
+        case getUtxoFromTxOut maybeTargetAddresses txin txout txIndexInBlock' of
           Nothing   -> Map.empty
           Just utxo -> Map.singleton txin utxo
 
@@ -816,8 +825,9 @@ getUtxoFromTxOut
   :: Maybe TargetAddresses -- ^ Target addresses to filter for
   -> C.TxIn -- ^ unique id and position of this transaction
   -> C.TxOut C.CtxTx era -- ^ Cardano TxOut
+  -> TxIndexInBlock
   -> Maybe Utxo -- ^ Utxo
-getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr val dtum refScript) = do
+getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr val dtum refScript) txIndexInBlock' = do
   guard $ isAddressInTarget maybeTargetAddresses addrAny
   pure $ Utxo
     { _txId = txid
@@ -828,6 +838,7 @@ getUtxoFromTxOut maybeTargetAddresses (C.TxIn txid txix) (C.TxOut addr val dtum 
     , _datumHash = datumHash'
     , _inlineScript = inlineScript'
     , _inlineScriptHash = inlineScriptHash'
+    , _txIndexInBlock = txIndexInBlock'
     }
   where
     addrAny = toAddr addr
@@ -895,11 +906,11 @@ isAddressInTarget' targetAddresses utxo =
 balanceUtxoFromTx
   :: C.IsCardanoEra era
   => Maybe TargetAddresses    -- ^ target addresses to filter for
-  -> C.Tx era
+  -> (C.Tx era, TxIndexInBlock)
   -> TxOutBalance
-balanceUtxoFromTx addrs (C.Tx txBody _) =
+balanceUtxoFromTx addrs (C.Tx txBody _, txIndexInBlock') =
     let
         txInputs = getInputs txBody -- adjusted txInput after phase-2 validation
         utxoRefs :: Map C.TxIn Utxo
-        utxoRefs = getUtxosFromTxBody addrs txBody
+        utxoRefs = getUtxosFromTxBody addrs txBody txIndexInBlock'
     in TxOutBalance utxoRefs txInputs
