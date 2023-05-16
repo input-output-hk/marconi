@@ -13,8 +13,8 @@ repository cardano-haskell-packages
 
 -- See CONTRIBUTING.adoc for how to update index-state
 index-state:
-  , hackage.haskell.org 2023-04-11T00:00:00Z
-  , cardano-haskell-packages 2023-04-13T17:16:53Z
+  , hackage.haskell.org 2023-05-11T00:00:00Z
+  , cardano-haskell-packages 2023-05-11T00:00:00Z
 packages: marconi-chain-index
           marconi-core
           marconi-sidechain
