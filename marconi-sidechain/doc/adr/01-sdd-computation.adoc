@@ -27,8 +27,11 @@ Therefore, indexing the SDD per epoch should be as resource efficient as possibl
 
 TBD
 
-Thus far, we believe the best options are solution 2, 4 and 5.
+Thus far, we (Plutus Tools team) believe that the viable options are solutions 2, 4 and 5.
 However, each of them come with drawbacks that need to be discussed with the Sidechain team before going forward.
+
+The Plutus Tools team would like to recommend solution 4, but we would need to see if the impacts to the client of the Sidechain application are reasonable.
+A discussion with the Sidechain tribe is the next logical step.
 
 == Rationale
 
@@ -44,7 +47,7 @@ This assessment is measured in regard to two components: Cardano Node and Marcon
 .Comparison of solutions using a list of characteristics
 [cols="1,1,1,1,1,1"]
 |===
-|Characteristics | Marconi LedgerState computation | Read LedgerEvents from node | SDD using N2C | Marconi as a node | Reimplementation of the SDD ledger logic
+|Characteristics | 1-Marconi LedgerState computation | 2-Read LedgerEvents from node | 3-SDD using N2C | 4-Marconi as a node | 5-Reimplementation of the SDD ledger logic
 
 |Number of LedgerState computations | 2 | 1 | 1 | 1 | 1
 |Initial node resync required | No | Yes | Yes | Yes | No
