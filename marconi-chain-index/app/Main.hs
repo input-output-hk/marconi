@@ -26,5 +26,6 @@ main = do
     (Cli.optionsSocketPath o)
     (Cli.optionsNetworkId o)
     (Cli.optionsChainPoint o)
+    (Cli.optionsMinIndexingDepth o)
     "marconi-chain-index"
     indexers

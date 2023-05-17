@@ -23,7 +23,8 @@ module Marconi.ChainIndex.Types
        scriptTxDbName,
        epochStateDbName,
        mintBurnDbName,
-       SecurityParam(SecurityParam)
+       SecurityParam(SecurityParam),
+       IndexingDepth(MinIndexingDepth, MaxIndexingDepth)
        ) where
 
 import Cardano.Api qualified as C
@@ -52,6 +53,9 @@ type TxOutRef = C.TxIn
 
 txOutRef :: C.TxId -> C.TxIx -> C.TxIn
 txOutRef = C.TxIn
+
+data IndexingDepth = MinIndexingDepth !Word64 | MaxIndexingDepth
+    deriving (Show, Eq)
 
 newtype SecurityParam = SecurityParam Word64
   deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show)

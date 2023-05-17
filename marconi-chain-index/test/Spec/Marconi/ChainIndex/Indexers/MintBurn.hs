@@ -333,7 +333,7 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   indexedTxs <- liftIO IO.newChan
   -- Start indexer
   liftIO $ do
-    coordinator <- M.initialCoordinator 1
+    coordinator <- M.initialCoordinator 1 0
     ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
     (loop, _indexerMVar) <- M.mintBurnWorker_ 123 (IO.writeChan indexedTxs) coordinator ch (tempPath </> "db.db")
     void $ IO.async loop

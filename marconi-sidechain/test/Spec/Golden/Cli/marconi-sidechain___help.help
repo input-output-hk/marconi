@@ -5,6 +5,7 @@ Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
                          --node-config-path ARG (-d|--db-dir DIR) 
                          [--http-port HTTP-PORT] 
                          (--mainnet | --testnet-magic NATURAL) 
+                         [--max-indexing-depth | --min-indexing-depth NATURAL] 
                          [(-a|--addresses-to-index BECH32-ADDRESS)]
 
   marconi-sidechain
@@ -21,6 +22,9 @@ Available options:
   --http-port HTTP-PORT    JSON-RPC http port number, default is port 3000.
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
+  --max-indexing-depth     Only index events that are not volatile
+  --min-indexing-depth NATURAL
+                           Depth of an event before it is indexed
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
                            "--address-to-index address-1 --address-to-index

@@ -16,8 +16,9 @@ import System.FilePath ((</>))
 
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
-import Marconi.ChainIndex.Types (TargetAddresses, addressDatumDbName, datumDbName, epochStateDbName, mintBurnDbName,
-                                 scriptTxDbName, utxoDbName)
+import Marconi.ChainIndex.Types (IndexingDepth (MaxIndexingDepth, MinIndexingDepth), TargetAddresses,
+                                 addressDatumDbName, datumDbName, epochStateDbName, mintBurnDbName, scriptTxDbName,
+                                 utxoDbName)
 
 chainPointParser :: Opt.Parser C.ChainPoint
 chainPointParser =
@@ -85,7 +86,6 @@ parseCardanoAddresses =  nub
     where
         deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
 
-
 -- | This executable is meant to exercise a set of indexers (for now datumhash -> datum)
 --     against the mainnet (meant to be used for testing).
 --
@@ -99,6 +99,7 @@ data Options = Options
   { optionsSocketPath          :: !String,
     optionsNetworkId           :: !NetworkId,
     optionsChainPoint          :: !ChainPoint,
+    optionsMinIndexingDepth    :: !IndexingDepth,
     optionsDbPath              :: !FilePath,    -- ^ SQLite database directory path
     optionsDisableUtxo         :: !Bool,
     optionsDisableAddressDatum :: !Bool,
@@ -125,6 +126,7 @@ optionsParser =
     <$> commonSocketPath
     <*> pNetworkId
     <*> chainPointParser
+    <*> commonMinIndexingDepth
     <*> commonDbDir
     <*> Opt.switch (  Opt.long "disable-utxo"
                    <> Opt.help "disable utxo indexers."
@@ -234,3 +236,16 @@ commonMaybeTargetAddress = Opt.optional $ multiString
   <> Opt.help
      "Bech32 Shelley addresses to index. \
      \ i.e \"--address-to-index address-1 --address-to-index address-2 ...\""
+
+commonMinIndexingDepth :: Opt.Parser IndexingDepth
+commonMinIndexingDepth = let
+    maxIndexingDepth = Opt.flag' MaxIndexingDepth
+         (Opt.long "max-indexing-depth" <> Opt.help "Only index events that are not volatile")
+    givenIndexingDepth = MinIndexingDepth <$> Opt.option Opt.auto
+        (Opt.long "min-indexing-depth"
+        <> Opt.metavar "NATURAL"
+        <> Opt.help "Depth of an event before it is indexed"
+        <> Opt.value 0)
+
+    in  maxIndexingDepth Opt.<|> givenIndexingDepth
+

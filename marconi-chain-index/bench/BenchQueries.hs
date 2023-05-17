@@ -49,6 +49,7 @@ import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.Utxo (StorableQuery (UtxoByAddress), StorableResult (UtxoResult, getUtxoResult),
                                          UtxoHandle, UtxoIndexer)
+import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth))
 import Marconi.Core.Storable (QueryInterval (QEverything))
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
@@ -107,6 +108,7 @@ runIndexerSyncing databaseDir nodeSocketPath indexerTVar = do
         nodeSocketPath
         (C.Testnet $ C.NetworkMagic 1) -- TODO Needs to be passed a CLI param
         C.ChainPointAtGenesis
+        (MinIndexingDepth 0)
         "marconi"
         indexers
 

@@ -4,7 +4,8 @@ Cardano blockchain
 Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH) 
                            (--mainnet | --testnet-magic NATURAL) 
                            [(-n|--slot-no SLOT-NO)
-                             (-b|--block-header-hash BLOCK-HEADER-HASH)]
+                             (-b|--block-header-hash BLOCK-HEADER-HASH)] 
+                           [--max-indexing-depth | --min-indexing-depth NATURAL]
                            (-d|--db-dir DIR) [--disable-utxo] 
                            [--disable-address-datum] [--disable-datum] 
                            [--disable-script-tx] 
@@ -21,6 +22,9 @@ Available options:
                            Path to node socket.
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
+  --max-indexing-depth     Only index events that are not volatile
+  --min-indexing-depth NATURAL
+                           Depth of an event before it is indexed
   -d,--db-dir DIR          Directory path where all SQLite databases are
                            located.
   --disable-utxo           disable utxo indexers.

@@ -127,7 +127,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
   let sqliteDb = tempAbsPath </> "script-tx.db"
   indexer <- liftIO $ do
 
-    coordinator <- M.initialCoordinator 1
+    coordinator <- M.initialCoordinator 1 0
     ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
     (loop, indexer) <- M.scriptTxWorker_ (\update -> writeScriptUpdate update $> []) (ScriptTx.Depth 1) coordinator ch sqliteDb
 

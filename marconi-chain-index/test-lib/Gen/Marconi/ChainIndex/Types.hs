@@ -5,6 +5,7 @@ module Gen.Marconi.ChainIndex.Types
   , genBlockHeader
   , genHashBlockHeader
   , genBlockNo
+  , genChainSyncEvents
   , genChainPoints
   , genChainPoint
   , genChainPoint'
@@ -33,11 +34,15 @@ import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.Hash.Class qualified as CRYPTO
 import Cardano.Ledger.Keys (KeyHash (KeyHash))
 import Cardano.Ledger.SafeHash (unsafeMakeSafeHash)
+import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward))
+import Control.Monad.State (StateT, evalStateT, lift, modify)
+import Control.Monad.State.Lazy (MonadState (get))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Short qualified as BSS
 import Data.Coerce (coerce)
 import Data.Int (Int64)
+import Data.List.NonEmpty as NE (NonEmpty ((:|)), cons, fromList, init, toList)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Proxy (Proxy (Proxy))
@@ -68,6 +73,52 @@ genBlockNo = C.BlockNo <$> Gen.word64 (Range.linear 100 1000)
 
 validByteSizeLength :: Int
 validByteSizeLength = 32
+
+-- | Generate an (almost) sound chain of 'ChainSyncEvent'.
+-- "almost" because the 'ChainTip' of the events is always 'ChainTipAtGenesis'.
+genChainSyncEvents
+  :: Hedgehog.MonadGen m
+  => (a -> C.ChainPoint)
+  -- ^ extract the chainpoint from the event
+  -> (a -> m a)
+  -- ^ generator for an event based on the last event
+  -> a
+  -- ^ the initial event
+  -> Word64
+  -- ^ minimal number of generated events
+  -> Word64
+  -- ^ maximal number of generated events
+  -> m [ChainSyncEvent a]
+genChainSyncEvents getChainPoint f start lo hi = do
+  nbOfEvents <- Gen.word64 $ Range.linear lo hi
+  reverse . toList <$> evalStateT (go nbOfEvents (RollForward start C.ChainTipAtGenesis:|[])) (start:|[])
+  where
+      go n xs | n <= 0 = pure xs
+              | otherwise = do
+          next <- genChainSyncEvent getChainPoint f
+          go (n - 1) (cons next xs)
+
+genChainSyncEvent
+  :: Hedgehog.MonadGen m
+  => (a -> C.ChainPoint)
+  -> (a -> m a)
+  -> StateT (NonEmpty a) m (ChainSyncEvent a)
+genChainSyncEvent getChainPoint f = do
+    s@(x:|xs) <- get
+    let genNext = if null xs
+            then genRollForward x
+            else Gen.frequency [ (5, genRollBackward s) , (95, genRollForward x) ]
+
+    created <- lift genNext
+    case created of
+        RollForward y _  ->
+            modify (cons y)
+        RollBackward y _ ->
+            modify (fromList . dropWhile ((y >) . getChainPoint) . toList)
+    pure created
+    where
+        genRollBackward xs = RollBackward <$> (getChainPoint <$> Gen.element (NE.init xs)) <*> pure C.ChainTipAtGenesis
+        genRollForward x = RollForward <$> f x <*> pure C.ChainTipAtGenesis
 
 genBlockHeader
   :: Hedgehog.MonadGen m
