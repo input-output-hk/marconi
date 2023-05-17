@@ -69,6 +69,7 @@ import Cardano.Api.Shelley qualified as C
 import Data.Ord (Down (Down, getDown))
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TargetAddresses, TxOut, pattern CurrentEra)
+import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 
 import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
                                  liftSQLError)
@@ -674,7 +675,8 @@ instance Rewindable UtxoHandle where
 
 -- For resuming we need to provide a list of points where we can resume from.
 instance Resumable UtxoHandle where
-  resumeFromStorage (UtxoHandle c _ _) = liftSQLError CantQueryIndexer $ resumeHelper c
+  resumeFromStorage (UtxoHandle c _ _) = liftSQLError CantQueryIndexer $ fmap chainPointOrGenesis $
+    SQL.query_ c "SELECT slotNo, blockHash FROM unspent_transactions ORDER BY slotNo DESC LIMIT 1"
 
 -- Add pagination to resume
 -- Main reason for adding this is to protect against OOM

@@ -212,11 +212,13 @@ instance Rewindable Handle where
     pure $ Handle h
 
 instance Resumable Handle where
-  resumeFromStorage :: Handle -> IO [StorablePoint Handle]
+  resumeFromStorage :: Handle -> IO (StorablePoint Handle)
   resumeFromStorage (Handle h) = do
     es' :: [StorableEvent Handle] <-
       Sql.query_ h "SELECT * FROM index_property_cache ORDER BY point DEC"
-    pure $ fmap sePoint es'
+    pure $ case es' of
+      []    -> Genesis
+      e : _ -> sePoint e
 
 -- * Conversions
 

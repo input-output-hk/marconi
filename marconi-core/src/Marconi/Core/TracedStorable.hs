@@ -175,7 +175,7 @@ class Rewindable h where
    request it.
 -}
 class Resumable h where
-  resumeFromStorage :: AppTracer h -> h -> StorableMonad h [StorablePoint h]
+  resumeFromStorage :: AppTracer h -> h -> StorableMonad h (StorablePoint h)
 
 {-
    The next class is witnessing the fact that events contain enough information to
@@ -383,7 +383,7 @@ resume
   :: Resumable h
   => AppTracer h
   -> State h
-  -> StorableMonad h [StorablePoint h]
+  -> StorableMonad h (StorablePoint h)
 resume t s = resumeFromStorage t (s ^. handle)
 
 query

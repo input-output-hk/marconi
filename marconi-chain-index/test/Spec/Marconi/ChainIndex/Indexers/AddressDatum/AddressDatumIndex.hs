@@ -28,7 +28,6 @@ import Marconi.ChainIndex.Indexers.AddressDatum (AddressDatumDepth (AddressDatum
                                                  StorableQuery (AddressDatumQuery, AddressDatumQuery, AllAddressesQuery),
                                                  StorableResult (AddressDatumResult, AllAddressesResult))
 import Marconi.ChainIndex.Indexers.AddressDatum qualified as AddressDatum
-import Marconi.ChainIndex.TestLib.StorableProperties qualified as StorableProperties
 import Marconi.Core.Storable qualified as Storable
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils (addressInEraToAddressAny)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -76,10 +75,6 @@ tests = localOption (HedgehogTestLimit $ Just 200) $
           "The points that indexer can be resumed from should return at least non-genesis point when some data was indexed on disk"
           "propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk"
           propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk
-    , testPropertyNamed
-          "The points that indexer can be resumed from should be sorted in descending order"
-          "propResumablePointsShouldBeSortedInDescOrder"
-          propResumablePointsShouldBeSortedInDescOrder
     ]
 
 -- | The property verifies that the addresses in those generated events are all queryable from the
@@ -325,8 +320,13 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
     finalIndex <- liftIO $ raiseException $ Storable.insertMany events initialIndex
         >>= Storable.insert (AddressDatum.toAddressDatumIndexEvent Nothing [] (last cps))
 
-    resumablePoints <- liftIO $ raiseException $ Storable.resumeFromStorage $ finalIndex ^. Storable.handle
-    Hedgehog.assert $ length resumablePoints >= 1
+    resumablePoint <- liftIO $ raiseException $ Storable.resumeFromStorage $ finalIndex ^. Storable.handle
+    let penultimateOrGenesis = case reverse $ List.sort cps of
+          _ : cp' : _ -> cp' -- We return the penultimate chain point,
+                             -- this is the newest one persisted
+                             -- because one is still in memory.
+          _           -> C.ChainPointAtGenesis
+    Hedgehog.assert $ penultimateOrGenesis == resumablePoint
 
 genAddressDatumStorableEvent :: C.ChainPoint -> Gen (Storable.StorableEvent AddressDatumHandle)
 genAddressDatumStorableEvent cp = do

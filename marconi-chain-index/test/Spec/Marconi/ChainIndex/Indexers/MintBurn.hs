@@ -44,7 +44,6 @@ import Marconi.ChainIndex.Indexers.MintBurn (MintAsset (MintAsset), MintBurnHand
                                              StorableResult (MintBurnResult))
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Logging ()
-import Marconi.ChainIndex.TestLib.StorableProperties qualified as StorableProperties
 import Marconi.Core.Storable qualified as RI
 import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
 import Prettyprinter.Render.Text (renderStrict)
@@ -93,10 +92,6 @@ tests = testGroup "MintBurn"
       "Querying mint burn by AssetId should be the same as querying by AssetId at latest indexed slot"
       "propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery"
       propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery
-  , testPropertyNamed
-      "The points that indexer can be resumed from should be sorted in descending order"
-      "propResumablePointsShouldBeSortedInDescOrder"
-      propResumablePointsShouldBeSortedInDescOrder
   , testPropertyNamed
       "Rewinding to any slot forgets any newer events than that slot"
       "rewind" rewind
@@ -246,13 +241,6 @@ propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
   let expected = MintBurn.groupBySlotAndHash $ take (eventsPersisted (fromIntegral bufferSize) (length events)) events
   -- The test: events that were persisted are exactly those we get from the query.
   equalSet expected (MintBurn.fromRows queryResult)
-
--- | The property verifies that the 'Storable.resumeFromStorage' call returns a sorted list of chain
--- points in descending order.
-propResumablePointsShouldBeSortedInDescOrder :: Property
-propResumablePointsShouldBeSortedInDescOrder = H.property $ do
-    (indexer, _, _) <- Gen.genIndexWithEvents ":memory:"
-    StorableProperties.propResumablePointsShouldBeSortedInDescOrder indexer
 
 -- | Test that rewind (rollback for on-disk events) behaves as
 -- expected: insert events such that buffer overflows, rollback so far
