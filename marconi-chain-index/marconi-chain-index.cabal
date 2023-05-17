@@ -185,7 +185,6 @@ library marconi-chain-index-test-lib
     Gen.Marconi.ChainIndex.Mockchain
     Gen.Marconi.ChainIndex.Types
     Helpers
-    Marconi.ChainIndex.TestLib.StorableProperties
 
   --------------------
   -- Local components

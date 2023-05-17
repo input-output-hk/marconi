@@ -109,7 +109,7 @@ import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer
                                  liftSQLError)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
-import Marconi.ChainIndex.Utils (isBlockRollbackable)
+import Marconi.ChainIndex.Utils (chainPointOrGenesis, isBlockRollbackable)
 import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), QueryInterval, Queryable (queryStorage),
                               Resumable, Rewindable (rewindStorage), State, StorableEvent, StorableMonad, StorablePoint,
                               StorableQuery, StorableResult, emptyState)
@@ -601,7 +601,7 @@ instance Rewindable EpochStateHandle where
 instance Resumable EpochStateHandle where
     resumeFromStorage
         :: EpochStateHandle
-        -> StorableMonad EpochStateHandle [C.ChainPoint]
+        -> StorableMonad EpochStateHandle C.ChainPoint
     resumeFromStorage (EpochStateHandle _ c ledgerStateDirPath _)
         = liftSQLError CantQueryIndexer $ do
         ledgerStateFilepaths <- listDirectory ledgerStateDirPath
@@ -623,12 +623,12 @@ instance Resumable EpochStateHandle where
                    WHERE slotNo = ? LIMIT 1 |] (SQL.Only slotNo)
             pure $ not $ null result
 
-        let resumablePoints = Set.toList
+        let resumablePoints = List.sortOn Down
+                            $ fmap (uncurry C.ChainPoint)
+                            $ Set.toList
                             $ Set.intersection (Set.fromList epochSDDChainPoints)
                                                (Set.fromList epochNonceChainPoints)
-        pure
-            $ List.sortOn Down
-            $ fmap (uncurry C.ChainPoint) resumablePoints ++ [C.ChainPointAtGenesis]
+        pure $ chainPointOrGenesis resumablePoints
 
 chainTipsFromLedgerStateFilePath :: FilePath -> Maybe (Bool, C.SlotNo, C.Hash C.BlockHeader, C.BlockNo)
 chainTipsFromLedgerStateFilePath ledgerStateFilepath =

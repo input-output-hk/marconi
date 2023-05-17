@@ -24,6 +24,7 @@ import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer
                                  liftSQLError)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
+import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint (getPoint),
                               QueryInterval (QEverything, QInterval), Queryable (queryStorage),
                               Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
@@ -286,12 +287,9 @@ instance Rewindable ScriptTxHandle where
 -- For resuming we need to provide a list of points where we can resume from.
 
 instance Resumable ScriptTxHandle where
-  resumeFromStorage h = do
-    es <- Storable.getStoredEvents h
-    -- The ordering here matters. The node will try to find the first point in the
-    -- ledger, then move to the next and so on, so we will send the latest point
-    -- first.
-    pure $ map chainPoint es ++ [ChainPointAtGenesis]
+  resumeFromStorage (ScriptTxHandle c _) = liftSQLError CantQueryIndexer $ fmap chainPointOrGenesis $
+    SQL.query_ c "SELECT slotNo, blockHash FROM script_transactions ORDER BY slotNo DESC LIMIT 1"
+
 
 open :: FilePath -> Depth -> StorableMonad ScriptTxHandle ScriptTxIndexer
 open dbPath (Depth k) = do
@@ -305,4 +303,3 @@ open dbPath (Depth k) = do
   -- This index helps with group by
   lift $ SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_grp ON script_transactions (slotNo)"
   emptyState k (ScriptTxHandle c k)
-

@@ -129,7 +129,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
 
     coordinator <- M.initialCoordinator 1 0
     ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
-    (loop, indexer) <- M.scriptTxWorker_ (\update -> writeScriptUpdate update $> []) (ScriptTx.Depth 1) coordinator ch sqliteDb
+    (loop, _, indexer) <- M.scriptTxWorker_ (\update -> writeScriptUpdate update $> []) (ScriptTx.Depth 1) coordinator ch sqliteDb
 
     -- Receive ChainSyncEvents and pass them on to indexer's channel
     void $ IO.forkIO $ do

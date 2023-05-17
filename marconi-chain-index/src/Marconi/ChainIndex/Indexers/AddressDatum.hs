@@ -84,6 +84,7 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
                                  liftSQLError)
 import Marconi.ChainIndex.Orphans ()
+import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), QueryInterval (QEverything, QInterval),
                               Queryable (queryStorage), Resumable, Rewindable (rewindStorage), StorableEvent,
                               StorableMonad, StorablePoint, StorableQuery, StorableResult, emptyState,
@@ -487,11 +488,9 @@ instance Rewindable AddressDatumHandle where
 instance Resumable AddressDatumHandle where
     resumeFromStorage
         :: AddressDatumHandle
-        -> StorableMonad AddressDatumHandle [C.ChainPoint]
-    resumeFromStorage h = do
-        es <- Storable.getStoredEvents h
-        pure $ fmap (\(AddressDatumIndexEvent _ _ chainPoint) -> chainPoint) es
-            ++ [C.ChainPointAtGenesis]
+        -> StorableMonad AddressDatumHandle (C.ChainPoint)
+    resumeFromStorage (AddressDatumHandle c _) = liftSQLError CantQueryIndexer $ fmap chainPointOrGenesis $
+      SQL.query_ c "SELECT slot_no, block_hash FROM address_datums ORDER BY slot_no DESC LIMIT 1"
 
 open
   :: FilePath

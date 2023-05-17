@@ -27,7 +27,6 @@ import Helpers (addressAnyToShelley)
 import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (ueInputs, ueUtxos), StorableQuery (LastSyncPoint),
                                          StorableResult (LastSyncPointResult))
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.TestLib.StorableProperties qualified as StorableProperties
 import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.Core.Storable qualified as Storable
 
@@ -87,19 +86,9 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
         propUtxoQueryByAddressAndSlot
 
     , testPropertyNamed
-        "The points the indexer can be resumed from should return at least the genesis point"
-        "propResumingShouldReturnAtLeastTheGenesisPoint"
-        propResumingShouldReturnAtLeastTheGenesisPoint
-
-    , testPropertyNamed
         "The points that indexer can be resumed from should return at least non-genesis point when some data was indexed on disk"
         "propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk"
         propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk
-
-    , testPropertyNamed
-        "The points that indexer can be resumed from should return an descending ordered list of points"
-        "propResumablePointsShouldBeSortedInDescOrder"
-        propResumablePointsShouldBeSortedInDescOrder
 
     , testPropertyNamed
         "ToJSON/FromJSON roundtrip for UtxoRow"
@@ -485,16 +474,6 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
     mkTargetAddressFromTxOuts txOuts =
         nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
 
--- | The property verifies that the 'Storable.resumeFromStorage' call returns at least the
--- 'C.ChainPointAtGenesis' point.
-propResumingShouldReturnAtLeastTheGenesisPoint :: Property
-propResumingShouldReturnAtLeastTheGenesisPoint = property $ do
-    events <- forAll UtxoGen.genUtxoEvents
-    depth <- forAll $ Gen.int (Range.linear 1 $ length events)
-    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
-            >>= Storable.insertMany events
-    StorableProperties.propResumingShouldReturnAtLeastTheGenesisPoint indexer
-
 -- | The property verifies that the 'Storable.resumeFromStorage' call returns at least a point which
 -- is not 'C.ChainPointAtGenesis' when some events are inserted on disk.
 propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk :: Property
@@ -517,25 +496,10 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
     indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vacuum sqlite
     void $ liftIO $ raiseException $ Storable.insertMany events indexer
 
-    actualResumablePoints <- liftIO $ raiseException $ Storable.resume indexer
+    latestResumablePoint <- liftIO $ raiseException $ Storable.resume indexer
     -- TODO Given current implementation, we only expect to be able to resume from events which
     -- contain at least one UTXO. In the future, this should be changed to take into account
-    Hedgehog.assert $ length actualResumablePoints >= 2
-
--- | The property verifies that the 'Storable.resumeFromStorage' call returns a sorted list of chain
--- points in descending order.
-propResumablePointsShouldBeSortedInDescOrder :: Property
-propResumablePointsShouldBeSortedInDescOrder = property $ do
-    events <- forAll UtxoGen.genUtxoEvents
-    depth <- forAll $ Gen.int (Range.linear 1 $ length events)
-
-    Hedgehog.classify "Events are in memory only" $ depth >= length events
-    Hedgehog.classify "Events on disk and memory" $ depth < length events
-
-    indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False -- don't vaccum sqlite
-           >>= Storable.insertMany events
-
-    StorableProperties.propResumablePointsShouldBeSortedInDescOrder indexer
+    Hedgehog.assert $ latestResumablePoint /= C.ChainPointAtGenesis
 
 propJsonRoundtripUtxoRow :: Property
 propJsonRoundtripUtxoRow = property $ do

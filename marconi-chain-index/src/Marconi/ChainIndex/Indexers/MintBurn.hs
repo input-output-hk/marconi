@@ -58,6 +58,7 @@ import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer
                                  liftSQLError)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (StorableMonad)
 import Marconi.Core.Storable qualified as RI
 import Ouroboros.Consensus.Shelley.Eras qualified as OEra
@@ -379,11 +380,8 @@ instance RI.Buffered MintBurnHandle where
         \  ORDER BY slotNo DESC, txId                                          "
 
 instance RI.Resumable MintBurnHandle where
-  resumeFromStorage h = do
-    events <- RI.getStoredEvents h
-    pure $ map getChainPoint events <> [C.ChainPointAtGenesis]
-    where
-      getChainPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
+  resumeFromStorage (MintBurnHandle c _) = liftSQLError CantQueryIndexer $ fmap chainPointOrGenesis $
+    SQL.query_ c "SELECT slotNo, blockHeaderHash FROM minting_policy_events ORDER BY slotNo DESC LIMIT 1"
 
 instance RI.Rewindable MintBurnHandle where
   rewindStorage cp h@(MintBurnHandle sqlCon _k)

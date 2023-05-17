@@ -3,6 +3,7 @@ module Marconi.ChainIndex.Utils
     ( isBlockRollbackable
     , querySecurityParam
     , querySecurityParamEra
+    , chainPointOrGenesis
     ) where
 
 import Cardano.Api qualified as C
@@ -53,3 +54,8 @@ querySecurityParamEra eraInMode networkId socketPath = do
 
     toError :: Show a => a -> ExceptT IndexerError IO b
     toError = throwError . CantStartIndexer . pack . show
+
+chainPointOrGenesis :: [C.ChainPoint] -> C.ChainPoint
+chainPointOrGenesis result = case result of
+  []     -> C.ChainPointAtGenesis
+  cp : _ -> cp

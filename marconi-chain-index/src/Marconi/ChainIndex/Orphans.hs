@@ -35,6 +35,9 @@ import Ouroboros.Consensus.HardFork.Combinator.Serialisation.Common qualified as
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Prettyprinter (Pretty (pretty), (<+>))
 
+
+-- * ChainPoint
+
 instance Pretty C.ChainTip where
   pretty C.ChainTipAtGenesis   = "ChainTipAtGenesis"
   pretty (C.ChainTip sn ha bn) = "ChainTip(" <> pretty sn <> "," <+> pretty ha <> "," <+> pretty bn <> ")"
@@ -42,6 +45,13 @@ instance Pretty C.ChainTip where
 instance Pretty C.ChainPoint where
   pretty C.ChainPointAtGenesis = "ChainPointAtGenesis"
   pretty (C.ChainPoint sn ha)  = "ChainPoint(" <> pretty sn <> "," <+> pretty ha <> ")"
+
+instance SQL.FromRow C.ChainPoint where
+  fromRow = C.ChainPoint <$> SQL.field <*> SQL.field
+
+instance ToRow C.ChainPoint where
+  toRow C.ChainPointAtGenesis = [SQL.SQLNull]
+  toRow (C.ChainPoint sn bh)  = [toField sn, toField bh]
 
 -- * C.Hash C.BlockHeader
 
@@ -73,14 +83,6 @@ instance Pretty C.SlotNo where
 
 deriving newtype instance SQL.ToField C.SlotNo
 deriving newtype instance SQL.FromField C.SlotNo
-
--- * C.ChainPoint
-instance ToRow C.ChainPoint where
-  toRow C.ChainPointAtGenesis = [SQL.SQLNull]
-  toRow (C.ChainPoint sn bh)  = [toField sn, toField bh]
-
-instance FromRow C.ChainPoint where
-  fromRow = C.ChainPoint <$> SQL.field <*> SQL.field
 
 -- * C.BlockNo
 

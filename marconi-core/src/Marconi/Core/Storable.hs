@@ -181,7 +181,7 @@ class Rewindable h where
 -}
 class Resumable h where
   resumeFromStorage
-    :: h -> StorableMonad h [StorablePoint h]
+    :: h -> StorableMonad h (StorablePoint h)
 
 {-
    The next class is witnessing the fact that events contain enough information to
@@ -378,7 +378,7 @@ rewind p s = if s ^. storage . cursor == 0
 resume
   :: Resumable h
   => State h
-  -> StorableMonad h [StorablePoint h]
+  -> StorableMonad h (StorablePoint h)
 resume s = resumeFromStorage (s ^. handle)
 
 {-
