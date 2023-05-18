@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell    #-}
 
 module Gen.Marconi.ChainIndex.Indexers.MintBurn
-    ( genIndexWithEvents
+    ( genIndexerWithPositiveMintEvents
     , genMintEvents
     , genTxWithMint
     , genTxMintValue
@@ -40,10 +40,10 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 -- | The workhorse of the test: generate an indexer, then generate
 -- transactions to index, then index them.
-genIndexWithEvents
+genIndexerWithPositiveMintEvents
     :: FilePath
     -> H.PropertyT IO (MintBurn.MintBurnIndexer, [MintBurn.TxMintEvent], (SecurityParam, Int))
-genIndexWithEvents dbPath = do
+genIndexerWithPositiveMintEvents dbPath = do
   (events, (bufferSize, nTx)) <- forAll genMintEvents
   -- Report buffer overflow:
   let overflow = fromIntegral bufferSize < length events
