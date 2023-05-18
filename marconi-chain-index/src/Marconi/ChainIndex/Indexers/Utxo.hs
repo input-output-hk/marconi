@@ -96,7 +96,8 @@ import Marconi.Core.Storable qualified as Storable
  - indexers. Taking the chainpoint before ensure that we have consistent information across all the indexers.
  -}
 
--- | Not comprehensive, only supports ChainPoint interval as outlines in <https://github.com/input-output-hk/marconi/blob/main/marconi-sidechain/doc/API.adoc#getutxosfromaddress>
+-- | Not comprehensive, only supports ChainPoint interval as outlines in
+--   <https://github.com/input-output-hk/marconi/blob/main/marconi-sidechain/doc/API.adoc#getutxosfromaddress>
 data Interval r
   = LessThanOrEqual !r
   | InRange !r !r
@@ -486,6 +487,10 @@ open dbPath (Depth k) isToVacuume = do
     lift $ SQL.execute_ c
         [r|CREATE INDEX IF NOT EXISTS transaction_address
            ON transactions_outputs (address)|]
+
+    lift $ SQL.execute_ c
+        [r|CREATE INDEX IF NOT EXISTS transaction_id
+           ON transactions_outputs (txId, txIx)|]
 
     lift $ SQL.execute_ c
         [r|CREATE INDEX IF NOT EXISTS transaction_spent_slot
