@@ -14,7 +14,7 @@ import Cardano.Api qualified as C
 import Control.Arrow (left)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, tryReadTMVar)
-import Control.Lens ((^.))
+import Control.Lens ((^.), (^?))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
 import Data.Bifunctor (Bifunctor (bimap))
@@ -24,13 +24,15 @@ import Data.Text (Text, unpack)
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Error (IndexerError)
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
-import Marconi.ChainIndex.Indexers.Utxo (address, datum, datumHash, txId, txIx, urBlockHash, urSlotNo, urUtxo)
+import Marconi.ChainIndex.Indexers.Utxo (address, datum, datumHash, txIn, urCreationBlockHash, urCreationSlotNo,
+                                         urSpentSlotNo, urSpentTxId, urUtxo)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (AddressUtxoResult (AddressUtxoResult),
                                      GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
-                                     GetUtxosFromAddressResult (GetUtxosFromAddressResult))
+                                     GetUtxosFromAddressResult (GetUtxosFromAddressResult),
+                                     SpentInfoResult (SpentInfoResult))
 import Marconi.Sidechain.Api.Types (AddressUtxoIndexerEnv (AddressUtxoIndexerEnv),
                                     QueryExceptions (QueryError, UnexpectedQueryResult), addressUtxoIndexerEnvIndexer,
                                     addressUtxoIndexerEnvTargetAddresses)
@@ -128,17 +130,20 @@ withQueryAction env query =
     action Nothing = pure $ Right $ GetUtxosFromAddressResult [] -- may occures at startup before marconi-chain-index gets to update the indexer
     action (Just indexer) = do
             res <- runExceptT $ Storable.query indexer query
+            let spentInfo row =
+                    -- either both parameters are Nothing or both are defined
+                    SpentInfoResult <$> row ^? urSpentSlotNo <*> row ^? urSpentTxId
             pure $ case res of
                  Right (Utxo.UtxoResult rows) ->
                      Right $ GetUtxosFromAddressResult $ rows <&> \row ->
                          AddressUtxoResult
-                            (row ^. urBlockHash)
-                            (row ^. urSlotNo)
-                            (row ^. urUtxo . txId)
-                            (row ^. urUtxo . txIx)
+                            (row ^. urCreationBlockHash)
+                            (row ^. urCreationSlotNo)
+                            (row ^. urUtxo . txIn)
                             (row ^. urUtxo . address)
                             (row ^. urUtxo . datumHash)
                             (row ^. urUtxo . datum)
+                            (spentInfo row)
                  _other               ->
                      Left $ UnexpectedQueryResult query
 

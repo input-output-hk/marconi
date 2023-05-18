@@ -135,19 +135,35 @@ newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult
     { unAddressUtxosResult :: [AddressUtxoResult] }
     deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
+data SpentInfoResult
+    = SpentInfoResult
+    !C.SlotNo
+    !C.TxId
+    deriving (Eq, Ord, Show, Generic)
+
+instance ToJSON SpentInfoResult where
+
+    toJSON (SpentInfoResult sn txid) = object ["slot" .= sn, "txId" .= txid]
+
+instance FromJSON SpentInfoResult where
+
+    parseJSON (Object v) = SpentInfoResult <$> v.: "slot" <*> v .: "txId"
+    parseJSON _          = mempty
+
 data AddressUtxoResult = AddressUtxoResult
     !(C.Hash C.BlockHeader)
     !C.SlotNo
-    !C.TxId
-    !C.TxIx
+    !C.TxIn
     !C.AddressAny
     !(Maybe (C.Hash C.ScriptData))
     !(Maybe C.ScriptData)
+    !(Maybe SpentInfoResult)
     deriving (Eq, Ord, Show, Generic)
 
 instance ToJSON AddressUtxoResult where
-    toJSON (AddressUtxoResult bhh slotNo txId txIx addr dath dat) =
-        object
+    toJSON (AddressUtxoResult bhh slotNo txIn addr dath dat spentBy) = let
+        C.TxIn txId txIx = txIn
+        in object
             [ "blockHeaderHash" .= bhh
             , "slotNo" .= slotNo
             , "txId" .= txId
@@ -155,6 +171,7 @@ instance ToJSON AddressUtxoResult where
             , "address" .= addr
             , "datumHash" .= dath
             , "datum" .= dat
+            , "spentBy" .= spentBy
             ]
 
 instance FromJSON AddressUtxoResult where
@@ -162,11 +179,11 @@ instance FromJSON AddressUtxoResult where
         AddressUtxoResult
             <$> v .: "blockHeaderHash"
             <*> v .: "slotNo"
-            <*> v .: "txId"
-            <*> v .: "txIx"
+            <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
             <*> v .: "address"
             <*> v .: "datumHash"
             <*> v .: "datum"
+            <*> v .: "spentBy"
     parseJSON _ = mempty
 
 data GetTxsBurningAssetIdParams

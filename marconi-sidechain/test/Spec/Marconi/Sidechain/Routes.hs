@@ -14,7 +14,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Gen.Marconi.ChainIndex.Types qualified as Gen
-import Hedgehog (Property, forAll, property, tripping)
+import Hedgehog (Gen, Property, forAll, property, tripping)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Marconi.ChainIndex.Indexers.EpochState (EpochNonceRow (EpochNonceRow), EpochSDDRow (EpochSDDRow))
@@ -25,7 +25,8 @@ import Marconi.Sidechain.Api.Routes (AddressUtxoResult (AddressUtxoResult), Asse
                                      GetTxsBurningAssetIdParams (GetTxsBurningAssetIdParams),
                                      GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
                                      GetUtxosFromAddressParams (GetUtxosFromAddressParams),
-                                     GetUtxosFromAddressResult (GetUtxosFromAddressResult))
+                                     GetUtxosFromAddressResult (GetUtxosFromAddressResult),
+                                     SpentInfoResult (SpentInfoResult))
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
@@ -114,14 +115,21 @@ propJSONRountripGetUtxosFromAddressResult = property $ do
         AddressUtxoResult
             <$> Gen.genHashBlockHeader
             <*> Gen.genSlotNo
-            <*> pure txId
-            <*> pure txIx
+            <*> pure (C.TxIn txId txIx)
             <*> (fmap (\(C.AddressInEra _ addr) -> C.toAddressAny addr)
                       $ Gen.genAddressInEra C.BabbageEra
                 )
             <*> pure (fmap C.hashScriptDataBytes hsd)
             <*> pure (fmap C.getScriptData hsd)
+            <*> Gen.maybe genSpentInfo
+
     tripping r Aeson.encode Aeson.decode
+
+genSpentInfo :: Gen SpentInfoResult
+genSpentInfo = do
+    slotNo <- Gen.genSlotNo
+    (C.TxIn txId _) <- CGen.genTxIn
+    pure $ SpentInfoResult slotNo txId
 
 propJSONRountripGetTxsBurningAssetIdParams :: Property
 propJSONRountripGetTxsBurningAssetIdParams = property $ do
@@ -201,23 +209,30 @@ goldenAddressUtxoResult = do
             pure
             $ C.deserialiseFromRawBytesHex (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader)) blockHeaderHashRawBytes
 
+    let spentTxIdRawBytes = "2e19f40cdf462444234d0de049163d5269ee1150feda868560315346dd12807d"
+    spentTxId <-
+        either
+            (error . show)
+            pure
+            $ C.deserialiseFromRawBytesHex C.AsTxId spentTxIdRawBytes
+
     let utxos =
             [ AddressUtxoResult
                 blockHeaderHash
                 (C.SlotNo 1)
-                txId
-                (C.TxIx 0)
+                (C.TxIn txId (C.TxIx 0))
                 (C.AddressShelley addr)
+                Nothing
                 Nothing
                 Nothing
             , AddressUtxoResult
                 blockHeaderHash
                 (C.SlotNo 1)
-                txId
-                (C.TxIx 0)
+                (C.TxIn txId (C.TxIx 0))
                 (C.AddressShelley addr)
                 (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
                 (Just datum)
+                (Just $ SpentInfoResult (C.SlotNo 12) spentTxId)
             ]
         result = GetUtxosFromAddressResult utxos
     pure $ Aeson.encodePretty result

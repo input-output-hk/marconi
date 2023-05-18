@@ -5,6 +5,7 @@
         "datum": null,
         "datumHash": null,
         "slotNo": 1,
+        "spentBy": null,
         "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
         "txIx": 0
     },
@@ -14,6 +15,10 @@
         "datum": "34",
         "datumHash": "eb8649214997574e20c464388a172420d25403682bbbb80c496831c8cc1f8f0d",
         "slotNo": 1,
+        "spentBy": {
+            "slot": 12,
+            "txId": "2e19f40cdf462444234d0de049163d5269ee1150feda868560315346dd12807d"
+        },
         "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
         "txIx": 0
     }
