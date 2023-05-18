@@ -60,7 +60,7 @@ integration = H.withTests 1 . H.propertyOnce
 -- | Each test case is described beside every top level property
 -- declaration.
 tests :: TestTree
-tests = testGroup "MintBurn"
+tests = testGroup "Spec.Marconi.ChainIndex.Indexers.MintBurn"
   [ testPropertyNamed
       "Mints in `TxBodyContent` survive `createAndValidateTransactionBody` and end up in expected place in `TxBody`"
       "mintsPreserved" mintsPreserved
