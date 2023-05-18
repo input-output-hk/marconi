@@ -339,7 +339,33 @@ propJsonRoundtripTxMintRow = H.property $ do
 
 propQueryingOnlyBurn :: Property
 propQueryingOnlyBurn = H.property $ do
-  () === ()
+  (indexer, events, (_bufferSize, _nTx)) <- Gen.genIndexerWithEvents ":memory:"
+  let
+    eventRows = MintBurn.toRows =<< events
+    -- Only burn events
+    burnEvents :: [MintBurn.TxMintEvent]
+    burnEvents = MintBurn.fromRows $ filter ((< 0) . MintBurn._txMintRowQuantity) eventRows
+
+  -- Query all burn events from indexer
+  MintBurnResult (resultEventRows :: [MintBurn.TxMintRow])  <-
+    liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryAllBurn Nothing
+  let resultEvents = MintBurn.fromRows resultEventRows
+  equalSet burnEvents resultEvents
+
+  -- Query some single event
+  let noBurnEvents = null eventRows
+  H.classify "No burn events" noBurnEvents
+  H.classify "Some burn events" $ not noBurnEvents
+  unless noBurnEvents $ do
+    aRow <- forAll $ Gen.element eventRows
+    let somePolicyId = MintBurn._txMintRowPolicyId aRow
+        someAssetName = MintBurn._txMintRowAssetName aRow
+    MintBurnResult (resultEventRows' :: [MintBurn.TxMintRow])  <-
+      liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryBurnByAssetId somePolicyId someAssetName Nothing
+    let
+      resultEvents' = MintBurn.fromRows resultEventRows'
+      expectedEvents = MintBurn.fromRows $ filter (\row -> MintBurn._txMintRowPolicyId row == somePolicyId && MintBurn._txMintRowAssetName row == someAssetName) $ MintBurn.toRows =<< burnEvents
+    equalSet resultEvents' expectedEvents
 
 -- * Helpers
 
