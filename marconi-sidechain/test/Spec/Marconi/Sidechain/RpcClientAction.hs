@@ -44,7 +44,7 @@ mkRpcClientAction env port = do
           = mkHoistedHttpRpcClient clientEnv
     pure $ RpcClientAction (mkInsertUtxoEventsCallback env)
                            (mkInsertMintBurnEventsCallback env)
-                           (\a -> rpcUtxos $ GetUtxosFromAddressParams a Nothing)
+                           (\a -> rpcUtxos $ GetUtxosFromAddressParams a Nothing maxBound)
                            (rpcSyncPoint "")
                            (\(p,a) -> rpcMinting $ GetTxsBurningAssetIdParams p a Nothing)
 

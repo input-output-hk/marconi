@@ -111,20 +111,25 @@ instance FromJSON GetCurrentSyncedBlockResult where
 
 data GetUtxosFromAddressParams
     = GetUtxosFromAddressParams
-    { queryAddress       :: !String
-    , queryUnspentAtSlot :: !(Maybe Word64)
-    } deriving (Eq, Show)
+    { queryAddress             :: !String -- ^ address to query for
+    , queryCreatedAfterSlotNo  :: !(Maybe Word64) -- ^ query upper bound slotNo interval, unspent before or at this slot
+    , queryUnspentBeforeSlotNo :: ! Word64 -- ^ query lower bound slotNo interval, filter out UTxO that were created during or before that slo
+    } deriving (Show, Eq)
 
 instance FromJSON GetUtxosFromAddressParams where
-    parseJSON (Object v) = GetUtxosFromAddressParams <$> (v .: "address")  <*> (v .:? "unspentBeforeSlotNo")
-    parseJSON _          = mempty
+  parseJSON (Object v) = GetUtxosFromAddressParams
+      <$> (v .: "address")
+      <*> (v .:? "createdAfterSlotNo")
+      <*> (v .: "unspentBeforeSlotNo")
+  parseJSON _ = mempty
 
 instance ToJSON GetUtxosFromAddressParams where
-    toJSON q =
-        object $ catMaybes
-           [ Just ("address" .= queryAddress q)
-           , ("unspentBeforeSlotNo" .=) <$> queryUnspentAtSlot q
-           ]
+  toJSON q =
+    object $ catMaybes
+    [ Just ("address" .= queryAddress q)
+    , ( "createdAfterSlotNo" .=) <$> queryCreatedAfterSlotNo q
+    , Just $ "unspentBeforeSlotNo" .= queryUnspentBeforeSlotNo q
+    ]
 
 newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult
     { unAddressUtxosResult :: [AddressUtxoResult] }

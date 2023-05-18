@@ -2,7 +2,6 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DerivingStrategies    #-}
 {-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns        #-}
@@ -54,7 +53,9 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text (pack)
 import Data.Text qualified as Text
+import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
@@ -71,7 +72,7 @@ import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TargetAddresses, TxOut, pattern CurrentEra)
 import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 
-import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
+import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
                                  liftSQLError)
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint,
                               QueryInterval (QEverything, QInterval), Queryable (queryStorage),
@@ -91,6 +92,46 @@ import Marconi.Core.Storable qualified as Storable
  - indexers. Taking the chainpoint before ensure that we have consistent information across all the indexers.
  -}
 
+-- | Not comprehensive, only supports ChainPoint interval as outlines in <https://github.com/input-output-hk/marconi/blob/main/marconi-sidechain/doc/API.adoc#getutxosfromaddress>
+data Interval r
+  = LessThanOrEqual !r
+  | BothOpen !r !r
+  deriving (Eq, Show)
+
+interval
+  :: (Ord r, Show r)
+  => Maybe r -- ^ lower bound
+  -> r  -- ^ upper bound
+  -> Either IndexerError (Interval r)
+interval Nothing p = Right $ LessThanOrEqual p
+interval (Just p) p' =
+  let
+--  Enforce the internal invariant
+-- 'BothOpen'.
+    wrap
+      :: (Ord r, Show r)
+      => (r -> r -> Interval r)
+      -> r -> r -> Either IndexerError (Interval r)
+    wrap f x y
+      | x <= y = Right $ f x y
+      | otherwise = Left . InvalidQueryInterval . pack
+          $ "Invalid Interval. LowerBound, "
+          <> show x
+          <> " is not less than or equal to upperBound "
+          <> show y
+
+  in wrap BothOpen p p'
+
+isInInterval :: Interval C.SlotNo -> C.ChainPoint -> Bool
+isInInterval slotNoInterval = \case
+  C.ChainPointAtGenesis -> case slotNoInterval of
+    (LessThanOrEqual _) -> True
+    (BothOpen _ _)      -> False
+
+  (C.ChainPoint slotNo _)  -> case slotNoInterval of
+    (LessThanOrEqual slotNo') -> slotNo' >= slotNo
+    (BothOpen l h)            -> l <= slotNo &&  h >= slotNo
+
 type UtxoIndexer = Storable.State UtxoHandle
 
 data UtxoHandle = UtxoHandle
@@ -99,10 +140,13 @@ data UtxoHandle = UtxoHandle
   , toVacuume     :: !Bool            -- ^ weather to perform SQLite vacuum to release space
   }
 
+data QueryUtxoByAddress = QueryUtxoByAddress !C.AddressAny !(Interval C.SlotNo)
+  deriving (Show, Eq)
+
 data instance StorableQuery UtxoHandle
-    = UtxoByAddress C.AddressAny (Maybe C.SlotNo)
+    = QueryUtxoByAddressWrapper QueryUtxoByAddress
     | LastSyncPoint
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq)
 
 type QueryableAddresses = NonEmpty (StorableQuery UtxoHandle)
 
@@ -205,7 +249,7 @@ instance ToJSON ChainPointRow where
 data instance StorableResult UtxoHandle
     = UtxoResult { getUtxoResult :: ![UtxoRow] }
     | LastSyncPointResult { getLastSyncPoint :: !C.ChainPoint }
-    deriving (Eq, Show)
+    deriving (Eq, Show, Ord)
 
 data instance StorableEvent UtxoHandle = UtxoEvent
     { ueUtxos       :: !(Set Utxo)
@@ -436,7 +480,7 @@ instance Buffered UtxoHandle where
               slotNo
            ORDER BY
               slotNo DESC
-           LIMIT ?|] (SQL.Only sz) :: IO [[Integer]]
+           LIMIT ?|] (SQL.Only sz) :: IO [[Word64]]
 
     -- Take the slot number of the sz'th slot
     let sn = if null sns
@@ -462,7 +506,7 @@ instance Buffered UtxoHandle where
            GROUP by
               u.slotNo
            ORDER BY
-              u.slotNo ASC|] (SQL.Only (sn :: Integer))
+              u.slotNo ASC|] (SQL.Only (sn :: Word64))
 
     rowsToEvents (getTxIns c) rows
 
@@ -533,37 +577,28 @@ eventToRows (UtxoEvent utxos _ (C.ChainPoint sn bhsh)) =
 -- | Filter for events at the given address
 eventsAtAddress
   :: Foldable f
-  => C.AddressAny -- ^ Address query
-  -> Maybe C.SlotNo -- ^ Latest included chainpoint
+  => QueryUtxoByAddress -- ^ Address SlotInterval query
   -> f (StorableEvent UtxoHandle) -- ^ Utxo event
   -> [StorableEvent UtxoHandle] -- ^ Utxo event at thegiven address
-eventsAtAddress addr p = let
+eventsAtAddress (QueryUtxoByAddress addr snoInterval) =
+  let
+
+    pointFilter :: Interval C.SlotNo -> StorableEvent UtxoHandle -> Bool
+    pointFilter snoIn utxoEv  = isInInterval snoIn (ueChainPoint utxoEv )
+
+    addressFilter :: Utxo -> Bool
+    addressFilter u = (u ^. address) == addr
+
+    utxosAtAddress :: StorableEvent UtxoHandle -> Set Utxo
+    utxosAtAddress = Set.filter addressFilter . ueUtxos
 
     splitEventAtAddress :: StorableEvent UtxoHandle -> [StorableEvent UtxoHandle]
     splitEventAtAddress event =
-      let
+      [event {ueUtxos = utxosAtAddress event}
+      | not (null $ utxosAtAddress event)
+        && pointFilter snoInterval event]
 
-        isBeforeSlot :: C.SlotNo -> C.ChainPoint -> Bool
-        isBeforeSlot s = \case
-            C.ChainPointAtGenesis -> True
-            C.ChainPoint s' _     -> s' <= s
-
-        pointFilter :: Maybe C.SlotNo -> StorableEvent UtxoHandle -> Bool
-        pointFilter ms
-            = maybe
-                (const True)
-                (\s -> isBeforeSlot s . ueChainPoint)
-                ms
-
-        addressFilter :: Utxo -> Bool
-        addressFilter u = (u ^. address) == addr
-
-        utxosAtAddress :: Set Utxo
-        utxosAtAddress = Set.filter addressFilter $ ueUtxos event
-
-      in [event {ueUtxos = utxosAtAddress} | not (null utxosAtAddress) && pointFilter p event]
-
-   in concatMap splitEventAtAddress
+  in concatMap splitEventAtAddress
 
 utxoAtAddressQuery
     :: Foldable f
@@ -614,53 +649,62 @@ instance Queryable UtxoHandle where
     -> UtxoHandle
     -> StorableQuery UtxoHandle
     -> StorableMonad UtxoHandle (StorableResult UtxoHandle)
-  queryStorage qi es (UtxoHandle c _ _) (UtxoByAddress addr slotNo) = let
 
-    eventAtQuery :: StorableEvent UtxoHandle = queryBuffer qi addr slotNo es -- query in-memory
+  queryStorage qi es (UtxoHandle c _ _) (QueryUtxoByAddressWrapper q@(QueryUtxoByAddress addr slotInterval)) =
+    let
+      eventAtQuery :: StorableEvent UtxoHandle -- query in-memory
+      eventAtQuery = queryBuffer qi q es
+      addressFilter = (["u.address = :address"], [":address" := addr])
+      slotFilter = case slotInterval of
+        LessThanOrEqual sno -> (["u.slotNo <= :slotNo"] , [":slotNo" := sno])
+        BothOpen lowerBound upperBound ->
+          (["u.slotNo >= :slotNoLow"] , [":slotNoLow" := lowerBound])
+          <>
+          (["u.slotNo <= :slotNoHigh"] , [":slotNoHigh" := upperBound])
+      filters = addressFilter <> slotFilter
 
-    filters = (["u.address = :address"], [":address" := addr])
-           <> maybe mempty (\sno -> (["u.slotNo <= :slotNo"] , [":slotNo" := sno])) slotNo
 
     in liftSQLError CantQueryIndexer $ uncurry (utxoAtAddressQuery c es eventAtQuery) filters
-  queryStorage _ es (UtxoHandle c _ _) LastSyncPoint = let
+
+  queryStorage _ es (UtxoHandle c _ _) LastSyncPoint =
+    let
       queryLastSlot = [r|SELECT u.slotNo, u.blockHash
-                     FROM unspent_transactions u
-                     GROUP BY u.slotNo
-                     ORDER BY u.slotNo DESC
-                     LIMIT ? |]
+                        FROM unspent_transactions u
+                        GROUP BY u.slotNo
+                        ORDER BY u.slotNo DESC
+                        LIMIT ? |]
       -- We don't send the last event but the one before, to ensure that every indexers reached this point
       -- It's a hack, which should be removed once we have a proper handling of synchronization events.
       --
       -- See Note [Last sync chainpoint]
       in case toList es of
-          -- 2+ elements in memory
-          (_:_:_) -> pure . LastSyncPointResult $
-              case fmap getDown $ sort $ Down . ueChainPoint <$> toList es of
-                  _:p:_xs -> p
-                  _other  -> C.ChainPointAtGenesis
-          -- 1 element in memory
-          (_:_) -> liftSQLError CantQueryIndexer $ do
-                  persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Integer))
-                  pure . LastSyncPointResult $ case persisted of
-                      p:_    -> getChainPoint p
-                      _other -> C.ChainPointAtGenesis
-          -- 0 element in memory
-          [] -> liftSQLError CantQueryIndexer $ do
-                  persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Integer))
-                  pure . LastSyncPointResult $ case persisted of
-                      _:p:_xs -> getChainPoint p
-                      _other  -> C.ChainPointAtGenesis
+        -- 2+ elements in memory
+        (_:_:_) -> pure . LastSyncPointResult $
+            case fmap getDown $ sort $ Down . ueChainPoint <$> toList es of
+                _:p:_xs -> p
+                _other  -> C.ChainPointAtGenesis
+        -- 1 element in memory
+        (_:_) -> liftSQLError CantQueryIndexer $ do
+                persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Word64))
+                pure . LastSyncPointResult $ case persisted of
+                    p:_    -> getChainPoint p
+                    _other -> C.ChainPointAtGenesis
+        -- 0 element in memory
+        [] -> liftSQLError CantQueryIndexer $ do
+                persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Word64))
+                pure . LastSyncPointResult $ case persisted of
+                    _:p:_xs -> getChainPoint p
+                    _other  -> C.ChainPointAtGenesis
 
 -- | Query memory buffer
 queryBuffer
   :: Foldable f
   => QueryInterval C.ChainPoint
-  -> C.AddressAny -- ^ Query
-  -> Maybe C.SlotNo -- ^ Latest included point
+  -> QueryUtxoByAddress
   -> f (StorableEvent UtxoHandle) -- ^ Utxo events
   -> StorableEvent UtxoHandle
-queryBuffer QEverything addr slotNo      = fold . eventsAtAddress addr slotNo
-queryBuffer (QInterval _ cp) addr slotNo = fold . filter (eventIsBefore cp) . eventsAtAddress addr slotNo
+queryBuffer QEverything q      = fold . eventsAtAddress q
+queryBuffer (QInterval _ cp) q = fold . filter (eventIsBefore cp) . eventsAtAddress q
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle
@@ -847,9 +891,6 @@ isAddressInTarget' targetAddresses utxo =
     case utxo ^. address  of
       C.AddressByron _       -> False
       C.AddressShelley addr' -> addr' `elem` targetAddresses
-
-mkQueryableAddresses :: TargetAddresses -> QueryableAddresses
-mkQueryableAddresses = fmap (flip UtxoByAddress Nothing . C.toAddressAny)
 
 balanceUtxoFromTx
   :: C.IsCardanoEra era

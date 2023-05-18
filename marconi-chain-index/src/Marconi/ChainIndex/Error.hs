@@ -12,6 +12,7 @@ data IndexerError
     = CantStartIndexer !Text
     | CantExtractEvent !Text
     | CantQueryIndexer !Text
+    | InvalidQueryInterval !Text
     | CantInsertEvent !Text
     | CantRollback !Text
     | InvalidIndexer !Text
