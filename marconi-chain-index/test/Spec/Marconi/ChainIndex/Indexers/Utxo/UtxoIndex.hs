@@ -236,7 +236,7 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
       futureSpentHasSpentTxId u = let
          futureSpents = foldMap getFutureSpent events
          txin = u ^. Utxo.urUtxo . Utxo.txIn
-         in txin `Set.notMember` futureSpents || isJust (u ^. Utxo.urSpentInfo)
+         in txin `Set.notMember` futureSpents || isJust (u ^. Utxo.urSpendInfo)
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
