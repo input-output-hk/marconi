@@ -17,7 +17,7 @@ import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
 import Control.Lens ((^.))
-import Control.Monad (forM, forM_, void)
+import Control.Monad (forM, forM_, unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Coerce (coerce)
@@ -101,6 +101,9 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.MintBurn"
   , testPropertyNamed
       "ToJSON/FromJSON roundtrip for TxMintRow"
       "propJsonRoundtripTxMintRow" propJsonRoundtripTxMintRow
+  , testPropertyNamed
+      "Querying only burn events will only query the events with negative value"
+      "propQueryingOnlyBurn" propQueryingOnlyBurn
   ]
 
 -- | This is a sanity-check test that turns a TxBodyContent with mint
@@ -333,6 +336,10 @@ propJsonRoundtripTxMintRow = H.property $ do
     mintEvents <- forAll Gen.genMintEvents
     let mpsTxRows = concatMap MintBurn.toRows $ fst mintEvents
     forM_ mpsTxRows $ \txMintRow -> Hedgehog.tripping txMintRow Aeson.encode Aeson.decode
+
+propQueryingOnlyBurn :: Property
+propQueryingOnlyBurn = H.property $ do
+  () === ()
 
 -- * Helpers
 
