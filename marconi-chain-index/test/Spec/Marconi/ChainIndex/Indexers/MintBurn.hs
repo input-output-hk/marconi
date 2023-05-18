@@ -112,7 +112,7 @@ tests = testGroup "Spec.Marconi.ChainIndex.Indexers.MintBurn"
 -- indexer.
 mintsPreserved :: Property
 mintsPreserved = H.property $ do
-  mintValue <- forAll Gen.genTxMintValue
+  mintValue <- forAll $ Gen.genTxMintValueRange (-100) 100
   C.Tx txb _ :: C.Tx C.BabbageEra <- forAll (Gen.genTxWithMint mintValue) >>= \case
     Left err  -> fail $ "TxBodyError: " <> show err
     Right tx' -> return tx'
@@ -130,7 +130,7 @@ mintsPreserved = H.property $ do
 -- | Create transactions, index them, query indexer and find mint events.
 propQueryingEverythingShouldReturnAllIndexedEvents :: Property
 propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   -- Query results:
   MintBurnResult queryResult <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
   -- Compare the sets of events inserted to the indexer and the set
@@ -139,7 +139,7 @@ propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
 
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll :: Property
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   MintBurnResult allTxMintRows <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 
   -- Getting all AssetIds from generated events
@@ -160,7 +160,7 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
 
 propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint :: Property
 propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = Set.toList $ Set.fromList $ fmap MintBurn.txMintEventSlotNo insertedEvents
   slotNo <- if null possibleSlots then pure (C.SlotNo 0) else forAll $ Gen.element possibleSlots
   MintBurnResult actualTxMints <- liftIO $ raiseException
@@ -170,7 +170,7 @@ propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint = H.property $ do
 
 propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint :: Property
 propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = Set.toList $ Set.fromList $ fmap MintBurn.txMintEventSlotNo insertedEvents
   slotNo <- if null possibleSlots then pure (C.SlotNo 0) else forAll $ Gen.element possibleSlots
   MintBurnResult allTxMintRows <- liftIO $ raiseException
@@ -194,7 +194,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
 
 propQueryingAllMintBurnAtLatestPointShouldBeSameAsAllMintBurnQuery :: Property
 propQueryingAllMintBurnAtLatestPointShouldBeSameAsAllMintBurnQuery = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = fmap MintBurn.txMintEventSlotNo insertedEvents
       latestSlotNo = if null possibleSlots then C.SlotNo 0 else List.maximum possibleSlots
   MintBurnResult allTxMintRows <- liftIO $ raiseException
@@ -205,7 +205,7 @@ propQueryingAllMintBurnAtLatestPointShouldBeSameAsAllMintBurnQuery = H.property 
 
 propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery :: Property
 propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = fmap MintBurn.txMintEventSlotNo insertedEvents
       latestSlotNo = if null possibleSlots then C.SlotNo 0 else List.maximum possibleSlots
 
@@ -233,7 +233,7 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
 propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents :: Property
 propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
   -- Index events that overflow:
-  (indexer, events, (bufferSize, _nTx)) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, events, (bufferSize, _nTx)) <- Gen.genIndexerWithEvents ":memory:"
   -- Open a new indexer based off of the old indexers sql connection:
   indexer' <- liftIO $ mkNewIndexerBasedOnOldDb indexer
   MintBurnResult queryResult <- liftIO $ raiseException
@@ -248,7 +248,7 @@ propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
 -- than rollback point in query.
 rewind :: Property
 rewind = H.property $ do
-  (indexer, events, (_bufferSize, nTx)) <- Gen.genIndexerWithPositiveMintEvents ":memory:"
+  (indexer, events, (_bufferSize, nTx)) <- Gen.genIndexerWithEvents ":memory:"
   -- Rollback slot is from 0 to number of slots (slot numbers are from 0 to nTx - 1)
   rollbackSlotNo <- fmap coerce $ forAll $ Gen.integral $ Range.constant 0 ((let w64 = fromIntegral nTx in if w64 == 0 then 0 else w64 - 1) :: Word64)
   let cp = C.ChainPoint rollbackSlotNo dummyBlockHeaderHash

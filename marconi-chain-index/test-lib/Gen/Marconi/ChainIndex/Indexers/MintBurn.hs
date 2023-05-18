@@ -6,7 +6,8 @@
 {-# LANGUAGE TemplateHaskell    #-}
 
 module Gen.Marconi.ChainIndex.Indexers.MintBurn
-    ( genIndexerWithPositiveMintEvents
+    ( genIndexerWithEvents
+    , genTxMintValueRange
     , genMintEvents
     , genTxWithMint
     , genTxMintValue
@@ -38,12 +39,10 @@ import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 
--- | The workhorse of the test: generate an indexer, then generate
--- transactions to index, then index them.
-genIndexerWithPositiveMintEvents
+genIndexerWithEvents
     :: FilePath
     -> H.PropertyT IO (MintBurn.MintBurnIndexer, [MintBurn.TxMintEvent], (SecurityParam, Int))
-genIndexerWithPositiveMintEvents dbPath = do
+genIndexerWithEvents dbPath = do
   (events, (bufferSize, nTx)) <- forAll genMintEvents
   -- Report buffer overflow:
   let overflow = fromIntegral bufferSize < length events
@@ -68,7 +67,7 @@ genMintEvents = do
     ]
   -- Generate transactions
   txAll' <- forM [0 .. (nTx - 1)] $ \slotNoInt -> do
-    tx <- genTxWithMint =<< genTxMintValue
+    tx <- genTxWithMint =<< genTxMintValueRange (-100) 100
     pure (tx, fromIntegral slotNoInt :: C.SlotNo)
   -- Filter out Left C.TxBodyError
   txAll <- forM txAll' $ \case
