@@ -84,7 +84,6 @@ library
     , cardano-binary
     , cardano-crypto-class
     , cardano-crypto-wrapper
-    , cardano-ledger-allegra
     , cardano-ledger-alonzo          ^>=1.1
     , cardano-ledger-babbage         ^>=1.1
     , cardano-ledger-binary
@@ -102,7 +101,6 @@ library
     , ouroboros-consensus-diffusion
     , ouroboros-consensus-protocol   ^>=0.4
     , ouroboros-consensus-shelley
-    , ouroboros-network-api
 
   ------------------------
   -- Non-IOG dependencies
@@ -175,6 +173,11 @@ executable marconi-chain-index
 
 library marconi-chain-index-test-lib
   import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:

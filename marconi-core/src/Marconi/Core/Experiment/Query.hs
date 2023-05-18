@@ -62,7 +62,7 @@ allEvents = EventsMatchingQuery (const True)
 -- | The result of an @EventMatchingQuery@
 type instance Result (EventsMatchingQuery event) = [TimedEvent event]
 
-instance (MonadError (QueryError (EventsMatchingQuery event)) m, Applicative m)
+instance (MonadError (QueryError (EventsMatchingQuery event)) m)
     => Queryable m event (EventsMatchingQuery event) ListIndexer where
 
     query p q ix = do

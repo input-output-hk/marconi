@@ -23,6 +23,7 @@ module Marconi.Core.Experiment.Indexer.MixedIndexer
 import Control.Lens (Lens', makeLenses, to, view)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Data.Functor.Compose (Compose (Compose, getCompose))
+import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (Closeable (close), HasGenesis, IsIndex (index, indexAll), IsSync (lastSyncPoint),
                                       Queryable (query), ResumableResult (resumeResult), Rollbackable (rollback))
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
@@ -35,7 +36,7 @@ import Marconi.Core.Experiment.Type (Point, TimedEvent)
 class Flushable m indexer where
 
     -- | The events container used when you flush event
-    type family Container (indexer :: * -> *) :: * -> *
+    type family Container (indexer :: Type -> Type) :: Type -> Type
 
     -- | Check if there isn't space left in memory
     currentLength :: indexer event -> m Word
@@ -162,8 +163,7 @@ inDatabase = mixedWrapper . wrapperConfig . configInDatabase
 
 -- | Flush all the in-memory events to the database, keeping track of the latest index
 flush ::
-    ( Monad m
-    , IsIndex m event store
+    ( IsIndex m event store
     , Flushable m mem
     , Traversable (Container mem)
     , Ord (Point event)
@@ -176,8 +176,7 @@ flush indexer = do
     inDatabase (indexAll eventsToFlush) indexer'
 
 instance
-    ( Monad m
-    , Ord (Point event)
+    ( Ord (Point event)
     , Flushable m mem
     , Traversable (Container mem)
     , IsIndex m event store

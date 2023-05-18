@@ -23,6 +23,7 @@ module Marconi.Core.Experiment.Transformer.IndexWrapper
 
 import Control.Lens (Getter, Lens', makeLenses, view)
 import Control.Monad.Except (MonadError)
+import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (Closeable (close), IsIndex (index, indexAll), IsSync (lastSyncPoint),
                                       Queryable (query), Resetable (reset), Rollbackable (rollback), queryLatest)
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, TimedEvent)
@@ -39,7 +40,7 @@ makeLenses 'IndexWrapper
 class IndexerTrans t where
 
     -- | The type of the configuration of a transformer
-    type Config t :: * -> *
+    type Config t :: Type -> Type
 
     -- | Wrap an existing indexer in its transformer
     wrap :: Config t event -> indexer event -> t indexer event
@@ -71,7 +72,7 @@ indexAllVia
 indexAllVia l = l . indexAll
 
 instance
-    (Monad m, IsIndex m event indexer)
+    (IsIndex m event indexer)
     => IsIndex m event (IndexWrapper config indexer) where
 
     index = indexVia wrappedIndexer

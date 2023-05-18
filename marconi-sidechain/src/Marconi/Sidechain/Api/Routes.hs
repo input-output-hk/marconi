@@ -113,7 +113,7 @@ data GetUtxosFromAddressParams
     = GetUtxosFromAddressParams
     { queryAddress             :: !String -- ^ address to query for
     , queryCreatedAfterSlotNo  :: !(Maybe Word64) -- ^ query upper bound slotNo interval, unspent before or at this slot
-    , queryUnspentBeforeSlotNo :: ! Word64 -- ^ query lower bound slotNo interval, filter out UTxO that were created during or before that slo
+    , queryUnspentBeforeSlotNo :: !Word64 -- ^ query lower bound slotNo interval, filter out UTxO that were created during or before that slo
     } deriving (Show, Eq)
 
 instance FromJSON GetUtxosFromAddressParams where

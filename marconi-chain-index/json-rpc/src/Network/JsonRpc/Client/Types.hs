@@ -24,7 +24,7 @@ import Network.JsonRpc.Types (JsonRpc, JsonRpcEndpoint, JsonRpcNotification, Jso
 
 
 -- | The 'RawJsonRpc' is transparent to clients
-instance (RunClient m, HasClient m api) => HasClient m (RawJsonRpc api) where
+instance (HasClient m api) => HasClient m (RawJsonRpc api) where
     type Client m (RawJsonRpc api) = Client m api
     clientWithRoute pxm _  = clientWithRoute pxm (Proxy @api)
     hoistClientMonad pxm _ = hoistClientMonad pxm (Proxy @api)

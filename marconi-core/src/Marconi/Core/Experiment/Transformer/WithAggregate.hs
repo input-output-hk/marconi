@@ -79,8 +79,7 @@ instance IndexerMapTrans WithAggregate where
     unwrapMap = aggregatedIndexer
 
 instance
-    ( Monad m
-    , MonadError IndexerError m
+    ( MonadError IndexerError m
     , Semigroup output
     , HasGenesis (Point output)
     , Point input ~ Point output
