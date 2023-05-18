@@ -76,6 +76,7 @@ library
     Marconi.Core.Experiment.Worker
     Marconi.Core.Index.VSplit
     Marconi.Core.Index.VSqlite
+    Marconi.Core.ResumableInterval
     Marconi.Core.Storable
     Marconi.Core.TracedStorable
 

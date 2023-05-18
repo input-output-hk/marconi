@@ -166,6 +166,64 @@ class Rewindable h where
   rewindStorage
     :: StorablePoint h -> h -> StorableMonad h h
 
+{- NOTE [Resuming strategy]
+
+When building an indexer, you need to provide the points from which you can resume from.
+
+-- Naive strategy
+
+The naive strategy (the initial one we implemented) would be to have 'resumeFromStorage' return
+*all* points that the indexer can resume from.
+The issue is that most indexers *can* resume from *any* point in time up until the point they have
+indexed to.
+Result: 'resumeFromStorage' can return millions of points and it takes a huge amount of time to run
+because the results need to be sorted in descending order.
+
+-- Smallest point shared by all indexers strategy
+
+The other strategy we tried was to have 'resumeFromStorage' return the single latest point the
+indexer could resume from.
+Then, we would take the 'min' point returned by resumable point for all indexers.
+This solution works well when running a single indexer, but fails in some situations when running
+multiple indexers.
+
+Let's say we have two indexers (`A` and `B`).
+
+Say that `A` is able to resume from any point in time until Slot 10 and that `B` can only be resumed
+from Slot 5.
+In that scenario, the strategy would return Slot 5 as the point from which we can resume from and it
+would work.
+
+Alternatively, let's say that `A` is able to resume from any point in time until Slot 10 and that
+`B` can only be resumed from Slot 11.
+In that scenario, the strategy would return Slot 10 as the point from which we can resume from.
+However, that would be wrong because `B` is not able to resume from that point.
+
+The same issue would arise if `A` is able to resume from Slot 5 to Slot 10 and that `B` can only be
+resumed from Slot 4.
+
+Note that the same issue arises event if `A` and `B` are coordinated to only process the next block
+once all indexers have finished.
+What ends up happening here is that `A` and `B` might do inserts at different speeds.
+Let's say that `A` and `B` are processing the events at Slot 10, `B` has finished first, and right
+after the user stops the application.
+In that state, `A` is able to resume from any point until Slot 9, while `B` can only be resumed from
+Slot 10.
+
+In any of those scenarios, this strategy will return the smallest point shared by all indexers and use that to resume.
+However, that means that some indexer (like `B`) will be asked to resume to a point which it can't
+resume from, and the application will fail with a runtime error.
+
+-- Intersection of intervals returned by all indexers strategy
+
+Ultimately, we need to return to the naive strategy, but find a way to reduce the memory and time
+footprint when querying the database.
+We propose to use intervals for expressing the points in time an indexer can resume from.
+Then, finding the single resumable point from a list of indexers is as simple as combining the
+intervals and returning the largest point of that interval.
+See 'Marconi.Core.ResumableInterval' on the actual representation.
+-}
+
 {-
    Another feature of indexers is the ability to resume from a previously stored event.
    One way of implementing this is to make sure that there is always at least one event
