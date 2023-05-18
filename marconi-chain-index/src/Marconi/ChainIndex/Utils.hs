@@ -55,6 +55,8 @@ querySecurityParamEra eraInMode networkId socketPath = do
     toError :: Show a => a -> ExceptT IndexerError IO b
     toError = throwError . CantStartIndexer . pack . show
 
+-- | Return the first element of the list of chain points. If the list is empty, return the genesis
+-- point.
 chainPointOrGenesis :: [C.ChainPoint] -> C.ChainPoint
 chainPointOrGenesis result = case result of
   []     -> C.ChainPointAtGenesis

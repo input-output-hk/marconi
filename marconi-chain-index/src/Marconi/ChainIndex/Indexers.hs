@@ -375,9 +375,13 @@ epochStateWorker_
                          runExceptT $ Storable.query Storable.QEverything newIndex (EpochState.LedgerStateAtPointQuery cp')
                   case maybeLedgerState of
                     Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure ledgerState
-                    Right _ -> do
+                    Right (EpochState.LedgerStateAtPointResult Nothing) -> do
                         void $ tryPutMVar _errorVar
                             $ CantRollback "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
+                        pure initialLedgerState
+                    Right _ -> do
+                        void $ tryPutMVar _errorVar
+                            $ CantRollback "LedgerStateAtPointQuery returned a result mismatch when applying a rollback. Should not happen!"
                         pure initialLedgerState
                     Left err         -> do
                         void $ tryPutMVar _errorVar err
