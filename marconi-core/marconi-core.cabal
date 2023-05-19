@@ -74,8 +74,6 @@ library
     Marconi.Core.Experiment.Transformer.WithTransform
     Marconi.Core.Experiment.Type
     Marconi.Core.Experiment.Worker
-    Marconi.Core.Index.VSplit
-    Marconi.Core.Index.VSqlite
     Marconi.Core.Storable
     Marconi.Core.TracedStorable
 
@@ -103,23 +101,18 @@ test-suite marconi-core-test
     Marconi.Core.Spec.Experiment
     Marconi.Core.Spec.Sqlite
     Marconi.Core.Spec.TracedSqlite
-    Marconi.Core.Spec.VSplit
-    Marconi.Core.Spec.VSqlite
     Marconi.Core.Trace
 
   hs-source-dirs: test
   build-depends:
     , base              >=4.7    && <5
     , contra-tracer
-    , data-default
     , lens
     , marconi-core
     , mtl
-    , primitive
     , QuickCheck
     , safe
     , sqlite-simple     >=0.4.18
     , tasty
     , tasty-quickcheck
     , transformers
-    , vector
