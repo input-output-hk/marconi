@@ -372,7 +372,7 @@ epochStateWorker_
                   -- on disk. For immutable LedgerStates, they are only stored on disk at the first
                   -- slot of an epoch.
                   maybeLedgerState <-
-                         runExceptT $ Storable.query Storable.QEverything newIndex (EpochState.LedgerStateAtPointQuery cp')
+                         runExceptT $ Storable.query newIndex (EpochState.LedgerStateAtPointQuery cp')
                   case maybeLedgerState of
                     Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure ledgerState
                     Right _ -> do

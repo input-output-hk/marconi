@@ -62,7 +62,7 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
     where
         query indexer = do
             let q = QueryByAssetId policyId assetId slotNo
-            res <- runExceptT $ Storable.query Storable.QEverything indexer q
+            res <- runExceptT $ Storable.query indexer q
             case res of
                 Right (MintBurnResult mintBurnRows) -> pure $ Right $ toAssetIdTxResult <$> mintBurnRows
                 _other                              -> pure $ Left $ QueryError "invalid query result"

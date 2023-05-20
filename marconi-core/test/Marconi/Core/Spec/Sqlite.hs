@@ -21,10 +21,9 @@ import Marconi.Core.Model (Conversion (Conversion, cHistory, cMonadic, cNotifica
                            IndexView (IndexView, ixDepth, ixSize, ixView), getFunction)
 import Marconi.Core.Model qualified as Ix
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint (getPoint),
-                              QueryInterval (QEverything, QInterval), Queryable (queryStorage),
-                              Resumable (resumeFromStorage), Rewindable (rewindStorage), State, StorableEvent,
-                              StorableMonad, StorablePoint, StorableQuery, StorableResult, config, emptyState,
-                              filterWithQueryInterval, memoryBufferSize)
+                              Queryable (queryStorage), Resumable (resumeFromStorage), Rewindable (rewindStorage),
+                              State, StorableEvent, StorableMonad, StorablePoint, StorableQuery, StorableResult, config,
+                              emptyState, memoryBufferSize)
 import Marconi.Core.Storable qualified as Storable
 
 {-
@@ -177,31 +176,27 @@ indexedFn f (Result ag0) (Event _ e) =
 instance Queryable Handle where
   queryStorage
     :: Foldable f
-    => QueryInterval (StorablePoint Handle)
-    -> f (StorableEvent Handle)
+    => f (StorableEvent Handle)
     -> Handle
     -> StorableQuery Handle
     -> IO (StorableResult Handle)
   -- Querying the acumulator only retrieves the value stored in the accumulator table.
-  queryStorage _  _ (Handle h) QAccumulator = do
+  queryStorage  _ (Handle h) QAccumulator = do
     [ag0] :: [Aggregate] <-
       Sql.query h "SELECT id, accumulator FROM index_property_tests WHERE id = ?"
         (Sql.Only stateId)
     pure $ ag0 ^. aggValue
 
-  queryStorage qi memoryEs (Handle h) (QEvents f)  = do
+  queryStorage memoryEs (Handle h) (QEvents f)  = do
     Sql.execute_ h "BEGIN"
     -- First we retrieve the accumulator value, by using a proper query.
-    aggregate <- queryStorage qi memoryEs (Handle h) QAccumulator
+    aggregate <- queryStorage memoryEs (Handle h) QAccumulator
     -- Fetch all events, ordered from oldest to newest.
     es' :: [StorableEvent Handle] <-
-      case qi of
-        QEverything -> Sql.query_ h "SELECT * from index_property_cache ORDER BY point ASC"
-        QInterval _ end ->
-          Sql.query h "SELECT * from index_property_cache WHERE point <= ? ORDER BY point ASC" (Sql.Only end)
+      Sql.query_ h "SELECT * from index_property_cache ORDER BY point ASC"
     Sql.execute_ h "COMMIT"
     -- Filter all events.
-    let es'' = filterWithQueryInterval qi (es' ++ toList memoryEs)
+    let es'' = es' ++ toList memoryEs
     -- Run a fold computing the final result.
     pure $ foldl' ((fst .) . indexedFn f) aggregate es''
 
@@ -253,16 +248,15 @@ getHistory ix = do
       -- Fetch all stored events.
       es <- Storable.getEvents st
       -- Create a list of QueryIntervals that select each of the stored events
-      let qs = map (\p -> QInterval p p)
-             $ map sePoint es
+      -- let qs = map (\p -> QInterval p p) $ map sePoint es
       -- And run a fold over all of them, giving us all the historical valus of the
       -- indexer across all the stored values.
-      rs  <- fmap getResult <$> mapM (\qi -> Storable.query qi st (QEvents f)) qs
+      rs  <- fmap getResult <$> mapM (\_ -> Storable.query st (QEvents f)) es
       if null rs
       then do
         -- If there are no results, then return a single element list with the
         -- accumulator.
-        Result ag0 <- Storable.query QEverything st QAccumulator
+        Result ag0 <- Storable.query st QAccumulator
         pure $ Just [ag0]
       else
         -- If there are results, return a list of all the values *without* the

@@ -65,7 +65,7 @@ currentSyncedBlock env = do
         (tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer)
     case indexer of
          Just i -> do
-             res <- runExceptT $ Storable.query Storable.QEverything i Utxo.LastSyncPoint
+             res <- runExceptT $ Storable.query i Utxo.LastSyncPoint
              case res of
                   Right (Utxo.LastSyncPointResult cp) -> pure $ Right $ GetCurrentSyncedBlockResult cp
                   _other                              -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncPoint
@@ -127,7 +127,7 @@ withQueryAction env query =
   where
     action Nothing = pure $ Right $ GetUtxosFromAddressResult [] -- may occures at startup before marconi-chain-index gets to update the indexer
     action (Just indexer) = do
-            res <- runExceptT $ Storable.query Storable.QEverything indexer query
+            res <- runExceptT $ Storable.query indexer query
             pure $ case res of
                  Right (Utxo.UtxoResult rows) ->
                      Right $ GetUtxosFromAddressResult $ rows <&> \row ->

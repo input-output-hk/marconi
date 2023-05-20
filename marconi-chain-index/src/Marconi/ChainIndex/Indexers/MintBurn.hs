@@ -262,19 +262,6 @@ queryStoredTxMintEvents sqlCon (conditions, params) =
           \   " <> whereClause <> "                              \
           \  ORDER BY slotNo, txId                               "
 
-intervalToWhereClause :: RI.QueryInterval C.ChainPoint -> ([SQL.Query], [NamedParam])
-intervalToWhereClause qi = case qi of
-  RI.QEverything -> ([], [])
-  RI.QInterval from to
-    | Just from' <- slotMaybe from, Just to' <- slotMaybe to -> (["slotNo BETWEEN :fromSlot AND :toSlot"] , [":fromSlot" := from', ":toSlot" := to'])
-    | Just to' <- slotMaybe to -> (["slotNo <= :toSlot"] , [":toSlot" := to'])
-    | otherwise -> (["FALSE"], [])
-    where
-      slotMaybe :: C.ChainPoint -> Maybe C.SlotNo
-      slotMaybe = \case
-        C.ChainPoint slotNo _ -> Just slotNo
-        C.ChainPointAtGenesis -> Nothing
-
 groupBySlotAndHash :: [TxMintEvent] -> [TxMintEvent]
 groupBySlotAndHash events = events
   & sort
@@ -313,7 +300,7 @@ newtype instance RI.StorableResult MintBurnHandle
   deriving (Show)
 
 instance RI.Queryable MintBurnHandle where
-  queryStorage queryInterval memoryEvents (MintBurnHandle sqlCon _k) query
+  queryStorage memoryEvents (MintBurnHandle sqlCon _k) query
       = liftSQLError CantQueryIndexer
       $ case query of
         QueryAllMintBurn slotNo -> do
@@ -321,7 +308,7 @@ instance RI.Queryable MintBurnHandle where
                     case slotNo of
                       Nothing -> ([], [])
                       Just s  -> (["slotNo <= :slotNo"] , [":slotNo" := s])
-                conditions = interval <> slotCondition
+                conditions = slotCondition
             toResult slotNo <$> queryStoredTxMintEvents sqlCon conditions
         QueryByAssetId policyId assetName slotNo -> do
             let slotCondition =
@@ -332,7 +319,7 @@ instance RI.Queryable MintBurnHandle where
                     ( ["policyId = :policyId AND assetName = :assetName"]
                     , [":policyId" := policyId, ":assetName" := assetName]
                     )
-                conditions = interval <> assetIdConditions <> slotCondition
+                conditions = assetIdConditions <> slotCondition
             toResult slotNo <$> queryStoredTxMintEvents sqlCon conditions
         where
           toResult querySlotNo storedEvents = MintBurnResult $ do
@@ -355,7 +342,7 @@ instance RI.Queryable MintBurnHandle where
                     redeemerIx
                     redeemerData
 
-          interval = intervalToWhereClause queryInterval
+
 
 instance RI.HasPoint (RI.StorableEvent MintBurnHandle) C.ChainPoint where
   getPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)

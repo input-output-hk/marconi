@@ -85,10 +85,9 @@ import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer
                                  liftSQLError)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Utils (chainPointOrGenesis)
-import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), QueryInterval (QEverything, QInterval),
-                              Queryable (queryStorage), Resumable, Rewindable (rewindStorage), StorableEvent,
-                              StorableMonad, StorablePoint, StorableQuery, StorableResult, emptyState,
-                              filterWithQueryInterval)
+import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), Queryable (queryStorage), Resumable,
+                              Rewindable (rewindStorage), StorableEvent, StorableMonad, StorablePoint, StorableQuery,
+                              StorableResult, emptyState)
 import Marconi.Core.Storable qualified as Storable
 import Text.RawString.QQ (r)
 
@@ -365,15 +364,12 @@ asEvents events =
 instance Queryable AddressDatumHandle where
   queryStorage
     :: Foldable f
-    => QueryInterval C.ChainPoint
-    -> f (StorableEvent AddressDatumHandle)
+    => f (StorableEvent AddressDatumHandle)
     -> AddressDatumHandle
     -> StorableQuery AddressDatumHandle
     -> StorableMonad AddressDatumHandle (StorableResult AddressDatumHandle)
-  queryStorage qi es (AddressDatumHandle c _) AllAddressesQuery = liftSQLError CantQueryIndexer $ do
+  queryStorage es (AddressDatumHandle c _) AllAddressesQuery = liftSQLError CantQueryIndexer $ do
     persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
-      case qi of
-        QEverything ->
             SQL.query c
                 [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
                    FROM address_datums
@@ -381,35 +377,14 @@ instance Queryable AddressDatumHandle where
                    ON datumhash_datum.datum_hash = address_datums.datum_hash
                    ORDER BY slot_no ASC, address, datumhash_datum.datum_hash|]
                 ()
-        QInterval (C.ChainPoint _ _) (C.ChainPoint e _) -> do
-            SQL.query c
-                [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
-                   FROM address_datums
-                   LEFT JOIN datumhash_datum
-                   ON datumhash_datum.datum_hash = address_datums.datum_hash
-                   WHERE slot_no <= ?
-                   ORDER BY slot_no ASC, address, datumhash_datum.datum_hash|]
-                (SQL.Only e)
-        QInterval C.ChainPointAtGenesis (C.ChainPoint e _) ->
-            SQL.query c
-                [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
-                   FROM address_datums
-                   LEFT JOIN datumhash_datum
-                   ON datumhash_datum.datum_hash = address_datums.datum_hash
-                   WHERE slot_no <= ?
-                   ORDER BY slot_no ASC, address, datumhash_datum.datum_hash|]
-                (SQL.Only e)
-        QInterval _ C.ChainPointAtGenesis -> pure []
-    let addressDatumIndexEvents = filterWithQueryInterval qi (asEvents persistedData ++ toList es)
+    let addressDatumIndexEvents = asEvents persistedData ++ toList es
     pure $ AllAddressesResult
          $ Set.fromList
          $ concatMap (\(AddressDatumIndexEvent addrMap _ _) -> Map.keys addrMap) addressDatumIndexEvents
 
-  queryStorage qi es (AddressDatumHandle c _) (AddressDatumQuery q)
+  queryStorage es (AddressDatumHandle c _) (AddressDatumQuery q)
     = liftSQLError CantQueryIndexer $ do
     persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
-      case qi of
-        QEverything ->
             SQL.query c
                 [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
                    FROM address_datums
@@ -418,22 +393,10 @@ instance Queryable AddressDatumHandle where
                    WHERE address = ?
                    ORDER BY slot_no ASC, address, datumhash_datum.datum_hash|]
                 (SQL.Only q)
-        QInterval _ (C.ChainPoint _ _) ->
-            -- TODO When intervals are more clearer
-            -- SQL.query c
-            --     [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
-            --        FROM address_datums
-            --        LEFT JOIN datumhash_datum
-            --        ON datumhash_datum.datum_hash = address_datums.datum_hash
-            --        WHERE address = ? AND slot_no <= ?
-            --        ORDER BY slot_no ASC, address, datumhash_datum.datum_hash|]
-            --     (q, e)
-            pure []
-        QInterval _ C.ChainPointAtGenesis -> pure []
 
     -- IMPORTANT: Ordering is quite important here, as the `filterWithQueryInterval`
     -- function assumes events are ordered from oldest (the head) to most recent.
-    let addressDatumIndexEvents = filterWithQueryInterval qi (asEvents persistedData ++ toList es)
+    let addressDatumIndexEvents = asEvents persistedData ++ toList es
     let (AddressDatumIndexEvent addressDatumMap datumMap cp) = fold addressDatumIndexEvents
 
     -- Datum hashes that are linked to an address, but do not have a corresponding datum value
