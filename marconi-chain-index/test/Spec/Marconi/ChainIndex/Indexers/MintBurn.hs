@@ -17,7 +17,7 @@ import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
 import Control.Lens ((^.))
-import Control.Monad (forM, forM_, unless, void)
+import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Coerce (coerce)
@@ -96,9 +96,6 @@ tests = testGroup "MintBurn"
       "Rewinding to any slot forgets any newer events than that slot"
       "rewind" rewind
   , testPropertyNamed
-      "Intervals work as expected"
-      "intervals" intervals
-  , testPropertyNamed
       "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
       "endToEnd" endToEnd
   , testPropertyNamed
@@ -132,7 +129,7 @@ propQueryingEverythingShouldReturnAllIndexedEvents :: Property
 propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
   (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
   -- Query results:
-  MintBurnResult queryResult <- liftIO $ raiseException $ RI.query RI.QEverything indexer $ QueryAllMintBurn Nothing
+  MintBurnResult queryResult <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
   -- Compare the sets of events inserted to the indexer and the set
   -- gotten out of the indexer:
   equalSet (MintBurn.groupBySlotAndHash insertedEvents) (MintBurn.fromRows queryResult)
@@ -140,7 +137,7 @@ propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll :: Property
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
   (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
-  MintBurnResult allTxMintRows <- liftIO $ raiseException $ RI.query RI.QEverything indexer $ QueryAllMintBurn Nothing
+  MintBurnResult allTxMintRows <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 
   -- Getting all AssetIds from generated events
   let assetIds = concatMap
@@ -153,7 +150,7 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
             insertedEvents
   combinedTxMintRows <- fmap concat <$> forM assetIds $ \(policyId, assetName) -> do
       (MintBurnResult rows) <- liftIO $ raiseException
-          $ RI.query RI.QEverything indexer $ QueryByAssetId policyId assetName Nothing
+          $ RI.query indexer $ QueryByAssetId policyId assetName Nothing
       pure rows
 
   equalSet allTxMintRows combinedTxMintRows
@@ -164,7 +161,7 @@ propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint = H.property $ do
   let possibleSlots = Set.toList $ Set.fromList $ fmap MintBurn.txMintEventSlotNo insertedEvents
   slotNo <- if null possibleSlots then pure (C.SlotNo 0) else forAll $ Gen.element possibleSlots
   MintBurnResult actualTxMints <- liftIO $ raiseException
-      $ RI.query RI.QEverything indexer $ QueryAllMintBurn (Just slotNo)
+      $ RI.query indexer $ QueryAllMintBurn (Just slotNo)
   let expectedTxMints = filter (\e -> MintBurn.txMintEventSlotNo e <= slotNo) insertedEvents
   equalSet expectedTxMints (MintBurn.fromRows actualTxMints)
 
@@ -174,7 +171,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
   let possibleSlots = Set.toList $ Set.fromList $ fmap MintBurn.txMintEventSlotNo insertedEvents
   slotNo <- if null possibleSlots then pure (C.SlotNo 0) else forAll $ Gen.element possibleSlots
   MintBurnResult allTxMintRows <- liftIO $ raiseException
-      $ RI.query RI.QEverything indexer $ QueryAllMintBurn (Just slotNo)
+      $ RI.query indexer $ QueryAllMintBurn (Just slotNo)
 
   -- Getting all AssetIds from generated events
   let assetIds = concatMap
@@ -187,7 +184,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
             insertedEvents
   combinedTxMintRows <- fmap concat <$> forM assetIds $ \(policyId, assetName) -> do
       (MintBurnResult rows) <- liftIO $ raiseException
-          $ RI.query RI.QEverything indexer $ QueryByAssetId policyId assetName (Just slotNo)
+          $ RI.query indexer $ QueryByAssetId policyId assetName (Just slotNo)
       pure rows
 
   equalSet allTxMintRows combinedTxMintRows
@@ -198,9 +195,9 @@ propQueryingAllMintBurnAtLatestPointShouldBeSameAsAllMintBurnQuery = H.property 
   let possibleSlots = fmap MintBurn.txMintEventSlotNo insertedEvents
       latestSlotNo = if null possibleSlots then C.SlotNo 0 else List.maximum possibleSlots
   MintBurnResult allTxMintRows <- liftIO $ raiseException
-      $ RI.query RI.QEverything indexer $ QueryAllMintBurn Nothing
+      $ RI.query indexer $ QueryAllMintBurn Nothing
   MintBurnResult txMintRowsAtSlot <- liftIO $ raiseException
-      $ RI.query RI.QEverything indexer $ QueryAllMintBurn (Just latestSlotNo)
+      $ RI.query indexer $ QueryAllMintBurn (Just latestSlotNo)
   equalSet allTxMintRows txMintRowsAtSlot
 
 propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery :: Property
@@ -221,9 +218,9 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
 
   forM_ assetIds $ \(policyId, assetName) -> do
       (MintBurnResult allTxMintRows) <- liftIO $ raiseException
-          $ RI.query RI.QEverything indexer $ QueryByAssetId policyId assetName Nothing
+          $ RI.query indexer $ QueryByAssetId policyId assetName Nothing
       (MintBurnResult txMintRowsAtSlot) <- liftIO $ raiseException
-          $ RI.query RI.QEverything indexer $ QueryByAssetId policyId assetName (Just latestSlotNo)
+          $ RI.query indexer $ QueryByAssetId policyId assetName (Just latestSlotNo)
       equalSet allTxMintRows txMintRowsAtSlot
 
 
@@ -237,7 +234,7 @@ propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
   -- Open a new indexer based off of the old indexers sql connection:
   indexer' <- liftIO $ mkNewIndexerBasedOnOldDb indexer
   MintBurnResult queryResult <- liftIO $ raiseException
-      $ RI.query RI.QEverything indexer' $ QueryAllMintBurn Nothing
+      $ RI.query indexer' $ QueryAllMintBurn Nothing
   let expected = MintBurn.groupBySlotAndHash $ take (eventsPersisted (fromIntegral bufferSize) (length events)) events
   -- The test: events that were persisted are exactly those we get from the query.
   equalSet expected (MintBurn.fromRows queryResult)
@@ -253,48 +250,10 @@ rewind = H.property $ do
   rollbackSlotNo <- fmap coerce $ forAll $ Gen.integral $ Range.constant 0 ((let w64 = fromIntegral nTx in if w64 == 0 then 0 else w64 - 1) :: Word64)
   let cp = C.ChainPoint rollbackSlotNo dummyBlockHeaderHash
   rewoundIndexer <- liftIO (raiseException $ RI.rewind cp indexer)
-  MintBurnResult queryResult <- liftIO $ raiseException $ RI.query RI.QEverything rewoundIndexer $ QueryAllMintBurn Nothing
+  MintBurnResult queryResult <- liftIO $ raiseException $ RI.query rewoundIndexer $ QueryAllMintBurn Nothing
   -- Expect only older than rollback events.
   let expected = filter (\e -> MintBurn.txMintEventSlotNo e <= rollbackSlotNo) events
   equalSet expected (MintBurn.fromRows queryResult)
-
--- | Test that interval query works.
-intervals :: Property
-intervals = H.property $ do
-  (indexer, events, (_bufferSize, _nTx)) <- Gen.genIndexWithEvents ":memory:"
-
-  let
-    cpFromSlot slotNo = C.ChainPoint slotNo dummyBlockHeaderHash
-    queryInterval from to = do
-      MintBurnResult queryResult <- liftIO $ raiseException $ RI.query (RI.QInterval from to) indexer $ QueryAllMintBurn Nothing
-      pure $ MintBurn.fromRows queryResult
-
-  -- Genesis to genesis returns nothing
-  H.assert . null =<< queryInterval C.ChainPointAtGenesis C.ChainPointAtGenesis
-  -- When there were at least one event created:
-  unless (null events) $ do
-    let eventCp e = cpFromSlot $ MintBurn.txMintEventSlotNo e
-    -- From genesis to "latest slot + 1" returns everything:
-    equalSet events =<< (queryInterval C.ChainPointAtGenesis $ cpFromSlot $ MintBurn.txMintEventSlotNo (last events) + 1)
-    -- From first event's slot to last event's slot returns everything:
-    equalSet events =<< queryInterval (eventCp $ head events) (eventCp $ last events)
-    -- Form any slot to genesis returns nothing
-    ix <- forAll $ Gen.integral $ Range.constant 0 (length events - 1)
-    H.assert . null =<< queryInterval (cpFromSlot $ MintBurn.txMintEventSlotNo $ events !! ix) C.ChainPointAtGenesis
-
-    -- TODO: Enable the following test when there is an API for
-    -- getting an actual interval, and/or add another test for when
-    -- the meaning of queryInterval is clear.
-    --
-    -- Form any existing earlier slot to any existing same-or-later slot:
-    -- (from, to) <- do
-    --   a' <- forAll $ Gen.integral $ Range.constant 0 (length events - 1)
-    --   b' <- forAll $ Gen.integral $ Range.constant 0 (length events - 1)
-    --   let a = MintBurn.txMintEventSlotNo $ events !! a'
-    --       b = MintBurn.txMintEventSlotNo $ events !! b'
-    --   return $ if a <= b then (a, b) else (b, a)
-    -- let expected = filter (\e -> let slotNo = MintBurn.txMintEventSlotNo e in from <= slotNo && slotNo <= to) events
-    -- equalSet expected =<< queryInterval (cpFromSlot from) (cpFromSlot to)
 
 -- | Start testnet, start mint/burn indexer on it, create a single
 -- mint event, put it in a transaction and submit it, find the
@@ -361,7 +320,7 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   -- submitted above with the one we got from the indexer.
   indexer :: MintBurn.MintBurnIndexer <- liftIO $ IO.readChan indexedTxs
   MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
-    liftIO $ raiseException $ RI.query RI.QEverything indexer $ QueryAllMintBurn Nothing
+    liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
   case MintBurn.fromRows txMintRows of
     event : _ ->  case MintBurn.txMintEventTxAssets event of
       (_txId, gottenMintEvents :: NonEmpty MintAsset) :| [] -> let

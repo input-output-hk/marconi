@@ -451,7 +451,7 @@ instance Rewindable AddressDatumHandle where
 instance Resumable AddressDatumHandle where
     resumeFromStorage
         :: AddressDatumHandle
-        -> StorableMonad AddressDatumHandle (C.ChainPoint)
+        -> StorableMonad AddressDatumHandle C.ChainPoint
     resumeFromStorage (AddressDatumHandle c _) = liftSQLError CantQueryIndexer $ fmap chainPointOrGenesis $
       SQL.query_ c "SELECT slot_no, block_hash FROM address_datums ORDER BY slot_no DESC LIMIT 1"
 
