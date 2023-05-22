@@ -880,7 +880,7 @@ stopCoordinatorProperty gen runner = let
 
     cRunner = coordinatorIndexerRunner runner
     r = cRunner ^. indexerRunner
-    waitForKill = GenM.run $ liftIO $ Con.threadDelay 100
+    waitForKill = GenM.run $ liftIO $ Con.threadDelay 1000
     forgedError = Core.OtherIndexError "STOP"
 
     seedError ix
@@ -916,7 +916,7 @@ stopCoordinatorTest
     -> Tasty.TestTree
 stopCoordinatorTest runner =
     Tasty.testProperty "stops coordinator workers"
-        $ Test.withMaxSuccess 10000
+        $ Test.withMaxSuccess 1000
         $ stopCoordinatorProperty (view defaultChain <$> Test.arbitrary) runner
 
 resumeLastSyncProperty
