@@ -24,12 +24,16 @@ module Marconi.ChainIndex.Types
        epochStateDbName,
        mintBurnDbName,
        SecurityParam(SecurityParam),
-       IndexingDepth(MinIndexingDepth, MaxIndexingDepth)
+       IndexingDepth(MinIndexingDepth, MaxIndexingDepth),
+       TxIndexInBlock
        ) where
 
 import Cardano.Api qualified as C
+import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
 import Data.Word (Word64)
+import Database.SQLite.Simple.FromField qualified as SQL
+import Database.SQLite.Simple.ToField qualified as SQL
 
 -- | Typre represents non empty list of Bech32 Shelley compatable addresses
 type TargetAddresses = NonEmpty (C.Address C.ShelleyAddr)
@@ -59,6 +63,9 @@ data IndexingDepth = MinIndexingDepth !Word64 | MaxIndexingDepth
 
 newtype SecurityParam = SecurityParam Word64
   deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show)
+
+newtype TxIndexInBlock = TxIndexInBlock Word64
+  deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show, Aeson.FromJSON, Aeson.ToJSON, SQL.ToField, SQL.FromField)
 
 -- * Database file names
 

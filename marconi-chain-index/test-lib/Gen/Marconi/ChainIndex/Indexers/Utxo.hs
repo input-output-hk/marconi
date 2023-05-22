@@ -25,6 +25,7 @@ import Gen.Marconi.ChainIndex.Mockchain (BlockHeader (BlockHeader), MockBlock (M
 import Hedgehog (Gen)
 import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 -- | Generates a list of UTXO events.
@@ -34,12 +35,7 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
 --   * that any generated UTXO is unique
 --   * for any spent tx output, there must be a UTXO created in a previous event
 genUtxoEvents :: Gen [StorableEvent UtxoHandle]
-genUtxoEvents = genUtxoEvents' convertTxOutToUtxo
-
-genUtxoEvents'
-  :: (C.TxId -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
-  -> Gen [StorableEvent UtxoHandle]
-genUtxoEvents' txOutToUtxo = fmap fst <$> genUtxoEventsWithTxs' txOutToUtxo
+genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs' convertTxOutToUtxo
 
 -- | Generates a list of UTXO events, along with the list of transactions that generated each of
 -- them.
@@ -52,7 +48,7 @@ genUtxoEventsWithTxs :: Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
 
 genUtxoEventsWithTxs'
-    :: (C.TxId -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
+    :: (C.TxId -> TxIndexInBlock -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
     -> Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs' txOutToUtxo = do
     fmap (\block -> (getStorableEventFromBlock block, block)) <$> genMockchain
@@ -60,18 +56,18 @@ genUtxoEventsWithTxs' txOutToUtxo = do
     getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
     getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
         let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
-            utxoMap = foldMap getUtxosFromTx txs
+            utxoMap = foldMap getUtxosFromTx $ zip txs [0 ..]
             resolvedUtxos = Set.fromList
                           $ mapMaybe (`Map.lookup` utxoMap)
                           $ Set.toList utxos
          in UtxoEvent resolvedUtxos spentTxOuts (C.ChainPoint slotNo blockHeaderHash)
 
-    getUtxosFromTx :: C.Tx C.BabbageEra -> Map C.TxIn Utxo
-    getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
+    getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
+    getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =
         let txId = C.getTxId txBody
          in Map.fromList
                 $ fmap (\(txIx, txOut) -> ( C.TxIn txId (C.TxIx txIx)
-                                          , txOutToUtxo txId (C.TxIx txIx) txOut))
+                                          , txOutToUtxo txId txIndexInBlock (C.TxIx txIx) txOut))
                 $ zip [0..]
                 $ C.txOuts txBodyContent
 
@@ -107,8 +103,8 @@ txOutBalanceFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
                  $ C.txOuts txBodyContent
      in TxOutBalance utxoRefs txInputs
 
-convertTxOutToUtxo :: C.TxId -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo
-convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum refScript) =
+convertTxOutToUtxo :: C.TxId -> TxIndexInBlock -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo
+convertTxOutToUtxo txid txIndexInBlock txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum refScript) =
     let (scriptDataHash, scriptData) =
             case txOutDatum of
               C.TxOutDatumNone       -> (Nothing, Nothing)
@@ -129,6 +125,7 @@ convertTxOutToUtxo txid txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum ref
               (C.txOutValueToValue val)
               script
               scriptHash
+              txIndexInBlock
 
 -- | Override the Utxo address with ShelleyEra address
 -- This is used to generate ShelleyEra Utxo events
@@ -164,4 +161,3 @@ genTx' gen = do
   txBodyContent  <- gen [txIn]
   txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
   pure $ C.makeSignedTransaction [] txBody
-

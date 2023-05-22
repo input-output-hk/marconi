@@ -144,14 +144,14 @@ allqueryUtxosShouldBeUnspent :: Property
 allqueryUtxosShouldBeUnspent = property $ do
   events <- forAll genShelleyEraUtxoEvents -- we need to use shelley era addresses only to allow for point (4)
   let numOfEvents = length events
-  -- We choose the `depth` such that we can prove the boundery condtions, see point (3).
+  -- We choose the `depth` such that we can prove the boundary condtions, see point (3).
   -- this will ensure we have adequate coverage where events are in both, in-memory store and SQLite store
   depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
   Hedgehog.classify "Query both in-memory and storage " $ depth < numOfEvents
   Hedgehog.classify "Query in-memory only" $ depth > numOfEvents
 
   -- It is crtical that we perform NO vacuum.
-  -- With depth at such small numbers, the likelyhood of SQLite vaccume is almost certain in
+  -- With depth at such small numbers, the likelihood of SQLite vaccume is almost certain in
   indexer <- liftIO $ raiseException (Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events )
   let
     addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
@@ -178,11 +178,9 @@ allqueryUtxosShouldBeUnspent = property $ do
   -- when retrievedUtxoRows is an empty list
   Hedgehog.assert (not . null $ retrievedUtxoRows)
 
--- There should be no `Spent` in the retrieved UtxoRows
+  -- There should be no `Spent` in the retrieved UtxoRows
   Hedgehog.footnote "Regression test must return at least one Utxo. Utxo's may not have any Spent in the Orig. event"
-  Hedgehog.assert
-    $ and
-    [u `notElem` txInsFromGeneratedEvents | u <- txinsFromRetrievedUtsoRows]
+  Hedgehog.assert $ all (`notElem` txInsFromGeneratedEvents) txinsFromRetrievedUtsoRows
 
 {-|
   The property verifies that we
@@ -212,7 +210,7 @@ propTxInWhenPhase2ValidationFails = property $ do
         C.TxInsCollateralNone -> Hedgehog.assert $ null computedTxins
         C.TxInsCollateral _ txinsC_ -> do
           Hedgehog.footnoteShow txReturnCollateral
-          let (Utxo.TxOutBalance _ ins) = Utxo.balanceUtxoFromTx Nothing tx
+          let (Utxo.TxOutBalance _ ins) = Utxo.balanceUtxoFromTx Nothing (tx, 0)
           -- This property shows collateral TxIns will be processed and balanced
           -- Note: not all collateral txins may be utilized in when phase-2 validation fails
           ins === Set.fromList txinsC_
