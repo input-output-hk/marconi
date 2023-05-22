@@ -26,9 +26,8 @@ import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
 import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint (getPoint),
-                              QueryInterval (QEverything, QInterval), Queryable (queryStorage),
-                              Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
-                              StorablePoint, StorableQuery, StorableResult, emptyState, filterWithQueryInterval)
+                              Queryable (queryStorage), Resumable (resumeFromStorage), Rewindable (rewindStorage),
+                              StorableEvent, StorableMonad, StorablePoint, StorableQuery, StorableResult, emptyState)
 import Marconi.Core.Storable qualified as Storable
 
 {- The first thing that we need to define for a new indexer is the `handler` data
@@ -246,23 +245,18 @@ asEvents rs@(ScriptTxRow _ _ sn hsh : _) =
 instance Queryable ScriptTxHandle where
   queryStorage
     :: Foldable f
-    => QueryInterval ChainPoint
-    -> f (StorableEvent ScriptTxHandle)
+    => f (StorableEvent ScriptTxHandle)
     -> ScriptTxHandle
     -> StorableQuery ScriptTxHandle
     -> StorableMonad ScriptTxHandle (StorableResult ScriptTxHandle)
-  queryStorage qi es (ScriptTxHandle c _) q
+  queryStorage es (ScriptTxHandle c _) q
     = liftSQLError CantQueryIndexer $ do
     persisted :: [ScriptTxRow] <-
-      case qi of
-        QEverything -> SQL.query c
+        SQL.query c
           "SELECT scriptAddress, txCbor, slotNo, blockHash FROM script_transactions WHERE scriptAddress = ? ORDER BY slotNo ASC, txCbor, scriptAddress" (SQL.Only q)
-        QInterval _ (ChainPoint sn _) -> SQL.query c
-          "SELECT scriptAddress, txCbor, slotNo, blockHash FROM script_transactions WHERE slotNo <= ? AND scriptAddress = ? ORDER BY slotNo ASC, txCbor, scriptAddress" (sn, q)
-        QInterval _ ChainPointAtGenesis -> pure []
     -- Note that ordering is quite important here, as the `filterWithQueryInterval`
     -- function assumes events are ordered from oldest (the head) to most recent.
-    let updates = filterWithQueryInterval qi (asEvents persisted ++ toList es)
+    let updates = asEvents persisted ++ toList es
     pure . ScriptTxResult $ filterByScriptAddress q updates
 
     where

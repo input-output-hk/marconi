@@ -51,7 +51,6 @@ import Marconi.ChainIndex.Indexers.Utxo (Interval (LessThanOrEqual), QueryUtxoBy
                                          StorableQuery (QueryUtxoByAddressWrapper),
                                          StorableResult (UtxoResult, getUtxoResult), UtxoHandle, UtxoIndexer)
 import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth))
-import Marconi.Core.Storable (QueryInterval (QEverything))
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
 import System.FilePath ((</>))
@@ -139,7 +138,6 @@ tests databaseDir indexerTVar = do
 
     let fetchUtxoOfAddressWithMostUtxos =
             Storable.query @UtxoHandle
-                QEverything
                 utxoIndexer
                 . QueryUtxoByAddressWrapper
                 . QueryUtxoByAddress addressWithMostUtxos

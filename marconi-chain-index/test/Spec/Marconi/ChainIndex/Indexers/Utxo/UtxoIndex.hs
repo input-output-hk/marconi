@@ -38,7 +38,6 @@ import Marconi.ChainIndex.Error (raiseException)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
-
 tests :: TestTree
 tests = testGroup "Spec.Marconi.ChainIndex.Indexers.Utxo"
       [ testPropertyNamed
@@ -162,7 +161,7 @@ allqueryUtxosShouldBeUnspent = property $ do
               . Utxo._address)
       . concatMap (Set.toList . Utxo.ueUtxos)
       $ events
-  results <- liftIO . raiseException . traverse (Storable.query Storable.QEverything indexer) $ addressQueries
+  results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
           Utxo.LastSyncPointResult _ -> []
@@ -218,7 +217,6 @@ propTxInWhenPhase2ValidationFails = property $ do
           -- are a subset of of the Collateral TxIns for the same reason as previous note
           -- empty list of computedTxis is a valid subset of collateral txins
           Hedgehog.assert $ and [u `elem` ins | u <- computedTxins]
-      -- -- we should only return txOut collateral
 
 {-|
   The property verifies that we when there is
@@ -301,7 +299,7 @@ propSaveAndRetrieveUtxoEvents = property $ do
     qs = mkUtxoQueries events (Utxo.LessThanOrEqual $ C.SlotNo 20000 ) --  TODO maxBound use this when PLT-5937 is implmented. See TODO below.
   results <- liftIO
     . raiseException
-    . traverse (Storable.query Storable.QEverything indexer)
+    . traverse (Storable.query indexer)
     $ qs
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
@@ -354,12 +352,12 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   upperIntervalQueryResult
     <- liftIO
     . raiseException
-    . traverse (Storable.query Storable.QEverything indexer)
+    . traverse (Storable.query indexer)
     $ upperIntervalQuery
   maxIntervalQueryResult
     <- liftIO
     . raiseException
-    . traverse (Storable.query Storable.QEverything indexer)
+    . traverse (Storable.query indexer)
     $ maxIntervalQuery
 
   upperIntervalQueryResult === maxIntervalQueryResult
@@ -415,14 +413,14 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
 
       maxIntervalResult <- liftIO
         . raiseException
-        . traverse (Storable.query Storable.QEverything indexer)
+        . traverse (Storable.query indexer)
         $ maxIntervalQuery
 
-      upperBoundIntervalResult <- liftIO . raiseException . traverse (Storable.query Storable.QEverything indexer) $ upperBoundIntervalQuery
+      upperBoundIntervalResult <- liftIO . raiseException . traverse (Storable.query indexer) $ upperBoundIntervalQuery
 
       openIntervalResult <- liftIO
         . raiseException
-        . traverse (Storable.query Storable.QEverything indexer)
+        . traverse (Storable.query indexer)
         $ openIntervalQuery
 
       let rows :: [Utxo.UtxoRow] = concatMap filterResult openIntervalResult
@@ -559,7 +557,7 @@ genEventWithShelleyAddressAtChainPoint cp =
 testLastSyncOnFreshIndexer :: Property
 testLastSyncOnFreshIndexer = property $ do
     indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth 50) False
-    result <- liftIO $ raiseException $ Storable.query Storable.QEverything indexer LastSyncPoint
+    result <- liftIO $ raiseException $ Storable.query indexer LastSyncPoint
     result === LastSyncPointResult C.ChainPointAtGenesis
 
 propLastChainPointOnRunningIndexer :: Property
@@ -568,7 +566,7 @@ propLastChainPointOnRunningIndexer = property $ do
     depth <- forAll $ Gen.int (Range.linear 1 $ length events)
     indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
     indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
-    result <- liftIO $ raiseException $ Storable.query Storable.QEverything indexer' LastSyncPoint
+    result <- liftIO $ raiseException $ Storable.query indexer' LastSyncPoint
     result === LastSyncPointResult (Utxo.ueChainPoint $ last $ init events)
 
 propLastChainPointOnRewindedIndexer :: Property
@@ -584,7 +582,7 @@ propLastChainPointOnRewindedIndexer = property $ do
     indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
     indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
     indexer'' <- liftIO $ raiseException $ Storable.rewind rollbackPoint indexer'
-    result <- liftIO $ raiseException $ Storable.query Storable.QEverything indexer'' LastSyncPoint
+    result <- liftIO $ raiseException $ Storable.query indexer'' LastSyncPoint
     result === LastSyncPointResult lastestPointPostRollback
 
 getSlot :: C.ChainPoint -> Maybe C.SlotNo

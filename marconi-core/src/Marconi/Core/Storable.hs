@@ -12,14 +12,12 @@ module Marconi.Core.Storable
   , cursor
   , getMemoryEvents
   , getEvents
-  , filterWithQueryInterval
   , StorableEvent
   , StorablePoint
   , StorableQuery
   , StorableResult
   , StorableMonad
     -- * API
-  , QueryInterval(..)
   , SyntheticEvent(..)
   , Buffered(..)
   , Queryable(..)
@@ -47,7 +45,6 @@ import Data.Kind (Type)
 import Data.Vector qualified as V
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Mutable qualified as VM
-import GHC.Generics (Generic)
 
 {-
    The extensible parts of the indexers are the way data is stored into some form
@@ -77,17 +74,6 @@ data family StorableResult h
 
 type family StorableMonad h :: Type -> Type
 
-{-
-   Query intervals are a necessary tool to make the queries a little safer. As we can
-   assume that there will be multiple concurrent indexers running there is no guarantee
-   that they are all synchronised upto the same block, so specifying a query validity
-   will ensure that the queries data is acceptably synchronised across all queried
-   indexers.
--}
-data QueryInterval p =
-    QEverything
-  | QInterval p p
-  deriving (Show, Eq, Generic)
 
 {-
    The first, `Buffered` class explains what it means for an indexer to be accumulating
@@ -149,8 +135,7 @@ class Buffered h where
 class Queryable h where
   queryStorage
     :: Foldable f
-    => QueryInterval (StorablePoint h)
-    -> f (StorableEvent h)
+    => f (StorableEvent h)
     -> h
     -> StorableQuery h
     -> StorableMonad h (StorableResult h)
@@ -394,32 +379,13 @@ resume s = resumeFromStorage (s ^. handle)
    This functionality is important, because it should also be implemented at the
    database level to filter the on-disk events.
 -}
-filterWithQueryInterval
-  :: forall h.
-     HasPoint (StorableEvent h) (StorablePoint h)
-  => Ord (StorablePoint h)
-  => QueryInterval (StorablePoint h)
-  -> [StorableEvent h]
-  -> [StorableEvent h]
-filterWithQueryInterval QEverything es = es
-filterWithQueryInterval (QInterval start end) es =
-  let es' = takeWhile (withPoint (\p -> p <= end)) es
-   in if not (null es') && withPoint (\p -> p >= start) (last es')
-      then es'
-      else []
-  where
-    withPoint :: (StorablePoint h -> Bool) -> StorableEvent h -> Bool
-    withPoint f e = let p = getPoint e in f p
 
 query
-  :: HasPoint (StorableEvent h) (StorablePoint h)
-  => Ord (StorablePoint h)
-  => Queryable h
+  :: Queryable h
   => PrimMonad (StorableMonad h)
-  => QueryInterval (StorablePoint h)
-  -> State h
+  => State h
   -> StorableQuery h
   -> StorableMonad h (StorableResult h)
-query qi s q = do
+query s q = do
   es  <- getMemoryEvents (s ^. storage) & V.freeze <&> foldEvents . V.toList
-  queryStorage qi (filterWithQueryInterval qi es) (s ^. handle) q
+  queryStorage es (s ^. handle) q

@@ -74,8 +74,7 @@ import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 
 import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
                                  liftSQLError)
-import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint,
-                              QueryInterval (QEverything, QInterval), Queryable (queryStorage),
+import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint, Queryable (queryStorage),
                               Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
                               StorablePoint, StorableQuery, StorableResult, emptyState)
 import Marconi.Core.Storable qualified as Storable
@@ -652,16 +651,15 @@ utxoAtAddressQuery c es eventAtQuery filters params
 instance Queryable UtxoHandle where
   queryStorage
     :: Foldable f
-    => QueryInterval C.ChainPoint -- ^ It's a legacy parameter, it has no effect on the code and will be removed
-    -> f (StorableEvent UtxoHandle)
+    => f (StorableEvent UtxoHandle)
     -> UtxoHandle
     -> StorableQuery UtxoHandle
     -> StorableMonad UtxoHandle (StorableResult UtxoHandle)
 
-  queryStorage qi es (UtxoHandle c _ _) (QueryUtxoByAddressWrapper q@(QueryUtxoByAddress addr slotInterval)) =
+  queryStorage es (UtxoHandle c _ _) (QueryUtxoByAddressWrapper q@(QueryUtxoByAddress addr slotInterval)) =
     let
       eventAtQuery :: StorableEvent UtxoHandle -- query in-memory
-      eventAtQuery = queryBuffer qi q es
+      eventAtQuery = queryBuffer q es
       addressFilter = (["u.address = :address"], [":address" := addr])
       slotFilter = case slotInterval of
         LessThanOrEqual sno -> (["u.slotNo <= :slotNo"] , [":slotNo" := sno])
@@ -674,7 +672,7 @@ instance Queryable UtxoHandle where
 
     in liftSQLError CantQueryIndexer $ uncurry (utxoAtAddressQuery c es eventAtQuery) filters
 
-  queryStorage _ es (UtxoHandle c _ _) LastSyncPoint =
+  queryStorage es (UtxoHandle c _ _) LastSyncPoint =
     let
       queryLastSlot = [r|SELECT u.slotNo, u.blockHash
                         FROM unspent_transactions u
@@ -707,12 +705,10 @@ instance Queryable UtxoHandle where
 -- | Query memory buffer
 queryBuffer
   :: Foldable f
-  => QueryInterval C.ChainPoint
-  -> QueryUtxoByAddress
+  => QueryUtxoByAddress
   -> f (StorableEvent UtxoHandle) -- ^ Utxo events
   -> StorableEvent UtxoHandle
-queryBuffer QEverything q      = fold . eventsAtAddress q
-queryBuffer (QInterval _ cp) q = fold . filter (eventIsBefore cp) . eventsAtAddress q
+queryBuffer q = fold . eventsAtAddress q
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle

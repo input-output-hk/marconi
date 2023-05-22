@@ -51,7 +51,7 @@ querySDDByEpochNo env epochNo = do
     where
         query indexer = do
             res <- runExceptT
-                 $ Storable.query Storable.QEverything indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
+                 $ Storable.query indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
             case res of
                 Right (SDDByEpochNoResult epochSddRows) -> pure $ Right $ GetEpochStakePoolDelegationResult epochSddRows
                 _other                                  -> pure $ Left $ QueryError "Query failed"
@@ -75,7 +75,7 @@ queryNonceByEpochNo env epochNo = do
     where
         query indexer = do
             res <- runExceptT
-                $ Storable.query Storable.QEverything indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
+                $ Storable.query indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
             case res of
                 Right (NonceByEpochNoResult epochNonceRows) -> pure $ Right $ GetEpochNonceResult epochNonceRows
                 _other                                      -> pure $ Left $ QueryError "Query failed"

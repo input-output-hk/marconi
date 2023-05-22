@@ -110,8 +110,8 @@ import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.ChainIndex.Utils (chainPointOrGenesis, isBlockRollbackable)
-import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), QueryInterval, Queryable (queryStorage),
-                              Resumable, Rewindable (rewindStorage), State, StorableEvent, StorableMonad, StorablePoint,
+import Marconi.Core.Storable (Buffered (persistToStorage), HasPoint (getPoint), Queryable (queryStorage), Resumable,
+                              Rewindable (rewindStorage), State, StorableEvent, StorableMonad, StorablePoint,
                               StorableQuery, StorableResult, emptyState)
 import Marconi.Core.Storable qualified as Storable
 import Ouroboros.Consensus.Cardano.Block qualified as O
@@ -505,13 +505,12 @@ eventToEpochNonceRow (EpochStateEvent _ maybeEpochNo nonce _ slotNo blockHeaderH
 instance Queryable EpochStateHandle where
     queryStorage
         :: Foldable f
-        => QueryInterval C.ChainPoint
-        -> f (StorableEvent EpochStateHandle)
+        => f (StorableEvent EpochStateHandle)
         -> EpochStateHandle
         -> StorableQuery EpochStateHandle
         -> StorableMonad EpochStateHandle (StorableResult EpochStateHandle)
 
-    queryStorage _ events (EpochStateHandle _ c _ _) (SDDByEpochNoQuery epochNo)
+    queryStorage events (EpochStateHandle _ c _ _) (SDDByEpochNoQuery epochNo)
         = liftSQLError CantQueryIndexer $ do
         case List.find (\e -> epochStateEventEpochNo e == Just epochNo) (toList events) of
           Just e ->
@@ -524,7 +523,7 @@ instance Queryable EpochStateHandle where
                   |] (SQL.Only epochNo)
               pure $ SDDByEpochNoResult res
 
-    queryStorage _ events (EpochStateHandle _ c _ _) (NonceByEpochNoQuery epochNo)
+    queryStorage events (EpochStateHandle _ c _ _) (NonceByEpochNoQuery epochNo)
         = liftSQLError CantQueryIndexer $ do
         case List.find (\e -> epochStateEventEpochNo e == Just epochNo) (toList events) of
           Just e ->
@@ -537,10 +536,9 @@ instance Queryable EpochStateHandle where
                   |] (SQL.Only epochNo)
               pure $ NonceByEpochNoResult $ listToMaybe res
 
-    queryStorage _ _ EpochStateHandle {} (LedgerStateAtPointQuery C.ChainPointAtGenesis)
+    queryStorage _ EpochStateHandle {} (LedgerStateAtPointQuery C.ChainPointAtGenesis)
         = liftSQLError CantQueryIndexer $ pure $ LedgerStateAtPointResult Nothing
     queryStorage
-            _
             events
             (EpochStateHandle topLevelConfig _ ledgerStateDirPath _)
             (LedgerStateAtPointQuery (C.ChainPoint slotNo _))

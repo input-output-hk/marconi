@@ -278,7 +278,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
   queriedTx2 :: C.Tx C.BabbageEra <- do
     ScriptTx.ScriptTxResult (ScriptTx.TxCbor txCbor : _) <- liftIO $ do
       ix <- IO.readMVar indexer
-      raiseException $ Storable.query Storable.QEverything ix (ScriptTx.ScriptTxAddress plutusScriptHash)
+      raiseException $ Storable.query ix (ScriptTx.ScriptTxAddress plutusScriptHash)
     H.leftFail $ C.deserialiseFromCBOR (C.AsTx C.AsBabbageEra) txCbor
 
   tx2 === queriedTx2
