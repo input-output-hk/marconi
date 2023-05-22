@@ -1,5 +1,3 @@
-# TODO(std) DUP(except the constraints and the actual version)
-
 { inputs, cell }:
 
 cell.library.pkgs.haskell-nix.cabalProject' {
@@ -15,7 +13,7 @@ cell.library.pkgs.haskell-nix.cabalProject' {
   # b) Pull out the tools themselves from the HLS project so we can use
   #    them elsewhere
   cabalProjectLocal = ''
-    constraints: stylish-haskell==0.13.0.0, hlint==3.2.8
+    constraints: stylish-haskell==0.14.2.0, hlint==3.4.1
   '';
 
   src = inputs.haskell-language-server;

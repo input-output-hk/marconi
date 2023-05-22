@@ -67,7 +67,7 @@ instance IndexerMapTrans WithTransform where
     unwrapMap = transformedIndexer
 
 instance
-    (Monad m, Point input ~ Point output, IsIndex m output indexer, Ord (Point output))
+    (Point input ~ Point output, IsIndex m output indexer, Ord (Point output))
     => IsIndex m input (WithTransform indexer output) where
 
    index timedEvent indexer = do

@@ -39,7 +39,6 @@ import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
-import Data.Text qualified as TS
 import Data.Text qualified as Text
 import Data.Word (Word64)
 import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer))
@@ -488,7 +487,7 @@ runIndexers
   -> C.NetworkId
   -> ChainPoint
   -> IndexingDepth
-  -> TS.Text
+  -> Text.Text
   -> [(Worker, Maybe FilePath)]
   -> IO ()
 runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do

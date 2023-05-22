@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds             #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -16,6 +17,7 @@ module Network.JsonRpc.Server.Types where
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value)
 import Data.Aeson.Types (parseEither)
 import Data.Bifunctor (Bifunctor (bimap))
+import Data.Kind (Type)
 import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (Proxy))
 import GHC.TypeLits (KnownSymbol, symbolVal)
@@ -57,7 +59,7 @@ instance (RouteJsonRpc api, HasContextEntry (context .++ DefaultErrorFormatters)
 
 -- | This internal class is how we accumulate a map of handlers for dispatch
 class RouteJsonRpc a where
-    type RpcHandler a (m :: * -> *)
+    type RpcHandler a (m :: Type -> Type)
     jsonRpcRouter
         :: Monad m => Proxy a -> Proxy m -> RpcHandler a m
         -> Map.Map String (Value -> m (MaybeContent (Either (JsonRpcErr Value) Value)))

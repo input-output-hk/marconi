@@ -16,9 +16,9 @@ import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.Environment qualified as IO
 import System.FilePath ((</>))
+import System.Info qualified as IO
 import System.IO qualified as IO
 import System.IO.Temp qualified as IO
-import System.Info qualified as IO
 
 import Hedgehog (MonadTest)
 import Hedgehog qualified as H

@@ -40,16 +40,16 @@ import Control.Lens.Operators ((%~), (.~), (^.))
 import Control.Lens.TH qualified as Lens
 import Control.Monad (void)
 import Control.Monad.Primitive (PrimMonad, PrimState)
+import Control.Tracer (Tracer, traceWith)
 import Data.Foldable (foldl', foldlM)
 import Data.Function ((&))
 import Data.Functor ((<&>))
 import Data.Functor.Contravariant (contramap)
+import Data.Kind (Type)
 import Data.Vector qualified as V
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Mutable qualified as VM
 import GHC.Generics (Generic)
-
-import Control.Tracer (Tracer, traceWith)
 
 {-
    The extensible parts of the indexers are the way data is stored into some form
@@ -86,7 +86,7 @@ data ControlNotification pt n =
   | CNApplication !n
   deriving (Generic)
 
-type family StorableMonad h :: * -> *
+type family StorableMonad h :: Type -> Type
 
 type ControlTracer h = Tracer (StorableMonad h) (ControlNotification (StorablePoint h) (StorableNotifications h))
 

@@ -43,6 +43,7 @@ import Control.Monad.Primitive (PrimMonad, PrimState)
 import Data.Foldable (foldl', foldlM)
 import Data.Function ((&))
 import Data.Functor ((<&>))
+import Data.Kind (Type)
 import Data.Vector qualified as V
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Mutable qualified as VM
@@ -74,7 +75,7 @@ data family StorableQuery h
 
 data family StorableResult h
 
-type family StorableMonad h :: * -> *
+type family StorableMonad h :: Type -> Type
 
 {-
    Query intervals are a necessary tool to make the queries a little safer. As we can

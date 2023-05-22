@@ -22,7 +22,6 @@ module Marconi.Core.Experiment.Class
 
 import Control.Monad.Except (ExceptT, MonadError, runExceptT)
 import Data.Foldable (foldrM)
-
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, TimedEvent)
 
 -- IsIndex

@@ -140,11 +140,10 @@ executable examples-json-rpc-client
   -- Non-IOG dependencies
   ------------------------
   build-depends:
-    , base                 >=4.9 && <5
+    , base            >=4.9 && <5
     , http-client
     , servant
     , servant-client
-    , servant-client-core
 
 library db-utils
   import:          lang
@@ -212,6 +211,7 @@ test-suite marconi-sidechain-test
     , cardano-api:{cardano-api, gen}  ^>=8.0
     , cardano-crypto-class
     , cardano-ledger-shelley
+    , plutus-tx-plugin
 
   ------------------------
   -- Non-IOG dependencies
