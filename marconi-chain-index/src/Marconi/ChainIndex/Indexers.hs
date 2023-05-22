@@ -11,7 +11,7 @@
 module Marconi.ChainIndex.Indexers where
 
 import Cardano.Api (Block (Block), BlockHeader (BlockHeader), BlockInMode (BlockInMode), CardanoMode,
-                    ChainPoint (ChainPoint), Hash, ScriptData, SlotNo, Tx (Tx), chainPointToSlotNo)
+                    ChainPoint (ChainPoint), Hash, ScriptData, SlotNo)
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Setup (withTrace)
@@ -34,10 +34,9 @@ import Control.Monad (forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.Functor (($>))
-import Data.List (findIndex)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as TS
@@ -47,8 +46,6 @@ import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer))
 import Marconi.ChainIndex.Indexers.AddressDatum (AddressDatumDepth (AddressDatumDepth), AddressDatumHandle,
                                                  AddressDatumIndex)
 import Marconi.ChainIndex.Indexers.AddressDatum qualified as AddressDatum
-import Marconi.ChainIndex.Indexers.Datum (DatumIndex)
-import Marconi.ChainIndex.Indexers.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
@@ -61,7 +58,6 @@ import Marconi.ChainIndex.Node.Client.GenesisConfig (NetworkConfigFile (NetworkC
 import Marconi.ChainIndex.Types (IndexingDepth (MaxIndexingDepth, MinIndexingDepth), SecurityParam (SecurityParam),
                                  TargetAddresses)
 import Marconi.ChainIndex.Utils qualified as Utils
-import Marconi.Core.Index.VSplit qualified as Ix
 import Marconi.Core.Storable qualified as Storable
 import Ouroboros.Consensus.Ledger.Abstract qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
@@ -73,15 +69,6 @@ import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory, (</>))
 
 -- DatumIndexer
-getDatums :: BlockInMode CardanoMode -> [(SlotNo, (Hash ScriptData, ScriptData))]
-getDatums (BlockInMode (Block (BlockHeader slotNo _ _) txs) _) = concatMap extractDatumsFromTx txs
-    where
-        extractDatumsFromTx :: Tx era -> [(SlotNo, (Hash ScriptData, ScriptData))]
-        extractDatumsFromTx (Tx txBody _) =
-            fmap (slotNo,)
-            . Map.assocs
-            . scriptDataFromCardanoTxBody
-            $ txBody
 
 scriptDataFromCardanoTxBody :: C.TxBody era -> Map (Hash ScriptData) ScriptData
 scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ dats _) _ _) =
@@ -142,31 +129,6 @@ initialCoordinator indexerCount' minIndexingDepth =
 -- to the node (in the unlikely case there were some rollbacks during downtime).
 type Worker = SecurityParam -> Coordinator -> FilePath -> IO (Storable.StorablePoint ScriptTx.ScriptTxHandle)
 
-datumWorker :: Worker
-datumWorker securityParam Coordinator{_barrier, _channel, _errorVar} path = do
-  ix <- Datum.open path (Datum.Depth $ fromIntegral securityParam)
-  workerChannel <- atomically . dupTChan $ _channel
-  let
-    innerLoop :: DatumIndex -> IO ()
-    innerLoop index = do
-      signalQSemN _barrier 1
-      failWhenFull _errorVar
-      event <- atomically $ readTChan workerChannel
-      case event of
-        RollForward blk _ct ->
-          Ix.insert (getDatums blk) index >>= innerLoop
-        RollBackward cp _ct -> do
-          events <- Ix.getEvents (index ^. Ix.storage)
-          innerLoop $
-            fromMaybe index $ do
-              slot   <- chainPointToSlotNo cp
-              offset <- findIndex (any (\(s, _) -> s < slot)) events
-              Ix.rewind offset index
-
-    resumeFromCp = C.ChainPointAtGenesis
-
-  void $ forkIO $ innerLoop ix
-  pure resumeFromCp
 
 utxoWorker_
   :: (Utxo.UtxoIndexer -> IO ())  -- ^ callback function used in the queryApi thread, needs to be non-blocking

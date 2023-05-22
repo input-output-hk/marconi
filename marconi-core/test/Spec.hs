@@ -5,16 +5,13 @@ import Marconi.Core.Model qualified as Ix
 import Marconi.Core.Spec.Experiment qualified as E
 import Marconi.Core.Spec.Sqlite qualified as S
 import Marconi.Core.Spec.TracedSqlite qualified as TS
-import Marconi.Core.Spec.VSplit qualified as V
-import Marconi.Core.Spec.VSqlite qualified as VS
 import Marconi.Core.Trace qualified as Ix
 
 tests :: TestTree
 tests = testGroup "Everything" [ indexTests, traceTests, experimentTests ]
 
 indexTests :: TestTree
-indexTests = testGroup "Index" [ ixProperties, sProperties, viProperties, vsProperties
-                               , tProperties ]
+indexTests = testGroup "Index" [ ixProperties, sProperties, tProperties ]
 
 traceTests :: TestTree
 traceTests = testGroup "Trace" [ traceModelProperties, traceIndexerProperties ]
@@ -112,34 +109,6 @@ tProperties = testGroup "New traced index properties."
       withMaxSuccess 1000 $ Ix.prop_insertRewindInverse @Int @Int TS.conversion
   , testProperty "Insert is folding the structure" $
       withMaxSuccess 1000 $ Ix.prop_observeInsert @Int @Int TS.conversion
-  ]
-
-viProperties :: TestTree
-viProperties = testGroup "Vector index"
-  [ testProperty "New: Positive or non-positive depth" $
-      withMaxSuccess 10000 $ Ix.prop_observeNew @Int @Int @Int V.conversion
-  , testProperty "History length is always smaller than the max depth" $
-      withMaxSuccess 10000 $ Ix.prop_sizeLEDepth @Int @Int @Int V.conversion
-  , testProperty "Rewind: Connection with `ixDepth`" $
-      withMaxSuccess 10000 $ Ix.prop_rewindDepth @Int @Int @Int V.conversion
-  , testProperty "Relationship between Insert/Rewind" $
-      withMaxSuccess 1000 $ Ix.prop_insertRewindInverse @Int @Int @Int V.conversion
-  , testProperty "Insert is folding the structure" $
-      withMaxSuccess 1000 $ Ix.prop_observeInsert @Int @Int @Int V.conversion
-  ]
-
-vsProperties :: TestTree
-vsProperties = testGroup "SQLite vector index"
-  [ testProperty "New: Positive or non-positive depth" $
-      withMaxSuccess 10000 $ Ix.prop_observeNew @Int @Int @Int VS.conversion
-  , testProperty "History length is always smaller than the max depth" $
-      withMaxSuccess 10000 $ Ix.prop_sizeLEDepth @Int @Int @Int VS.conversion
-  , testProperty "Rewind: Connection with `ixDepth`" $
-      withMaxSuccess 10000 $ Ix.prop_rewindDepth @Int @Int @Int VS.conversion
-  , testProperty "Relationship between Insert/Rewind" $
-      withMaxSuccess 1000 $ Ix.prop_insertRewindInverse @Int @Int @Int VS.conversion
-  , testProperty "Insert is folding the structure" $
-      withMaxSuccess 1000 $ Ix.prop_observeInsert @Int @Int @Int VS.conversion
   ]
 
 main :: IO ()

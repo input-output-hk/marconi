@@ -14,7 +14,6 @@ main = do
     indexers =
       [ (Indexers.utxoWorker (\_ -> pure ()) maybeTargetAddresses, Cli.utxoDbPath o)
       , (Indexers.addressDatumWorker (\_ -> pure []) maybeTargetAddresses, Cli.addressDatumDbPath o)
-      , (Indexers.datumWorker, Cli.datumDbPath o)
       , (Indexers.scriptTxWorker (\_ -> pure []), Cli.scriptTxDbPath o)
       , (Indexers.mintBurnWorker (\_ -> pure ()), Cli.mintBurnDbPath o)
       ] <> case Cli.optionsNodeConfigPath o of
