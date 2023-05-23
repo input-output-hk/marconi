@@ -46,8 +46,6 @@
 
   marconi-sidechain = import ./marconi-sidechain.nix block;
 
-  cardano-wallet = import ./cardano-wallet.nix block;
-
   scriv = import ./scriv.nix block;
 
   inherit (import ./sphinxcontrib-haddock.nix block)
