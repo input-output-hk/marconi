@@ -59,6 +59,7 @@ Independently of the protected branch:
 `main` branch:
 
 * It should not update `cardano-node` to a new major-version. In other words, it should use a `cardano-node` version which is compatible with the current Cardano mainnet
+* It should use a `cardano-wallet` version which is compatible with the current `cardano-node` version
 
 == Working with the project
 
