@@ -367,19 +367,6 @@ resume
   -> StorableMonad h (StorablePoint h)
 resume s = resumeFromStorage (s ^. handle)
 
-{-
-   This function is a bit non-trivial to think about. The question it is trying to
-   answer is: Which events are valid for a given query interval.
-
-   The answer is quite a bit more complicated than it seems at first sight. We would
-   like to select the latest event within the interval and everything that goes
-   before it (so we get a proper history). If we can't find any event less than the
-   end, that means that the query interval has filtered all existing events.
-
-   This functionality is important, because it should also be implemented at the
-   database level to filter the on-disk events.
--}
-
 query
   :: Queryable h
   => PrimMonad (StorableMonad h)
