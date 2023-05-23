@@ -35,7 +35,7 @@
 --      having a separate table for spent utxo requires to either to resolve the TxIn
 --      to decide whether or not a spent must be stored before resolving it,
 --      or to store TxIn that are not needed.
---    * On query, it requires an extra join.
+--    * On query, a single table save us a join.
 --
 -- To create this table, we extract all transactions inputs and outputs
 -- from each transactions fetched with the chain-sync protocol of the local node.
@@ -139,13 +139,14 @@ interval (Just p) p' =
 
 isInInterval :: Interval C.SlotNo -> C.ChainPoint -> Bool
 isInInterval slotNoInterval = \case
-  C.ChainPointAtGenesis -> case slotNoInterval of
-    (LessThanOrEqual _) -> True
-    (InRange _ _)       -> False
+    C.ChainPointAtGenesis -> case slotNoInterval of
+        LessThanOrEqual _ -> True
+        InRange _ _       -> False
 
-  (C.ChainPoint slotNo _)  -> case slotNoInterval of
-    (LessThanOrEqual slotNo') -> slotNo' >= slotNo
-    (InRange l h)             -> l <= slotNo &&  h >= slotNo
+    C.ChainPoint slotNo _  -> let
+        lowerBoundCheck = maybe (const True) (<=) $ lowerBound slotNoInterval
+        upperBoundCheck = maybe (const False) (>=) $ upperBound slotNoInterval
+        in upperBoundCheck slotNo && lowerBoundCheck slotNo
 
 type UtxoIndexer = Storable.State UtxoHandle
 
