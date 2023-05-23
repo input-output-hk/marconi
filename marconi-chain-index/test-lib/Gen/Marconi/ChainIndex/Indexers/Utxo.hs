@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE TupleSections      #-}
 
 module Gen.Marconi.ChainIndex.Indexers.Utxo
     ( genUtxoEvents
@@ -76,7 +77,7 @@ data TxOutBalance =
   TxOutBalance
     { _tobUnspent :: !(Set C.TxIn)
     -- ^ Outputs newly added by the transaction(s)
-    , _tobSpent   :: !(Set C.TxIn)
+    , _tobSpent   :: !(Map C.TxIn C.TxId)
     -- ^ Outputs spent by the transaction(s)
     }
     deriving stock (Eq, Show, Generic)
@@ -85,7 +86,7 @@ instance Semigroup TxOutBalance where
     tobL <> tobR =
         TxOutBalance
             { _tobUnspent = _tobUnspent tobR
-                         <> (_tobUnspent tobL `Set.difference` _tobSpent tobR)
+                         <> (_tobUnspent tobL `Set.difference` Map.keysSet (_tobSpent tobR))
             , _tobSpent = _tobSpent tobL <> _tobSpent tobR
             }
 
@@ -96,7 +97,7 @@ instance Monoid TxOutBalance where
 txOutBalanceFromTx :: C.Tx era -> TxOutBalance
 txOutBalanceFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
     let txId = C.getTxId txBody
-        txInputs = Set.fromList $ fst <$> C.txIns txBodyContent
+        txInputs = Map.fromList $ (,txId) . fst <$> C.txIns txBodyContent
         utxoRefs = Set.fromList
                  $ fmap (\(txIx, _) -> C.TxIn txId $ C.TxIx txIx)
                  $ zip [0..]
@@ -118,8 +119,7 @@ convertTxOutToUtxo txid txIndexInBlock txix (C.TxOut (C.AddressInEra _ addr) val
                   (Just $ C.hashScript s, Just scriptInAnyLang)
      in Utxo
             ( C.toAddressAny addr)
-              txid
-              txix
+              (C.TxIn txid txix)
               (C.getScriptData <$> scriptData)
               scriptDataHash
               (C.txOutValueToValue val)

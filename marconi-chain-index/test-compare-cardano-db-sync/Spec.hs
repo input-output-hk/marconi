@@ -115,7 +115,7 @@ dbSyncStakepoolSizes conn epochNo = do
 indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
 indexerStakepoolSizes epochNo indexer = do
   let query = EpochState.SDDByEpochNoQuery epochNo
-  result <- throwIndexerError $ Storable.queryStorage dummyInterval [] (indexer ^. Storable.handle) query
+  result <- throwIndexerError $ Storable.queryStorage [] (indexer ^. Storable.handle) query
   case result of
     EpochState.SDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
     _                                  -> return undefined
@@ -146,7 +146,7 @@ propEpochNonce = H.withTests 1 $ H.property $ do
 queryIndexerEpochNonce :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Maybe Ledger.Nonce)
 queryIndexerEpochNonce epochNo indexer = do
   let query = EpochState.NonceByEpochNoQuery epochNo
-  res' <- throwIndexerError $ Storable.queryStorage dummyInterval [] (indexer ^. Storable.handle) query
+  res' <- throwIndexerError $ Storable.queryStorage [] (indexer ^. Storable.handle) query
   case res' of
     EpochState.NonceByEpochNoResult res -> return $ EpochState.epochNonceRowNonce <$> res
     _                                   -> return Nothing
@@ -220,6 +220,3 @@ instance PG.FromField C.PoolId where
 
 deriving newtype instance Real C.EpochNo
 deriving newtype instance Integral C.EpochNo
-
-dummyInterval :: Storable.QueryInterval C.ChainPoint
-dummyInterval = error "dummyInterval: The interval parameter will be removed in the future, don't use it!"

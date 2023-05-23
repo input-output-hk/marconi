@@ -32,11 +32,13 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
 
+import Data.Foldable (traverse_)
 import Marconi.Core.Experiment.Class (Closeable (close), HasGenesis (genesis), IsIndex (index, indexAll),
                                       IsSync (lastSyncPoint))
 import Marconi.Core.Experiment.Type (IndexerError (IndexerInternalError, InvalidIndexer), Point,
                                      QueryError (AheadOfLastSync), Result, TimedEvent, point)
 
+-- |
 type family InsertRecord event
 
 data IndexQuery
@@ -57,13 +59,15 @@ data SQLiteIndexer event
           -- ^ 'InsertRecord' is the typed representation of what has to be inserted in the database
           -- It should be a monoid, to allow insertion of 0 to n rows in a single transaction.
           --
-          -- A list of something is fine if you plan to perform an single insert to store your evnt.
+          -- A list is fine if you plan to perform a single insert to store your event.
           -- If you need several inserts, a record where each field correspond to a list is probably
           -- a good choice.
-        , _buildInsert   :: InsertRecord event -> [IndexQuery]
-          -- ^ Map the 'InsertRecord' representation to 'IndexQuery',
+        , _buildInsert   :: InsertRecord event -> [[IndexQuery]]
+          -- ^ Map the 'InsertRecord' representation to a list of 'IndexQuery',
           -- to actually performed the insertion in the database.
           -- One can think at the insert record as a typed representation of the parameters of the queries,
+          --
+          -- The return type is a list of list because each list will be run sequentialy.
         , _dbLastSync    :: Point event
           -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
         }
@@ -100,7 +104,7 @@ sqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery
         pure $ SQLiteIndexer
             {_handle
             , _prepareInsert
-            , _buildInsert = pure . IndexQuery insertQuery
+            , _buildInsert = pure . pure . IndexQuery insertQuery
             , _dbLastSync
             }
 
@@ -129,18 +133,25 @@ handleSQLErrors value = fmap Right value
 
 
 -- | Run a list of insert queries in one single transaction.
-runIndexQueries
+runIndexQueriesStep
     :: MonadIO m
     => MonadError IndexerError m
     => SQL.Connection -> [IndexQuery] -> m ()
-runIndexQueries _ [] = pure ()
-runIndexQueries c xs = let
+runIndexQueriesStep _ [] = pure ()
+runIndexQueriesStep c xs = let
 
     runIndexQuery (IndexQuery insertQuery params)
         = SQL.executeMany c insertQuery params
 
     in either throwError pure <=< liftIO
         $ handleSQLErrors (SQL.withTransaction c $ Async.mapConcurrently_ runIndexQuery xs)
+
+-- | Run a list of insert queries in one single transaction.
+runIndexQueries
+    :: MonadIO m
+    => MonadError IndexerError m
+    => SQL.Connection -> [[IndexQuery]] -> m ()
+runIndexQueries c = traverse_ (runIndexQueriesStep c)
 
 runLastSyncQuery
     :: MonadError IndexerError m

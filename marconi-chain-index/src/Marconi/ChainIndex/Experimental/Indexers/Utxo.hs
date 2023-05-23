@@ -228,8 +228,8 @@ sqliteIndexer conn =
 
       in (tUtxos, tSpents)
 
-    buildInsert' :: Core.InsertRecord UtxoEvent -> [Core.IndexQuery]
-    buildInsert' (us, ss) =
+    buildInsert' :: Core.InsertRecord UtxoEvent -> [[Core.IndexQuery]]
+    buildInsert' (us, ss) = pure
       [Core.IndexQuery utxoInsertQuery us, Core.IndexQuery spentInsertQuery ss]
 
   in Core.SQLiteIndexer
