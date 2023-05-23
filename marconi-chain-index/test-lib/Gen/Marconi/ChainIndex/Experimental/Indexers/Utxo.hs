@@ -30,9 +30,9 @@ import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import GHC.Generics (Generic)
 import Gen.Marconi.ChainIndex.Mockchain (BlockHeader (BlockHeader), MockBlock (MockBlock), genMockchain,
                                          genTxBodyContentFromTxIns, genTxBodyContentFromTxinsWihtPhase2Validation)
-import GHC.Generics (Generic)
 import Hedgehog (Gen)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 
