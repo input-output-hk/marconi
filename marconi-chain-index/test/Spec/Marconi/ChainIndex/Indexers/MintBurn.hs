@@ -28,8 +28,8 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Word (Word64)
-import GHC.Stack (HasCallStack)
 import Gen.Marconi.ChainIndex.Indexers.MintBurn qualified as Gen
+import GHC.Stack (HasCallStack)
 import Hedgehog (Property, forAll, tripping, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test qualified as HE
