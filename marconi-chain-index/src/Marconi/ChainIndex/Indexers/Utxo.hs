@@ -661,7 +661,7 @@ data UtxoByAddressBufferEvents
     { _bufferUtxos       :: ![StorableEvent UtxoHandle]
     -- ^ Utxos at the requested address
     , _bufferSpent       :: !(Set C.TxIn)
-    -- ^ All the spent TxIn stored in memory that occured after the query upper bound
+    -- ^ All the spent TxIn stored in memory that occured before the query upper bound
     , _bufferFutureSpent :: !(Map C.TxIn SpentInfo)
     -- ^ All the spent TxIn stored in memory that occured after the query upper bound
     } deriving (Eq, Show)
