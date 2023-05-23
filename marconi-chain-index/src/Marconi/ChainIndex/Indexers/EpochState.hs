@@ -55,6 +55,7 @@
 --   'LedgerState' if it's rollbackable or if the last one of a given epoch. This step is necessary
 --   for resuming the indexer.
 --   4. we delete immutable 'LedgerState' binary files expect latest one (this step is necessary for
+--   keeping the disk usage as low as possible).
 --
 -- The indexer provides the following queries:
 --
