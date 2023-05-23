@@ -107,6 +107,7 @@ inputs.std.lib.dev.mkShell {
     cell.packages.haskell-language-server-wrapper
     cell.packages.cabal-install
     cell.packages.cabal-fmt
+    cell.packages.cardano-wallet
 
     cell.library.cardano-node.cardano-node
     cell.library.cardano-node.cardano-cli
