@@ -76,6 +76,7 @@ import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Database.SQLite.Simple.FromField (returnError)
 import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
                                  liftSQLError)
+import Marconi.ChainIndex.Extract.Datum qualified as Datum
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint, Queryable (queryStorage),
                               Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
                               StorablePoint, StorableQuery, StorableResult, emptyState)
@@ -999,7 +1000,11 @@ getUtxoFromTxOut maybeTargetAddresses _txIn (C.TxOut addr val dtum refScript) _t
     }
   where
     _address = toAddr addr
-    (_datum, _datumHash) = getScriptDataAndHash dtum
+    (_datum, _datumHash) = case Datum.txOutDatumOrHash dtum of
+      Nothing -> (Nothing, Nothing)
+      Just e -> case e of
+        Left hash                    -> (Nothing, Just hash)
+        Right (datumHash'', datum'') -> (Just datum'', Just datumHash'')
     (_inlineScript, _inlineScriptHash) = getRefScriptAndHash refScript
 
 -- | get the inlineScript and inlineScriptHash
@@ -1018,15 +1023,6 @@ getRefScriptAndHash refScript = case refScript of
   C.ReferenceScript _ s@(C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV2) script)->
     ( Just s
     , Just . C.hashScript $ script)
-
--- | Get the datum hash and datum or a transaction output.
-getScriptDataAndHash
-  :: C.TxOutDatum C.CtxTx era
-  -> (Maybe C.ScriptData, Maybe (C.Hash C.ScriptData))
-getScriptDataAndHash C.TxOutDatumNone         = (Nothing, Nothing)
-getScriptDataAndHash (C.TxOutDatumHash _ h)   = (Nothing, Just h)
-getScriptDataAndHash (C.TxOutDatumInTx _ d)   = (Just $ C.getScriptData d, (Just . C.hashScriptDataBytes) d)
-getScriptDataAndHash (C.TxOutDatumInline _ d) = (Just $ C.getScriptData d, (Just . C.hashScriptDataBytes) d)
 
 getInputsFromTx :: C.Tx era -> Map C.TxIn C.TxId
 getInputsFromTx (C.Tx txbody _) = getInputs txbody
