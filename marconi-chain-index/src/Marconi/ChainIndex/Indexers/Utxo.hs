@@ -216,6 +216,7 @@ instance ToJSON Utxo where
             -- Uses ToJSON instance of cardano-api which serialises using the 'C.HasTextEnvelope' typeclass.
             , "inlineScript"      .= (u ^. inlineScript)
             , "inlineScriptHash"  .= (u ^. inlineScriptHash)
+            , "txIndexInBlock"    .= (u ^. txIndexInBlock)
             ]
 
 instance FromRow Utxo where
