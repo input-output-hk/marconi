@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 module Marconi.ChainIndex.Utils
     ( isBlockRollbackable
+    , getBlockNoFromChainTip
     , querySecurityParam
     , querySecurityParamEra
     , chainPointOrGenesis
@@ -15,14 +16,16 @@ import Marconi.ChainIndex.Error (IndexerError (CantStartIndexer))
 import Marconi.ChainIndex.Types (SecurityParam)
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch)
 
-isBlockRollbackable :: SecurityParam -> C.BlockNo -> C.ChainTip -> Bool
-isBlockRollbackable securityParam (C.BlockNo chainSyncBlockNo) localChainTip =
-    let chainTipBlockNo =
-            case localChainTip of
-              C.ChainTipAtGenesis             -> 0
-              (C.ChainTip _ _ (C.BlockNo bn)) -> bn
+isBlockRollbackable :: SecurityParam -> C.BlockNo -> C.BlockNo -> Bool
+isBlockRollbackable securityParam (C.BlockNo chainSyncBlockNo) (C.BlockNo chainTipBlockNo) =
      -- TODO Need to confirm if it's "<" or "<="
-     in chainTipBlockNo - chainSyncBlockNo <= fromIntegral securityParam
+     chainTipBlockNo - chainSyncBlockNo <= fromIntegral securityParam
+
+getBlockNoFromChainTip :: C.ChainTip -> C.BlockNo
+getBlockNoFromChainTip chainTip =
+    case chainTip of
+      C.ChainTipAtGenesis -> 0
+      (C.ChainTip _ _ bn) -> bn
 
 -- | Query security param from node
 querySecurityParam :: C.NetworkId -> FilePath -> ExceptT IndexerError IO SecurityParam
@@ -55,6 +58,8 @@ querySecurityParamEra eraInMode networkId socketPath = do
     toError :: Show a => a -> ExceptT IndexerError IO b
     toError = throwError . CantStartIndexer . pack . show
 
+-- | Return the first element of the list of chain points. If the list is empty, return the genesis
+-- point.
 chainPointOrGenesis :: [C.ChainPoint] -> C.ChainPoint
 chainPointOrGenesis result = case result of
   []     -> C.ChainPointAtGenesis
