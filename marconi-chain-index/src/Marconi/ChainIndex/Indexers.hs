@@ -210,11 +210,8 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
       case event of
         RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _) _ -> do
             -- TODO Redo. Inefficient filtering
-            let addressFilter =
-                    fmap (flip elem)
-                         targetAddresses
-                addressDatumIndexEvent =
-                    AddressDatum.toAddressDatumIndexEvent addressFilter txs (C.ChainPoint slotNo bh)
+            let addressDatumIndexEvent =
+                    AddressDatum.toAddressDatumIndexEvent (Utils.addressesToPredicate targetAddresses) txs (C.ChainPoint slotNo bh)
             void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
             void $ onInsert addressDatumIndexEvent
             innerLoop index

@@ -5,6 +5,7 @@ module Marconi.ChainIndex.Utils
     , querySecurityParam
     , querySecurityParamEra
     , chainPointOrGenesis
+    , addressesToPredicate
     ) where
 
 import Cardano.Api qualified as C
@@ -13,7 +14,7 @@ import Control.Monad.Except (ExceptT, throwError)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Text (pack)
 import Marconi.ChainIndex.Error (IndexerError (CantStartIndexer))
-import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Types (SecurityParam, TargetAddresses)
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch)
 
 isBlockRollbackable :: SecurityParam -> C.BlockNo -> C.BlockNo -> Bool
@@ -64,3 +65,7 @@ chainPointOrGenesis :: [C.ChainPoint] -> C.ChainPoint
 chainPointOrGenesis result = case result of
   []     -> C.ChainPointAtGenesis
   cp : _ -> cp
+
+-- | Convert a list of target addresses to a predicate function
+addressesToPredicate :: Maybe TargetAddresses -> Maybe (C.Address C.ShelleyAddr -> Bool)
+addressesToPredicate = fmap (\list -> (`elem` list))
