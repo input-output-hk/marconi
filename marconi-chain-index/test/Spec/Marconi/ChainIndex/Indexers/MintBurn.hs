@@ -147,7 +147,7 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
             (\e -> concat
                  $ NonEmpty.toList
                  $ fmap (\(_, assets) ->
-                     fmap (\(MintAsset policyId assetName _ _ _) -> (policyId, assetName))
+                     fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
                         $ NonEmpty.toList assets)
                  $ MintBurn.txMintEventTxAssets e)
             insertedEvents
@@ -181,7 +181,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
             (\e -> concat
                  $ NonEmpty.toList
                  $ fmap (\(_, assets) ->
-                     fmap (\(MintAsset policyId assetName _ _ _) -> (policyId, assetName))
+                     fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
                         $ NonEmpty.toList assets)
                  $ MintBurn.txMintEventTxAssets e)
             insertedEvents
@@ -214,7 +214,7 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
             (\e -> concat
                  $ NonEmpty.toList
                  $ fmap (\(_, assets) ->
-                     fmap (\(MintAsset policyId assetName _ _ _) -> (policyId, assetName))
+                     fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
                         $ NonEmpty.toList assets)
                  $ MintBurn.txMintEventTxAssets e)
             insertedEvents

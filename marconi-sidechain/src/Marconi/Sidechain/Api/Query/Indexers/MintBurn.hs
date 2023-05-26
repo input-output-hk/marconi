@@ -15,7 +15,8 @@ import Data.Word (Word64)
 import Control.Monad.Except (runExceptT)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle, StorableQuery (QueryBurnByAssetId),
                                              StorableResult (MintBurnResult), TxMintRow, txMintRowBlockHeaderHash,
-                                             txMintRowQuantity, txMintRowRedeemerData, txMintRowSlotNo, txMintRowTxId)
+                                             txMintRowQuantity, txMintRowRedeemerData, txMintRowRedeemerHash,
+                                             txMintRowSlotNo, txMintRowTxId)
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (AssetIdTxResult (AssetIdTxResult))
@@ -72,6 +73,6 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
             (x ^. txMintRowBlockHeaderHash)
             (x ^. txMintRowSlotNo)
             (x ^. txMintRowTxId)
-            Nothing
+            (Just $ x ^. txMintRowRedeemerHash)
             (Just $ x ^. txMintRowRedeemerData)
             (x ^. txMintRowQuantity)
