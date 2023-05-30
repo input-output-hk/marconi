@@ -7,3 +7,10 @@ Marconi
 
    doc/overview
    doc/tutorials/index
+
+.. toctree::
+   :caption: Architecture
+   :maxdepth: 1
+
+   adr/index
+
