@@ -13,18 +13,8 @@ import Control.Lens ((^.))
 import Data.Word (Word64)
 
 import Control.Monad.Except (runExceptT)
-import Marconi.ChainIndex.Indexers.MintBurn (
-  MintBurnHandle,
-  StorableQuery (QueryBurnByAssetId),
-  StorableResult (MintBurnResult),
-  TxMintRow,
-  txMintRowBlockHeaderHash,
-  txMintRowQuantity,
-  txMintRowRedeemerData,
-  txMintRowRedeemerHash,
-  txMintRowSlotNo,
-  txMintRowTxId,
- )
+import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle, StorableResult (MintBurnResult), TxMintRow)
+import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (AssetIdTxResult (AssetIdTxResult))
@@ -77,7 +67,7 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
     Just indexer -> query indexer
   where
     query indexer = do
-      let q = QueryBurnByAssetId policyId assetId slotNo
+      let q = MintBurn.QueryBurnByAssetId policyId assetId slotNo
       res <- runExceptT $ Storable.query indexer q
       case res of
         Right (MintBurnResult mintBurnRows) -> pure $ Right $ toAssetIdTxResult <$> mintBurnRows
@@ -86,9 +76,11 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
     toAssetIdTxResult :: TxMintRow -> AssetIdTxResult
     toAssetIdTxResult x =
       AssetIdTxResult
-        (x ^. txMintRowBlockHeaderHash)
-        (x ^. txMintRowSlotNo)
-        (x ^. txMintRowTxId)
-        (Just $ x ^. txMintRowRedeemerHash)
-        (Just $ x ^. txMintRowRedeemerData)
-        (x ^. txMintRowQuantity)
+        (x ^. MintBurn.txMintRowBlockHeaderHash)
+        (x ^. MintBurn.txMintRowBlockNo)
+        (x ^. MintBurn.txMintRowTxIx)
+        (x ^. MintBurn.txMintRowSlotNo)
+        (x ^. MintBurn.txMintRowTxId)
+        (Just $ x ^. MintBurn.txMintRowRedeemerHash)
+        (Just $ x ^. MintBurn.txMintRowRedeemerData)
+        (x ^. MintBurn.txMintRowQuantity)

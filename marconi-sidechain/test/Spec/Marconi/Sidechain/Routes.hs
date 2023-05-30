@@ -156,6 +156,8 @@ propJSONRountripGetTxsBurningAssetIdResult = property $ do
     hsd <- Gen.maybe CGen.genHashableScriptData
     AssetIdTxResult
       <$> Gen.genHashBlockHeader
+      <*> Gen.genBlockNo
+      <*> (Gen.integral $ Range.linear 0 10)
       <*> Gen.genSlotNo
       <*> CGen.genTxId
       <*> pure (fmap C.hashScriptDataBytes hsd)
@@ -199,13 +201,7 @@ goldenAddressUtxoResult = do
       pure
       $ C.deserialiseFromBech32 (C.AsAddress C.AsShelleyAddr) addressBech32
 
-  let datumCbor = "4"
-  datum <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromCBOR C.AsScriptData datumCbor
-
+  let datum = C.ScriptDataNumber 34
   let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
   txId <-
     either
@@ -250,13 +246,7 @@ goldenAddressUtxoResult = do
 
 goldenMintingPolicyHashTxResult :: IO ByteString
 goldenMintingPolicyHashTxResult = do
-  let redeemerCbor = "4"
-  redeemerData <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromCBOR C.AsScriptData redeemerCbor
-
+  let redeemerData = C.ScriptDataNumber 34
   let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
   txId <-
     either
@@ -274,6 +264,8 @@ goldenMintingPolicyHashTxResult = do
   let mints =
         [ AssetIdTxResult
             blockHeaderHash
+            (C.BlockNo 1047)
+            0
             (C.SlotNo 1)
             txId
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
@@ -281,6 +273,8 @@ goldenMintingPolicyHashTxResult = do
             (C.Quantity $ -10)
         , AssetIdTxResult
             blockHeaderHash
+            (C.BlockNo 1047)
+            1
             (C.SlotNo 1)
             txId
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)

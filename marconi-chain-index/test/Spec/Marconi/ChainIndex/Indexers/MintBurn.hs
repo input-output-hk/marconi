@@ -16,15 +16,18 @@ import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
-import Control.Lens ((^.))
+import Control.Lens (view, (^.))
 import Control.Monad (forM, forM_, unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Coerce (coerce)
+import Data.Foldable (foldlM)
+import Data.Function (on)
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
+import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.String (fromString)
 import Data.Word (Word64)
@@ -86,6 +89,10 @@ tests =
         "Querying everything at target slot should return all rows from genesis until that slot"
         "propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint"
         propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint
+    , testPropertyNamed
+        "Querying everything and check the order of the result"
+        "propQueryingReturnResultOrderedByAscendingBlockNumberAndTxIndex"
+        propQueryingReturnResultOrderedByAscendingBlockNumberAndTxIndex
     , testPropertyNamed
         "Querying by AssetId all possible AssetIds at target slot should yield same results as querying everything until that slot"
         "propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint"
@@ -153,6 +160,27 @@ propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
   -- gotten out of the indexer:
   equalSet (MintBurn.groupBySlotAndHash insertedEvents) (MintBurn.fromRows queryResult)
 
+-- | Create transactions, index them, query indexer and find mint events.
+propQueryingReturnResultOrderedByAscendingBlockNumberAndTxIndex :: Property
+propQueryingReturnResultOrderedByAscendingBlockNumberAndTxIndex = H.property $ do
+  (indexer, _, _) <- Gen.genIndexerWithEvents ":memory:"
+  -- Query results:
+  MintBurnResult queryResult <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
+  -- Compare the sets of events inserted to the indexer and the set
+  -- gotten out of the indexer:
+  H.footnote $ show queryResult
+  case queryResult of
+    [] -> pure ()
+    x : xs -> void $ foldlM checkOrder x xs
+  where
+    checkOrder x y = case comparing (view MintBurn.txMintRowBlockNo) x y of
+      LT -> pure y
+      EQ ->
+        if ((<=) `on` view MintBurn.txMintRowTxIx) x y
+          then pure y
+          else fail $ "error on TxId " <> show x <> show y
+      GT -> fail $ "error on BlockNo " <> show x <> show y
+
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll :: Property
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
   (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
@@ -165,9 +193,9 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
               concat
                 $ NonEmpty.toList
                 $ fmap
-                  ( \(_, assets) ->
-                      fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName)) $
-                        NonEmpty.toList assets
+                  ( fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
+                      . NonEmpty.toList
+                      . MintBurn.txMintAsset
                   )
                 $ MintBurn.txMintEventTxAssets e
           )
@@ -213,9 +241,9 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
               concat
                 $ NonEmpty.toList
                 $ fmap
-                  ( \(_, assets) ->
-                      fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName)) $
-                        NonEmpty.toList assets
+                  ( fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
+                      . NonEmpty.toList
+                      . MintBurn.txMintAsset
                   )
                 $ MintBurn.txMintEventTxAssets e
           )
@@ -260,9 +288,9 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
               concat
                 $ NonEmpty.toList
                 $ fmap
-                  ( \(_, assets) ->
-                      fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName)) $
-                        NonEmpty.toList assets
+                  ( fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
+                      . NonEmpty.toList
+                      . MintBurn.txMintAsset
                   )
                 $ MintBurn.txMintEventTxAssets e
           )
@@ -402,7 +430,7 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
     liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
   case MintBurn.fromRows txMintRows of
     event : _ -> case MintBurn.txMintEventTxAssets event of
-      (_txId, gottenMintEvents :: NonEmpty MintAsset) :| [] ->
+      (MintBurn.TxMintInfo _txId _txIx gottenMintEvents) :| [] ->
         let
          in equalSet (mintsToPolicyAssets $ NonEmpty.toList gottenMintEvents) (getPolicyAssets txMintValue)
       _ -> fail "More than one mint/burn event, but we created only one!"

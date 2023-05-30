@@ -74,7 +74,7 @@ queryMintingPolicyTest = property $ do
         )
       . Set.toList
       . Set.fromList -- required to remove the potential duplicate assets
-      . concatMap (NonEmpty.toList . snd)
+      . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
       . concatMap NonEmpty.toList
       . fmap MintBurn.txMintEventTxAssets
       $ events
@@ -101,7 +101,7 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
         Set.toList
           . Set.fromList
           . fmap (\mps -> (mintAssetPolicyId mps, mintAssetAssetName mps))
-          . concatMap (NonEmpty.toList . snd)
+          . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
           . concatMap NonEmpty.toList
           . fmap MintBurn.txMintEventTxAssets
           $ events

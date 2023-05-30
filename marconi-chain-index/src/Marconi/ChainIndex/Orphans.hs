@@ -13,12 +13,10 @@ import Codec.CBOR.Read qualified as CBOR
 import Codec.Serialise (Serialise (decode, encode))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
-import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce (coerce)
 import Data.Proxy (Proxy (Proxy))
 import Data.SOP.Strict (K (K), NP (Nil, (:*)), fn, type (:.:) (Comp))
-import Data.Text.Encoding qualified as Text
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.FromRow (FromRow (fromRow))
@@ -142,18 +140,16 @@ instance SQL.ToField C.ScriptData where
   toField = SQL.SQLBlob . C.serialiseToCBOR
 
 instance FromJSON C.ScriptData where
-  parseJSON (Aeson.String v) =
-    either (const mempty) pure $ do
-      base16Val <- Base16.decode $ Text.encodeUtf8 v
-      mapLeft show $ C.deserialiseFromCBOR C.AsScriptData base16Val
-  parseJSON _ = mempty
+  parseJSON =
+    either (fail . show) (pure . C.getScriptData)
+      . C.scriptDataFromJson C.ScriptDataJsonDetailedSchema
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
 mapLeft f (Left v) = Left $ f v
 mapLeft _ (Right v) = Right v
 
 instance ToJSON C.ScriptData where
-  toJSON v = Aeson.String $ Text.decodeLatin1 $ Base16.encode $ C.serialiseToCBOR v
+  toJSON = C.scriptDataToJson C.ScriptDataJsonDetailedSchema . C.unsafeHashableScriptData
 
 -- * C.TxIn
 

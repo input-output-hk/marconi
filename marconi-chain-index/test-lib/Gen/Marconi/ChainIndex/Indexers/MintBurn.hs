@@ -74,7 +74,7 @@ genMintEvents = do
   txAll <- forM txAll' $ \case
     (Right tx, slotNo) -> pure (tx, slotNo)
     (Left txBodyError, _) -> fail $ "Failed to create a transaction! This shouldn't happen, the generator should be fixed. TxBodyError: " <> show txBodyError
-  let events = mapMaybe (\(tx, slotNo) -> MintBurn.TxMintEvent slotNo dummyBlockHeaderHash . pure <$> MintBurn.txMints tx) txAll
+  let events = mapMaybe (\(ix, (tx, slotNo)) -> MintBurn.TxMintEvent slotNo dummyBlockHeaderHash dummyBlockNo . pure <$> MintBurn.txMints ix tx) $ zip [0 ..] txAll
   pure (events, (fromIntegral bufferSize, nTx))
 
 genTxWithMint
@@ -190,6 +190,9 @@ mkNewIndexerBasedOnOldDb indexer =
 
 dummyBlockHeaderHash :: C.Hash C.BlockHeader
 dummyBlockHeaderHash = fromString "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" :: C.Hash C.BlockHeader
+
+dummyBlockNo :: C.BlockNo
+dummyBlockNo = 12
 
 equalSet :: (H.MonadTest m, Show a, Ord a) => [a] -> [a] -> m ()
 equalSet a b = Set.fromList a === Set.fromList b

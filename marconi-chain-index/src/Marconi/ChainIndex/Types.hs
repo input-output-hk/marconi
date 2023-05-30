@@ -27,7 +27,7 @@ module Marconi.ChainIndex.Types (
   mintBurnDbName,
   SecurityParam (SecurityParam),
   IndexingDepth (MinIndexingDepth, MaxIndexingDepth),
-  TxIndexInBlock,
+  TxIndexInBlock (TxIndexInBlock),
 ) where
 
 import Cardano.Api qualified as C
