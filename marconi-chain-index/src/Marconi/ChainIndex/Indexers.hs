@@ -356,7 +356,7 @@ epochStateWorker_
 
             loop newLedgerState newEpochNo
 
-    pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState) Nothing, cp, indexerMVar)
+    pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState), cp, indexerMVar)
 
 epochStateWorker
     :: FilePath
