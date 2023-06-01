@@ -109,6 +109,7 @@ upperBound = \case
     LessThanOrEqual x -> Just x
     InRange _ x       -> Just x
 
+-- | Smart constructor for 'Interval ', return an error if the lower bound is greater than the upper bound
 interval
   :: (Ord r, Show r)
   => Maybe r -- ^ lower bound
@@ -133,15 +134,16 @@ interval (Just p) p' =
 
   in wrap InRange p p'
 
+-- | Check if a given chainpoint is in the given interval
 isInInterval :: Interval C.SlotNo -> C.ChainPoint -> Bool
 isInInterval slotNoInterval = \case
   C.ChainPointAtGenesis -> case slotNoInterval of
     LessThanOrEqual _ -> True
     InRange _ _       -> False
 
-  (C.ChainPoint slotNo _)  -> case slotNoInterval of
+  C.ChainPoint slotNo _  -> case slotNoInterval of
     LessThanOrEqual slotNo' -> slotNo' >= slotNo
-    InRange l h             -> l <= slotNo &&  h >= slotNo
+    InRange l h             -> l <= slotNo && h >= slotNo
 
 type UtxoIndexer = Storable.State UtxoHandle
 
@@ -300,7 +302,9 @@ instance ToJSON UtxoRow where
 
 data instance StorableResult UtxoHandle
     = UtxoResult { getUtxoResult :: ![UtxoRow] }
+    -- ^ Result of a 'QueryUtxoByAddress' query
     | LastSyncPointResult { getLastSyncPoint :: !C.ChainPoint }
+    -- ^ Result of a 'LastSyncPoint' query
     deriving (Eq, Show, Ord)
 
 data instance StorableEvent UtxoHandle = UtxoEvent
