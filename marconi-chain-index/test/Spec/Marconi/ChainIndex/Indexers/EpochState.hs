@@ -177,9 +177,9 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
 
   -- Let's find it in the database as well
   indexer <- liftIO $ STM.readMVar indexerMVar
-  queryResult <- liftIO $ raiseException $ Storable.query indexer (EpochState.SDDByEpochNoQuery epochNo)
+  queryResult <- liftIO $ raiseException $ Storable.query indexer (EpochState.ActiveSDDByEpochNoQuery epochNo)
   case queryResult of
-    EpochState.SDDByEpochNoResult stakeMap ->
+    EpochState.ActiveSDDByEpochNoResult stakeMap ->
       let actualTotalStakedLovelace =
             fmap
               EpochState.epochSDDRowLovelace
