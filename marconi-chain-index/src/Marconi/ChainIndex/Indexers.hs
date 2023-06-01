@@ -294,19 +294,27 @@ epochStateWorker_
     cp <- toException $ Storable.resumeFromStorage $ view Storable.handle indexer
     indexerMVar <- newMVar indexer
 
-    let loop currentLedgerState currentEpochNo previousEpochNo = do
+    let loop currentLedgerState currentEpochNo = do
             signalQSemN _barrier 1
             failWhenFull _errorVar
             chainSyncEvent <- atomically $ readTChan ch
 
-            newLedgerState <- case chainSyncEvent of
+            (newLedgerState, newEpochNo) <- case chainSyncEvent of
               RollForward blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _) chainTip -> do
+
+                  let newLedgerState' = O.lrResult
+                       $ O.tickThenReapplyLedgerResult
+                            hfLedgerConfig
+                            (C.toConsensusBlock blockInMode)
+                            currentLedgerState
+                      newEpochNo = EpochState.getEpochNo newLedgerState'
+
                   -- If the block is rollbackable, we always store the LedgerState. If the block is
                   -- immutable, we only store it right at the beginning of a new epoch.
-                  let isFirstEventOfEpoch = currentEpochNo > previousEpochNo
+                  let isFirstEventOfEpoch = newEpochNo > currentEpochNo
                   let storableEvent =
                           EpochState.toStorableEvent
-                            currentLedgerState
+                            newLedgerState'
                             slotNo
                             bh
                             bn
@@ -317,17 +325,15 @@ epochStateWorker_
                   onInsert (newIndexer, storableEvent)
 
                   -- Compute new LedgerState given block and old LedgerState
-                  pure $ O.lrResult
-                       $ O.tickThenReapplyLedgerResult
-                            hfLedgerConfig
-                            (C.toConsensusBlock blockInMode)
-                            currentLedgerState
+                  pure (newLedgerState', newEpochNo)
 
               RollBackward C.ChainPointAtGenesis _ct -> do
                   void $ updateWith indexerMVar _errorVar $ Storable.rewind C.ChainPointAtGenesis
-                  pure initialLedgerState
+                  pure (initialLedgerState, Nothing)
+
               RollBackward cp' _ct -> do
                   newIndex <- updateWith indexerMVar _errorVar $ Storable.rewind cp'
+
                   -- We query the LedgerState from disk at the point where we need to rollback to.
                   -- For that to work, we need to be sure that any volatile LedgerState are stored
                   -- on disk. For immutable LedgerStates, they are only stored on disk at the first
@@ -335,22 +341,22 @@ epochStateWorker_
                   maybeLedgerState <-
                          runExceptT $ Storable.query newIndex (EpochState.LedgerStateAtPointQuery cp')
                   case maybeLedgerState of
-                    Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure ledgerState
+                    Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure (ledgerState, EpochState.getEpochNo ledgerState)
                     Right (EpochState.LedgerStateAtPointResult Nothing) -> do
                         void $ tryPutMVar _errorVar
                             $ CantRollback "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
-                        pure initialLedgerState
+                        pure (initialLedgerState, Nothing)
                     Right _ -> do
                         void $ tryPutMVar _errorVar
                             $ CantRollback "LedgerStateAtPointQuery returned a result mismatch when applying a rollback. Should not happen!"
-                        pure initialLedgerState
+                        pure (initialLedgerState, Nothing)
                     Left err         -> do
                         void $ tryPutMVar _errorVar err
-                        pure initialLedgerState
+                        pure (initialLedgerState, Nothing)
 
-            loop newLedgerState (EpochState.getEpochNo newLedgerState) currentEpochNo
+            loop newLedgerState newEpochNo
 
-    pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState) Nothing, cp, indexerMVar)
+    pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState), cp, indexerMVar)
 
 epochStateWorker
     :: FilePath
