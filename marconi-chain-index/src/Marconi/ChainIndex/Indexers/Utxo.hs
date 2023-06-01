@@ -257,8 +257,8 @@ data UtxoRow = UtxoRow
 
 $(makeLenses ''UtxoRow)
 
-urSpendSlotNo :: Traversal' UtxoRow C.SlotNo
-urSpendSlotNo = urSpentInfo . _Just . siSpentPoint . cpSlotNo
+urSpentSlotNo :: Traversal' UtxoRow C.SlotNo
+urSpentSlotNo = urSpentInfo . _Just . siSpentPoint . cpSlotNo
 
 urCreationSlotNo :: Lens' UtxoRow C.SlotNo
 urCreationSlotNo = urCreationPoint . cpSlotNo
@@ -295,7 +295,7 @@ instance ToJSON UtxoRow where
     [ "utxo" .= view urUtxo ur
     , "slotNo" .= view urCreationSlotNo ur
     , "blockHeaderHash" .= view urCreationBlockHash ur
-    , "spentSlotNo" .= preview urSpendSlotNo ur
+    , "spentSlotNo" .= preview urSpentSlotNo ur
     , "spentBlockHeaderHash" .= preview urSpentBlockHash ur
     , "spentTxId" .= preview urSpentTxId ur
     ]
@@ -493,7 +493,7 @@ open dbPath (Depth k) isToVacuume = do
                       , txIx INT NOT NULL
                       , slotNo INT NOT NULL
                       , blockHash BLOB NOT NULL
-                      , spendTxId TEXT NOT NULL)|]
+                      , spentTxId TEXT NOT NULL)|]
 
     lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS
                       spent_slotNo ON spent (slotNo)|]
@@ -554,7 +554,7 @@ instance Buffered UtxoHandle where
            [r|INSERT
               INTO spent (
                 txId,
-                txIx, slotNo, blockHash, spendTxId
+                txIx, slotNo, blockHash, spentTxId
               ) VALUES
               (?, ?, ?, ?, ?)|] spents)))
     -- We want to perform vacuum about once every 100
@@ -806,7 +806,7 @@ utxoAtAddressQuery c bufferResult filters params
                   u.blockHash,
                   s.slotNo,
                   s.blockHash,
-                  s.spendTxId
+                  s.spentTxId
                FROM
                   unspent_transactions u
                FULL OUTER JOIN spent s ON u.txId = s.txId
