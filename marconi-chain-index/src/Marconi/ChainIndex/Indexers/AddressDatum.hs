@@ -52,7 +52,7 @@
 module Marconi.ChainIndex.Indexers.AddressDatum
   ( -- * AddressDatumIndex
     AddressDatumIndex
-  , AddressDatumHandle
+  , AddressDatumHandle(AddressDatumHandle)
   , StorableEvent(..)
   , StorableQuery(..)
   , StorableResult(..)

@@ -28,10 +28,19 @@
 -- @
 --
 -- + table: spent
+--
 -- @
 --      |------+------|--------+-----------|
 --      | txId | txIx | slotNo | blockHash |
 --      |------+------|--------+-----------|
+-- @
+--
+-- + table: datumhash_datum
+--
+-- @
+--      |------------+-------|
+--      | datum_hash | datum |
+--      |------------+-------|
 -- @
 -- To create these tables, we extract all transactions outputs from each transactions fetched with
 -- the chain-sync protocol of the local node.
@@ -41,13 +50,13 @@ module Marconi.ChainIndex.Indexers.Utxo where
 import Control.Concurrent.Async (concurrently_)
 import Control.Exception (bracket_)
 import Control.Lens.Combinators (Traversal', _Just, imap, preview, view)
-import Control.Lens.Operators ((&), (.~), (^.))
+import Control.Lens.Operators ((^.))
 import Control.Lens.TH (makeLenses)
 import Control.Monad (guard, when)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.:?), (.=))
-import Data.Either (fromRight)
+import Data.Either (fromRight, rights)
 import Data.Foldable (fold, foldl', toList)
 import Data.List (groupBy, sort, sortOn)
 import Data.List.NonEmpty (NonEmpty)
@@ -76,7 +85,7 @@ import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TargetAddresses, TxIndexInBlock, TxOut, pattern CurrentEra)
-import Marconi.ChainIndex.Utils (chainPointOrGenesis)
+import Marconi.ChainIndex.Utils (addressesToPredicate, chainPointOrGenesis)
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint, Queryable (queryStorage),
                               Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
                               StorablePoint, StorableQuery, StorableResult, emptyState)
@@ -226,13 +235,31 @@ data SpentInfo
 $(makeLenses ''SpentInfo)
 
 data UtxoRow = UtxoRow
-  { _urUtxo            :: !Utxo
-  , _urSlotNo          :: !C.SlotNo
-  , _urBlockHeaderHash :: !(C.Hash C.BlockHeader)
-  , _urSpentInfo       :: !(Maybe SpentInfo)
+  { _urUtxo                    :: !Utxo
+  , _urCreationSlotNo          :: !C.SlotNo
+  , _urCreationBlockHeaderHash :: !(C.Hash C.BlockHeader)
+  , _urSpentInfo               :: !(Maybe SpentInfo)
   } deriving (Show, Eq, Ord, Generic)
 
 $(makeLenses ''UtxoRow)
+
+data UtxoResult = UtxoResult_
+  { utxoResultAddress                 :: !C.AddressAny
+  , utxoResultTxIn                    :: !C.TxIn
+  , utxoResultDatum                   :: !(Maybe C.ScriptData) -- datumhash_datum
+  , utxoResultDatumHash               :: !(Maybe (C.Hash C.ScriptData))
+  , utxoResultValue                   :: !C.Value
+  , utxoResultInlineScript            :: !(Maybe C.ScriptInAnyLang)
+  , utxoResultInlineScriptHash        :: !(Maybe C.ScriptHash)
+  , utxoResultTxIndexInBlock          :: !TxIndexInBlock
+  , utxoResultCreationSlotNo          :: !C.SlotNo
+  , utxoResultCreationBlockHeaderHash :: !(C.Hash C.BlockHeader)
+  --
+  , utxoResultSpentInfo               :: !(Maybe SpentInfo)
+  } deriving (Eq, Show)
+
+instance Ord UtxoResult where
+  compare u u' = compare (utxoResultAddress u, utxoResultTxIn u) (utxoResultAddress u', utxoResultTxIn u')
 
 urSpentSlotNo :: Traversal' UtxoRow C.SlotNo
 urSpentSlotNo = urSpentInfo . _Just . siSlotNo
@@ -263,15 +290,15 @@ instance FromJSON UtxoRow where
 instance ToJSON UtxoRow where
   toJSON ur = object
     [ "utxo" .= view urUtxo ur
-    , "slotNo" .= _urSlotNo ur
-    , "blockHeaderHash" .= _urBlockHeaderHash ur
+    , "slotNo" .= _urCreationSlotNo ur
+    , "blockHeaderHash" .= _urCreationBlockHeaderHash ur
     , "spentSlotNo" .= preview urSpentSlotNo ur
     , "spentBlockHeaderHash" .= preview urSpentBlockHash ur
     , "spentTxId" .= preview urSpentTxId ur
     ]
 
 data instance StorableResult UtxoHandle
-    = UtxoResult { getUtxoResult :: ![UtxoRow] }
+    = UtxoResult { getUtxoResult :: ![UtxoResult] }
     -- ^ Result of a 'QueryUtxoByAddress' query
     | LastSyncPointResult { getLastSyncPoint :: !C.ChainPoint }
     -- ^ Result of a 'LastSyncPoint' query
@@ -281,11 +308,12 @@ data instance StorableEvent UtxoHandle = UtxoEvent
     { ueUtxos       :: !(Set Utxo)
     , ueInputs      :: !(Map C.TxIn C.TxId)
     , ueChainPoint  :: !C.ChainPoint
+    , ueDatum       :: !(Map (C.Hash C.ScriptData) C.ScriptData)
     } deriving (Eq, Ord, Show, Generic)
 
 -- | mappend, combine and balance Utxos
 instance Semigroup (StorableEvent UtxoHandle) where
-  (UtxoEvent us is cp) <> (UtxoEvent us' is' cp') = let
+  (UtxoEvent us is cp ad) <> (UtxoEvent us' is' cp' ad') = let
 
       txins = Map.union is is'
 
@@ -298,10 +326,10 @@ instance Semigroup (StorableEvent UtxoHandle) where
         = foldl' insertUnspent Set.empty
         $ Set.union us us'
 
-    in UtxoEvent utxos txins (max cp cp')
+    in UtxoEvent utxos txins (max cp cp') (ad <> ad')
 
 instance Monoid (StorableEvent UtxoHandle) where
-  mempty = UtxoEvent mempty mempty C.ChainPointAtGenesis
+  mempty = UtxoEvent mempty mempty C.ChainPointAtGenesis mempty
 
 -- | The effect of a transaction (or a number of them) on the tx output map.
 data TxOutBalance =
@@ -367,8 +395,8 @@ instance ToRow UtxoRow where
       , toField $ u ^. urUtxo . value
       , toField $ u ^. urUtxo . inlineScript
       , toField $ u ^. urUtxo . inlineScriptHash
-      , toField $ _urSlotNo u
-      , toField $ _urBlockHeaderHash u
+      , toField $ _urCreationSlotNo u
+      , toField $ _urCreationBlockHeaderHash u
       , toField $ u ^. urUtxo . txIndexInBlock
       ]
 
@@ -400,6 +428,25 @@ instance ToRow Spent where
     , toField $ s ^. sSpentInfo . siBlockHeaderHash
     , toField $ s ^. sSpentInfo . siSpentTxId
     ]
+
+instance FromRow UtxoResult where
+  fromRow = UtxoResult_
+    <$> field
+    <*> fromRow
+    <*> field
+    <*> field
+    <*> field
+    <*> field
+    <*> field
+    <*> field
+    <*> field
+    <*> field
+    <*> do a <- field
+           b <- field
+           c <- field
+           if | Just a' <- a, Just b' <- b, Just c' <- c -> pure $ Just $ SpentInfo a' b' c'
+              | otherwise                                -> pure Nothing
+
 
 -- | Open a connection to DB, and create resources
 -- The parameter ((k + 1) * 2) specifies the amount of events that are buffered.
@@ -444,10 +491,12 @@ open dbPath (Depth k) isToVacuume = do
     lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS
                       unspent_transaction_address ON unspent_transactions (address)|]
 
+    lift $ Datum.createTable c
+
     emptyState k (UtxoHandle c k isToVacuume)
 
 getSpentFrom :: StorableEvent UtxoHandle -> [Spent]
-getSpentFrom (UtxoEvent _ txIns cp) = case cp of
+getSpentFrom (UtxoEvent _ txIns cp _) = case cp of
   C.ChainPointAtGenesis -> [] -- There are no Spent in the Genesis block
   C.ChainPoint slotNo bhh ->  do
     (txin, spentTxId) <- Map.toList txIns
@@ -529,7 +578,8 @@ instance Buffered UtxoHandle where
       (["u.slotNo >= :slotNo"], [":slotNo" := sn])
       (Just "GROUP by u.slotNo ORDER BY u.slotNo ASC")
 
-    rowsToEvents (getTxIns c) rows
+    utxoEventsWithoutDatums <- rowsToEvents (getTxIns c) rows
+    return utxoEventsWithoutDatums
 
 sqliteQuery :: FromRow r => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
 sqliteQuery c (filters, params) maybeMore = SQL.queryNamed c query params
@@ -600,13 +650,14 @@ rowsToEvents  fetchTxIn rows
     mkEvent row = UtxoEvent
        (Set.singleton $ row ^. urUtxo)
        Map.empty
-       (C.ChainPoint (_urSlotNo row) (_urBlockHeaderHash row))
+       (C.ChainPoint (_urCreationSlotNo row) (_urCreationBlockHeaderHash row))
+       mempty
 
     newEventWithSpentOnly :: Map C.TxIn C.TxId -> C.ChainPoint -> StorableEvent UtxoHandle
-    newEventWithSpentOnly = UtxoEvent Set.empty
+    newEventWithSpentOnly inputs cp = UtxoEvent Set.empty inputs cp mempty
 
     reduce :: (C.ChainPoint, [StorableEvent UtxoHandle]) -> IO (StorableEvent UtxoHandle)
-    reduce ( C.ChainPointAtGenesis, _) = pure $ UtxoEvent Set.empty Map.empty C.ChainPointAtGenesis
+    reduce ( C.ChainPointAtGenesis, _) = pure $ UtxoEvent Set.empty Map.empty C.ChainPointAtGenesis mempty
     reduce (cp@(C.ChainPoint sn _), es) = do
                      tins <- fetchTxIn sn
                      let newE = newEventWithSpentOnly tins cp
@@ -622,16 +673,42 @@ rowsToEvents  fetchTxIn rows
 -- | convert utxoEvent to utxoRow
 -- Note: No `unspent` computation is performed
 eventToRows :: StorableEvent UtxoHandle -> [UtxoRow]
-eventToRows (UtxoEvent _ _ C.ChainPointAtGenesis) = []  -- we don't save anyting at genesis.
-eventToRows (UtxoEvent utxos _ (C.ChainPoint sn bhsh)) = let
+eventToRows (UtxoEvent _ _ C.ChainPointAtGenesis _) = []  -- we don't save anyting at genesis.
+eventToRows (UtxoEvent utxos _ (C.ChainPoint sn bhsh) _) = let
   eventToRow u =
     UtxoRow
       { _urUtxo = u
-      , _urSlotNo = sn
-      , _urBlockHeaderHash = bhsh
+      , _urCreationSlotNo = sn
+      , _urCreationBlockHeaderHash = bhsh
       , _urSpentInfo = Nothing
       }
   in fmap eventToRow . Set.toList $ utxos
+
+eventToResults :: StorableEvent UtxoHandle -> [UtxoResult]
+eventToResults (UtxoEvent _ _ C.ChainPointAtGenesis _) = []
+eventToResults (UtxoEvent utxos _ (C.ChainPoint slotNo bhh) _) = map toUtxoResult . Set.toList $ utxos
+  where
+    toUtxoResult :: Utxo -> UtxoResult
+    toUtxoResult u =
+      UtxoResult_
+        -- from Utxo
+        { utxoResultAddress = _address u
+        , utxoResultTxIn = _txIn u
+        , utxoResultDatum = _datum u
+        , utxoResultDatumHash = _datumHash u
+        , utxoResultValue = _value u
+        , utxoResultInlineScript = _inlineScript u
+        , utxoResultInlineScriptHash = _inlineScriptHash u
+        , utxoResultTxIndexInBlock = _txIndexInBlock u
+        -- from the event itself
+        , utxoResultCreationSlotNo = slotNo
+        , utxoResultCreationBlockHeaderHash = bhh
+        -- from spent
+        , utxoResultSpentInfo = Nothing
+        -- TODO_Utxo: verify that this is this really Nothing for
+        -- in-memory events. It was before, see eventToRows above but
+        -- does that make sense?
+        }
 
 -- | Used internally to gather the information required
 -- to update the in-database result
@@ -734,44 +811,25 @@ instance Queryable UtxoHandle where
           Just x  -> (["u.slotNo <= :slotNo", "(s.slotNo IS NULL OR s.slotNo > :slotNo)"] , [":slotNo" := x])
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
-
     in liftSQLError CantQueryIndexer $ do
-      persistedUtxoRows :: [UtxoRow] <- sqliteQueryWithSpent c filters $ Just "ORDER BY u.slotNo ASC"
-      pure
-        $ UtxoResult
-        $ mergeInMemoryAndSql
-            bufferResult
-            persistedUtxoRows
+      persistedUtxoResults :: [UtxoResult] <- sqliteQueryWithSpent c filters $ Just "ORDER BY u.slotNo ASC"
+      return $ UtxoResult $ mergeInMemoryAndSql bufferResult persistedUtxoResults
 
     where
       -- | merge in-memory events with SQL retrieved UtxoRows
       -- Notes, a property of this merge is to remove all spent utxos from the resulting [UtxoRow]
-      mergeInMemoryAndSql
-        :: UtxoByAddressBufferEvents
-        -> [UtxoRow]
-        -> [UtxoRow]
-      mergeInMemoryAndSql (UtxoByAddressBufferEvents bufferUtxos' bufferSpent' bufferFutureSpent') utxoRows =
-        map updateFutureSpent $ excludeBufferSpent $ appendBufferUtxos utxoRows
+      mergeInMemoryAndSql :: UtxoByAddressBufferEvents -> [UtxoResult] -> [UtxoResult]
+      mergeInMemoryAndSql (UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent') persistedUtxoResults =
+        map updateFutureSpent $ excludeBufferSpent $ persistedUtxoResults <> (bufferEvents >>= eventToResults)
         where
-          asTxIn :: UtxoRow -> C.TxIn
-          asTxIn u = u ^. urUtxo . txIn
+          excludeBufferSpent :: [UtxoResult] -> [UtxoResult]
+          excludeBufferSpent = filter (flip Set.notMember bufferSpent' . utxoResultTxIn)
 
-          excludeBufferSpent :: [UtxoRow] -> [UtxoRow]
-          excludeBufferSpent = filter (flip Set.notMember bufferSpent' . asTxIn)
-
-          updateFutureSpent :: UtxoRow -> UtxoRow
-          updateFutureSpent u = let
-
-              spent = Map.lookup (asTxIn u) bufferFutureSpent'
-
-              in case u ^. urSpentInfo of
-                   -- if it's already spent, no need to check if it's spent in the buffer events
-                   Just _  -> u
-                   Nothing -> u & urSpentInfo .~ spent
-
-          appendBufferUtxos :: [UtxoRow] -> [UtxoRow]
-          appendBufferUtxos = (<> (bufferUtxos' >>= eventToRows))
-
+          updateFutureSpent :: UtxoResult -> UtxoResult
+          updateFutureSpent u = case utxoResultSpentInfo u of
+            -- if it's already spent, no need to check if it's spent in the buffer events
+            Just _  -> u
+            Nothing -> u { utxoResultSpentInfo = Map.lookup (utxoResultTxIn u) bufferFutureSpent' }
 
 
   queryStorage es (UtxoHandle c _ _) LastSyncPoint =
@@ -868,7 +926,11 @@ getUtxoEvents maybeTargetAddresses txs cp =
   let (TxOutBalance utxos spentTxOuts) = foldMap (balanceUtxoFromTx maybeTargetAddresses) $ zip txs [0..]
       resolvedUtxos :: Set Utxo
       resolvedUtxos = Set.fromList $ Map.elems utxos
-  in UtxoEvent resolvedUtxos spentTxOuts cp
+      plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+      plutusDatums = Datum.txsPlutusDatumsMap txs
+      filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+      filteredTxOutDatums = Map.fromList $ rights $ map snd $ Datum.filteredAddressDatums (addressesToPredicate maybeTargetAddresses) txs
+  in UtxoEvent resolvedUtxos spentTxOuts cp $ Map.union plutusDatums filteredTxOutDatums
 
 -- | does the transaction contain a targetAddress
 isAddressInTarget :: Maybe TargetAddresses -> C.AddressAny -> Bool

@@ -171,11 +171,11 @@ allQueryUtxosShouldBeUnspent = property $ do
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
           Utxo.LastSyncPointResult _ -> []
-      retrievedUtxoRows :: [Utxo.UtxoRow] = concatMap getResult results
+      retrievedUtxoRows :: [Utxo.UtxoResult] = concatMap getResult results
       txinsFromRetrievedUtsoRows :: [C.TxIn]  -- get all the TxIn from quried UtxoRows
-          = view (Utxo.urUtxo . Utxo.txIn) <$> retrievedUtxoRows
+          = map Utxo.utxoResultTxIn retrievedUtxoRows
       txInsFromGeneratedEvents :: [C.TxIn]    -- get all the TxIn from quried UtxoRows
-          = concatMap (\(Utxo.UtxoEvent _ ins _ ) -> Map.keys ins ) events
+          = concatMap (\(Utxo.UtxoEvent _ ins _ _) -> Map.keys ins ) events
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
@@ -213,18 +213,18 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
           Utxo.LastSyncPointResult _ -> []
-      retrievedUtxoRows :: [Utxo.UtxoRow] = concatMap getResult results
+      retrievedUtxoRows :: [Utxo.UtxoResult] = concatMap getResult results
       txinsFromRetrievedUtsoRows :: [C.TxIn]  -- get all the TxIn from quried UtxoRows
-          = view (Utxo.urUtxo . Utxo.txIn) <$> retrievedUtxoRows
+          = map Utxo.utxoResultTxIn retrievedUtxoRows
 
       getAlreadySpent :: StorableEvent Utxo.UtxoHandle -> [C.TxIn]
-      getAlreadySpent (Utxo.UtxoEvent _ ins cp) =
+      getAlreadySpent (Utxo.UtxoEvent _ ins cp _) =
           if maybe False (upperBound >=) $ C.chainPointToSlotNo cp
           then Map.keys ins
           else []
 
       getFutureSpent :: StorableEvent Utxo.UtxoHandle -> Set.Set C.TxIn
-      getFutureSpent (Utxo.UtxoEvent _ ins cp) =
+      getFutureSpent (Utxo.UtxoEvent _ ins cp _) =
           if maybe False (upperBound <) $ C.chainPointToSlotNo cp
           then Map.keysSet ins
           else mempty
@@ -232,11 +232,11 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
       txInsFromGeneratedEvents :: [C.TxIn]    -- get all the TxIn from quried UtxoRows
           = foldMap getAlreadySpent events
 
-      futureSpentHasSpentTxId :: Utxo.UtxoRow -> Bool
+      futureSpentHasSpentTxId :: Utxo.UtxoResult -> Bool
       futureSpentHasSpentTxId u = let
          futureSpents = foldMap getFutureSpent events
-         txin = u ^. Utxo.urUtxo . Utxo.txIn
-         in txin `Set.notMember` futureSpents || isJust (u ^. Utxo.urSpentInfo)
+         txin = Utxo.utxoResultTxIn u
+         in txin `Set.notMember` futureSpents || isJust (Utxo.utxoResultSpentInfo u)
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
@@ -324,8 +324,8 @@ propRoundTripEventsToRowConversion  = property $ do
     f :: C.SlotNo -> IO (Map C.TxIn C.TxId)
     f sn = pure $ fromMaybe Map.empty (Data.Map.lookup sn txInsMap)
     g :: StorableEvent Utxo.UtxoHandle -> [(C.SlotNo, Map C.TxIn C.TxId)]
-    g (Utxo.UtxoEvent _ ins (C.ChainPoint sn _)) = [(sn, ins)]
-    g _                                          = []
+    g (Utxo.UtxoEvent _ ins (C.ChainPoint sn _) _) = [(sn, ins)]
+    g _                                            = []
 
     postGenesisEvents = filter (\e -> C.ChainPointAtGenesis /= Utxo.ueChainPoint e) events
     rows :: [Utxo.UtxoRow]
@@ -375,11 +375,11 @@ propSaveAndRetrieveUtxoEvents = property $ do
   let getResult = \case
           Utxo.UtxoResult rs         -> rs
           Utxo.LastSyncPointResult _ -> []
-      rowsFromStorage :: [Utxo.UtxoRow] = concatMap getResult results
+      rowsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
       fromStorageTxIns :: [C.TxIn]
-          = view (Utxo.urUtxo . Utxo.txIn) <$> rowsFromStorage
+          = map Utxo.utxoResultTxIn rowsFromStorage
       fromEventsTxIns :: [C.TxIn]
-          = concatMap (\(Utxo.UtxoEvent _ ins _ ) -> Map.keys ins ) events
+          = concatMap (\(Utxo.UtxoEvent _ ins _ _) -> Map.keys ins) events
 
   -- A property of the generator is that there is at least one unspent transaction
   Hedgehog.assert (not . null $ rowsFromStorage)
@@ -474,7 +474,7 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
         openIntervalQuery :: [StorableQuery Utxo.UtxoHandle]
         openIntervalQuery = mkUtxoQueries events slotnoIntervalOpen
 
-        filterResult :: StorableResult Utxo.UtxoHandle  -> [Utxo.UtxoRow]
+        filterResult :: StorableResult Utxo.UtxoHandle  -> [Utxo.UtxoResult]
         filterResult = \case
           Utxo.UtxoResult rs -> rs
           _other             -> []
@@ -491,8 +491,8 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
         . traverse (Storable.query indexer)
         $ openIntervalQuery
 
-      let rows :: [Utxo.UtxoRow] = concatMap filterResult openIntervalResult
-          cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . to Utxo._urSlotNo
+      let rows :: [Utxo.UtxoResult] = concatMap filterResult openIntervalResult
+          cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . to Utxo.utxoResultCreationSlotNo
           (retrievedLowSlotNo, retrievedHighSlotNo) = (head cps, last cps)
       -- Show we did not retrieve any slotNo before the queryInterval [low, ]
       Hedgehog.assert (retrievedLowSlotNo >= lowerBoundSlotNo)

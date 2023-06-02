@@ -24,6 +24,7 @@ import Gen.Marconi.ChainIndex.Mockchain (BlockHeader (BlockHeader), MockBlock (M
                                          genTxBodyContentFromTxIns, genTxBodyContentFromTxinsWihtPhase2Validation)
 import GHC.Generics (Generic)
 import Hedgehog (Gen)
+import Marconi.ChainIndex.Extract.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TxIndexInBlock)
@@ -61,7 +62,15 @@ genUtxoEventsWithTxs' txOutToUtxo = do
             resolvedUtxos = Set.fromList
                           $ mapMaybe (`Map.lookup` utxoMap)
                           $ Set.toList utxos
-         in UtxoEvent resolvedUtxos spentTxOuts (C.ChainPoint slotNo blockHeaderHash)
+            cp = C.ChainPoint slotNo blockHeaderHash
+
+            plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+            plutusDatums = Datum.txsPlutusDatumsMap txs
+
+            filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+            filteredTxOutDatums = Datum.filteredTxOutDatums Nothing txs
+
+         in UtxoEvent resolvedUtxos spentTxOuts cp $ Map.union plutusDatums filteredTxOutDatums
 
     getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
     getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =
