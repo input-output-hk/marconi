@@ -42,7 +42,7 @@ import Control.Exception (bracket_)
 import Control.Lens.Combinators (Lens', Traversal', _Just, imap, preview, view)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Lens.TH (makeLenses)
-import Control.Monad (guard, unless, when)
+import Control.Monad (guard, when)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.:?), (.=))
@@ -530,8 +530,6 @@ instance Buffered UtxoHandle where
         (SQL.execute_ c "BEGIN")
         (SQL.execute_ c "COMMIT")
         (concurrently_
-         (unless
-          (null rows)
           (SQL.executeMany c
             [r|INSERT
                INTO unspent_transactions (
@@ -547,16 +545,14 @@ instance Buffered UtxoHandle where
                  blockHash,
                  txIndexInBlock
               ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|] rows))
-         (unless
-          (null spents)
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|] rows)
           (SQL.executeMany c
            [r|INSERT
               INTO spent (
                 txId,
                 txIx, slotNo, blockHash, spentTxId
               ) VALUES
-              (?, ?, ?, ?, ?)|] spents)))
+              (?, ?, ?, ?, ?)|] spents))
     -- We want to perform vacuum about once every 100
     when (toVacuume h) $ do
       rndCheck <- createSystemRandom >>= uniformR (1 :: Int, 100)
