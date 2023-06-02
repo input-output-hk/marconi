@@ -85,6 +85,7 @@ library
     , cardano-crypto-class
     , cardano-crypto-wrapper
     , cardano-ledger-alonzo          ^>=1.1
+    , cardano-ledger-api
     , cardano-ledger-babbage         ^>=1.1
     , cardano-ledger-binary
     , cardano-ledger-byron

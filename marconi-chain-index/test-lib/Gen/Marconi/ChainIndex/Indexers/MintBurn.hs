@@ -6,7 +6,8 @@
 {-# LANGUAGE TemplateHaskell    #-}
 
 module Gen.Marconi.ChainIndex.Indexers.MintBurn
-    ( genIndexWithEvents
+    ( genIndexerWithEvents
+    , genTxMintValueRange
     , genMintEvents
     , genTxWithMint
     , genTxMintValue
@@ -38,12 +39,10 @@ import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 
--- | The workhorse of the test: generate an indexer, then generate
--- transactions to index, then index them.
-genIndexWithEvents
+genIndexerWithEvents
     :: FilePath
     -> H.PropertyT IO (MintBurn.MintBurnIndexer, [MintBurn.TxMintEvent], (SecurityParam, Int))
-genIndexWithEvents dbPath = do
+genIndexerWithEvents dbPath = do
   (events, (bufferSize, nTx)) <- forAll genMintEvents
   -- Report buffer overflow:
   let overflow = fromIntegral bufferSize < length events
@@ -68,7 +67,7 @@ genMintEvents = do
     ]
   -- Generate transactions
   txAll' <- forM [0 .. (nTx - 1)] $ \slotNoInt -> do
-    tx <- genTxWithMint =<< genTxMintValue
+    tx <- genTxWithMint =<< genTxMintValueRange (-100) 100
     pure (tx, fromIntegral slotNoInt :: C.SlotNo)
   -- Filter out Left C.TxBodyError
   txAll <- forM txAll' $ \case
@@ -109,7 +108,10 @@ genTxWithAsset assetName quantity = genTxWithMint $ C.TxMintValue C.MultiAssetIn
   where (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy [(assetName, quantity)]
 
 genTxMintValue :: Gen (C.TxMintValue C.BuildTx C.BabbageEra)
-genTxMintValue = do
+genTxMintValue = genTxMintValueRange 1 100
+
+genTxMintValueRange :: Integer -> Integer -> Gen (C.TxMintValue C.BuildTx C.BabbageEra)
+genTxMintValueRange min' max' = do
   n :: Int <- Gen.integral (Range.constant 1 5)
   -- n :: Int <- Gen.integral (Range.constant 0 5)
   -- TODO: fix bug RewindableIndex.Storable.rewind and change range to start from 0.
@@ -121,7 +123,7 @@ genTxMintValue = do
     genAsset = (,) <$> genAssetName <*> genQuantity
       where
         genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
-        genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant 1 100)
+        genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
 
 -- * Helpers
 

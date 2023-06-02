@@ -17,7 +17,7 @@ import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
 import Control.Lens ((^.))
-import Control.Monad (forM, forM_, void)
+import Control.Monad (forM, forM_, unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Coerce (coerce)
@@ -60,7 +60,7 @@ integration = H.withTests 1 . H.propertyOnce
 -- | Each test case is described beside every top level property
 -- declaration.
 tests :: TestTree
-tests = testGroup "MintBurn"
+tests = testGroup "Spec.Marconi.ChainIndex.Indexers.MintBurn"
   [ testPropertyNamed
       "Mints in `TxBodyContent` survive `createAndValidateTransactionBody` and end up in expected place in `TxBody`"
       "mintsPreserved" mintsPreserved
@@ -101,6 +101,9 @@ tests = testGroup "MintBurn"
   , testPropertyNamed
       "ToJSON/FromJSON roundtrip for TxMintRow"
       "propJsonRoundtripTxMintRow" propJsonRoundtripTxMintRow
+  , testPropertyNamed
+      "Querying only burn events will only query the events with negative value"
+      "propQueryingOnlyBurn" propQueryingOnlyBurn
   ]
 
 -- | This is a sanity-check test that turns a TxBodyContent with mint
@@ -109,7 +112,7 @@ tests = testGroup "MintBurn"
 -- indexer.
 mintsPreserved :: Property
 mintsPreserved = H.property $ do
-  mintValue <- forAll Gen.genTxMintValue
+  mintValue <- forAll $ Gen.genTxMintValueRange (-100) 100
   C.Tx txb _ :: C.Tx C.BabbageEra <- forAll (Gen.genTxWithMint mintValue) >>= \case
     Left err  -> fail $ "TxBodyError: " <> show err
     Right tx' -> return tx'
@@ -127,7 +130,7 @@ mintsPreserved = H.property $ do
 -- | Create transactions, index them, query indexer and find mint events.
 propQueryingEverythingShouldReturnAllIndexedEvents :: Property
 propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   -- Query results:
   MintBurnResult queryResult <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
   -- Compare the sets of events inserted to the indexer and the set
@@ -136,7 +139,7 @@ propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
 
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll :: Property
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   MintBurnResult allTxMintRows <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 
   -- Getting all AssetIds from generated events
@@ -144,7 +147,7 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
             (\e -> concat
                  $ NonEmpty.toList
                  $ fmap (\(_, assets) ->
-                     fmap (\(MintAsset policyId assetName _ _ _) -> (policyId, assetName))
+                     fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
                         $ NonEmpty.toList assets)
                  $ MintBurn.txMintEventTxAssets e)
             insertedEvents
@@ -157,7 +160,7 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
 
 propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint :: Property
 propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = Set.toList $ Set.fromList $ fmap MintBurn.txMintEventSlotNo insertedEvents
   slotNo <- if null possibleSlots then pure (C.SlotNo 0) else forAll $ Gen.element possibleSlots
   MintBurnResult actualTxMints <- liftIO $ raiseException
@@ -167,7 +170,7 @@ propQueryingAllMintBurnAtPointShouldReturnMintsUntilThatPoint = H.property $ do
 
 propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint :: Property
 propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = Set.toList $ Set.fromList $ fmap MintBurn.txMintEventSlotNo insertedEvents
   slotNo <- if null possibleSlots then pure (C.SlotNo 0) else forAll $ Gen.element possibleSlots
   MintBurnResult allTxMintRows <- liftIO $ raiseException
@@ -178,7 +181,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
             (\e -> concat
                  $ NonEmpty.toList
                  $ fmap (\(_, assets) ->
-                     fmap (\(MintAsset policyId assetName _ _ _) -> (policyId, assetName))
+                     fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
                         $ NonEmpty.toList assets)
                  $ MintBurn.txMintEventTxAssets e)
             insertedEvents
@@ -191,7 +194,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
 
 propQueryingAllMintBurnAtLatestPointShouldBeSameAsAllMintBurnQuery :: Property
 propQueryingAllMintBurnAtLatestPointShouldBeSameAsAllMintBurnQuery = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = fmap MintBurn.txMintEventSlotNo insertedEvents
       latestSlotNo = if null possibleSlots then C.SlotNo 0 else List.maximum possibleSlots
   MintBurnResult allTxMintRows <- liftIO $ raiseException
@@ -202,7 +205,7 @@ propQueryingAllMintBurnAtLatestPointShouldBeSameAsAllMintBurnQuery = H.property 
 
 propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery :: Property
 propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
-  (indexer, insertedEvents, _) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
   let possibleSlots = fmap MintBurn.txMintEventSlotNo insertedEvents
       latestSlotNo = if null possibleSlots then C.SlotNo 0 else List.maximum possibleSlots
 
@@ -211,7 +214,7 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
             (\e -> concat
                  $ NonEmpty.toList
                  $ fmap (\(_, assets) ->
-                     fmap (\(MintAsset policyId assetName _ _ _) -> (policyId, assetName))
+                     fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
                         $ NonEmpty.toList assets)
                  $ MintBurn.txMintEventTxAssets e)
             insertedEvents
@@ -230,7 +233,7 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
 propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents :: Property
 propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
   -- Index events that overflow:
-  (indexer, events, (bufferSize, _nTx)) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, events, (bufferSize, _nTx)) <- Gen.genIndexerWithEvents ":memory:"
   -- Open a new indexer based off of the old indexers sql connection:
   indexer' <- liftIO $ mkNewIndexerBasedOnOldDb indexer
   MintBurnResult queryResult <- liftIO $ raiseException
@@ -245,7 +248,7 @@ propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
 -- than rollback point in query.
 rewind :: Property
 rewind = H.property $ do
-  (indexer, events, (_bufferSize, nTx)) <- Gen.genIndexWithEvents ":memory:"
+  (indexer, events, (_bufferSize, nTx)) <- Gen.genIndexerWithEvents ":memory:"
   -- Rollback slot is from 0 to number of slots (slot numbers are from 0 to nTx - 1)
   rollbackSlotNo <- fmap coerce $ forAll $ Gen.integral $ Range.constant 0 ((let w64 = fromIntegral nTx in if w64 == 0 then 0 else w64 - 1) :: Word64)
   let cp = C.ChainPoint rollbackSlotNo dummyBlockHeaderHash
@@ -333,6 +336,36 @@ propJsonRoundtripTxMintRow = H.property $ do
     mintEvents <- forAll Gen.genMintEvents
     let mpsTxRows = concatMap MintBurn.toRows $ fst mintEvents
     forM_ mpsTxRows $ \txMintRow -> Hedgehog.tripping txMintRow Aeson.encode Aeson.decode
+
+propQueryingOnlyBurn :: Property
+propQueryingOnlyBurn = H.property $ do
+  (indexer, events, (_bufferSize, _nTx)) <- Gen.genIndexerWithEvents ":memory:"
+  let
+    eventRows = MintBurn.toRows =<< events
+    -- Only burn events
+    burnEvents :: [MintBurn.TxMintEvent]
+    burnEvents = MintBurn.fromRows $ filter ((< 0) . MintBurn._txMintRowQuantity) eventRows
+
+  -- Query all burn events from indexer
+  MintBurnResult (resultEventRows :: [MintBurn.TxMintRow])  <-
+    liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryAllBurn Nothing
+  let resultEvents = MintBurn.fromRows resultEventRows
+  equalSet burnEvents resultEvents
+
+  -- Query some single event
+  let noBurnEvents = null eventRows
+  H.classify "No burn events" noBurnEvents
+  H.classify "Some burn events" $ not noBurnEvents
+  unless noBurnEvents $ do
+    aRow <- forAll $ Gen.element eventRows
+    let somePolicyId = MintBurn._txMintRowPolicyId aRow
+        someAssetName = MintBurn._txMintRowAssetName aRow
+    MintBurnResult (resultEventRows' :: [MintBurn.TxMintRow])  <-
+      liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryBurnByAssetId somePolicyId someAssetName Nothing
+    let
+      resultEvents' = MintBurn.fromRows resultEventRows'
+      expectedEvents = MintBurn.fromRows $ filter (\row -> MintBurn._txMintRowPolicyId row == somePolicyId && MintBurn._txMintRowAssetName row == someAssetName) $ MintBurn.toRows =<< burnEvents
+    equalSet resultEvents' expectedEvents
 
 -- * Helpers
 
