@@ -24,8 +24,7 @@ import Data.Text (Text, unpack)
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Error (IndexerError)
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
-import Marconi.ChainIndex.Indexers.Utxo (address, datum, datumHash, txIn, urCreationBlockHash, urCreationSlotNo,
-                                         urSpentSlotNo, urSpentTxId, urUtxo)
+import Marconi.ChainIndex.Indexers.Utxo (address, datum, datumHash, txIn, urSpentSlotNo, urSpentTxId, urUtxo)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.Core.Storable qualified as Storable
@@ -137,8 +136,8 @@ withQueryAction env query =
                  Right (Utxo.UtxoResult rows) ->
                      Right $ GetUtxosFromAddressResult $ rows <&> \row ->
                          AddressUtxoResult
-                            (row ^. urCreationBlockHash)
-                            (row ^. urCreationSlotNo)
+                            (Utxo._urBlockHeaderHash row)
+                            (Utxo._urSlotNo row)
                             (row ^. urUtxo . txIn)
                             (row ^. urUtxo . address)
                             (row ^. urUtxo . datumHash)

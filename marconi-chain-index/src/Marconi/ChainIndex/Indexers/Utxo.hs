@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE MultiWayIf            #-}
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PackageImports        #-}
@@ -39,7 +40,7 @@ module Marconi.ChainIndex.Indexers.Utxo where
 
 import Control.Concurrent.Async (concurrently_)
 import Control.Exception (bracket_)
-import Control.Lens.Combinators (Lens', Traversal', _Just, imap, preview, view)
+import Control.Lens.Combinators (Traversal', _Just, imap, preview, view)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Lens.TH (makeLenses)
 import Control.Monad (guard, when)
@@ -58,9 +59,9 @@ import Data.Set qualified as Set
 import Data.Text (pack)
 import Data.Text qualified as Text
 import Data.Word (Word64)
-import Database.SQLite.Simple (NamedParam ((:=)), ResultError (UnexpectedNull))
+import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
-import Database.SQLite.Simple.FromRow (FromRow (fromRow), field, fieldWith)
+import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
 import Database.SQLite.Simple.ToField (ToField (toField), toField)
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
@@ -70,14 +71,12 @@ import Text.RawString.QQ (r)
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Data.Ord (Down (Down, getDown))
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (TargetAddresses, TxIndexInBlock, TxOut, pattern CurrentEra)
-import Marconi.ChainIndex.Utils (chainPointOrGenesis)
-
-import Database.SQLite.Simple.FromField (returnError)
 import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
                                  liftSQLError)
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
+import Marconi.ChainIndex.Orphans ()
+import Marconi.ChainIndex.Types (TargetAddresses, TxIndexInBlock, TxOut, pattern CurrentEra)
+import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint, Queryable (queryStorage),
                               Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
                               StorablePoint, StorableQuery, StorableResult, emptyState)
@@ -217,86 +216,55 @@ instance ToJSON Utxo where
             , "txIndexInBlock"    .= (u ^. txIndexInBlock)
             ]
 
-data ChainPointRow
-    = ChainPointRow { _cpSlotNo :: C.SlotNo, _cpBlockHash :: C.Hash C.BlockHeader }
-    deriving (Show, Eq, Ord, Generic)
-
-$(makeLenses ''ChainPointRow)
-
-toChainPointRow :: C.ChainPoint -> Maybe ChainPointRow
-toChainPointRow cp = ChainPointRow <$> C.chainPointToSlotNo cp <*> C.chainPointToHeaderHash cp
-
-instance FromJSON ChainPointRow where
-    parseJSON (Object v)
-        = ChainPointRow
-            <$> v .: "slotNo"
-            <*> v .: "blockHeaderHash"
-    parseJSON _ = mempty
-
-instance ToJSON ChainPointRow where
-    toJSON c
-        = object
-        [ "slotNo" .= view cpSlotNo c
-        , "blockHeaderHash" .= view cpBlockHash c
-        ]
-
-getChainPoint :: ChainPointRow -> C.ChainPoint
-getChainPoint cp = C.ChainPoint (cp ^. cpSlotNo) (cp ^. cpBlockHash)
-
 data SpentInfo
     = SpentInfo
-    { _siSpentPoint :: ChainPointRow
-    , _siSpentTxId  :: C.TxId
+    { _siSlotNo          :: C.SlotNo
+    , _siBlockHeaderHash :: C.Hash C.BlockHeader
+    , _siSpentTxId       :: C.TxId
     } deriving (Show, Eq, Ord, Generic)
 
 $(makeLenses ''SpentInfo)
 
 data UtxoRow = UtxoRow
-  { _urUtxo          :: !Utxo
-  , _urCreationPoint :: !ChainPointRow
-  , _urSpentInfo     :: !(Maybe SpentInfo)
+  { _urUtxo            :: !Utxo
+  , _urSlotNo          :: !C.SlotNo
+  , _urBlockHeaderHash :: !(C.Hash C.BlockHeader)
+  , _urSpentInfo       :: !(Maybe SpentInfo)
   } deriving (Show, Eq, Ord, Generic)
 
 $(makeLenses ''UtxoRow)
 
 urSpentSlotNo :: Traversal' UtxoRow C.SlotNo
-urSpentSlotNo = urSpentInfo . _Just . siSpentPoint . cpSlotNo
-
-urCreationSlotNo :: Lens' UtxoRow C.SlotNo
-urCreationSlotNo = urCreationPoint . cpSlotNo
-
-urCreationBlockHash :: Lens' UtxoRow (C.Hash C.BlockHeader)
-urCreationBlockHash = urCreationPoint . cpBlockHash
+urSpentSlotNo = urSpentInfo . _Just . siSlotNo
 
 urSpentBlockHash :: Traversal' UtxoRow (C.Hash C.BlockHeader)
-urSpentBlockHash = urSpentInfo . _Just . siSpentPoint . cpBlockHash
+urSpentBlockHash = urSpentInfo . _Just . siBlockHeaderHash
 
 urSpentTxId :: Traversal' UtxoRow C.TxId
 urSpentTxId = urSpentInfo . _Just . siSpentTxId
 
 instance FromJSON UtxoRow where
     parseJSON (Object v) = let
-
         parseSpentInfo = do
             s <- v .:? "spentSlotNo"
             bh <- v .:? "spentBlockHeaderHash"
             tId <- v .:? "spentTxId"
-            pure $ case (s, bh, tId) of
-                (Nothing, Nothing, Nothing)     -> Nothing
-                (Just s', Just bh', Just txId') -> Just $ SpentInfo (ChainPointRow s' bh') txId'
-                _error                          -> fail "Inconsistent spent info"
+            pure $ if
+              | Just s' <- s, Just bh' <- bh, Just txId' <- tId -> Just $ SpentInfo s' bh' txId'
+              | otherwise                                       -> Nothing
 
         in UtxoRow
             <$> v .: "utxo"
-            <*> (ChainPointRow <$> v .: "slotNo" <*> v .: "blockHeaderHash")
+            <*> v .: "slotNo"
+            <*> v .: "blockHeaderHash"
             <*> parseSpentInfo
     parseJSON _ = mempty
 
 instance ToJSON UtxoRow where
   toJSON ur = object
     [ "utxo" .= view urUtxo ur
-    , "slotNo" .= view urCreationSlotNo ur
-    , "blockHeaderHash" .= view urCreationBlockHash ur
+    , "slotNo" .= _urSlotNo ur
+    , "blockHeaderHash" .= _urBlockHeaderHash ur
     , "spentSlotNo" .= preview urSpentSlotNo ur
     , "spentBlockHeaderHash" .= preview urSpentBlockHash ur
     , "spentTxId" .= preview urSpentTxId ur
@@ -387,16 +355,6 @@ instance HasPoint (StorableEvent UtxoHandle) C.ChainPoint where
 -- sql mappings --
 ------------------
 
-instance ToRow ChainPointRow where
-  toRow c = toRow
-    [ toField $ c ^. cpSlotNo
-    , toField $ c ^. cpBlockHash
-    ]
-
-
-instance FromRow ChainPointRow where
-  fromRow = ChainPointRow <$> field <*> field
-
 instance ToRow UtxoRow where
   toRow u =
     let C.TxIn txId txIx = u ^. urUtxo . txIn
@@ -409,18 +367,10 @@ instance ToRow UtxoRow where
       , toField $ u ^. urUtxo . value
       , toField $ u ^. urUtxo . inlineScript
       , toField $ u ^. urUtxo . inlineScriptHash
-      , toField $ u ^. urCreationSlotNo
-      , toField $ u ^. urCreationBlockHash
+      , toField $ _urSlotNo u
+      , toField $ _urBlockHeaderHash u
       , toField $ u ^. urUtxo . txIndexInBlock
       ]
-
--- | Used internally to parse SpentInfo
-data SpentInfoRow
-    = SpentInfoRow !(Maybe C.SlotNo) !(Maybe (C.Hash C.BlockHeader)) !(Maybe C.TxId)
-
-instance FromRow SpentInfoRow where
-
-    fromRow = SpentInfoRow <$> field <*> field <*> field
 
 instance FromRow Utxo where
   fromRow = Utxo
@@ -429,25 +379,13 @@ instance FromRow Utxo where
       <*> field <*> field <*> field <*> field <*> field <*> field
 
 instance FromRow UtxoRow where
-  fromRow = let
-
-      spentInfo Nothing Nothing Nothing       = pure Nothing
-      spentInfo (Just s) (Just bh) (Just tid) = pure $ Just $ SpentInfo (ChainPointRow s bh) tid
-      spentInfo _ _ _
-          = fieldWith $ \field' -> returnError
-              UnexpectedNull
-              field'
-              "Invalid spent values: Some fields are null, other aren't"
-
-      in do
-      utxo <- fromRow
-      created <- fromRow
-      (SpentInfoRow spentSlot spentBH spentTxId) <- fromRow
-      info <- spentInfo spentSlot spentBH spentTxId
-      pure $ UtxoRow utxo created info
+  fromRow = UtxoRow <$> fromRow <*> field <*> field <*> do
+    (a, b, c) <- (,,) <$> field <*> field <*> field
+    if | Just s <- a, Just bh <- b, Just tid <- c -> pure $ Just $ SpentInfo s bh tid
+       | otherwise                                -> pure Nothing
 
 instance FromRow SpentInfo where
-  fromRow = SpentInfo <$> fromRow <*> field
+  fromRow = SpentInfo <$> field <*> field <*> field
 
 instance FromRow Spent where
   fromRow = Spent <$> fromRow <*> fromRow
@@ -458,8 +396,8 @@ instance ToRow Spent where
     in toRow
     [ toField txid
     , toField txix
-    , toField $ s ^. sSpentInfo . siSpentPoint . cpSlotNo
-    , toField $ s ^. sSpentInfo . siSpentPoint . cpBlockHash
+    , toField $ s ^. sSpentInfo . siSlotNo
+    , toField $ s ^. sSpentInfo . siBlockHeaderHash
     , toField $ s ^. sSpentInfo . siSpentTxId
     ]
 
@@ -509,11 +447,11 @@ open dbPath (Depth k) isToVacuume = do
     emptyState k (UtxoHandle c k isToVacuume)
 
 getSpentFrom :: StorableEvent UtxoHandle -> [Spent]
-getSpentFrom (UtxoEvent _ txIns cp) = case toChainPointRow cp of
-  Nothing -> [] -- There are no Spent in the Genesis block
-  Just c  ->  do
-      (txin, spentTxId) <-  Map.toList txIns
-      pure $ Spent txin (SpentInfo c spentTxId)
+getSpentFrom (UtxoEvent _ txIns cp) = case cp of
+  C.ChainPointAtGenesis -> [] -- There are no Spent in the Genesis block
+  C.ChainPoint slotNo bhh ->  do
+    (txin, spentTxId) <- Map.toList txIns
+    pure $ Spent txin (SpentInfo slotNo bhh spentTxId)
 
 -- | Store UtxoEvents
 -- Events are stored in memory and flushed to SQL, disk, when memory buffer has reached capacity
@@ -523,11 +461,10 @@ instance Buffered UtxoHandle where
     => f (StorableEvent UtxoHandle) -- ^ events to store
     -> UtxoHandle -- ^ handler for storing events
     -> StorableMonad UtxoHandle UtxoHandle
-  persistToStorage events h
+  persistToStorage events h@(UtxoHandle c _k toVacuume)
     = liftSQLError CantInsertEvent $ do
     let rows = concatMap eventToRows events
         spents = concatMap getSpentFrom events
-        c = hdlConnection h
     bracket_
         (SQL.execute_ c "BEGIN")
         (SQL.execute_ c "COMMIT")
@@ -556,7 +493,7 @@ instance Buffered UtxoHandle where
               ) VALUES
               (?, ?, ?, ?, ?)|] spents))
     -- We want to perform vacuum about once every 100
-    when (toVacuume h) $ do
+    when toVacuume $ do
       rndCheck <- createSystemRandom >>= uniformR (1 :: Int, 100)
       when (rndCheck == 42) $ do
         SQL.execute_ c [r|DELETE FROM
@@ -663,7 +600,7 @@ rowsToEvents  fetchTxIn rows
     mkEvent row = UtxoEvent
        (Set.singleton $ row ^. urUtxo)
        Map.empty
-       (getChainPoint $ row ^. urCreationPoint)
+       (C.ChainPoint (_urSlotNo row) (_urBlockHeaderHash row))
 
     newEventWithSpentOnly :: Map C.TxIn C.TxId -> C.ChainPoint -> StorableEvent UtxoHandle
     newEventWithSpentOnly = UtxoEvent Set.empty
@@ -690,7 +627,8 @@ eventToRows (UtxoEvent utxos _ (C.ChainPoint sn bhsh)) = let
   eventToRow u =
     UtxoRow
       { _urUtxo = u
-      , _urCreationPoint = ChainPointRow sn bhsh
+      , _urSlotNo = sn
+      , _urBlockHeaderHash = bhsh
       , _urSpentInfo = Nothing
       }
   in fmap eventToRow . Set.toList $ utxos
@@ -753,8 +691,9 @@ eventsAtAddress addr snoInterval events = foldMap go events
         && pointFilter event]
 
     generateSpentInfo :: StorableEvent UtxoHandle -> C.TxId -> Maybe SpentInfo
-    generateSpentInfo event txid = flip SpentInfo txid
-        <$> toChainPointRow (ueChainPoint event)
+    generateSpentInfo event txid = case ueChainPoint event of
+      C.ChainPoint slotNo bhh -> Just $ SpentInfo slotNo bhh txid
+      C.ChainPointAtGenesis   -> Nothing
 
     getBufferSpent :: StorableEvent UtxoHandle -> Set C.TxIn
     getBufferSpent event = if afterUpperBound event
@@ -856,13 +795,13 @@ instance Queryable UtxoHandle where
         (_:_) -> liftSQLError CantQueryIndexer $ do
                 persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Word64))
                 pure . LastSyncPointResult $ case persisted of
-                    p:_    -> getChainPoint p
+                    p:_    -> p
                     _other -> C.ChainPointAtGenesis
         -- 0 element in memory
         [] -> liftSQLError CantQueryIndexer $ do
                 persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Word64))
                 pure . LastSyncPointResult $ case persisted of
-                    _:p:_xs -> getChainPoint p
+                    _:p:_xs -> p
                     _other  -> C.ChainPointAtGenesis
 
 instance Rewindable UtxoHandle where

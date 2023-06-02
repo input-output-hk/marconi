@@ -5,7 +5,7 @@
 
 module Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex (tests) where
 
-import Control.Lens (filtered, folded, toListOf, view, (^.), (^..))
+import Control.Lens (filtered, folded, to, toListOf, view, (^.), (^..))
 import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
@@ -492,7 +492,7 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
         $ openIntervalQuery
 
       let rows :: [Utxo.UtxoRow] = concatMap filterResult openIntervalResult
-          cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . Utxo.urCreationPoint . Utxo.cpSlotNo
+          cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . to Utxo._urSlotNo
           (retrievedLowSlotNo, retrievedHighSlotNo) = (head cps, last cps)
       -- Show we did not retrieve any slotNo before the queryInterval [low, ]
       Hedgehog.assert (retrievedLowSlotNo >= lowerBoundSlotNo)
