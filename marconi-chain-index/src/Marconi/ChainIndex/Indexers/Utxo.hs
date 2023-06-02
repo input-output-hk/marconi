@@ -52,6 +52,7 @@ import Data.List (groupBy, sort, sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (pack)
@@ -587,8 +588,37 @@ instance Buffered UtxoHandle where
                 then 0
                 else head . last $ take sz sns
 
-    rows :: [UtxoRow] <- SQL.query c
-        [r|SELECT
+    rows :: [UtxoRow] <- sqliteQuery c
+      (["u.slotNo >= :slotNo"], [":slotNo" := sn])
+      (Just "GROUP by u.slotNo ORDER BY u.slotNo ASC")
+
+    rowsToEvents (getTxIns c) rows
+
+sqliteQuery :: FromRow r => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
+sqliteQuery c (filters, params) maybeMore = SQL.queryNamed c query params
+  where
+    conditions = SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters)
+    query =
+      [r|SELECT u.address
+              , u.txId
+              , u.txIx
+              , u.datum
+              , u.datumHash
+              , u.value
+              , u.inlineScript
+              , u.inlineScriptHash
+              , u.txIndexInBlock
+              , u.slotNo
+              , u.blockHash
+           FROM unspent_transactions u
+          WHERE |] <> conditions <> " " <> fromMaybe "" maybeMore
+
+sqliteQueryWithSpent :: FromRow r => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
+sqliteQueryWithSpent c (filters, params) maybeMore = SQL.queryNamed c query params
+  where
+    conditions = SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters)
+    query =
+      [r|SELECT
               u.address,
               u.txId,
               u.txIx,
@@ -599,17 +629,16 @@ instance Buffered UtxoHandle where
               u.inlineScriptHash,
               u.txIndexInBlock,
               u.slotNo,
-              u.blockHash
+              u.blockHash,
+
+              s.slotNo,
+              s.blockHash,
+              s.spentTxId
            FROM
               unspent_transactions u
-           WHERE
-              u.slotNo >= ?
-           GROUP by
-              u.slotNo
-           ORDER BY
-              u.slotNo ASC|] (SQL.Only (sn :: Word64))
-
-    rowsToEvents (getTxIns c) rows
+      LEFT JOIN
+              spent s ON u.txId = s.txId AND u.txIx = s.txIx
+           WHERE |] <> conditions <> fromMaybe "" maybeMore
 
 -- | Retrieve TxIns at a slotNo
 -- This function is used to reconstruct the original UtxoEvent
@@ -786,32 +815,8 @@ utxoAtAddressQuery
     -> [SQL.Query] -- ^ the filter part of the query
     -> [NamedParam]
     -> IO (StorableResult UtxoHandle)
-utxoAtAddressQuery c bufferResult filters params
-    = do
-    let builtQuery =
-            [r|SELECT
-                  u.address,
-                  u.txId,
-                  u.txIx,
-                  u.datum,
-                  u.datumHash,
-                  u.value,
-                  u.inlineScript,
-                  u.inlineScriptHash,
-                  u.txIndexInBlock,
-                  u.slotNo,
-                  u.blockHash,
-                  s.slotNo,
-                  s.blockHash,
-                  s.spentTxId
-               FROM
-                  unspent_transactions u
-               FULL OUTER JOIN spent s ON u.txId = s.txId
-               AND u.txIx = s.txIx
-               WHERE |] <> SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters) <>
-            [r| ORDER BY
-                u.slotNo ASC |]
-    persistedUtxoRows :: [UtxoRow] <- SQL.queryNamed c builtQuery params
+utxoAtAddressQuery c bufferResult filters params = do
+    persistedUtxoRows :: [UtxoRow] <- sqliteQueryWithSpent c (filters, params) $ Just "ORDER BY u.slotNo ASC"
     pure
       $ UtxoResult
       $ mergeInMemoryAndSql
