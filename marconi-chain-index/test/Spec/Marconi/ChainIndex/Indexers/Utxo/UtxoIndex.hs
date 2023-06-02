@@ -512,9 +512,8 @@ propComputeEventsAtAddress = property $ do
     let
       addresses :: [C.AddressAny]
       addresses = map (view Utxo.address) $ Set.toList $ Utxo.ueUtxos event
-      addressQuery = Utxo.QueryUtxoByAddress (head addresses) $ Utxo.LessThanOrEqual (C.SlotNo maxBound)
       sameAddressEvents :: Utxo.UtxoByAddressBufferEvents
-      sameAddressEvents =  Utxo.eventsAtAddress addressQuery [event]
+      sameAddressEvents =  Utxo.eventsAtAddress (head addresses) (Utxo.LessThanOrEqual $ C.SlotNo maxBound) [event]
       targetAddress =  head addresses
       computedAddresses
         = toListOf (folded . Utxo.address)

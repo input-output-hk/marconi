@@ -151,7 +151,7 @@ type UtxoIndexer = Storable.State UtxoHandle
 
 data UtxoHandle = UtxoHandle
   { hdlConnection :: !SQL.Connection  -- ^ SQLite connection
-  , hdlDpeth      :: !Int             -- ^ depth before flushing to disk storage
+  , hdlDepth      :: !Int             -- ^ depth before flushing to disk storage
   , toVacuume     :: !Bool            -- ^ weather to perform SQLite vacuum to release space
   }
 
@@ -721,46 +721,15 @@ instance Semigroup UtxoByAddressBufferEvents where
 instance Monoid UtxoByAddressBufferEvents where
     mempty = UtxoByAddressBufferEvents mempty mempty mempty
 
--- | merge in-memory events with SQL retrieved UtxoRows
--- Notes, a property of this merge is to remove all spent utxos from the resulting [UtxoRow]
-mergeInMemoryAndSql
-  :: UtxoByAddressBufferEvents
-  -> [UtxoRow]
-  -> [UtxoRow]
-mergeInMemoryAndSql bufferEvents = let
-
-    asTxIn :: UtxoRow -> C.TxIn
-    asTxIn u = u ^. urUtxo . txIn
-
-    excludeBufferSpent :: [UtxoRow] -> [UtxoRow]
-    excludeBufferSpent = filter (flip Set.notMember (bufferEvents ^. bufferSpent) . asTxIn)
-
-    updateFutureSpent :: UtxoRow -> UtxoRow
-    updateFutureSpent u = let
-
-        spent = Map.lookup (asTxIn u) $ bufferEvents ^. bufferFutureSpent
-
-        in case u ^. urSpentInfo of
-             -- if it's already spent, no need to check if it's spent in the buffer events
-             Just _  -> u
-             Nothing -> u & urSpentInfo .~ spent
-
-    appendBufferUtxos :: [UtxoRow] -> [UtxoRow]
-    appendBufferUtxos = (<> (bufferEvents ^. bufferUtxos >>= eventToRows))
-
-    in fmap updateFutureSpent
-        . excludeBufferSpent
-        . appendBufferUtxos
-
--- | Filter for events at the given address
+-- | Filter in-memory events at the given address and interval
 eventsAtAddress
   :: Foldable f
-  => QueryUtxoByAddress -- ^ Address SlotInterval query
+  => C.AddressAny
+  -> Interval C.SlotNo
   -> f (StorableEvent UtxoHandle) -- ^ Utxo event
   -> UtxoByAddressBufferEvents
-eventsAtAddress (QueryUtxoByAddress addr snoInterval) =
-  let
-
+eventsAtAddress addr snoInterval events = foldMap go events
+  where
     pointFilter :: StorableEvent UtxoHandle -> Bool
     pointFilter = isInInterval snoInterval . ueChainPoint
 
@@ -774,11 +743,8 @@ eventsAtAddress (QueryUtxoByAddress addr snoInterval) =
         = afterBoundCheck
         . C.chainPointToSlotNo . ueChainPoint
 
-    addressFilter :: Utxo -> Bool
-    addressFilter u = (u ^. address) == addr
-
     utxosAtAddress :: StorableEvent UtxoHandle -> Set Utxo
-    utxosAtAddress = Set.filter addressFilter . ueUtxos
+    utxosAtAddress = Set.filter ((addr ==) . _address) . ueUtxos
 
     splitEventAtAddress :: StorableEvent UtxoHandle -> [StorableEvent UtxoHandle]
     splitEventAtAddress event =
@@ -807,22 +773,6 @@ eventsAtAddress (QueryUtxoByAddress addr snoInterval) =
             (getBufferSpent event)
             (getBufferFutureSpent event)
 
-  in foldMap go
-
-utxoAtAddressQuery
-    :: SQL.Connection
-    -> UtxoByAddressBufferEvents
-    -> [SQL.Query] -- ^ the filter part of the query
-    -> [NamedParam]
-    -> IO (StorableResult UtxoHandle)
-utxoAtAddressQuery c bufferResult filters params = do
-    persistedUtxoRows :: [UtxoRow] <- sqliteQueryWithSpent c (filters, params) $ Just "ORDER BY u.slotNo ASC"
-    pure
-      $ UtxoResult
-      $ mergeInMemoryAndSql
-          bufferResult
-          persistedUtxoRows
-
 -- | Query the data stored in the indexer
 -- Quries SQL + buffered data, where buffered data is the data that will be batched to SQL
 instance Queryable UtxoHandle where
@@ -832,11 +782,10 @@ instance Queryable UtxoHandle where
     -> UtxoHandle
     -> StorableQuery UtxoHandle
     -> StorableMonad UtxoHandle (StorableResult UtxoHandle)
-
-  queryStorage es (UtxoHandle c _ _) (QueryUtxoByAddressWrapper q@(QueryUtxoByAddress addr slotInterval)) =
+  queryStorage es (UtxoHandle c _ _) (QueryUtxoByAddressWrapper (QueryUtxoByAddress addr slotInterval)) =
     let
-      inMemoryEvents :: UtxoByAddressBufferEvents
-      inMemoryEvents = eventsAtAddress q es
+      bufferResult :: UtxoByAddressBufferEvents
+      bufferResult = eventsAtAddress addr slotInterval es
       addressFilter = (["u.address = :address"], [":address" := addr])
       lowerBoundFilter = case lowerBound slotInterval of
           Nothing -> mempty
@@ -847,7 +796,44 @@ instance Queryable UtxoHandle where
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
 
-    in liftSQLError CantQueryIndexer $ uncurry (utxoAtAddressQuery c inMemoryEvents) filters
+    in liftSQLError CantQueryIndexer $ do
+      persistedUtxoRows :: [UtxoRow] <- sqliteQueryWithSpent c filters $ Just "ORDER BY u.slotNo ASC"
+      pure
+        $ UtxoResult
+        $ mergeInMemoryAndSql
+            bufferResult
+            persistedUtxoRows
+
+    where
+      -- | merge in-memory events with SQL retrieved UtxoRows
+      -- Notes, a property of this merge is to remove all spent utxos from the resulting [UtxoRow]
+      mergeInMemoryAndSql
+        :: UtxoByAddressBufferEvents
+        -> [UtxoRow]
+        -> [UtxoRow]
+      mergeInMemoryAndSql (UtxoByAddressBufferEvents bufferUtxos' bufferSpent' bufferFutureSpent') utxoRows =
+        map updateFutureSpent $ excludeBufferSpent $ appendBufferUtxos utxoRows
+        where
+          asTxIn :: UtxoRow -> C.TxIn
+          asTxIn u = u ^. urUtxo . txIn
+
+          excludeBufferSpent :: [UtxoRow] -> [UtxoRow]
+          excludeBufferSpent = filter (flip Set.notMember bufferSpent' . asTxIn)
+
+          updateFutureSpent :: UtxoRow -> UtxoRow
+          updateFutureSpent u = let
+
+              spent = Map.lookup (asTxIn u) bufferFutureSpent'
+
+              in case u ^. urSpentInfo of
+                   -- if it's already spent, no need to check if it's spent in the buffer events
+                   Just _  -> u
+                   Nothing -> u & urSpentInfo .~ spent
+
+          appendBufferUtxos :: [UtxoRow] -> [UtxoRow]
+          appendBufferUtxos = (<> (bufferUtxos' >>= eventToRows))
+
+
 
   queryStorage es (UtxoHandle c _ _) LastSyncPoint =
     let
