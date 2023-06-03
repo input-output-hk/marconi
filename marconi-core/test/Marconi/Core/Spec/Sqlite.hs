@@ -17,13 +17,29 @@ import Safe (atMay)
 import Test.QuickCheck (Property)
 import Test.QuickCheck.Monadic (PropertyM, monadicIO)
 
-import Marconi.Core.Model (Conversion (Conversion, cHistory, cMonadic, cNotifications, cView), Index,
-                           IndexView (IndexView, ixDepth, ixSize, ixView), getFunction)
+import Marconi.Core.Model (
+  Conversion (Conversion, cHistory, cMonadic, cNotifications, cView),
+  Index,
+  IndexView (IndexView, ixDepth, ixSize, ixView),
+  getFunction,
+ )
 import Marconi.Core.Model qualified as Ix
-import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint (getPoint),
-                              Queryable (queryStorage), Resumable (resumeFromStorage), Rewindable (rewindStorage),
-                              State, StorableEvent, StorableMonad, StorablePoint, StorableQuery, StorableResult, config,
-                              emptyState, memoryBufferSize)
+import Marconi.Core.Storable (
+  Buffered (getStoredEvents, persistToStorage),
+  HasPoint (getPoint),
+  Queryable (queryStorage),
+  Resumable (resumeFromStorage),
+  Rewindable (rewindStorage),
+  State,
+  StorableEvent,
+  StorableMonad,
+  StorablePoint,
+  StorableQuery,
+  StorableResult,
+  config,
+  emptyState,
+  memoryBufferSize,
+ )
 import Marconi.Core.Storable qualified as Storable
 
 {-
@@ -43,8 +59,8 @@ newtype Handle = Handle Sql.Connection
 
 -- This point for this test will be representated by a point on some blockchain where
 -- slot numbers are identified by integers.
-data Point =
-    Point Int
+data Point
+  = Point Int
   | Genesis
   deriving (Eq, Show, Generic)
 
@@ -56,26 +72,28 @@ type instance StorableMonad Handle = IO
 
 -- We should be able to order points.
 instance Ord Point where
-  Genesis   <= _         = True
+  Genesis <= _ = True
   (Point x) <= (Point y) = x <= y
-  _         <= _         = False
+  _ <= _ = False
 
 -- Events are a tuple of the event data (an int) and the point where they were
 -- generated.
 data instance StorableEvent Handle = Event
   { sePoint :: StorablePoint Handle
   , seEvent :: Int
-  } deriving (Show, Eq, Generic)
+  }
+  deriving (Show, Eq, Generic)
 
-type TestFn = Int
-           -> Int
-           -> (Int, Maybe ())
+type TestFn =
+  Int
+  -> Int
+  -> (Int, Maybe ())
 
 -- We will need to types of queries. One that retrieves the accumulator and one that
 -- computes that folding function over a list of events. When folding the events we
 -- also pass the folding function.
-data instance StorableQuery Handle =
-    QEvents { qF :: TestFn }
+data instance StorableQuery Handle
+  = QEvents {qF :: TestFn}
   | QAccumulator
 
 newtype instance StorableResult Handle = Result
@@ -90,22 +108,24 @@ instance HasPoint (StorableEvent Handle) Point where
 
 data Config = Config
   { _state :: State Handle
-  , _fn    :: TestFn
+  , _fn :: TestFn
   }
 $(Lens.makeLenses ''Config)
 
 -- We also have an aggregate data type defined to be on par with the model for
 -- previous indexers.
 data Aggregate = Aggregate
-  { _aggId    :: Int
+  { _aggId :: Int
   , _aggValue :: StorableResult Handle
-  } deriving (Eq, Generic)
+  }
+  deriving (Eq, Generic)
 $(Lens.makeLenses ''Aggregate)
 
 instance ToRow (StorableEvent Handle) where
-  toRow e = [ toField $ sePoint e
-            , toField $ seEvent e
-            ]
+  toRow e =
+    [ toField $ sePoint e
+    , toField $ seEvent e
+    ]
 
 instance FromRow (StorableEvent Handle) where
   fromRow = Event <$> field <*> field
@@ -115,12 +135,12 @@ instance FromField Point where
     fromField f <&> \p ->
       -- encode -1 as the genesis block.
       if p == -1
-         then Genesis
-         else Point p
+        then Genesis
+        else Point p
 
 instance ToField Point where
   -- encode -1 as the genesis block.
-  toField Genesis   = toField (-1 :: Int)
+  toField Genesis = toField (-1 :: Int)
   toField (Point p) = toField p
 
 deriving newtype instance FromField (StorableResult Handle)
@@ -138,14 +158,14 @@ newSqliteIndexer
   -> IO (Maybe Config)
 newSqliteIndexer accFn memBuf ag0 = do
   h <- Sql.open ":memory:"
-  c <- emptyState (fromIntegral memBuf)  (Handle h)
+  c <- emptyState (fromIntegral memBuf) (Handle h)
   Sql.execute_ h "DROP TABLE IF EXISTS index_property_tests"
   -- On-disk cache
   Sql.execute_ h "CREATE TABLE index_property_cache (point INTEGER PRIMARY KEY, event INTEGER)"
   -- Aggregated state
   Sql.execute_ h "CREATE TABLE index_property_tests (id INTEGER PRIMARY KEY, accumulator INT)"
   -- Initial state
-  Sql.execute  h "INSERT INTO index_property_tests (id, accumulator) VALUES (?, ?)" (stateId, ag0)
+  Sql.execute h "INSERT INTO index_property_tests (id, accumulator) VALUES (?, ?)" (stateId, ag0)
   pure . Just $ Config c accFn
 
 instance Buffered Handle where
@@ -170,8 +190,8 @@ indexedFn
   -> StorableEvent Handle
   -> (StorableResult Handle, Maybe ())
 indexedFn f (Result ag0) (Event _ e) =
-  let (r, m) = f ag0 e in
-    (Result r, m)
+  let (r, m) = f ag0 e
+   in (Result r, m)
 
 instance Queryable Handle where
   queryStorage
@@ -181,13 +201,14 @@ instance Queryable Handle where
     -> StorableQuery Handle
     -> IO (StorableResult Handle)
   -- Querying the acumulator only retrieves the value stored in the accumulator table.
-  queryStorage  _ (Handle h) QAccumulator = do
+  queryStorage _ (Handle h) QAccumulator = do
     [ag0] :: [Aggregate] <-
-      Sql.query h "SELECT id, accumulator FROM index_property_tests WHERE id = ?"
+      Sql.query
+        h
+        "SELECT id, accumulator FROM index_property_tests WHERE id = ?"
         (Sql.Only stateId)
     pure $ ag0 ^. aggValue
-
-  queryStorage memoryEs (Handle h) (QEvents f)  = do
+  queryStorage memoryEs (Handle h) (QEvents f) = do
     Sql.execute_ h "BEGIN"
     -- First we retrieve the accumulator value, by using a proper query.
     aggregate <- queryStorage memoryEs (Handle h) QAccumulator
@@ -212,7 +233,7 @@ instance Resumable Handle where
     es' :: [StorableEvent Handle] <-
       Sql.query_ h "SELECT * FROM index_property_cache ORDER BY point DEC"
     pure $ case es' of
-      []    -> Genesis
+      [] -> Genesis
       e : _ -> sePoint e
 
 -- * Conversions
@@ -221,12 +242,13 @@ type IndexT = Index Int Int ()
 
 conversion
   :: Conversion (PropertyM IO) Int Int ()
-conversion = Conversion
-  { cView = getView
-  , cHistory = getHistory
-  , cNotifications = getNotifications
-  , cMonadic = monadic
-  }
+conversion =
+  Conversion
+    { cView = getView
+    , cHistory = getHistory
+    , cNotifications = getNotifications
+    , cMonadic = monadic
+    }
 
 -- We don't really have any notification implementation available for the new indexers.
 getNotifications
@@ -240,10 +262,10 @@ getHistory
 getHistory ix = do
   mix <- run ix
   case mix of
-    Nothing       -> pure Nothing
+    Nothing -> pure Nothing
     Just (ix', _) -> liftIO $ do
       let st = ix' ^. state
-          f  = getFunction ix
+          f = getFunction ix
           sz = ix' ^. state . config . memoryBufferSize
       -- Fetch all stored events.
       es <- Storable.getEvents st
@@ -251,17 +273,16 @@ getHistory ix = do
       -- let qs = map (\p -> QInterval p p) $ map sePoint es
       -- And run a fold over all of them, giving us all the historical valus of the
       -- indexer across all the stored values.
-      rs  <- fmap getResult <$> mapM (\_ -> Storable.query st (QEvents f)) es
+      rs <- fmap getResult <$> mapM (\_ -> Storable.query st (QEvents f)) es
       if null rs
-      then do
-        -- If there are no results, then return a single element list with the
+        then do
+          -- If there are no results, then return a single element list with the
+          -- accumulator.
+          Result ag0 <- Storable.query st QAccumulator
+          pure $ Just [ag0]
+        else -- If there are results, return a list of all the values *without* the
         -- accumulator.
-        Result ag0 <- Storable.query st QAccumulator
-        pure $ Just [ag0]
-      else
-        -- If there are results, return a list of all the values *without* the
-        -- accumulator.
-        pure . Just . take sz $ reverse rs
+          pure . Just . take sz $ reverse rs
 
 getView
   :: IndexT
@@ -269,7 +290,7 @@ getView
 getView ix = do
   mix <- run ix
   case mix of
-    Nothing       -> pure Nothing
+    Nothing -> pure Nothing
     Just (ix', _) -> do
       let maxSize = ix' ^. state . config . memoryBufferSize + 1
       es <- liftIO $ Storable.getEvents (ix' ^. state)
@@ -277,10 +298,11 @@ getView ix = do
       let sz = if null es then 1 else length es + 1
       -- let sz = if length rs == 1 then 1 else length rs + 1
       pure . Just $
-        IndexView { ixDepth = maxSize
-                  , ixView  = head rs
-                  , ixSize  = min maxSize sz
-                  }
+        IndexView
+          { ixDepth = maxSize
+          , ixView = head rs
+          , ixSize = min maxSize sz
+          }
 
 monadic
   :: PropertyM IO Property
@@ -304,24 +326,25 @@ lookupPoint n (Config st _) = MaybeT $ do
   es' <- reverse <$> Storable.getEvents st
   -- In our model we may get a lot more events than `depth` since we never actually
   -- remove them.
-  es  <- take (depth - 1) . reverse <$> Storable.getEvents st
+  es <- take (depth - 1) . reverse <$> Storable.getEvents st
   -- Rewind past all stored events in the model.
   if length es == n
-  then do
-    if length es' > length es
-       -- On this branch we know that we have more than `depth` events stored in the db, so
-       -- we do a rewind up to the `depth` + 1 element. This is semantically identical to what
-       -- happens in the model.
-       then pure . Just $ sePoint $ es' !! n
-       -- If we don't have more events stored in the database, then we simply rollback to
-       -- Genesis.
-       else pure . Just $ Genesis
-  else if length es > n
-  -- If the point we want to rollback to is less then the size of the list of stored
-  -- events, then we want to rollback to the indexed event.
-  then pure $ atMay es' n <&> sePoint
-  -- Otherwise the point we need to rollback to was not found.
-  else pure Nothing
+    then do
+      if length es' > length es
+        then -- On this branch we know that we have more than `depth` events stored in the db, so
+        -- we do a rewind up to the `depth` + 1 element. This is semantically identical to what
+        -- happens in the model.
+          pure . Just $ sePoint $ es' !! n
+        else -- If we don't have more events stored in the database, then we simply rollback to
+        -- Genesis.
+          pure . Just $ Genesis
+    else
+      if length es > n
+        then -- If the point we want to rollback to is less then the size of the list of stored
+        -- events, then we want to rollback to the indexed event.
+          pure $ atMay es' n <&> sePoint
+        else -- Otherwise the point we need to rollback to was not found.
+          pure Nothing
 
 -- The run function returns a tupple because it needs to both assign increasing slot
 -- numbers and return the indexer produced by the previous computation.
@@ -334,21 +357,21 @@ run (Ix.New f depth ag0)
       let d = fromIntegral depth
       -- In the model the K value is always `depth` - 1 to make place for the accumulator.
       -- The second parameter is not really that important.
-      indexer <- liftIO $ newSqliteIndexer f (d  - 1) ag0
+      indexer <- liftIO $ newSqliteIndexer f (d - 1) ag0
       -- On creation the slot number will always be 0.
       pure $ (,0) <$> indexer
 run (Ix.Insert e ix) = do
   mix <- run ix
   case mix of
-    Nothing        -> pure Nothing
+    Nothing -> pure Nothing
     Just (ix', sq) -> liftIO $ do
       nextState <- Storable.insert (Event (Point sq) e) (ix' ^. state)
-      pure . Just . (, sq + 1) $ ix' { _state = nextState }
+      pure . Just . (,sq + 1) $ ix'{_state = nextState}
 run (Ix.Rewind n ix) = do
   mix <- run ix
   case mix of
-    Nothing        -> pure Nothing
+    Nothing -> pure Nothing
     Just (ix', sq) -> liftIO . runMaybeT $ do
-      p         <- lookupPoint n ix'
+      p <- lookupPoint n ix'
       nextState <- liftIO $ Storable.rewind p (ix' ^. state)
-      pure . (,sq) $ ix' { _state = nextState }
+      pure . (,sq) $ ix'{_state = nextState}

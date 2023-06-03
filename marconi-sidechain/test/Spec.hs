@@ -1,4 +1,5 @@
 {-# LANGUAGE ExplicitNamespaces #-}
+
 module Main (main) where
 
 import Marconi.Sidechain.Api.HttpServer (marconiApp)
@@ -15,16 +16,18 @@ import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 
 main :: IO ()
 main = do
-    env <- initializeSidechainEnv Nothing Nothing
-    Warp.testWithApplication (pure $ marconiApp env) $ \port -> do
-        rpcClientAction <- mkRpcClientAction env port
-        defaultMain $ tests rpcClientAction
+  env <- initializeSidechainEnv Nothing Nothing
+  Warp.testWithApplication (pure $ marconiApp env) $ \port -> do
+    rpcClientAction <- mkRpcClientAction env port
+    defaultMain $ tests rpcClientAction
 
 tests :: RpcClientAction -> TestTree
-tests rpcClientAction = localOption (HedgehogTestLimit $ Just 200) $
-    testGroup "marconi-sidechain"
-        [ CLI.tests
-        , Routes.tests
-        , Api.Query.Indexers.Utxo.tests rpcClientAction
-        , Api.Query.Indexers.MintBurn.tests rpcClientAction
-        ]
+tests rpcClientAction =
+  localOption (HedgehogTestLimit $ Just 200) $
+    testGroup
+      "marconi-sidechain"
+      [ CLI.tests
+      , Routes.tests
+      , Api.Query.Indexers.Utxo.tests rpcClientAction
+      , Api.Query.Indexers.MintBurn.tests rpcClientAction
+      ]

@@ -1,7 +1,6 @@
-module Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils
-    ( addressInEraToAddressAny
-    )
-where
+module Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils (
+  addressInEraToAddressAny,
+) where
 
 import Cardano.Api qualified as C
 

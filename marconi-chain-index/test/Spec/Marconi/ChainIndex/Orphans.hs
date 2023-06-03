@@ -16,187 +16,174 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
 tests :: TestTree
-tests = testGroup "Spec.Marconi.ChainIndex.Orphans"
-  [ testGroup "ToField/FromField rountrip"
+tests =
+  testGroup
+    "Spec.Marconi.ChainIndex.Orphans"
+    [ testGroup
+        "ToField/FromField rountrip"
         [ testPropertyNamed
-              "C.Hash C.BlockHeader"
-              "propSQLFieldRoundtripBlockHeaderHash"
-              propSQLFieldRoundtripBlockHeaderHash
-
+            "C.Hash C.BlockHeader"
+            "propSQLFieldRoundtripBlockHeaderHash"
+            propSQLFieldRoundtripBlockHeaderHash
         , testPropertyNamed
-              "C.SlotNo"
-              "propSQLFieldRoundtripSlotNo"
-              propSQLFieldRoundtripSlotNo
-
+            "C.SlotNo"
+            "propSQLFieldRoundtripSlotNo"
+            propSQLFieldRoundtripSlotNo
         , testPropertyNamed
-              "C.BlockNo"
-              "propSQLFieldRoundtripBlockNo"
-              propSQLFieldRoundtripBlockNo
-
+            "C.BlockNo"
+            "propSQLFieldRoundtripBlockNo"
+            propSQLFieldRoundtripBlockNo
         , testPropertyNamed
-              "C.AddressAny"
-              "propSQLFieldRoundtripAddressAny"
-              propSQLFieldRoundtripAddressAny
-
+            "C.AddressAny"
+            "propSQLFieldRoundtripAddressAny"
+            propSQLFieldRoundtripAddressAny
         , testPropertyNamed
-              "C.Hash C.ScriptData"
-              "propSQLFieldRoundtripScriptDataHash"
-              propSQLFieldRoundtripScriptDataHash
-
+            "C.Hash C.ScriptData"
+            "propSQLFieldRoundtripScriptDataHash"
+            propSQLFieldRoundtripScriptDataHash
         , testPropertyNamed
-              "C.ScriptData"
-              "propSQLFieldRoundtripScriptData"
-              propSQLFieldRoundtripScriptData
-
+            "C.ScriptData"
+            "propSQLFieldRoundtripScriptData"
+            propSQLFieldRoundtripScriptData
         , testPropertyNamed
-              "C.TxId"
-              "propSQLFieldRoundtripTxId"
-              propSQLFieldRoundtripTxId
-
+            "C.TxId"
+            "propSQLFieldRoundtripTxId"
+            propSQLFieldRoundtripTxId
         , testPropertyNamed
-              "C.TxIx"
-              "propSQLFieldRoundtripTxIx"
-              propSQLFieldRoundtripTxIx
-
+            "C.TxIx"
+            "propSQLFieldRoundtripTxIx"
+            propSQLFieldRoundtripTxIx
         , testPropertyNamed
-              "C.Value"
-              "propSQLFieldRoundtripValue"
-              propSQLFieldRoundtripValue
-
+            "C.Value"
+            "propSQLFieldRoundtripValue"
+            propSQLFieldRoundtripValue
         , testPropertyNamed
-              "C.ScriptInAnyLang"
-              "propSQLFieldRoundtripScriptInAnyLang"
-              propSQLFieldRoundtripScriptInAnyLang
-
+            "C.ScriptInAnyLang"
+            "propSQLFieldRoundtripScriptInAnyLang"
+            propSQLFieldRoundtripScriptInAnyLang
         , testPropertyNamed
-              "C.ScriptHash"
-              "propSQLFieldRoundtripScriptHash"
-              propSQLFieldRoundtripScriptHash
-
+            "C.ScriptHash"
+            "propSQLFieldRoundtripScriptHash"
+            propSQLFieldRoundtripScriptHash
         , testPropertyNamed
-              "C.PolicyId"
-              "propSQLFieldRoundtripPolicyId"
-              propSQLFieldRoundtripPolicyId
-
+            "C.PolicyId"
+            "propSQLFieldRoundtripPolicyId"
+            propSQLFieldRoundtripPolicyId
         , testPropertyNamed
-              "C.EpochNo"
-              "propSQLFieldRoundtripEpochNo"
-              propSQLFieldRoundtripEpochNo
-
+            "C.EpochNo"
+            "propSQLFieldRoundtripEpochNo"
+            propSQLFieldRoundtripEpochNo
         , testPropertyNamed
-              "C.Lovelace"
-              "propSQLFieldRoundtripLovelace"
-              propSQLFieldRoundtripLovelace
-
+            "C.Lovelace"
+            "propSQLFieldRoundtripLovelace"
+            propSQLFieldRoundtripLovelace
         , testPropertyNamed
-              "C.PoolId"
-              "propSQLFieldRoundtripPoolId"
-              propSQLFieldRoundtripPoolId
-
-        -- TODO Activate once we update to the latest node version
-        -- , testPropertyNamed
-        --       "Ledger.Nonce"
-        --       "propSQLFieldRoundtripNonce"
-        --       propSQLFieldRoundtripNonce
+            "C.PoolId"
+            "propSQLFieldRoundtripPoolId"
+            propSQLFieldRoundtripPoolId
+            -- TODO Activate once we update to the latest node version
+            -- , testPropertyNamed
+            --       "Ledger.Nonce"
+            --       "propSQLFieldRoundtripNonce"
+            --       propSQLFieldRoundtripNonce
         ]
-
-  , testGroup "ToJSON/FromJSON rountrip"
+    , testGroup
+        "ToJSON/FromJSON rountrip"
         [ testPropertyNamed
-              "C.AddressAny"
-              "propJsonRoundtripAddressAny"
-              propJsonRoundtripAddressAny
-
+            "C.AddressAny"
+            "propJsonRoundtripAddressAny"
+            propJsonRoundtripAddressAny
         , testPropertyNamed
-              "C.ScriptData"
-              "propJsonRoundtripScriptData"
-              propJsonRoundtripScriptData
+            "C.ScriptData"
+            "propJsonRoundtripScriptData"
+            propJsonRoundtripScriptData
         ]
-  ]
+    ]
 
 propSQLFieldRoundtripBlockHeaderHash :: Property
 propSQLFieldRoundtripBlockHeaderHash = property $ do
-    bh <- forAll Gen.genHashBlockHeader
-    tripping bh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  bh <- forAll Gen.genHashBlockHeader
+  tripping bh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripSlotNo :: Property
 propSQLFieldRoundtripSlotNo = property $ do
-    slotNo <- forAll Gen.genSlotNo
-    tripping slotNo SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  slotNo <- forAll Gen.genSlotNo
+  tripping slotNo SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripBlockNo :: Property
 propSQLFieldRoundtripBlockNo = property $ do
-    bn <- forAll Gen.genBlockNo
-    tripping bn SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  bn <- forAll Gen.genBlockNo
+  tripping bn SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripAddressAny :: Property
 propSQLFieldRoundtripAddressAny = property $ do
-    (C.AddressInEra _ addr) <- forAll $ Gen.genAddressInEra C.BabbageEra
-    tripping (C.toAddressAny addr) SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  (C.AddressInEra _ addr) <- forAll $ Gen.genAddressInEra C.BabbageEra
+  tripping (C.toAddressAny addr) SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propJsonRoundtripAddressAny :: Property
 propJsonRoundtripAddressAny = property $ do
-    (C.AddressInEra _ addr) <- forAll $ Gen.genAddressInEra C.BabbageEra
-    tripping (C.toAddressAny addr) Aeson.encode Aeson.decode
+  (C.AddressInEra _ addr) <- forAll $ Gen.genAddressInEra C.BabbageEra
+  tripping (C.toAddressAny addr) Aeson.encode Aeson.decode
 
 propSQLFieldRoundtripScriptDataHash :: Property
 propSQLFieldRoundtripScriptDataHash = property $ do
-    dh <- forAll Gen.genHashScriptData
-    tripping dh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  dh <- forAll Gen.genHashScriptData
+  tripping dh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripScriptData :: Property
 propSQLFieldRoundtripScriptData = property $ do
-    dh <- forAll $ C.getScriptData <$> CGen.genHashableScriptData
-    tripping dh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  dh <- forAll $ C.getScriptData <$> CGen.genHashableScriptData
+  tripping dh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propJsonRoundtripScriptData :: Property
 propJsonRoundtripScriptData = property $ do
-    d <- forAll $ C.getScriptData <$> CGen.genHashableScriptData
-    tripping d Aeson.encode Aeson.decode
+  d <- forAll $ C.getScriptData <$> CGen.genHashableScriptData
+  tripping d Aeson.encode Aeson.decode
 
 propSQLFieldRoundtripTxId :: Property
 propSQLFieldRoundtripTxId = property $ do
-    txId <- forAll CGen.genTxId
-    tripping txId SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  txId <- forAll CGen.genTxId
+  tripping txId SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripTxIx :: Property
 propSQLFieldRoundtripTxIx = property $ do
-    txIx <- forAll Gen.genTxIndex
-    tripping txIx SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  txIx <- forAll Gen.genTxIndex
+  tripping txIx SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripValue :: Property
 propSQLFieldRoundtripValue = property $ do
-    txIx <- forAll $ CGen.genValue Gen.genAssetId (Gen.genQuantity (Range.linear 1 10))
-    tripping txIx SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  txIx <- forAll $ CGen.genValue Gen.genAssetId (Gen.genQuantity (Range.linear 1 10))
+  tripping txIx SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripScriptInAnyLang :: Property
 propSQLFieldRoundtripScriptInAnyLang = property $ do
-    s <- forAll CGen.genScriptInAnyLang
-    tripping s SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  s <- forAll CGen.genScriptInAnyLang
+  tripping s SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripScriptHash :: Property
 propSQLFieldRoundtripScriptHash = property $ do
-    sh <- forAll CGen.genScriptHash
-    tripping sh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  sh <- forAll CGen.genScriptHash
+  tripping sh SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripPolicyId :: Property
 propSQLFieldRoundtripPolicyId = property $ do
-    p <- forAll Gen.genPolicyId
-    tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  p <- forAll Gen.genPolicyId
+  tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripEpochNo :: Property
 propSQLFieldRoundtripEpochNo = property $ do
-    p <- forAll Gen.genEpochNo
-    tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  p <- forAll Gen.genEpochNo
+  tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripLovelace :: Property
 propSQLFieldRoundtripLovelace = property $ do
-    p <- forAll CGen.genLovelace
-    tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  p <- forAll CGen.genLovelace
+  tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 propSQLFieldRoundtripPoolId :: Property
 propSQLFieldRoundtripPoolId = property $ do
-    p <- forAll Gen.genPoolId
-    tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
+  p <- forAll Gen.genPoolId
+  tripping p SQL.toField (\sqlData -> SQL.fromField $ SQL.Field sqlData 0)
 
 -- propSQLFieldRoundtripNonce :: Property
 -- propSQLFieldRoundtripNonce = property $ do

@@ -1,7 +1,6 @@
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE OverloadedStrings  #-}
-
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.ChainIndex.Orphans where
@@ -35,23 +34,22 @@ import Ouroboros.Consensus.HardFork.Combinator.Serialisation.Common qualified as
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Prettyprinter (Pretty (pretty), (<+>))
 
-
 -- * ChainPoint
 
 instance Pretty C.ChainTip where
-  pretty C.ChainTipAtGenesis   = "ChainTipAtGenesis"
+  pretty C.ChainTipAtGenesis = "ChainTipAtGenesis"
   pretty (C.ChainTip sn ha bn) = "ChainTip(" <> pretty sn <> "," <+> pretty ha <> "," <+> pretty bn <> ")"
 
 instance Pretty C.ChainPoint where
   pretty C.ChainPointAtGenesis = "ChainPointAtGenesis"
-  pretty (C.ChainPoint sn ha)  = "ChainPoint(" <> pretty sn <> "," <+> pretty ha <> ")"
+  pretty (C.ChainPoint sn ha) = "ChainPoint(" <> pretty sn <> "," <+> pretty ha <> ")"
 
 instance SQL.FromRow C.ChainPoint where
   fromRow = C.ChainPoint <$> SQL.field <*> SQL.field
 
 instance ToRow C.ChainPoint where
   toRow C.ChainPointAtGenesis = [SQL.SQLNull]
-  toRow (C.ChainPoint sn bh)  = [toField sn, toField bh]
+  toRow (C.ChainPoint sn bh) = [toField sn, toField bh]
 
 -- * C.Hash C.BlockHeader
 
@@ -62,11 +60,11 @@ instance SQL.ToField (C.Hash C.BlockHeader) where
   toField f = SQL.toField $ C.serialiseToRawBytes f
 
 instance SQL.FromField (C.Hash C.BlockHeader) where
-   fromField f = do
-       bs <- SQL.fromField f
-       case C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bs of
-           Left _  -> SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.BlockHeader"
-           Right x -> pure x
+  fromField f = do
+    bs <- SQL.fromField f
+    case C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bs of
+      Left _ -> SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.BlockHeader"
+      Right x -> pure x
 
 -- * Sometime we need to get a count or test if a value exist.
 
@@ -92,32 +90,38 @@ instance Pretty C.BlockNo where
 -- * C.AddressAny
 
 instance SQL.FromField C.AddressAny where
-  fromField f = SQL.fromField f >>= \b -> either
-    (const cantDeserialise)
-    pure $ C.deserialiseFromRawBytes C.AsAddressAny
-    b
-    where
-      cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
+  fromField f =
+    SQL.fromField f >>= \b ->
+      either
+        (const cantDeserialise)
+        pure
+        $ C.deserialiseFromRawBytes
+          C.AsAddressAny
+          b
+   where
+    cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
 
 instance SQL.ToField C.AddressAny where
   toField = SQL.SQLBlob . C.serialiseToRawBytes
 
 instance FromJSON C.AddressAny where
-    parseJSON (Aeson.String v) =
-        maybe mempty
-              pure
-              $ C.deserialiseAddress C.AsAddressAny v
-    parseJSON _ = mempty
+  parseJSON (Aeson.String v) =
+    maybe
+      mempty
+      pure
+      $ C.deserialiseAddress C.AsAddressAny v
+  parseJSON _ = mempty
 
 instance ToJSON C.AddressAny where
-    toJSON = Aeson.String . C.serialiseAddress
+  toJSON = Aeson.String . C.serialiseAddress
 
 -- * C.Hash C.ScriptData
 
 instance SQL.FromField (C.Hash C.ScriptData) where
-  fromField f = SQL.fromField f >>=
-    either (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.ScriptData.") pure
-    . C.deserialiseFromRawBytes (C.AsHash C.AsScriptData)
+  fromField f =
+    SQL.fromField f
+      >>= either (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.ScriptData.") pure
+        . C.deserialiseFromRawBytes (C.AsHash C.AsScriptData)
 
 instance SQL.ToField (C.Hash C.ScriptData) where
   toField = SQL.SQLBlob . C.serialiseToRawBytes
@@ -129,26 +133,27 @@ instance Serialise C.ScriptData where
   decode = CBOR.fromCBOR
 
 instance SQL.FromField C.ScriptData where
-  fromField f = SQL.fromField f >>=
-    either (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.ScriptData.") pure
-    . C.deserialiseFromCBOR C.AsScriptData
+  fromField f =
+    SQL.fromField f
+      >>= either (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.ScriptData.") pure
+        . C.deserialiseFromCBOR C.AsScriptData
 
 instance SQL.ToField C.ScriptData where
   toField = SQL.SQLBlob . C.serialiseToCBOR
 
 instance FromJSON C.ScriptData where
-    parseJSON (Aeson.String v) =
-        either (const mempty) pure $ do
-            base16Val <- Base16.decode $ Text.encodeUtf8 v
-            mapLeft show $ C.deserialiseFromCBOR C.AsScriptData base16Val
-    parseJSON _ = mempty
+  parseJSON (Aeson.String v) =
+    either (const mempty) pure $ do
+      base16Val <- Base16.decode $ Text.encodeUtf8 v
+      mapLeft show $ C.deserialiseFromCBOR C.AsScriptData base16Val
+  parseJSON _ = mempty
 
 mapLeft :: (a -> b) -> Either a c -> Either b c
-mapLeft f (Left v)  = Left $ f v
+mapLeft f (Left v) = Left $ f v
 mapLeft _ (Right v) = Right v
 
 instance ToJSON C.ScriptData where
-    toJSON v = Aeson.String $ Text.decodeLatin1 $ Base16.encode $ C.serialiseToCBOR v
+  toJSON v = Aeson.String $ Text.decodeLatin1 $ Base16.encode $ C.serialiseToCBOR v
 
 -- * C.TxIn
 
@@ -159,9 +164,12 @@ instance SQL.FromRow C.TxIn where
   fromRow = C.TxIn <$> SQL.field <*> SQL.field
 
 instance SQL.FromField C.TxId where
-  fromField f = SQL.fromField f >>= either
-    (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise TxId.")
-    pure . C.deserialiseFromRawBytes (C.proxyToAsType Proxy)
+  fromField f =
+    SQL.fromField f
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise TxId.")
+        pure
+        . C.deserialiseFromRawBytes (C.proxyToAsType Proxy)
 
 instance SQL.ToField C.TxId where
   toField = SQL.SQLBlob . C.serialiseToRawBytes
@@ -178,9 +186,12 @@ instance SQL.ToField C.Value where
   toField = SQL.SQLBlob . toStrict . Aeson.encode
 
 instance SQL.FromField C.Value where
-  fromField f = SQL.fromField f >>= either
-    (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise value.")
-    pure . Aeson.eitherDecode
+  fromField f =
+    SQL.fromField f
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise value.")
+        pure
+        . Aeson.eitherDecode
 
 -- * C.ScriptInAnyLang
 
@@ -188,9 +199,12 @@ instance SQL.ToField C.ScriptInAnyLang where
   toField = SQL.SQLBlob . toStrict . Aeson.encode
 
 instance SQL.FromField C.ScriptInAnyLang where
-  fromField f = SQL.fromField f >>= either
-    (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise value.")
-    pure . Aeson.eitherDecode
+  fromField f =
+    SQL.fromField f
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise value.")
+        pure
+        . Aeson.eitherDecode
 
 -- * C.ScriptHash
 
@@ -198,9 +212,12 @@ instance SQL.ToField C.ScriptHash where
   toField = SQL.SQLBlob . C.serialiseToRawBytesHex
 
 instance SQL.FromField C.ScriptHash where
-  fromField f = SQL.fromField f >>= either
-    (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise scriptDataHash.")
-    pure . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
+  fromField f =
+    SQL.fromField f
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise scriptDataHash.")
+        pure
+        . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
 
 -- * O.LedgerState (O.CardanoBlock O.StandardCrypto)
 
@@ -208,9 +225,12 @@ instance SQL.ToField (O.LedgerState (O.CardanoBlock O.StandardCrypto)) where
   toField = SQL.SQLBlob . CBOR.toStrictByteString . encodeLedgerState
 
 instance SQL.FromField (O.LedgerState (O.CardanoBlock O.StandardCrypto)) where
-  fromField f = SQL.fromField f >>= either
-    (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise ExtLedgerState.")
-    (pure . snd) . CBOR.deserialiseFromBytes decodeLedgerState
+  fromField f =
+    SQL.fromField f
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise ExtLedgerState.")
+        (pure . snd)
+        . CBOR.deserialiseFromBytes decodeLedgerState
 
 -- * Ledger.Nonce
 
@@ -218,9 +238,12 @@ instance SQL.ToField Ledger.Nonce where
   toField = SQL.SQLBlob . CBOR.toStrictByteString . CBOR.toCBOR
 
 instance SQL.FromField Ledger.Nonce where
-  fromField f = SQL.fromField f >>= either
-    (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise Ledger.Nonce.")
-    (pure . snd) . CBOR.deserialiseFromBytes CBOR.fromCBOR
+  fromField f =
+    SQL.fromField f
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise Ledger.Nonce.")
+        (pure . snd)
+        . CBOR.deserialiseFromBytes CBOR.fromCBOR
 
 -- * ToField/FromField
 
@@ -248,7 +271,7 @@ instance SQL.FromField C.PoolId where
     bs <- SQL.fromField f
     case C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) bs of
       Right h -> pure h
-      Left _  -> SQL.returnError SQL.ConversionFailed f " PoolId"
+      Left _ -> SQL.returnError SQL.ConversionFailed f " PoolId"
 
 instance SQL.ToField C.PoolId where
   toField = SQL.toField . C.serialiseToRawBytes
@@ -261,34 +284,35 @@ instance SQL.FromField C.PolicyId where
 -- | Helper to deserialize via SerialiseAsRawBytes instance
 fromFieldViaRawBytes :: (C.SerialiseAsRawBytes a) => C.AsType a -> SQL.Field -> SQL.Ok a
 fromFieldViaRawBytes as f = either (const err) pure . C.deserialiseFromRawBytes as =<< SQL.fromField f
-  where err = SQL.returnError SQL.ConversionFailed f "can't deserialise via SerialiseAsRawBytes"
+ where
+  err = SQL.returnError SQL.ConversionFailed f "can't deserialise via SerialiseAsRawBytes"
 
 encodeLedgerState :: O.LedgerState (O.CardanoBlock O.StandardCrypto) -> CBOR.Encoding
 encodeLedgerState (O.HardForkLedgerState st) =
   O.encodeTelescope
     (byron :* shelley :* allegra :* mary :* alonzo :* babbage :* conway :* Nil)
     st
-  where
-    byron = fn (K . O.encodeByronLedgerState)
-    shelley = fn (K . O.encodeShelleyLedgerState)
-    allegra = fn (K . O.encodeShelleyLedgerState)
-    mary = fn (K . O.encodeShelleyLedgerState)
-    alonzo = fn (K . O.encodeShelleyLedgerState)
-    babbage = fn (K . O.encodeShelleyLedgerState)
-    conway = fn (K . O.encodeShelleyLedgerState)
+ where
+  byron = fn (K . O.encodeByronLedgerState)
+  shelley = fn (K . O.encodeShelleyLedgerState)
+  allegra = fn (K . O.encodeShelleyLedgerState)
+  mary = fn (K . O.encodeShelleyLedgerState)
+  alonzo = fn (K . O.encodeShelleyLedgerState)
+  babbage = fn (K . O.encodeShelleyLedgerState)
+  conway = fn (K . O.encodeShelleyLedgerState)
 
 decodeLedgerState :: forall s. CBOR.Decoder s (O.LedgerState (O.CardanoBlock O.StandardCrypto))
 decodeLedgerState =
   O.HardForkLedgerState
     <$> O.decodeTelescope (byron :* shelley :* allegra :* mary :* alonzo :* babbage :* conway :* Nil)
-  where
-    byron = Comp O.decodeByronLedgerState
-    shelley = Comp O.decodeShelleyLedgerState
-    allegra = Comp O.decodeShelleyLedgerState
-    mary = Comp O.decodeShelleyLedgerState
-    alonzo = Comp O.decodeShelleyLedgerState
-    babbage = Comp O.decodeShelleyLedgerState
-    conway = Comp O.decodeShelleyLedgerState
+ where
+  byron = Comp O.decodeByronLedgerState
+  shelley = Comp O.decodeShelleyLedgerState
+  allegra = Comp O.decodeShelleyLedgerState
+  mary = Comp O.decodeShelleyLedgerState
+  alonzo = Comp O.decodeShelleyLedgerState
+  babbage = Comp O.decodeShelleyLedgerState
+  conway = Comp O.decodeShelleyLedgerState
 
 -- * SecurityParam
 

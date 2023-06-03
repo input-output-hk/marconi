@@ -1,25 +1,23 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Cardano.Streaming
-  ( withChainSyncEventStream
-  , CS.ChainSyncEvent (..)
-  , CS.ChainSyncEventException (..)
-
+module Cardano.Streaming (
+  withChainSyncEventStream,
+  CS.ChainSyncEvent (..),
+  CS.ChainSyncEventException (..),
   --
-  , CS.mkConnectInfo
-  , CS.mkLocalNodeConnectInfo
+  CS.mkConnectInfo,
+  CS.mkLocalNodeConnectInfo,
 
   -- * Stream blocks and ledger states
-  , blocks
-  , blocksPipelined
-  , ledgerStates
-  , ledgerStatesPipelined
-  , foldLedgerState
-  , foldLedgerStateEvents
-  , getEnvAndInitialLedgerStateHistory
-  , CS.ignoreRollbacks
-  )
-where
+  blocks,
+  blocksPipelined,
+  ledgerStates,
+  ledgerStatesPipelined,
+  foldLedgerState,
+  foldLedgerStateEvents,
+  getEnvAndInitialLedgerStateHistory,
+  CS.ignoreRollbacks,
+) where
 
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async (ExceptionInLinkedThread (ExceptionInLinkedThread), link, withAsync)
@@ -39,108 +37,115 @@ import Streaming (Of, Stream)
 import Streaming.Prelude qualified as S
 
 import Cardano.Api qualified as C
-import Cardano.Api.ChainSync.Client (ClientStIdle (SendMsgFindIntersect, SendMsgRequestNext),
-                                     ClientStIntersect (ClientStIntersect, recvMsgIntersectFound, recvMsgIntersectNotFound),
-                                     ClientStNext (ClientStNext, recvMsgRollBackward, recvMsgRollForward))
+import Cardano.Api.ChainSync.Client (
+  ClientStIdle (SendMsgFindIntersect, SendMsgRequestNext),
+  ClientStIntersect (ClientStIntersect, recvMsgIntersectFound, recvMsgIntersectNotFound),
+  ClientStNext (ClientStNext, recvMsgRollBackward, recvMsgRollForward),
+ )
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 
 import Cardano.Streaming.Callbacks qualified as CS
 import Cardano.Streaming.Helpers qualified as CS
 
--- | `withChainSyncEventStream` uses the chain-sync mini-protocol to
--- connect to a locally running node and fetch blocks from the given
--- starting point.
-withChainSyncEventStream ::
-  -- | Path to the node socket
-  FilePath ->
-  C.NetworkId ->
-  -- | The point on the chain to start streaming from
-  [C.ChainPoint] ->
-  -- | The stream consumer
-  (Stream (Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r -> IO b) ->
-  IO b
-withChainSyncEventStream socketPath networkId points consumer = do
-  -- The chain-sync client runs in a different thread passing the blocks it
-  -- receives to the stream consumer through a MVar. The chain-sync client
-  -- thread and the stream consumer will each block on each other and stay
-  -- in lockstep.
-  --
-  -- NOTE: choosing a MVar is a tradeoff towards simplicity. In this case a
-  -- (bounded) queue could perform better. Indeed a properly-sized buffer
-  -- can reduce the time the two threads are blocked waiting for each
-  -- other. The problem here is "properly-sized". A bounded queue like
-  -- Control.Concurrent.STM.TBQueue allows us to specify a max queue length
-  -- but block size can vary a lot (TODO quantify this) depending on the
-  -- era. We have an alternative implementation with customizable queue
-  -- size (TBMQueue) but it needs to be extracted from the
-  -- plutus-chain-index-core package. Using a simple MVar doesn't seem to
-  -- slow down marconi's indexing, likely because the difference is
-  -- negligeable compared to existing network and IO latencies.  Therefore,
-  -- let's stick with a MVar now and revisit later.
-  nextBlockVar <- newEmptyMVar
+{- | `withChainSyncEventStream` uses the chain-sync mini-protocol to
+ connect to a locally running node and fetch blocks from the given
+ starting point.
+-}
+withChainSyncEventStream
+  :: FilePath
+  -- ^ Path to the node socket
+  -> C.NetworkId
+  -> [C.ChainPoint]
+  -- ^ The point on the chain to start streaming from
+  -> (Stream (Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r -> IO b)
+  -- ^ The stream consumer
+  -> IO b
+withChainSyncEventStream socketPath networkId points consumer =
+  do
+    -- The chain-sync client runs in a different thread passing the blocks it
+    -- receives to the stream consumer through a MVar. The chain-sync client
+    -- thread and the stream consumer will each block on each other and stay
+    -- in lockstep.
+    --
+    -- NOTE: choosing a MVar is a tradeoff towards simplicity. In this case a
+    -- (bounded) queue could perform better. Indeed a properly-sized buffer
+    -- can reduce the time the two threads are blocked waiting for each
+    -- other. The problem here is "properly-sized". A bounded queue like
+    -- Control.Concurrent.STM.TBQueue allows us to specify a max queue length
+    -- but block size can vary a lot (TODO quantify this) depending on the
+    -- era. We have an alternative implementation with customizable queue
+    -- size (TBMQueue) but it needs to be extracted from the
+    -- plutus-chain-index-core package. Using a simple MVar doesn't seem to
+    -- slow down marconi's indexing, likely because the difference is
+    -- negligeable compared to existing network and IO latencies.  Therefore,
+    -- let's stick with a MVar now and revisit later.
+    nextBlockVar <- newEmptyMVar
 
-  let client = chainSyncStreamingClient points nextBlockVar
-      localNodeClientProtocols =
-        C.LocalNodeClientProtocols
-          { C.localChainSyncClient = C.LocalChainSyncClient client,
-            C.localStateQueryClient = Nothing,
-            C.localTxMonitoringClient = Nothing,
-            C.localTxSubmissionClient = Nothing
-          }
-      connectInfo = CS.mkLocalNodeConnectInfo networkId socketPath
+    let client = chainSyncStreamingClient points nextBlockVar
+        localNodeClientProtocols =
+          C.LocalNodeClientProtocols
+            { C.localChainSyncClient = C.LocalChainSyncClient client
+            , C.localStateQueryClient = Nothing
+            , C.localTxMonitoringClient = Nothing
+            , C.localTxSubmissionClient = Nothing
+            }
+        connectInfo = CS.mkLocalNodeConnectInfo networkId socketPath
 
-  withAsync (C.connectToLocalNode connectInfo localNodeClientProtocols) $ \a -> do
-    -- Make sure all exceptions in the client thread are passed to the consumer thread
-    link a
-    -- Run the consumer
-    consumer $ S.repeatM $ takeMVar nextBlockVar
-  -- Let's rethrow exceptions from the client thread unwrapped, so that the
-  -- consumer does not have to know anything about async
-  `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
+    withAsync (C.connectToLocalNode connectInfo localNodeClientProtocols) $ \a -> do
+      -- Make sure all exceptions in the client thread are passed to the consumer thread
+      link a
+      -- Run the consumer
+      consumer $ S.repeatM $ takeMVar nextBlockVar
+    -- Let's rethrow exceptions from the client thread unwrapped, so that the
+    -- consumer does not have to know anything about async
+    `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
 
--- | `chainSyncStreamingClient` is the client that connects to a local node
--- and runs the chain-sync mini-protocol. This client is fire-and-forget
--- and does not require any control.
---
--- If the starting point is such that an intersection cannot be found, this
--- client will throw a NoIntersectionFound exception.
-chainSyncStreamingClient ::
-  [C.ChainPoint] ->
-  MVar (CS.ChainSyncEvent e) ->
-  C.ChainSyncClient e C.ChainPoint C.ChainTip IO ()
+{- | `chainSyncStreamingClient` is the client that connects to a local node
+ and runs the chain-sync mini-protocol. This client is fire-and-forget
+ and does not require any control.
+
+ If the starting point is such that an intersection cannot be found, this
+ client will throw a NoIntersectionFound exception.
+-}
+chainSyncStreamingClient
+  :: [C.ChainPoint]
+  -> MVar (CS.ChainSyncEvent e)
+  -> C.ChainSyncClient e C.ChainPoint C.ChainTip IO ()
 chainSyncStreamingClient points nextChainEventVar =
   C.ChainSyncClient $ pure $ SendMsgFindIntersect points onIntersect
-  where
-    onIntersect =
-      ClientStIntersect
-        { recvMsgIntersectFound = \cp ct ->
+ where
+  onIntersect =
+    ClientStIntersect
+      { recvMsgIntersectFound = \cp ct ->
+          C.ChainSyncClient $ do
+            putMVar nextChainEventVar (CS.RollBackward cp ct)
+            sendRequestNext
+      , recvMsgIntersectNotFound =
+          -- There is nothing we can do here
+          throw CS.NoIntersectionFound
+      }
+
+  sendRequestNext =
+    pure $ SendMsgRequestNext onNext (pure onNext)
+   where
+    onNext =
+      ClientStNext
+        { recvMsgRollForward = \bim ct ->
+            C.ChainSyncClient $ do
+              putMVar nextChainEventVar (CS.RollForward bim ct)
+              sendRequestNext
+        , recvMsgRollBackward = \cp ct ->
             C.ChainSyncClient $ do
               putMVar nextChainEventVar (CS.RollBackward cp ct)
-              sendRequestNext,
-          recvMsgIntersectNotFound =
-            -- There is nothing we can do here
-            throw CS.NoIntersectionFound
+              sendRequestNext
         }
 
-    sendRequestNext =
-      pure $ SendMsgRequestNext onNext (pure onNext)
-      where
-        onNext =
-          ClientStNext
-            { recvMsgRollForward = \bim ct ->
-                C.ChainSyncClient $ do
-                  putMVar nextChainEventVar (CS.RollForward bim ct)
-                  sendRequestNext,
-              recvMsgRollBackward = \cp ct ->
-                C.ChainSyncClient $ do
-                  putMVar nextChainEventVar (CS.RollBackward cp ct)
-                  sendRequestNext
-            }
-
--- | Create stream of @ChainSyncEvent (BlockInMode CardanoMode)@ from
--- a node at @socketPath@ with @networkId@ starting at @point@.
+{- | Create stream of @ChainSyncEvent (BlockInMode CardanoMode)@ from
+ a node at @socketPath@ with @networkId@ starting at @point@.
+-}
 blocks
-  :: C.LocalNodeConnectInfo C.CardanoMode -> C.ChainPoint
+  :: C.LocalNodeConnectInfo C.CardanoMode
+  -> C.ChainPoint
   -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
 blocks con chainPoint = do
   chan <- liftIO IO.newChan
@@ -148,7 +153,9 @@ blocks con chainPoint = do
   S.repeatM $ IO.readChan chan
 
 blocksPipelined
-  :: Word32 -> C.LocalNodeConnectInfo C.CardanoMode -> C.ChainPoint
+  :: Word32
+  -> C.LocalNodeConnectInfo C.CardanoMode
+  -> C.ChainPoint
   -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
 blocksPipelined pipelineSize con chainPoint = do
   chan <- liftIO IO.newChan
@@ -174,11 +181,12 @@ ledgerStatesPipelined pipelineSize config socket validationMode = do
 
 -- * Apply block
 
--- | Fold a stream of blocks into a stream of ledger states. This is
--- implemented in a similar way as `foldBlocks` in
--- cardano-api:Cardano.Api.LedgerState, the difference being that this
--- keeps waiting for more blocks when chainsync server and client are
--- fully synchronized.
+{- | Fold a stream of blocks into a stream of ledger states. This is
+ implemented in a similar way as `foldBlocks` in
+ cardano-api:Cardano.Api.LedgerState, the difference being that this
+ keeps waiting for more blocks when chainsync server and client are
+ fully synchronized.
+-}
 foldLedgerState
   :: C.Env
   -> LedgerStateHistory
@@ -196,15 +204,16 @@ foldLedgerStateEvents
   -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
   -> S.Stream (S.Of (C.BlockInMode C.CardanoMode, LedgerStateEvents)) IO r
 foldLedgerStateEvents env initialLedgerStateHistory validationMode = loop initialLedgerStateHistory
-  where
-    applyBlock_ :: C.LedgerState -> C.Block era -> IO (C.LedgerState, [C.LedgerEvent])
-    applyBlock_ ledgerState block = applyBlockThrow env ledgerState validationMode block
+ where
+  applyBlock_ :: C.LedgerState -> C.Block era -> IO (C.LedgerState, [C.LedgerEvent])
+  applyBlock_ ledgerState block = applyBlockThrow env ledgerState validationMode block
 
-    loop
-      :: LedgerStateHistory
-      -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
-      -> S.Stream (S.Of (C.BlockInMode C.CardanoMode, LedgerStateEvents)) IO r
-    loop ledgerStateHistory source = lift (S.next source) >>= \case
+  loop
+    :: LedgerStateHistory
+    -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
+    -> S.Stream (S.Of (C.BlockInMode C.CardanoMode, LedgerStateEvents)) IO r
+  loop ledgerStateHistory source =
+    lift (S.next source) >>= \case
       Left r -> pure r
       Right (chainSyncEvent, source') -> do
         ledgerStateHistory' <- case chainSyncEvent of
@@ -212,7 +221,7 @@ foldLedgerStateEvents env initialLedgerStateHistory validationMode = loop initia
             newLedgerState <- liftIO $ applyBlock_ (getLastLedgerState ledgerStateHistory) block
             let (ledgerStateHistory', committedStates) = pushLedgerState env ledgerStateHistory (CS.bimSlotNo blockInMode) newLedgerState blockInMode
             forM_ committedStates $ \(_, (ledgerState, ledgerEvents), currBlockMay) -> case currBlockMay of
-              Origin       -> return ()
+              Origin -> return ()
               At currBlock -> S.yield (currBlock, (ledgerState, ledgerEvents))
             pure ledgerStateHistory'
           CS.RollBackward cp _ct -> pure $ case cp of
@@ -227,63 +236,68 @@ getEnvAndInitialLedgerStateHistory configPath = do
   let initialLedgerStateHistory = singletonLedgerStateHistory initialLedgerState
   return (env, initialLedgerStateHistory)
 
-
 applyBlockThrow
-    :: C.Env
-    -> C.LedgerState
-    -> C.ValidationMode
-    -> C.Block era
-    -> IO (C.LedgerState, [C.LedgerEvent])
+  :: C.Env
+  -> C.LedgerState
+  -> C.ValidationMode
+  -> C.Block era
+  -> IO (C.LedgerState, [C.LedgerEvent])
 applyBlockThrow env ledgerState validationMode block = case C.applyBlock env ledgerState validationMode block of
   Left err -> IO.throw err
   Right ls -> pure ls
 
 -- * Copy-paste code
+
 --
 -- The following is pasted in from cardano-api:Cardano.Api.LedgerState.
 -- (`getLastLedgerState` and `singletonLedgerStateHistory` aren't a
 -- direct copy-paste, but they are extracted from within `foldBlocks`)
 
+{- | A history of k (security parameter) recent ledger states. The head is the
+ most recent item. Elements are:
 
--- | A history of k (security parameter) recent ledger states. The head is the
--- most recent item. Elements are:
---
--- * Slot number that a new block occurred
--- * The ledger state and events after applying the new block
--- * The new block
---
+ * Slot number that a new block occurred
+ * The ledger state and events after applying the new block
+ * The new block
+-}
 type LedgerStateHistory = History LedgerStateEvents
+
 type History a = Seq (C.SlotNo, a, WithOrigin (C.BlockInMode C.CardanoMode))
 
 type LedgerStateEvents = (C.LedgerState, [C.LedgerEvent])
 
 -- | Add a new ledger state to the history
 pushLedgerState
-  :: C.Env                -- ^ Environment used to get the security param, k.
-  -> History a          -- ^ History of k items.
-  -> C.SlotNo             -- ^ Slot number of the new item.
-  -> a                  -- ^ New item to add to the history
+  :: C.Env
+  -- ^ Environment used to get the security param, k.
+  -> History a
+  -- ^ History of k items.
+  -> C.SlotNo
+  -- ^ Slot number of the new item.
+  -> a
+  -- ^ New item to add to the history
   -> C.BlockInMode C.CardanoMode
-                        -- ^ The block that (when applied to the previous
-                        -- item) resulted in the new item.
+  -- ^ The block that (when applied to the previous
+  -- item) resulted in the new item.
   -> (History a, History a)
   -- ^ ( The new history with the new item appended
   --   , Any existing items that are now past the security parameter
   --      and hence can no longer be rolled back.
   --   )
-pushLedgerState env hist ix st block
-  = Seq.splitAt
-      (fromIntegral $ C.envSecurityParam env + 1)
-      ((ix, st, At block) Seq.:<| hist)
+pushLedgerState env hist ix st block =
+  Seq.splitAt
+    (fromIntegral $ C.envSecurityParam env + 1)
+    ((ix, st, At block) Seq.:<| hist)
 
 rollBackLedgerStateHist :: History a -> C.SlotNo -> History a
-rollBackLedgerStateHist hist maxInc = Seq.dropWhileL ((> maxInc) . (\(x,_,_) -> x)) hist
+rollBackLedgerStateHist hist maxInc = Seq.dropWhileL ((> maxInc) . (\(x, _, _) -> x)) hist
 
 getLastLedgerState :: LedgerStateHistory -> C.LedgerState
-getLastLedgerState ledgerStates' = maybe
-  (error "Impossible! Missing Ledger state")
-  (\(_,(ledgerState, _),_) -> ledgerState)
-  (Seq.lookup 0 ledgerStates')
+getLastLedgerState ledgerStates' =
+  maybe
+    (error "Impossible! Missing Ledger state")
+    (\(_, (ledgerState, _), _) -> ledgerState)
+    (Seq.lookup 0 ledgerStates')
 
 singletonLedgerStateHistory :: C.LedgerState -> LedgerStateHistory
 singletonLedgerStateHistory ledgerState = Seq.singleton (0, (ledgerState, []), Origin)

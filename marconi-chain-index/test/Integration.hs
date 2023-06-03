@@ -13,11 +13,14 @@ import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Testnet qualified as H
+import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Except (runExceptT)
 import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NE
@@ -26,32 +29,20 @@ import Hedgehog (Property, assert, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test qualified as HE
 import Hedgehog.Extras.Test.Base qualified as H
+import Helpers qualified as TN
+import Marconi.ChainIndex.Indexers qualified as M
+import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
+import Marconi.ChainIndex.Logging ()
+import Marconi.Core.Storable qualified as Storable
 import PlutusLedgerApi.Test.Examples qualified as Plutus
+import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
+import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.FilePath ((</>))
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
-
--- import Plutus.V1.Ledger.Scripts qualified as Plutus
-import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
-import Prettyprinter.Render.Text (renderStrict)
-
--- import Test.Base qualified as H
-import Helpers qualified as TN
-
--- import Testnet.Cardano qualified as TN
--- Although these are defined in this cabal component, they are
--- helpers for interacting with the testnet, thus TN
-
-import Cardano.Testnet qualified as H
-import Cardano.Testnet qualified as TN
-import Control.Monad.Trans.Except (runExceptT)
-import Marconi.ChainIndex.Indexers qualified as M
-import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
-import Marconi.ChainIndex.Logging ()
-import Marconi.Core.Storable qualified as Storable
 
 tests :: TestTree
 tests =
@@ -119,10 +110,6 @@ testIndex = H.integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H
 
   let -- Create an always succeeding validator script
       plutusScript :: C.PlutusScript C.PlutusScriptV1
-      -- plutusScript = C.PlutusScriptSerialised $ SBS.toShort . LBS.toStrict $ serialise $ Plutus.unValidatorScript validator
-      --   where
-      --     validator :: Plutus.Validator
-      --     validator = Plutus.mkValidatorScript $$(PlutusTx.compile [|| \_ _ _ -> () ||])
       plutusScript = C.PlutusScriptSerialised $ Plutus.alwaysSucceedingNAryFunction 2
 
       plutusScriptHash = C.hashScript $ C.PlutusScript C.PlutusScriptV1 plutusScript :: C.ScriptHash
