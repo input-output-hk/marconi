@@ -6,34 +6,41 @@
 -- | This module provides several type aliases and utility functions to deal with them.
 module Marconi.ChainIndex.Types
        (
+         Interval(..)
+       , interval
+       , lowerBound
+       , upperBound
+       , isInInterval
        -- * Addresses alias used to query marconi
-       TargetAddresses,
        -- * Aliases for the current Cardano era
-       CurrentEra,
-       pattern AsCurrentEra,
-       pattern CurrentEra,
-       TxOut,
+       , TargetAddresses
+       , CurrentEra
+       , pattern AsCurrentEra
+       , pattern CurrentEra
+       , TxOut
        -- * Aliases to ease concept mapping between plutus types and cardano types
-       TxOutRef,
-       txOutRef,
+       , TxOutRef
+       , txOutRef
        -- * Database file names
-       utxoDbName,
-       addressDatumDbName,
-       datumDbName,
-       scriptTxDbName,
-       epochStateDbName,
-       mintBurnDbName,
-       SecurityParam(SecurityParam),
-       IndexingDepth(MinIndexingDepth, MaxIndexingDepth),
-       TxIndexInBlock
+       , utxoDbName
+       , addressDatumDbName
+       , datumDbName
+       , scriptTxDbName
+       , epochStateDbName
+       , mintBurnDbName
+       , SecurityParam(SecurityParam)
+       , IndexingDepth(MinIndexingDepth, MaxIndexingDepth)
+       , TxIndexInBlock
        ) where
 
 import Cardano.Api qualified as C
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
+import Data.Text (pack)
 import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
+import Marconi.ChainIndex.Error (IndexerError (InvalidQueryInterval))
 
 -- | Typre represents non empty list of Bech32 Shelley compatable addresses
 type TargetAddresses = NonEmpty (C.Address C.ShelleyAddr)
@@ -86,3 +93,55 @@ epochStateDbName = "epochstate.db"
 
 mintBurnDbName :: FilePath
 mintBurnDbName = "mintburn.db"
+
+-- | Not comprehensive, only supports ChainPoint interval as outlines in <https://github.com/input-output-hk/marconi/blob/main/marconi-sidechain/doc/API.adoc#getutxosfromaddress>
+data Interval r
+  = LessThanOrEqual !r
+  | InRange !r !r
+  deriving (Eq, Show)
+
+lowerBound :: Interval r -> Maybe r
+lowerBound = \case
+    LessThanOrEqual _ -> Nothing
+    InRange x _       -> Just x
+
+upperBound :: Interval r -> Maybe r
+upperBound = \case
+    LessThanOrEqual x -> Just x
+    InRange _ x       -> Just x
+
+-- | Smart constructor for 'Interval ', return an error if the lower bound is greater than the upper bound
+interval
+  :: (Ord r, Show r)
+  => Maybe r -- ^ lower bound
+  -> r  -- ^ upper bound
+  -> Either IndexerError (Interval r)
+interval Nothing p = Right $ LessThanOrEqual p
+interval (Just p) p' =
+  let
+--  Enforce the internal invariant
+-- 'InRange'.
+    wrap
+      :: (Ord r, Show r)
+      => (r -> r -> Interval r)
+      -> r -> r -> Either IndexerError (Interval r)
+    wrap f x y
+      | x <= y = Right $ f x y
+      | otherwise = Left . InvalidQueryInterval . pack
+          $ "Invalid Interval. LowerBound, "
+          <> show x
+          <> " is not less than or equal to upperBound "
+          <> show y
+
+  in wrap InRange p p'
+
+-- | Check if a given chainpoint is in the given interval
+isInInterval :: Interval C.SlotNo -> C.ChainPoint -> Bool
+isInInterval slotNoInterval = \case
+  C.ChainPointAtGenesis -> case slotNoInterval of
+    LessThanOrEqual _ -> True
+    InRange _ _       -> False
+
+  C.ChainPoint slotNo _  -> case slotNoInterval of
+    LessThanOrEqual slotNo' -> slotNo' >= slotNo
+    InRange l h             -> l <= slotNo && h >= slotNo

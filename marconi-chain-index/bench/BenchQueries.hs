@@ -47,10 +47,10 @@ import Database.SQLite.Simple.ToRow (ToRow)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
-import Marconi.ChainIndex.Indexers.Utxo (Interval (LessThanOrEqual), QueryUtxoByAddress (QueryUtxoByAddress),
+import Marconi.ChainIndex.Indexers.Utxo (QueryUtxoByAddress (QueryUtxoByAddress),
                                          StorableQuery (QueryUtxoByAddressWrapper),
                                          StorableResult (UtxoResult, getUtxoResult), UtxoHandle, UtxoIndexer)
-import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth))
+import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth), Interval (LessThanOrEqual))
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
 import System.FilePath ((</>))

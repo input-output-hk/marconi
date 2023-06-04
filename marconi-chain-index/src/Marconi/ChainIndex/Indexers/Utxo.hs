@@ -54,7 +54,6 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (pack)
 import Data.Text qualified as Text
 import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)), ResultError (UnexpectedNull))
@@ -70,11 +69,12 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Data.Ord (Down (Down, getDown))
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (TargetAddresses, TxIndexInBlock, TxOut, pattern CurrentEra)
+import Marconi.ChainIndex.Types (Interval, TargetAddresses, TxIndexInBlock, TxOut, isInInterval, lowerBound,
+                                 pattern CurrentEra, upperBound)
 import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 
 import Database.SQLite.Simple.FromField (returnError)
-import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
+import Marconi.ChainIndex.Error (IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
                                  liftSQLError)
 import Marconi.Core.Storable (Buffered (getStoredEvents, persistToStorage), HasPoint, Queryable (queryStorage),
                               Resumable (resumeFromStorage), Rewindable (rewindStorage), StorableEvent, StorableMonad,
@@ -92,59 +92,6 @@ import Marconi.Core.Storable qualified as Storable
  - As a consequence, if the last chainpoint of the utxo indexer can, at most, be ahead of one block compared to other
  - indexers. Taking the chainpoint before ensure that we have consistent information across all the indexers.
  -}
-
--- | Not comprehensive, only supports ChainPoint interval as outlines in <https://github.com/input-output-hk/marconi/blob/main/marconi-sidechain/doc/API.adoc#getutxosfromaddress>
-data Interval r
-  = LessThanOrEqual !r
-  | InRange !r !r
-  deriving (Eq, Show)
-
-lowerBound :: Interval r -> Maybe r
-lowerBound = \case
-    LessThanOrEqual _ -> Nothing
-    InRange x _       -> Just x
-
-upperBound :: Interval r -> Maybe r
-upperBound = \case
-    LessThanOrEqual x -> Just x
-    InRange _ x       -> Just x
-
--- | Smart constructor for 'Interval ', return an error if the lower bound is greater than the upper bound
-interval
-  :: (Ord r, Show r)
-  => Maybe r -- ^ lower bound
-  -> r  -- ^ upper bound
-  -> Either IndexerError (Interval r)
-interval Nothing p = Right $ LessThanOrEqual p
-interval (Just p) p' =
-  let
---  Enforce the internal invariant
--- 'InRange'.
-    wrap
-      :: (Ord r, Show r)
-      => (r -> r -> Interval r)
-      -> r -> r -> Either IndexerError (Interval r)
-    wrap f x y
-      | x <= y = Right $ f x y
-      | otherwise = Left . InvalidQueryInterval . pack
-          $ "Invalid Interval. LowerBound, "
-          <> show x
-          <> " is not less than or equal to upperBound "
-          <> show y
-
-  in wrap InRange p p'
-
--- | Check if a given chainpoint is in the given interval
-isInInterval :: Interval C.SlotNo -> C.ChainPoint -> Bool
-isInInterval slotNoInterval = \case
-  C.ChainPointAtGenesis -> case slotNoInterval of
-    LessThanOrEqual _ -> True
-    InRange _ _       -> False
-
-  C.ChainPoint slotNo _  -> case slotNoInterval of
-    LessThanOrEqual slotNo' -> slotNo' >= slotNo
-    InRange l h             -> l <= slotNo && h >= slotNo
-
 type UtxoIndexer = Storable.State UtxoHandle
 
 data UtxoHandle = UtxoHandle

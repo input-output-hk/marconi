@@ -27,7 +27,7 @@ import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
 import Marconi.ChainIndex.Indexers.Utxo (address, datum, datumHash, txIn, urCreationBlockHash, urCreationSlotNo,
                                          urSpentSlotNo, urSpentTxId, urUtxo)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Types (TargetAddresses)
+import Marconi.ChainIndex.Types (Interval, TargetAddresses, interval)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (AddressUtxoResult (AddressUtxoResult),
                                      GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
@@ -86,21 +86,21 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo
 
         toQueryExceptions e = QueryError (unpack  addressText <> " generated error: " <> show e)
 
-        intervalWrapper :: Maybe C.SlotNo -> C.SlotNo -> Either QueryExceptions (Utxo.Interval C.SlotNo)
+        intervalWrapper :: Maybe C.SlotNo -> C.SlotNo -> Either QueryExceptions (Interval C.SlotNo)
         intervalWrapper s s' =
 
           let
             f :: IndexerError -> QueryExceptions
             f = QueryError . show
 
-          in left f (Utxo.interval s s')
+          in left f (interval s s')
 
-        slotInterval :: Either QueryExceptions (Utxo.Interval C.SlotNo)
+        slotInterval :: Either QueryExceptions (Interval C.SlotNo)
         slotInterval = intervalWrapper
              (C.SlotNo <$> lowerBoundSlotNo)
              (C.SlotNo upperBoundSlotNo)
 
-        utxoQuery :: C.AddressAny -> Utxo.Interval C.SlotNo  -> Utxo.QueryUtxoByAddress
+        utxoQuery :: C.AddressAny -> Interval C.SlotNo  -> Utxo.QueryUtxoByAddress
         utxoQuery addr = Utxo.QueryUtxoByAddress addr
 
         queryAtAddressAndSlot :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)

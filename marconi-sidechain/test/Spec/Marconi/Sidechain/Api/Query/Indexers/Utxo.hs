@@ -18,6 +18,7 @@ import Hedgehog (Property, assert, forAll, property, (===))
 import Hedgehog qualified
 import Helpers (addressAnyToShelley)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Types (Interval (LessThanOrEqual))
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxoIndexer
 import Marconi.Sidechain.Api.Routes (AddressUtxoResult, GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
                                      GetUtxosFromAddressResult (GetUtxosFromAddressResult, unAddressUtxosResult))
@@ -67,7 +68,7 @@ queryTargetAddressTest = property $ do
     . traverse (\addr ->
         fmap unAddressUtxosResult <$> AddressUtxoIndexer.findByAddress
             (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
-            (Utxo.QueryUtxoByAddress addr (Utxo.LessThanOrEqual $ C.SlotNo maxBound) ))
+            (Utxo.QueryUtxoByAddress addr (LessThanOrEqual $ C.SlotNo maxBound) ))
     . Set.toList . Set.fromList  -- remove the potential duplicate addresses
     . fmap Utxo._address
     . concatMap (Set.toList . Utxo.ueUtxos)

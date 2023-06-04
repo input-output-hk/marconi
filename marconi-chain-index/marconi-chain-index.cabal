@@ -38,6 +38,7 @@ common lang
     GeneralizedNewtypeDeriving
     ImportQualifiedPost
     InstanceSigs
+    LambdaCase
     MultiParamTypeClasses
     ScopedTypeVariables
     StandaloneDeriving
