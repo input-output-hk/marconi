@@ -75,20 +75,20 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
   case mintBurnIndexer of
     Nothing -> pure $ Left $ QueryError "Failed to read MintBurn indexer"
     Just indexer -> query indexer
- where
-  query indexer = do
-    let q = QueryBurnByAssetId policyId assetId slotNo
-    res <- runExceptT $ Storable.query indexer q
-    case res of
-      Right (MintBurnResult mintBurnRows) -> pure $ Right $ toAssetIdTxResult <$> mintBurnRows
-      _other -> pure $ Left $ QueryError "invalid query result"
+  where
+    query indexer = do
+      let q = QueryBurnByAssetId policyId assetId slotNo
+      res <- runExceptT $ Storable.query indexer q
+      case res of
+        Right (MintBurnResult mintBurnRows) -> pure $ Right $ toAssetIdTxResult <$> mintBurnRows
+        _other -> pure $ Left $ QueryError "invalid query result"
 
-  toAssetIdTxResult :: TxMintRow -> AssetIdTxResult
-  toAssetIdTxResult x =
-    AssetIdTxResult
-      (x ^. txMintRowBlockHeaderHash)
-      (x ^. txMintRowSlotNo)
-      (x ^. txMintRowTxId)
-      (Just $ x ^. txMintRowRedeemerHash)
-      (Just $ x ^. txMintRowRedeemerData)
-      (x ^. txMintRowQuantity)
+    toAssetIdTxResult :: TxMintRow -> AssetIdTxResult
+    toAssetIdTxResult x =
+      AssetIdTxResult
+        (x ^. txMintRowBlockHeaderHash)
+        (x ^. txMintRowSlotNo)
+        (x ^. txMintRowTxId)
+        (Just $ x ^. txMintRowRedeemerHash)
+        (Just $ x ^. txMintRowRedeemerData)
+        (x ^. txMintRowQuantity)

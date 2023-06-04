@@ -135,6 +135,6 @@ mkHoistedHttpRpcClient cEnv =
         . flip runClientM cEnv
     )
     (client hoistClientApi)
- where
-  hoistClientApi :: Proxy JsonRpcAPI
-  hoistClientApi = Proxy
+  where
+    hoistClientApi :: Proxy JsonRpcAPI
+    hoistClientApi = Proxy

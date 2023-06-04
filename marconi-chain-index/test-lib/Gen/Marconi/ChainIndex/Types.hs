@@ -93,12 +93,12 @@ genChainSyncEvents
 genChainSyncEvents getChainPoint f start lo hi = do
   nbOfEvents <- Gen.word64 $ Range.linear lo hi
   reverse . toList <$> evalStateT (go nbOfEvents (RollForward start C.ChainTipAtGenesis :| [])) (start :| [])
- where
-  go n xs
-    | n <= 0 = pure xs
-    | otherwise = do
-        next <- genChainSyncEvent getChainPoint f
-        go (n - 1) (cons next xs)
+  where
+    go n xs
+      | n <= 0 = pure xs
+      | otherwise = do
+          next <- genChainSyncEvent getChainPoint f
+          go (n - 1) (cons next xs)
 
 genChainSyncEvent
   :: Hedgehog.MonadGen m
@@ -119,9 +119,9 @@ genChainSyncEvent getChainPoint f = do
     RollBackward y _ ->
       modify (fromList . dropWhile ((y >) . getChainPoint) . toList)
   pure created
- where
-  genRollBackward xs = RollBackward <$> (getChainPoint <$> Gen.element (NE.init xs)) <*> pure C.ChainTipAtGenesis
-  genRollForward x = RollForward <$> f x <*> pure C.ChainTipAtGenesis
+  where
+    genRollBackward xs = RollBackward <$> (getChainPoint <$> Gen.element (NE.init xs)) <*> pure C.ChainTipAtGenesis
+    genRollForward x = RollForward <$> f x <*> pure C.ChainTipAtGenesis
 
 genBlockHeader
   :: Hedgehog.MonadGen m
@@ -257,21 +257,21 @@ genSimpleScriptData =
     , pure $ C.ScriptDataList []
     , pure $ C.ScriptDataMap []
     ]
- where
-  genInteger :: Gen Integer
-  genInteger =
-    Gen.integral
-      ( Range.linear
-          0
-          (fromIntegral (maxBound :: Word64) :: Integer)
-      )
+  where
+    genInteger :: Gen Integer
+    genInteger =
+      Gen.integral
+        ( Range.linear
+            0
+            (fromIntegral (maxBound :: Word64) :: Integer)
+        )
 
-  genByteString :: Gen ByteString
-  genByteString =
-    BS.pack
-      <$> Gen.list
-        (Range.linear 0 64)
-        (Gen.word8 Range.constantBounded)
+    genByteString :: Gen ByteString
+    genByteString =
+      BS.pack
+        <$> Gen.list
+          (Range.linear 0 64)
+          (Gen.word8 Range.constantBounded)
 
 constantReferenceScript :: C.CardanoEra era -> Gen (C.ReferenceScript era)
 constantReferenceScript era =
@@ -314,9 +314,9 @@ genSimpleTxOutDatumHashTxContext era = case era of
 -- Copied from cardano-api. Delete when this function is reexported
 genHashScriptData :: Gen (C.Hash C.ScriptData)
 genHashScriptData = C.ScriptDataHash . unsafeMakeSafeHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
- where
-  mkDummyHash :: forall h a. CRYPTO.HashAlgorithm h => Int -> CRYPTO.Hash h a
-  mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR
+  where
+    mkDummyHash :: forall h a. CRYPTO.HashAlgorithm h => Int -> CRYPTO.Hash h a
+    mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR
 
 genProtocolParametersForPlutusScripts :: Gen C.ProtocolParameters
 genProtocolParametersForPlutusScripts =
@@ -352,25 +352,25 @@ genProtocolParametersForPlutusScripts =
     <*> (Just <$> genNat)
     <*> (Just <$> genNat)
     <*> (Just <$> CGen.genLovelace)
- where
-  -- Copied from cardano-api. Delete when this function is reexported
-  genRationalInt64 :: Gen Rational
-  genRationalInt64 =
-    (\d -> ratioToRational (1 % d)) <$> genDenominator
-   where
-    genDenominator :: Gen Int64
-    genDenominator = Gen.integral (Range.linear 1 maxBound)
+  where
+    -- Copied from cardano-api. Delete when this function is reexported
+    genRationalInt64 :: Gen Rational
+    genRationalInt64 =
+      (\d -> ratioToRational (1 % d)) <$> genDenominator
+      where
+        genDenominator :: Gen Int64
+        genDenominator = Gen.integral (Range.linear 1 maxBound)
 
-    ratioToRational :: Ratio Int64 -> Rational
-    ratioToRational = toRational
+        ratioToRational :: Ratio Int64 -> Rational
+        ratioToRational = toRational
 
-  -- Copied from cardano-api. Delete when this function is reexported
-  genNat :: Gen Natural
-  genNat = Gen.integral (Range.linear 0 10)
+    -- Copied from cardano-api. Delete when this function is reexported
+    genNat :: Gen Natural
+    genNat = Gen.integral (Range.linear 0 10)
 
-  -- Copied from cardano-api. Delete when this function is reexported
-  genExecutionUnitPrices :: Gen C.ExecutionUnitPrices
-  genExecutionUnitPrices = C.ExecutionUnitPrices <$> CGen.genRational <*> CGen.genRational
+    -- Copied from cardano-api. Delete when this function is reexported
+    genExecutionUnitPrices :: Gen C.ExecutionUnitPrices
+    genExecutionUnitPrices = C.ExecutionUnitPrices <$> CGen.genRational <*> CGen.genRational
 
 -- TODO Copied from cardano-api. Delete once reexported
 genAssetId :: Gen C.AssetId
@@ -400,6 +400,6 @@ genEpochNo = C.EpochNo <$> Gen.word64 (Range.linear 0 10)
 
 genPoolId :: Gen (C.Hash C.StakePoolKey)
 genPoolId = C.StakePoolKeyHash . KeyHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
- where
-  mkDummyHash :: forall h a. CRYPTO.HashAlgorithm h => Int -> CRYPTO.Hash h a
-  mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR
+  where
+    mkDummyHash :: forall h a. CRYPTO.HashAlgorithm h => Int -> CRYPTO.Hash h a
+    mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR

@@ -199,10 +199,10 @@ syntheticPoint (Synthetic p) = p
 
 foldEvents :: forall f h. Foldable f => f (SyntheticEvent (StorableEvent h) (StorablePoint h)) -> [StorableEvent h]
 foldEvents = reverse . foldl' unwrap []
- where
-  unwrap :: [StorableEvent h] -> SyntheticEvent (StorableEvent h) (StorablePoint h) -> [StorableEvent h]
-  unwrap acc (Synthetic _) = acc
-  unwrap acc (Event e) = e : acc
+  where
+    unwrap :: [StorableEvent h] -> SyntheticEvent (StorableEvent h) (StorablePoint h) -> [StorableEvent h]
+    unwrap acc (Synthetic _) = acc
+    unwrap acc (Event e) = e : acc
 
 data Storage h = Storage
   { _events :: !(VM.MVector (PrimState (StorableMonad h)) (SyntheticEvent (StorableEvent h) (StorablePoint h)))

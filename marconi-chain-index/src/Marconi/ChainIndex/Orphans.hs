@@ -98,8 +98,8 @@ instance SQL.FromField C.AddressAny where
         $ C.deserialiseFromRawBytes
           C.AsAddressAny
           b
-   where
-    cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
+    where
+      cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
 
 instance SQL.ToField C.AddressAny where
   toField = SQL.SQLBlob . C.serialiseToRawBytes
@@ -284,35 +284,35 @@ instance SQL.FromField C.PolicyId where
 -- | Helper to deserialize via SerialiseAsRawBytes instance
 fromFieldViaRawBytes :: (C.SerialiseAsRawBytes a) => C.AsType a -> SQL.Field -> SQL.Ok a
 fromFieldViaRawBytes as f = either (const err) pure . C.deserialiseFromRawBytes as =<< SQL.fromField f
- where
-  err = SQL.returnError SQL.ConversionFailed f "can't deserialise via SerialiseAsRawBytes"
+  where
+    err = SQL.returnError SQL.ConversionFailed f "can't deserialise via SerialiseAsRawBytes"
 
 encodeLedgerState :: O.LedgerState (O.CardanoBlock O.StandardCrypto) -> CBOR.Encoding
 encodeLedgerState (O.HardForkLedgerState st) =
   O.encodeTelescope
     (byron :* shelley :* allegra :* mary :* alonzo :* babbage :* conway :* Nil)
     st
- where
-  byron = fn (K . O.encodeByronLedgerState)
-  shelley = fn (K . O.encodeShelleyLedgerState)
-  allegra = fn (K . O.encodeShelleyLedgerState)
-  mary = fn (K . O.encodeShelleyLedgerState)
-  alonzo = fn (K . O.encodeShelleyLedgerState)
-  babbage = fn (K . O.encodeShelleyLedgerState)
-  conway = fn (K . O.encodeShelleyLedgerState)
+  where
+    byron = fn (K . O.encodeByronLedgerState)
+    shelley = fn (K . O.encodeShelleyLedgerState)
+    allegra = fn (K . O.encodeShelleyLedgerState)
+    mary = fn (K . O.encodeShelleyLedgerState)
+    alonzo = fn (K . O.encodeShelleyLedgerState)
+    babbage = fn (K . O.encodeShelleyLedgerState)
+    conway = fn (K . O.encodeShelleyLedgerState)
 
 decodeLedgerState :: forall s. CBOR.Decoder s (O.LedgerState (O.CardanoBlock O.StandardCrypto))
 decodeLedgerState =
   O.HardForkLedgerState
     <$> O.decodeTelescope (byron :* shelley :* allegra :* mary :* alonzo :* babbage :* conway :* Nil)
- where
-  byron = Comp O.decodeByronLedgerState
-  shelley = Comp O.decodeShelleyLedgerState
-  allegra = Comp O.decodeShelleyLedgerState
-  mary = Comp O.decodeShelleyLedgerState
-  alonzo = Comp O.decodeShelleyLedgerState
-  babbage = Comp O.decodeShelleyLedgerState
-  conway = Comp O.decodeShelleyLedgerState
+  where
+    byron = Comp O.decodeByronLedgerState
+    shelley = Comp O.decodeShelleyLedgerState
+    allegra = Comp O.decodeShelleyLedgerState
+    mary = Comp O.decodeShelleyLedgerState
+    alonzo = Comp O.decodeShelleyLedgerState
+    babbage = Comp O.decodeShelleyLedgerState
+    conway = Comp O.decodeShelleyLedgerState
 
 -- * SecurityParam
 

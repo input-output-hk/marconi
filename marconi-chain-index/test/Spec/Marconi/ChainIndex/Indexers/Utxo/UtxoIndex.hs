@@ -564,18 +564,18 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
     if not (null $ Utxo.ueUtxos expectedUtxoEvent) && null (Utxo.ueUtxos filteredExpectedUtxoEvent)
       then pure ()
       else filteredExpectedUtxoEvent === actualUtxoEvents
- where
-  mkTargetAddressFromTxs
-    :: [C.Tx C.BabbageEra]
-    -> Maybe TargetAddresses
-  mkTargetAddressFromTxs txs =
-    foldMap (\(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts) txs
+  where
+    mkTargetAddressFromTxs
+      :: [C.Tx C.BabbageEra]
+      -> Maybe TargetAddresses
+    mkTargetAddressFromTxs txs =
+      foldMap (\(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts) txs
 
-  mkTargetAddressFromTxOuts
-    :: [C.TxOut C.CtxTx C.BabbageEra]
-    -> Maybe TargetAddresses
-  mkTargetAddressFromTxOuts txOuts =
-    nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
+    mkTargetAddressFromTxOuts
+      :: [C.TxOut C.CtxTx C.BabbageEra]
+      -> Maybe TargetAddresses
+    mkTargetAddressFromTxOuts txOuts =
+      nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
 
 {- |
   The property verifies that the 'Storable.resumeFromStorage' call returns at least a point which

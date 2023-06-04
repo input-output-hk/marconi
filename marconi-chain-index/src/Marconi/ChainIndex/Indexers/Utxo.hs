@@ -696,30 +696,30 @@ rowsToEvents
 rowsToEvents _ [] = pure []
 rowsToEvents fetchTxIn rows =
   sortOn ueChainPoint <$> traverse reduce eventsMap
- where
-  mkEvent :: UtxoRow -> StorableEvent UtxoHandle
-  mkEvent row =
-    UtxoEvent
-      (Set.singleton $ row ^. urUtxo)
-      Map.empty
-      (getChainPoint $ row ^. urCreationPoint)
+  where
+    mkEvent :: UtxoRow -> StorableEvent UtxoHandle
+    mkEvent row =
+      UtxoEvent
+        (Set.singleton $ row ^. urUtxo)
+        Map.empty
+        (getChainPoint $ row ^. urCreationPoint)
 
-  newEventWithSpentOnly :: Map C.TxIn C.TxId -> C.ChainPoint -> StorableEvent UtxoHandle
-  newEventWithSpentOnly = UtxoEvent Set.empty
+    newEventWithSpentOnly :: Map C.TxIn C.TxId -> C.ChainPoint -> StorableEvent UtxoHandle
+    newEventWithSpentOnly = UtxoEvent Set.empty
 
-  reduce :: (C.ChainPoint, [StorableEvent UtxoHandle]) -> IO (StorableEvent UtxoHandle)
-  reduce (C.ChainPointAtGenesis, _) = pure $ UtxoEvent Set.empty Map.empty C.ChainPointAtGenesis
-  reduce (cp@(C.ChainPoint sn _), es) = do
-    tins <- fetchTxIn sn
-    let newE = newEventWithSpentOnly tins cp
-    pure . fold $ newE : es
+    reduce :: (C.ChainPoint, [StorableEvent UtxoHandle]) -> IO (StorableEvent UtxoHandle)
+    reduce (C.ChainPointAtGenesis, _) = pure $ UtxoEvent Set.empty Map.empty C.ChainPointAtGenesis
+    reduce (cp@(C.ChainPoint sn _), es) = do
+      tins <- fetchTxIn sn
+      let newE = newEventWithSpentOnly tins cp
+      pure . fold $ newE : es
 
-  eventsMap :: [(C.ChainPoint, [StorableEvent UtxoHandle])]
-  eventsMap =
-    fmap (\x -> (ueChainPoint . head $ x, x))
-      . groupBy (\el er -> ueChainPoint el == ueChainPoint er)
-      . fmap mkEvent
-      $ rows
+    eventsMap :: [(C.ChainPoint, [StorableEvent UtxoHandle])]
+    eventsMap =
+      fmap (\x -> (ueChainPoint . head $ x, x))
+        . groupBy (\el er -> ueChainPoint el == ueChainPoint er)
+        . fmap mkEvent
+        $ rows
 
 {- | convert utxoEvent to utxoRow
  Note: No `unspent` computation is performed
@@ -1030,9 +1030,9 @@ getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]
 getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txScriptValidity} = case txScriptValidityToScriptValidity txScriptValidity of
   C.ScriptValid -> txOuts -- When transaction is valid, only transaction fee is collected
   C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
- where
-  collateral C.TxReturnCollateralNone = []
-  collateral (C.TxReturnCollateral _ txout) = [txout]
+  where
+    collateral C.TxReturnCollateralNone = []
+    collateral (C.TxReturnCollateral _ txout) = [txout]
 
 getUtxosFromTxBody
   :: (C.IsCardanoEra era)
@@ -1042,19 +1042,19 @@ getUtxosFromTxBody
   -> Map C.TxIn Utxo
 getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) txIndexInBlock' =
   fromRight Map.empty (getUtxos $ getTxOutFromTxBodyContent txBodyContent)
- where
-  getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
-  getUtxos =
-    fmap (mconcat . imap txoutToUtxo)
-      . traverse (C.eraCast CurrentEra)
+  where
+    getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
+    getUtxos =
+      fmap (mconcat . imap txoutToUtxo)
+        . traverse (C.eraCast CurrentEra)
 
-  txid = C.getTxId txBody
-  txoutToUtxo :: Int -> TxOut -> Map C.TxIn Utxo
-  txoutToUtxo ix txout =
-    let txin = C.TxIn txid (C.TxIx (fromIntegral ix))
-     in case getUtxoFromTxOut maybeTargetAddresses txin txout txIndexInBlock' of
-          Nothing -> Map.empty
-          Just utxo -> Map.singleton txin utxo
+    txid = C.getTxId txBody
+    txoutToUtxo :: Int -> TxOut -> Map C.TxIn Utxo
+    txoutToUtxo ix txout =
+      let txin = C.TxIn txid (C.TxIx (fromIntegral ix))
+       in case getUtxoFromTxOut maybeTargetAddresses txin txout txIndexInBlock' of
+            Nothing -> Map.empty
+            Just utxo -> Map.singleton txin utxo
 
 getUtxoFromTxOut
   :: Maybe TargetAddresses
@@ -1079,10 +1079,10 @@ getUtxoFromTxOut maybeTargetAddresses _txIn (C.TxOut addr val dtum refScript) _t
       , _inlineScriptHash
       , _txIndexInBlock
       }
- where
-  _address = toAddr addr
-  (_datum, _datumHash) = getScriptDataAndHash dtum
-  (_inlineScript, _inlineScriptHash) = getRefScriptAndHash refScript
+  where
+    _address = toAddr addr
+    (_datum, _datumHash) = getScriptDataAndHash dtum
+    (_inlineScript, _inlineScriptHash) = getRefScriptAndHash refScript
 
 -- | get the inlineScript and inlineScriptHash
 getRefScriptAndHash

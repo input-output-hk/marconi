@@ -68,8 +68,8 @@ getEpochNo ledgerState' = case ledgerState' of
   C.LedgerStateAlonzo st -> fromState st
   C.LedgerStateBabbage st -> fromState st
   C.LedgerStateConway st -> fromState st
- where
-  fromState = Just . SL.nesEL . O.shelleyLedgerState
+  where
+    fromState = Just . SL.nesEL . O.shelleyLedgerState
 
 fromChainTip :: C.ChainTip -> WithOrigin C.BlockNo
 fromChainTip ct = case ct of
@@ -90,12 +90,12 @@ mkLocalNodeConnectInfo networkId socketPath =
     , C.localNodeNetworkId = networkId
     , C.localNodeSocketPath = socketPath
     }
- where
-  -- This a parameter needed only for the Byron era. Since the Byron
-  -- era is over and the parameter has never changed it is ok to
-  -- hardcode this. See comment on `Cardano.Api.ConsensusModeParams` in
-  -- cardano-node.
-  epochSlots = C.EpochSlots 21600 -- TODO: is this configurable? see below
+  where
+    -- This a parameter needed only for the Byron era. Since the Byron
+    -- era is over and the parameter has never changed it is ok to
+    -- hardcode this. See comment on `Cardano.Api.ConsensusModeParams` in
+    -- cardano-node.
+    epochSlots = C.EpochSlots 21600 -- TODO: is this configurable? see below
 
 -- | Derive LocalNodeConnectInfo from Env.
 mkConnectInfo :: C.Env -> FilePath -> C.LocalNodeConnectInfo C.CardanoMode
@@ -105,26 +105,26 @@ mkConnectInfo env socketPath =
     , C.localNodeNetworkId = networkId'
     , C.localNodeSocketPath = socketPath
     }
- where
-  -- Derive the NetworkId as described in network-magic.md from the
-  -- cardano-ledger-specs repo.
-  byronConfig =
-    (\(Consensus.WrapPartialLedgerConfig (Consensus.ByronPartialLedgerConfig bc _) :* _) -> bc)
-      . HFC.getPerEraLedgerConfig
-      . HFC.hardForkLedgerConfigPerEra
-      $ C.envLedgerConfig env
+  where
+    -- Derive the NetworkId as described in network-magic.md from the
+    -- cardano-ledger-specs repo.
+    byronConfig =
+      (\(Consensus.WrapPartialLedgerConfig (Consensus.ByronPartialLedgerConfig bc _) :* _) -> bc)
+        . HFC.getPerEraLedgerConfig
+        . HFC.hardForkLedgerConfigPerEra
+        $ C.envLedgerConfig env
 
-  networkMagic =
-    C.NetworkMagic $
-      unProtocolMagicId $
-        Cardano.Chain.Genesis.gdProtocolMagicId $
-          Cardano.Chain.Genesis.configGenesisData byronConfig
+    networkMagic =
+      C.NetworkMagic $
+        unProtocolMagicId $
+          Cardano.Chain.Genesis.gdProtocolMagicId $
+            Cardano.Chain.Genesis.configGenesisData byronConfig
 
-  networkId' = case Cardano.Chain.Genesis.configReqNetMagic byronConfig of
-    RequiresNoMagic -> C.Mainnet
-    RequiresMagic -> C.Testnet networkMagic
+    networkId' = case Cardano.Chain.Genesis.configReqNetMagic byronConfig of
+      RequiresNoMagic -> C.Mainnet
+      RequiresMagic -> C.Testnet networkMagic
 
-  cardanoModeParams = C.CardanoModeParams . C.EpochSlots $ 10 * C.envSecurityParam env
+    cardanoModeParams = C.CardanoModeParams . C.EpochSlots $ 10 * C.envSecurityParam env
 
 {- | Ignore rollback events in the chainsync event stream. Useful for
  monitor which blocks has been seen by the node, regardless whether

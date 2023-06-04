@@ -190,34 +190,34 @@ waitUntilSynced
 waitUntilSynced databaseDir nodeSocketPath = do
   c <- SQL.open $ databaseDir </> "utxo.db"
   go c
- where
-  go c = do
-    threadDelay 10_000_000
-    C.ChainTip (C.SlotNo currentNodeSlot) _ _ <-
-      C.getLocalChainTip $
-        C.LocalNodeConnectInfo
-          { C.localConsensusModeParams = C.CardanoModeParams (EpochSlots 21600)
-          , C.localNodeNetworkId = C.Testnet $ C.NetworkMagic 1 -- TODO This should be provded as a CLI param
-          , C.localNodeSocketPath = nodeSocketPath
-          }
-    -- TODO This should change. We should not query the slotNo with SQLite directly, because:
-    --   * we're getting "SQLite3 returned ErrorBusy"
-    --   * we can't currently query the data that is stored in memory
-    -- Instead, we should add a new query on the UTXO indexer which returns the current query.
-    sns <-
-      SQL.query
-        c
-        [r|SELECT slotNo
+  where
+    go c = do
+      threadDelay 10_000_000
+      C.ChainTip (C.SlotNo currentNodeSlot) _ _ <-
+        C.getLocalChainTip $
+          C.LocalNodeConnectInfo
+            { C.localConsensusModeParams = C.CardanoModeParams (EpochSlots 21600)
+            , C.localNodeNetworkId = C.Testnet $ C.NetworkMagic 1 -- TODO This should be provded as a CLI param
+            , C.localNodeSocketPath = nodeSocketPath
+            }
+      -- TODO This should change. We should not query the slotNo with SQLite directly, because:
+      --   * we're getting "SQLite3 returned ErrorBusy"
+      --   * we can't currently query the data that is stored in memory
+      -- Instead, we should add a new query on the UTXO indexer which returns the current query.
+      sns <-
+        SQL.query
+          c
+          [r|SELECT slotNo
                    FROM unspent_transactions
                    ORDER BY slotNo DESC
                    LIMIT 1|]
-        ()
-      :: IO [[Word64]]
-    let maybeCurrentSyncedSlot = listToMaybe =<< listToMaybe sns
-    case maybeCurrentSyncedSlot of
-      Nothing -> go c
-      Just currentSyncedSlot | currentNodeSlot - currentSyncedSlot < 100_000 -> pure ()
-      Just _ -> go c
+          ()
+        :: IO [[Word64]]
+      let maybeCurrentSyncedSlot = listToMaybe =<< listToMaybe sns
+      case maybeCurrentSyncedSlot of
+        Nothing -> go c
+        Just currentSyncedSlot | currentNodeSlot - currentSyncedSlot < 100_000 -> pure ()
+        Just _ -> go c
 
 encodeDecodeRoundTrip
   :: forall a

@@ -49,26 +49,26 @@ genMockchain' genTxBody = do
           [1 .. maxSlots]
   txIns <- Set.singleton <$> CGen.genTxIn
   snd <$> foldM f (txIns, []) blockHeaders
- where
-  f
-    :: (Set C.TxIn, Mockchain C.BabbageEra)
-    -> C.BlockHeader
-    -> Gen (Set C.TxIn, Mockchain C.BabbageEra)
-  f (utxoSet, mockchain) bh = do
-    utxosAsTxInput <- nonEmptySubset utxoSet
-    txBodyContent <- genTxBody $ Set.toList utxosAsTxInput
-    txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
-    let newTx = C.makeSignedTransaction [] txBody
-    let txId = C.getTxId txBody
-    let newUtxoRefs =
-          Set.fromList $
-            fmap (\(txIx, _) -> C.TxIn txId (C.TxIx txIx)) $
-              zip [0 ..] $
-                C.txOuts txBodyContent
-    pure
-      ( Set.union newUtxoRefs $ Set.difference utxoSet utxosAsTxInput
-      , mockchain ++ [MockBlock bh [newTx]]
-      )
+  where
+    f
+      :: (Set C.TxIn, Mockchain C.BabbageEra)
+      -> C.BlockHeader
+      -> Gen (Set C.TxIn, Mockchain C.BabbageEra)
+    f (utxoSet, mockchain) bh = do
+      utxosAsTxInput <- nonEmptySubset utxoSet
+      txBodyContent <- genTxBody $ Set.toList utxosAsTxInput
+      txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
+      let newTx = C.makeSignedTransaction [] txBody
+      let txId = C.getTxId txBody
+      let newUtxoRefs =
+            Set.fromList $
+              fmap (\(txIx, _) -> C.TxIn txId (C.TxIx txIx)) $
+                zip [0 ..] $
+                  C.txOuts txBodyContent
+      pure
+        ( Set.union newUtxoRefs $ Set.difference utxoSet utxosAsTxInput
+        , mockchain ++ [MockBlock bh [newTx]]
+        )
 
 genTxBodyContentFromTxIns
   :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)

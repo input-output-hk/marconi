@@ -69,10 +69,10 @@ instance
   where
   type ServerT (RawJsonRpc api) m = RpcHandler api m
   route _ cx = route endpoint cx . fmap (serveJsonRpc pxa pxh)
-   where
-    endpoint = Proxy @RawJsonRpcEndpoint
-    pxa = Proxy @api
-    pxh = Proxy @Handler
+    where
+      endpoint = Proxy @RawJsonRpcEndpoint
+      pxa = Proxy @api
+      pxh = Proxy @Handler
 
   hoistServerWithContext _ _ f x = hoistRpcRouter (Proxy @api) f x
 
@@ -92,8 +92,8 @@ generalizeResponse
   => Either (JsonRpcErr e) r
   -> Either (JsonRpcErr Value) Value
 generalizeResponse = bimap repack toJSON
- where
-  repack e = e{errorData = toJSON <$> errorData e}
+  where
+    repack e = e{errorData = toJSON <$> errorData e}
 
 onDecodeFail :: String -> JsonRpcErr e
 onDecodeFail msg = JsonRpcErr invalidParamsCode msg Nothing
@@ -104,33 +104,33 @@ instance
   where
   type RpcHandler (JsonRpc method p e r) m = p -> m (Either (JsonRpcErr e) r)
   jsonRpcRouter _ _ h = Map.fromList [(methodName, h')]
-   where
-    methodName = symbolVal $ Proxy @method
-    onDecode = fmap generalizeResponse . h
-    h' =
-      fmap SomeContent
-        . either (return . Left . onDecodeFail) onDecode
-        . parseEither parseJSON
+    where
+      methodName = symbolVal $ Proxy @method
+      onDecode = fmap generalizeResponse . h
+      h' =
+        fmap SomeContent
+          . either (return . Left . onDecodeFail) onDecode
+          . parseEither parseJSON
 
   hoistRpcRouter _ f x = f . x
 
 instance (KnownSymbol method, FromJSON p) => RouteJsonRpc (JsonRpcNotification method p) where
   type RpcHandler (JsonRpcNotification method p) m = p -> m NoContent
   jsonRpcRouter _ _ h = Map.fromList [(methodName, h')]
-   where
-    methodName = symbolVal $ Proxy @method
-    onDecode x = EmptyContent <$ h x
-    h' =
-      either (return . SomeContent . Left . onDecodeFail) onDecode
-        . parseEither parseJSON
+    where
+      methodName = symbolVal $ Proxy @method
+      onDecode x = EmptyContent <$ h x
+      h' =
+        either (return . SomeContent . Left . onDecodeFail) onDecode
+          . parseEither parseJSON
   hoistRpcRouter _ f x = f . x
 
 instance (RouteJsonRpc a, RouteJsonRpc b) => RouteJsonRpc (a :<|> b) where
   type RpcHandler (a :<|> b) m = RpcHandler a m :<|> RpcHandler b m
   jsonRpcRouter _ pxm (ha :<|> hb) = jsonRpcRouter pxa pxm ha <> jsonRpcRouter pxb pxm hb
-   where
-    pxa = Proxy @a
-    pxb = Proxy @b
+    where
+      pxa = Proxy @a
+      pxb = Proxy @b
   hoistRpcRouter _ f (x :<|> y) = hoistRpcRouter (Proxy @a) f x :<|> hoistRpcRouter (Proxy @b) f y
 
 -- | Collapse a to a single handler to handle RawJsonRpc
@@ -150,7 +150,7 @@ serveJsonRpc px pxm hs (Request m v ix')
         SomeContent (Left e) -> return . SomeContent $ Errors ix' e
         EmptyContent -> return EmptyContent
   | otherwise = return . SomeContent $ Errors ix' missingMethod
- where
-  missingMethod = JsonRpcErr methodNotFoundCode ("Unknown method: " <> m) Nothing
-  hmap = jsonRpcRouter px pxm hs
-  invalidRequest = JsonRpcErr invalidRequestCode "Missing id" Nothing
+  where
+    missingMethod = JsonRpcErr methodNotFoundCode ("Unknown method: " <> m) Nothing
+    hmap = jsonRpcRouter px pxm hs
+    invalidRequest = JsonRpcErr invalidRequestCode "Missing id" Nothing

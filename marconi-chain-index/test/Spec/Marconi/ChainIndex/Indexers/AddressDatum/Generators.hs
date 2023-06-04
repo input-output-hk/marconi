@@ -52,10 +52,10 @@ genTxBodyContentWithPlutusScripts = do
       , C.txMintValue
       , C.txScriptValidity
       }
- where
-  -- Copied from cardano-api. Delete when this function is reexported
-  genTxFee :: C.CardanoEra era -> Gen (C.TxFee era)
-  genTxFee era =
-    case C.txFeesExplicitInEra era of
-      Left supported -> pure (C.TxFeeImplicit supported)
-      Right supported -> C.TxFeeExplicit supported <$> CGen.genLovelace
+  where
+    -- Copied from cardano-api. Delete when this function is reexported
+    genTxFee :: C.CardanoEra era -> Gen (C.TxFee era)
+    genTxFee era =
+      case C.txFeesExplicitInEra era of
+        Left supported -> pure (C.TxFeeImplicit supported)
+        Right supported -> C.TxFeeExplicit supported <$> CGen.genLovelace

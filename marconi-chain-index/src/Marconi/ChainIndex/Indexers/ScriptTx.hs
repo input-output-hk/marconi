@@ -133,8 +133,8 @@ instance SQL.FromField (StorableQuery ScriptTxHandle) where
   fromField f =
     SQL.fromField f
       >>= \b -> either (const cantDeserialise) (return . ScriptTxAddress) $ Shelley.deserialiseFromRawBytes Shelley.AsScriptHash b
-   where
-    cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
+    where
+      cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
 
 instance SQL.ToRow ScriptTxRow where
   toRow o =
@@ -158,8 +158,8 @@ toUpdate
   -> ChainPoint
   -> StorableEvent ScriptTxHandle
 toUpdate txs = ScriptTxEvent txScripts'
- where
-  txScripts' = map (\tx -> (TxCbor $ C.serialiseToCBOR tx, getTxScripts tx)) txs
+  where
+    txScripts' = map (\tx -> (TxCbor $ C.serialiseToCBOR tx, getTxScripts tx)) txs
 
 getTxBodyScripts :: forall era. C.TxBody era -> [StorableQuery ScriptTxHandle]
 getTxBodyScripts body =
@@ -196,19 +196,19 @@ instance Buffered ScriptTxHandle where
         "INSERT INTO script_transactions (scriptAddress, txCbor, slotNo, blockHash) VALUES (?, ?, ?, ?)"
         rows
       pure h
-   where
-    flatten :: StorableEvent ScriptTxHandle -> [ScriptTxRow]
-    flatten (ScriptTxEvent txs (ChainPoint sn hsh)) = do
-      (tx, scriptAddrs) <- txs
-      addr <- scriptAddrs
-      pure $
-        ScriptTxRow
-          { scriptAddress = addr
-          , txCbor = tx
-          , txSlot = sn
-          , blockHash = hsh
-          }
-    flatten _ = error "There should be no scripts in the genesis block."
+    where
+      flatten :: StorableEvent ScriptTxHandle -> [ScriptTxRow]
+      flatten (ScriptTxEvent txs (ChainPoint sn hsh)) = do
+        (tx, scriptAddrs) <- txs
+        addr <- scriptAddrs
+        pure $
+          ScriptTxRow
+            { scriptAddress = addr
+            , txCbor = tx
+            , txSlot = sn
+            , blockHash = hsh
+            }
+      flatten _ = error "There should be no scripts in the genesis block."
 
   {- We want to potentially store data in two formats. The first one is similar (if
      not identical) to the format of data stored in memory; it should contain information
@@ -251,19 +251,19 @@ asEvents [] = []
 asEvents rs@(ScriptTxRow _ _ sn hsh : _) =
   let (xs, ys) = span (\(ScriptTxRow _ _ sn' hsh') -> sn == sn' && hsh == hsh') rs
    in mkEvent xs : asEvents ys
- where
-  mkEvent :: [ScriptTxRow] -> StorableEvent ScriptTxHandle
-  mkEvent rs'@(ScriptTxRow _ _ sn' hsh' : _) =
-    ScriptTxEvent
-      { chainPoint = ChainPoint sn' hsh'
-      , txScripts = agScripts rs'
-      }
-  mkEvent _ = error "We should always be called with a non-empty list"
-  agScripts :: [ScriptTxRow] -> [(TxCbor, [StorableQuery ScriptTxHandle])]
-  agScripts [] = []
-  agScripts rs'@(ScriptTxRow _ tx _ _ : _) =
-    let (xs, ys) = span (\(ScriptTxRow _ tx' _ _) -> tx == tx') rs'
-     in (tx, map scriptAddress xs) : agScripts ys
+  where
+    mkEvent :: [ScriptTxRow] -> StorableEvent ScriptTxHandle
+    mkEvent rs'@(ScriptTxRow _ _ sn' hsh' : _) =
+      ScriptTxEvent
+        { chainPoint = ChainPoint sn' hsh'
+        , txScripts = agScripts rs'
+        }
+    mkEvent _ = error "We should always be called with a non-empty list"
+    agScripts :: [ScriptTxRow] -> [(TxCbor, [StorableQuery ScriptTxHandle])]
+    agScripts [] = []
+    agScripts rs'@(ScriptTxRow _ tx _ _ : _) =
+      let (xs, ys) = span (\(ScriptTxRow _ tx' _ _) -> tx == tx') rs'
+       in (tx, map scriptAddress xs) : agScripts ys
 
 instance Queryable ScriptTxHandle where
   queryStorage
@@ -283,11 +283,11 @@ instance Queryable ScriptTxHandle where
       -- function assumes events are ordered from oldest (the head) to most recent.
       let updates = asEvents persisted ++ toList es
       pure . ScriptTxResult $ filterByScriptAddress q updates
-   where
-    filterByScriptAddress :: StorableQuery ScriptTxHandle -> [StorableEvent ScriptTxHandle] -> [TxCbor]
-    filterByScriptAddress addr updates = do
-      ScriptTxEvent update _slotNo <- updates
-      map fst $ filter (\(_, addrs) -> addr `elem` addrs) update
+    where
+      filterByScriptAddress :: StorableQuery ScriptTxHandle -> [StorableEvent ScriptTxHandle] -> [TxCbor]
+      filterByScriptAddress addr updates = do
+        ScriptTxEvent update _slotNo <- updates
+        map fst $ filter (\(_, addrs) -> addr `elem` addrs) update
 
 instance Rewindable ScriptTxHandle where
   rewindStorage

@@ -113,32 +113,32 @@ chainSyncStreamingClient
   -> C.ChainSyncClient e C.ChainPoint C.ChainTip IO ()
 chainSyncStreamingClient points nextChainEventVar =
   C.ChainSyncClient $ pure $ SendMsgFindIntersect points onIntersect
- where
-  onIntersect =
-    ClientStIntersect
-      { recvMsgIntersectFound = \cp ct ->
-          C.ChainSyncClient $ do
-            putMVar nextChainEventVar (CS.RollBackward cp ct)
-            sendRequestNext
-      , recvMsgIntersectNotFound =
-          -- There is nothing we can do here
-          throw CS.NoIntersectionFound
-      }
-
-  sendRequestNext =
-    pure $ SendMsgRequestNext onNext (pure onNext)
-   where
-    onNext =
-      ClientStNext
-        { recvMsgRollForward = \bim ct ->
-            C.ChainSyncClient $ do
-              putMVar nextChainEventVar (CS.RollForward bim ct)
-              sendRequestNext
-        , recvMsgRollBackward = \cp ct ->
+  where
+    onIntersect =
+      ClientStIntersect
+        { recvMsgIntersectFound = \cp ct ->
             C.ChainSyncClient $ do
               putMVar nextChainEventVar (CS.RollBackward cp ct)
               sendRequestNext
+        , recvMsgIntersectNotFound =
+            -- There is nothing we can do here
+            throw CS.NoIntersectionFound
         }
+
+    sendRequestNext =
+      pure $ SendMsgRequestNext onNext (pure onNext)
+      where
+        onNext =
+          ClientStNext
+            { recvMsgRollForward = \bim ct ->
+                C.ChainSyncClient $ do
+                  putMVar nextChainEventVar (CS.RollForward bim ct)
+                  sendRequestNext
+            , recvMsgRollBackward = \cp ct ->
+                C.ChainSyncClient $ do
+                  putMVar nextChainEventVar (CS.RollBackward cp ct)
+                  sendRequestNext
+            }
 
 {- | Create stream of @ChainSyncEvent (BlockInMode CardanoMode)@ from
  a node at @socketPath@ with @networkId@ starting at @point@.
@@ -204,31 +204,31 @@ foldLedgerStateEvents
   -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
   -> S.Stream (S.Of (C.BlockInMode C.CardanoMode, LedgerStateEvents)) IO r
 foldLedgerStateEvents env initialLedgerStateHistory validationMode = loop initialLedgerStateHistory
- where
-  applyBlock_ :: C.LedgerState -> C.Block era -> IO (C.LedgerState, [C.LedgerEvent])
-  applyBlock_ ledgerState block = applyBlockThrow env ledgerState validationMode block
+  where
+    applyBlock_ :: C.LedgerState -> C.Block era -> IO (C.LedgerState, [C.LedgerEvent])
+    applyBlock_ ledgerState block = applyBlockThrow env ledgerState validationMode block
 
-  loop
-    :: LedgerStateHistory
-    -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
-    -> S.Stream (S.Of (C.BlockInMode C.CardanoMode, LedgerStateEvents)) IO r
-  loop ledgerStateHistory source =
-    lift (S.next source) >>= \case
-      Left r -> pure r
-      Right (chainSyncEvent, source') -> do
-        ledgerStateHistory' <- case chainSyncEvent of
-          CS.RollForward blockInMode@(C.BlockInMode block _) _ct -> do
-            newLedgerState <- liftIO $ applyBlock_ (getLastLedgerState ledgerStateHistory) block
-            let (ledgerStateHistory', committedStates) = pushLedgerState env ledgerStateHistory (CS.bimSlotNo blockInMode) newLedgerState blockInMode
-            forM_ committedStates $ \(_, (ledgerState, ledgerEvents), currBlockMay) -> case currBlockMay of
-              Origin -> return ()
-              At currBlock -> S.yield (currBlock, (ledgerState, ledgerEvents))
-            pure ledgerStateHistory'
-          CS.RollBackward cp _ct -> pure $ case cp of
-            C.ChainPointAtGenesis -> initialLedgerStateHistory
-            C.ChainPoint slotNo _ -> rollBackLedgerStateHist ledgerStateHistory slotNo
+    loop
+      :: LedgerStateHistory
+      -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
+      -> S.Stream (S.Of (C.BlockInMode C.CardanoMode, LedgerStateEvents)) IO r
+    loop ledgerStateHistory source =
+      lift (S.next source) >>= \case
+        Left r -> pure r
+        Right (chainSyncEvent, source') -> do
+          ledgerStateHistory' <- case chainSyncEvent of
+            CS.RollForward blockInMode@(C.BlockInMode block _) _ct -> do
+              newLedgerState <- liftIO $ applyBlock_ (getLastLedgerState ledgerStateHistory) block
+              let (ledgerStateHistory', committedStates) = pushLedgerState env ledgerStateHistory (CS.bimSlotNo blockInMode) newLedgerState blockInMode
+              forM_ committedStates $ \(_, (ledgerState, ledgerEvents), currBlockMay) -> case currBlockMay of
+                Origin -> return ()
+                At currBlock -> S.yield (currBlock, (ledgerState, ledgerEvents))
+              pure ledgerStateHistory'
+            CS.RollBackward cp _ct -> pure $ case cp of
+              C.ChainPointAtGenesis -> initialLedgerStateHistory
+              C.ChainPoint slotNo _ -> rollBackLedgerStateHist ledgerStateHistory slotNo
 
-        loop ledgerStateHistory' source'
+          loop ledgerStateHistory' source'
 
 getEnvAndInitialLedgerStateHistory :: FilePath -> IO (C.Env, LedgerStateHistory)
 getEnvAndInitialLedgerStateHistory configPath = do

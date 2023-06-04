@@ -171,11 +171,11 @@ submitTx localNodeConnectInfo tx = do
   submitResult :: SubmitResult (C.TxValidationErrorInMode C.CardanoMode) <-
     liftIO $ C.submitTxToNodeLocal localNodeConnectInfo $ C.TxInMode tx eraInMode
   failOnTxSubmitFail submitResult
- where
-  failOnTxSubmitFail :: (Show a, MonadTest m) => SubmitResult a -> m ()
-  failOnTxSubmitFail = \case
-    SubmitFail reason -> H.failMessage GHC.callStack $ "Transaction failed: " <> show reason
-    SubmitSuccess -> pure ()
+  where
+    failOnTxSubmitFail :: (Show a, MonadTest m) => SubmitResult a -> m ()
+    failOnTxSubmitFail = \case
+      SubmitFail reason -> H.failMessage GHC.callStack $ "Transaction failed: " <> show reason
+      SubmitSuccess -> pure ()
 
 -- | Block until a transaction with @txId@ is sent over the local chainsync protocol.
 awaitTxId :: C.LocalNodeConnectInfo C.CardanoMode -> C.TxId -> IO ()

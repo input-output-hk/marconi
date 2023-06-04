@@ -88,8 +88,8 @@ echo = return . Right
 -}
 getTimeHandler :: Handler String
 getTimeHandler = timeString <$> liftIO getCurrentTime
- where
-  timeString = formatTime defaultTimeLocale "%T"
+  where
+    timeString = formatTime defaultTimeLocale "%T"
 
 -- | Prints TargetAddresses Bech32 representation to the console
 getTargetAddressesHandler

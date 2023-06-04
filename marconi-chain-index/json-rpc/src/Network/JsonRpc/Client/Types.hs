@@ -44,11 +44,11 @@ instance
 
   clientWithRoute _ _ req p =
     client req jsonRpcRequest
-   where
-    client = clientWithRoute (Proxy @m) endpoint
-    jsonRpcRequest = Request (symbolVal $ Proxy @method) p (Just 0)
+    where
+      client = clientWithRoute (Proxy @m) endpoint
+      jsonRpcRequest = Request (symbolVal $ Proxy @method) p (Just 0)
 
-    endpoint = Proxy @(JsonRpcEndpoint (JsonRpc method p e r))
+      endpoint = Proxy @(JsonRpcEndpoint (JsonRpc method p e r))
 
   hoistClientMonad _ _ f x p = f $ x p
 
@@ -62,10 +62,10 @@ instance
 
   clientWithRoute _ _ req p =
     client req jsonRpcRequest
-   where
-    client = clientWithRoute (Proxy @m) endpoint
-    jsonRpcRequest = Request (symbolVal $ Proxy @method) p Nothing
+    where
+      client = clientWithRoute (Proxy @m) endpoint
+      jsonRpcRequest = Request (symbolVal $ Proxy @method) p Nothing
 
-    endpoint = Proxy @(JsonRpcEndpoint (JsonRpcNotification method p))
+      endpoint = Proxy @(JsonRpcEndpoint (JsonRpcNotification method p))
 
   hoistClientMonad _ _ f x p = f $ x p

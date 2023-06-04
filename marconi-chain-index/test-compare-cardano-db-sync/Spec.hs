@@ -126,11 +126,11 @@ dbSyncStakepoolSizes conn epochNo = do
         \ ORDER BY sum_amount desc                      "
       $ PG.Only epochNo
   return $ Map.fromList $ map (\(a, b) -> (a, rationalToLovelace b)) dbSyncRows
- where
-  rationalToLovelace :: Rational -> C.Lovelace
-  rationalToLovelace n
-    | 1 <- denominator n = fromIntegral $ numerator n
-    | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
+  where
+    rationalToLovelace :: Rational -> C.Lovelace
+    rationalToLovelace n
+      | 1 <- denominator n = fromIntegral $ numerator n
+      | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
 
 indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
 indexerStakepoolSizes epochNo indexer = do
@@ -139,8 +139,8 @@ indexerStakepoolSizes epochNo indexer = do
   case result of
     EpochState.SDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
     _ -> return undefined
- where
-  toPair row = (EpochState.epochSDDRowPoolId row, EpochState.epochSDDRowLovelace row)
+  where
+    toPair row = (EpochState.epochSDDRowPoolId row, EpochState.epochSDDRowLovelace row)
 
 {- | Connect to cardano-db-sync's postgres instance, get all (EpochNo,
  Nonce) tuples, query and compare all of these to the one found in
@@ -240,9 +240,9 @@ instance PG.FromField Ledger.Nonce where
     bsToMaybeNonce <$> PG.fromField f meta >>= \case
       Just a -> return a
       _ -> PG.returnError PG.ConversionFailed f "Can't parse Nonce"
-   where
-    bsToMaybeNonce :: BS.ByteString -> Maybe Ledger.Nonce
-    bsToMaybeNonce bs = Ledger.Nonce <$> Crypto.hashFromBytes bs
+    where
+      bsToMaybeNonce :: BS.ByteString -> Maybe Ledger.Nonce
+      bsToMaybeNonce bs = Ledger.Nonce <$> Crypto.hashFromBytes bs
 
 instance PG.FromField C.PoolId where
   fromField f meta =

@@ -63,14 +63,14 @@ querySDDByEpochNo env epochNo = do
   case epochStateIndexer of
     Nothing -> pure $ Left $ QueryError "Failed to read EpochState indexer"
     Just indexer -> query indexer
- where
-  query indexer = do
-    res <-
-      runExceptT $
-        Storable.query indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
-    case res of
-      Right (SDDByEpochNoResult epochSddRows) -> pure $ Right $ GetEpochStakePoolDelegationResult epochSddRows
-      _other -> pure $ Left $ QueryError "Query failed"
+  where
+    query indexer = do
+      res <-
+        runExceptT $
+          Storable.query indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
+      case res of
+        Right (SDDByEpochNoResult epochSddRows) -> pure $ Right $ GetEpochStakePoolDelegationResult epochSddRows
+        _other -> pure $ Left $ QueryError "Query failed"
 
 {- | Retrieve the nonce associated at the given 'EpochNo'
  We return an empty list if the 'EpochNo' is not found.
@@ -91,11 +91,11 @@ queryNonceByEpochNo env epochNo = do
   case epochStateIndexer of
     Nothing -> pure $ Left $ QueryError "Failed to read EpochState indexer"
     Just indexer -> query indexer
- where
-  query indexer = do
-    res <-
-      runExceptT $
-        Storable.query indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
-    case res of
-      Right (NonceByEpochNoResult epochNonceRows) -> pure $ Right $ GetEpochNonceResult epochNonceRows
-      _other -> pure $ Left $ QueryError "Query failed"
+  where
+    query indexer = do
+      res <-
+        runExceptT $
+          Storable.query indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
+      case res of
+        Right (NonceByEpochNoResult epochNonceRows) -> pure $ Right $ GetEpochNonceResult epochNonceRows
+        _other -> pure $ Left $ QueryError "Query failed"

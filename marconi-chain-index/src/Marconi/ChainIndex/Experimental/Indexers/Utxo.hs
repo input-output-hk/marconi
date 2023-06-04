@@ -523,9 +523,9 @@ getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]
 getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txScriptValidity} = case txScriptValidityToScriptValidity txScriptValidity of
   C.ScriptValid -> txOuts -- When transaction is valid, only transaction fee is collected
   C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
- where
-  collateral C.TxReturnCollateralNone = []
-  collateral (C.TxReturnCollateral _ txout) = [txout]
+  where
+    collateral C.TxReturnCollateralNone = []
+    collateral (C.TxReturnCollateral _ txout) = [txout]
 
 -- | Extract Utxos from Cardano TxBody
 getUtxosFromTxBody
@@ -535,19 +535,19 @@ getUtxosFromTxBody
   -> Map C.TxIn Utxo
 getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) =
   fromRight Map.empty (getUtxos $ getTxOutFromTxBodyContent txBodyContent)
- where
-  getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
-  getUtxos =
-    fmap (Map.fromList . concatMap Map.toList . imap txoutToUtxo)
-      . traverse (C.eraCast CurrentEra)
+  where
+    getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
+    getUtxos =
+      fmap (Map.fromList . concatMap Map.toList . imap txoutToUtxo)
+        . traverse (C.eraCast CurrentEra)
 
-  txid = C.getTxId txBody
-  txoutToUtxo :: Int -> TxOut -> Map C.TxIn Utxo
-  txoutToUtxo ix txout =
-    let txin = C.TxIn txid (C.TxIx (fromIntegral ix))
-     in case getUtxoFromTxOut maybeTargetAddresses txin txout of
-          Nothing -> Map.empty
-          Just utxo -> Map.singleton txin utxo
+    txid = C.getTxId txBody
+    txoutToUtxo :: Int -> TxOut -> Map C.TxIn Utxo
+    txoutToUtxo ix txout =
+      let txin = C.TxIn txid (C.TxIx (fromIntegral ix))
+       in case getUtxoFromTxOut maybeTargetAddresses txin txout of
+            Nothing -> Map.empty
+            Just utxo -> Map.singleton txin utxo
 
 -- | Extract Utxos from Cardano TxOut
 getUtxoFromTxOut
@@ -573,10 +573,10 @@ getUtxoFromTxOut maybeTargetAddresses txin (C.TxOut addr val dtum refScript) =
           , _utxoInlineScriptHash = inlineScriptHash'
           }
     else Nothing
- where
-  addrAny = toAddr addr
-  (datum', datumHash') = getScriptDataAndHash dtum
-  (inlineScript', inlineScriptHash') = getRefScriptAndHash refScript
+  where
+    addrAny = toAddr addr
+    (datum', datumHash') = getScriptDataAndHash dtum
+    (inlineScript', inlineScriptHash') = getRefScriptAndHash refScript
 
 -- | get the inlineScript and inlineScriptHash
 getRefScriptAndHash

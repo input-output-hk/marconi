@@ -88,28 +88,28 @@ genUtxoEventsWithTxs'
   -> Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs' txOutToUtxo =
   fmap (\block -> (getTimedEventFromBlock block, block)) <$> genMockchain
- where
-  getTimedEventFromBlock :: MockBlock C.BabbageEra -> Core.TimedEvent Utxo.UtxoEvent
-  getTimedEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
-    let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
-        utxoMap = foldMap getUtxosFromTx txs
-        resolvedUtxos :: Set Utxo.Utxo =
-          Set.fromList $
-            mapMaybe (`Map.lookup` utxoMap) $
-              Set.toList utxos
-        cp = C.ChainPoint slotNo blockHeaderHash
-        spents :: Set Utxo.Spent = Set.map Utxo.Spent spentTxOuts
-     in Core.TimedEvent cp (Utxo.UtxoEvent resolvedUtxos spents)
-  getUtxosFromTx :: C.Tx C.BabbageEra -> Map C.TxIn Utxo
-  getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
-    let txId = C.getTxId txBody
-     in Map.fromList
-          $ fmap
-            ( \(txIx, txOut) ->
-                (C.TxIn txId (C.TxIx txIx), txOutToUtxo (C.TxIn txId (C.TxIx txIx)) txOut)
-            )
-          $ zip [0 ..]
-          $ C.txOuts txBodyContent
+  where
+    getTimedEventFromBlock :: MockBlock C.BabbageEra -> Core.TimedEvent Utxo.UtxoEvent
+    getTimedEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
+      let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
+          utxoMap = foldMap getUtxosFromTx txs
+          resolvedUtxos :: Set Utxo.Utxo =
+            Set.fromList $
+              mapMaybe (`Map.lookup` utxoMap) $
+                Set.toList utxos
+          cp = C.ChainPoint slotNo blockHeaderHash
+          spents :: Set Utxo.Spent = Set.map Utxo.Spent spentTxOuts
+       in Core.TimedEvent cp (Utxo.UtxoEvent resolvedUtxos spents)
+    getUtxosFromTx :: C.Tx C.BabbageEra -> Map C.TxIn Utxo
+    getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
+      let txId = C.getTxId txBody
+       in Map.fromList
+            $ fmap
+              ( \(txIx, txOut) ->
+                  (C.TxIn txId (C.TxIx txIx), txOutToUtxo (C.TxIn txId (C.TxIx txIx)) txOut)
+              )
+            $ zip [0 ..]
+            $ C.txOuts txBodyContent
 
 -- | The effect of a transaction (or a number of them) on the tx output set.
 data TxOutBalance = TxOutBalance

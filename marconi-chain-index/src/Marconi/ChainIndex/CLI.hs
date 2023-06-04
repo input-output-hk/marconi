@@ -30,28 +30,28 @@ import Marconi.ChainIndex.Types (
 chainPointParser :: Opt.Parser C.ChainPoint
 chainPointParser =
   pure C.ChainPointAtGenesis Opt.<|> (C.ChainPoint <$> slotNoParser <*> blockHeaderHashParser)
- where
-  blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
-  blockHeaderHashParser =
-    Opt.option
-      (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
-      ( Opt.long "block-header-hash"
-          <> Opt.short 'b'
-          <> Opt.metavar "BLOCK-HEADER-HASH"
-      )
-  slotNoParser :: Opt.Parser C.SlotNo
-  slotNoParser =
-    Opt.option
-      (C.SlotNo <$> Opt.auto)
-      ( Opt.long "slot-no"
-          <> Opt.short 'n'
-          <> Opt.metavar "SLOT-NO"
-      )
-  maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
-  maybeParseHashBlockHeader =
-    either (const Nothing) Just
-      . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
-      . C8.pack
+  where
+    blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
+    blockHeaderHashParser =
+      Opt.option
+        (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
+        ( Opt.long "block-header-hash"
+            <> Opt.short 'b'
+            <> Opt.metavar "BLOCK-HEADER-HASH"
+        )
+    slotNoParser :: Opt.Parser C.SlotNo
+    slotNoParser =
+      Opt.option
+        (C.SlotNo <$> Opt.auto)
+        ( Opt.long "slot-no"
+            <> Opt.short 'n'
+            <> Opt.metavar "SLOT-NO"
+        )
+    maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
+    maybeParseHashBlockHeader =
+      either (const Nothing) Just
+        . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
+        . C8.pack
 
 {- | Exit program with error
  Note, if the targetAddress parser fails, or is empty, there is nothing to do for the hotStore.
@@ -87,9 +87,9 @@ pTestnetMagic =
 -}
 multiString :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser TargetAddresses
 multiString desc = fromList . concat <$> some single
- where
-  single :: Opt.Parser [C.Address C.ShelleyAddr]
-  single = Opt.option (Opt.str <&> parseCardanoAddresses) desc
+  where
+    single :: Opt.Parser [C.Address C.ShelleyAddr]
+    single = Opt.option (Opt.str <&> parseCardanoAddresses) desc
 
 parseCardanoAddresses :: String -> [C.Address C.ShelleyAddr]
 parseCardanoAddresses =
@@ -97,8 +97,8 @@ parseCardanoAddresses =
     . fromJustWithError
     . traverse (deserializeToCardano . pack)
     . words
- where
-  deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
+  where
+    deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
 
 {- | This executable is meant to exercise a set of indexers (for now datumhash -> datum)
      against the mainnet (meant to be used for testing).

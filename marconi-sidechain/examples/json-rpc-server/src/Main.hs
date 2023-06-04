@@ -76,8 +76,8 @@ main = do
 mocUtxoIndexer :: FilePath -> SidechainEnv -> IO ()
 mocUtxoIndexer dbpath env =
   runExceptT (Utxo.open dbpath (Utxo.Depth 4) True) >>= handleError >>= callback >> innerLoop
- where
-  handleError = either (const exitFailure) pure
-  callback :: Utxo.UtxoIndexer -> IO ()
-  callback = atomically . UIQ.updateEnvState (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
-  innerLoop = threadDelay 1000000 >> innerLoop -- create some latency
+  where
+    handleError = either (const exitFailure) pure
+    callback :: Utxo.UtxoIndexer -> IO ()
+    callback = atomically . UIQ.updateEnvState (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
+    innerLoop = threadDelay 1000000 >> innerLoop -- create some latency

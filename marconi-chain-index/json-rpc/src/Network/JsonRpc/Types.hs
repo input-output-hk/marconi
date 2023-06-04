@@ -74,8 +74,8 @@ instance ToJSON p => ToJSON (Request p) where
         , "method" .= m
         , "params" .= p
         ]
-   where
-    onValue n v = ((n .= v) :)
+    where
+      onValue n v = ((n .= v) :)
 
 instance FromJSON p => FromJSON (Request p) where
   parseJSON = withObject "JsonRpc Request" $ \obj -> do
@@ -130,15 +130,15 @@ instance (FromJSON e, FromJSON r) => FromJSON (JsonRpcResponse e r) where
     result <- obj .:? "result"
     err <- obj .:? "error"
     versionGuard version $ pack ix result err
-   where
-    parseDecimalString = either fail (pure . fmap fst) . traverse decimal
-    pack (Just ix) (Just r) Nothing = pure $ Result ix r
-    pack ix Nothing (Just e) = Errors ix <$> parseErr e
-    pack (Just ix) Nothing Nothing = pure $ Ack ix
-    pack _ _ _ = fail "invalid response"
-    parseErr =
-      withObject "Error" $
-        liftA3 JsonRpcErr <$> (.: "code") <*> (.: "message") <*> (.:? "data")
+    where
+      parseDecimalString = either fail (pure . fmap fst) . traverse decimal
+      pack (Just ix) (Just r) Nothing = pure $ Result ix r
+      pack ix Nothing (Just e) = Errors ix <$> parseErr e
+      pack (Just ix) Nothing Nothing = pure $ Ack ix
+      pack _ _ _ = fail "invalid response"
+      parseErr =
+        withObject "Error" $
+          liftA3 JsonRpcErr <$> (.: "code") <*> (.: "message") <*> (.:? "data")
 
 instance (ToJSON e, ToJSON r) => ToJSON (JsonRpcResponse e r) where
   toJSON (Result ix r) =
@@ -160,13 +160,13 @@ instance (ToJSON e, ToJSON r) => ToJSON (JsonRpcResponse e r) where
       , "id" .= ix
       , "error" .= detail
       ]
-   where
-    detail =
-      object
-        [ "code" .= c
-        , "message" .= msg
-        , "data" .= err
-        ]
+    where
+      detail =
+        object
+          [ "code" .= c
+          , "message" .= msg
+          , "data" .= err
+          ]
 
 -- | A JSON RPC server handles any number of methods.
 data RawJsonRpc api

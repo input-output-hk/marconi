@@ -109,8 +109,8 @@ genTxWithMint txMintValue = do
 -- | Helper to create tx with @commonMintingPolicy@, @assetName@ and @quantity@
 genTxWithAsset :: C.AssetName -> C.Quantity -> Gen (Either C.TxBodyError (C.Tx C.BabbageEra))
 genTxWithAsset assetName quantity = genTxWithMint $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith $ Map.singleton policyId policyWitness)
- where
-  (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy [(assetName, quantity)]
+  where
+    (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy [(assetName, quantity)]
 
 genTxMintValue :: Gen (C.TxMintValue C.BuildTx C.BabbageEra)
 genTxMintValue = genTxMintValueRange 1 100
@@ -123,12 +123,12 @@ genTxMintValueRange min' max' = do
   policyAssets <- replicateM n genAsset
   let (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy policyAssets
   pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith $ Map.singleton policyId policyWitness)
- where
-  genAsset :: Gen (C.AssetName, C.Quantity)
-  genAsset = (,) <$> genAssetName <*> genQuantity
-   where
-    genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
-    genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
+  where
+    genAsset :: Gen (C.AssetName, C.Quantity)
+    genAsset = (,) <$> genAssetName <*> genQuantity
+      where
+        genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
+        genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
 
 -- * Helpers
 
@@ -153,29 +153,29 @@ mkMintValue
   -> [(C.AssetName, C.Quantity)]
   -> (C.PolicyId, C.ScriptWitness C.WitCtxMint C.BabbageEra, C.Value)
 mkMintValue policy policyAssets = (policyId, policyWitness, mintedValues)
- where
-  serialisedPolicyScript :: C.PlutusScript C.PlutusScriptV1
-  serialisedPolicyScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode policy
+  where
+    serialisedPolicyScript :: C.PlutusScript C.PlutusScriptV1
+    serialisedPolicyScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode policy
 
-  policyId :: C.PolicyId
-  policyId = C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV1 serialisedPolicyScript :: C.PolicyId
+    policyId :: C.PolicyId
+    policyId = C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV1 serialisedPolicyScript :: C.PolicyId
 
-  executionUnits :: C.ExecutionUnits
-  executionUnits = C.ExecutionUnits{C.executionSteps = 300000, C.executionMemory = 1000}
-  redeemer :: C.ScriptRedeemer
-  redeemer = C.unsafeHashableScriptData $ C.fromPlutusData $ PlutusV1.toData ()
-  policyWitness :: C.ScriptWitness C.WitCtxMint C.BabbageEra
-  policyWitness =
-    C.PlutusScriptWitness
-      C.PlutusScriptV1InBabbage
-      C.PlutusScriptV1
-      (C.PScript serialisedPolicyScript)
-      C.NoScriptDatumForMint
-      redeemer
-      executionUnits
+    executionUnits :: C.ExecutionUnits
+    executionUnits = C.ExecutionUnits{C.executionSteps = 300000, C.executionMemory = 1000}
+    redeemer :: C.ScriptRedeemer
+    redeemer = C.unsafeHashableScriptData $ C.fromPlutusData $ PlutusV1.toData ()
+    policyWitness :: C.ScriptWitness C.WitCtxMint C.BabbageEra
+    policyWitness =
+      C.PlutusScriptWitness
+        C.PlutusScriptV1InBabbage
+        C.PlutusScriptV1
+        (C.PScript serialisedPolicyScript)
+        C.NoScriptDatumForMint
+        redeemer
+        executionUnits
 
-  mintedValues :: C.Value
-  mintedValues = C.valueFromList $ map (first (C.AssetId policyId)) policyAssets
+    mintedValues :: C.Value
+    mintedValues = C.valueFromList $ map (first (C.AssetId policyId)) policyAssets
 
 commonMintingPolicy :: MintingPolicy
 commonMintingPolicy = $$(PlutusTx.compile [||\_ _ -> ()||])

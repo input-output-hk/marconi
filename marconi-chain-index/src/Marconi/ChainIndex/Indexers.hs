@@ -103,13 +103,13 @@ import System.FilePath (takeDirectory, (</>))
 scriptDataFromCardanoTxBody :: C.TxBody era -> Map (Hash ScriptData) ScriptData
 scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ dats _) _ _) =
   extractData dats
- where
-  extractData :: Alonzo.TxDats era -> Map (Hash ScriptData) ScriptData
-  extractData (Alonzo.TxDats' xs) =
-    Map.fromList
-      . fmap ((\x -> (C.hashScriptDataBytes x, C.getScriptData x)) . C.fromAlonzoData)
-      . Map.elems
-      $ xs
+  where
+    extractData :: Alonzo.TxDats era -> Map (Hash ScriptData) ScriptData
+    extractData (Alonzo.TxDats' xs) =
+      Map.fromList
+        . fmap ((\x -> (C.hashScriptDataBytes x, C.getScriptData x)) . C.fromAlonzoData)
+        . Map.elems
+        $ xs
 scriptDataFromCardanoTxBody _ = mempty
 
 data Buffer a = Buffer
@@ -176,22 +176,22 @@ utxoWorker_ callback depth maybeTargetAddresses Coordinator{_barrier, _errorVar}
   cp <- toException $ Storable.resumeFromStorage $ view Storable.handle ix
   mIndexer <- newMVar ix
   pure (loop mIndexer, cp)
- where
-  loop :: MVar Utxo.UtxoIndexer -> IO ()
-  loop index = do
-    signalQSemN _barrier 1
-    failWhenFull _errorVar
-    readMVar index >>= callback -- refresh the query STM/CPS with new storage pointers/counters state
-    event <- atomically . readTChan $ ch
-    case event of
-      RollForward (BlockInMode block _) _ct -> do
-        let utxoEvents = Utxo.getUtxoEventsFromBlock maybeTargetAddresses block
-        void $ updateWith index _errorVar $ Storable.insert utxoEvents
-        loop index
-      RollBackward cp _ct -> do
-        void $ updateWith index _errorVar $ Storable.rewind cp
+  where
+    loop :: MVar Utxo.UtxoIndexer -> IO ()
+    loop index = do
+      signalQSemN _barrier 1
+      failWhenFull _errorVar
+      readMVar index >>= callback -- refresh the query STM/CPS with new storage pointers/counters state
+      event <- atomically . readTChan $ ch
+      case event of
+        RollForward (BlockInMode block _) _ct -> do
+          let utxoEvents = Utxo.getUtxoEventsFromBlock maybeTargetAddresses block
+          void $ updateWith index _errorVar $ Storable.insert utxoEvents
+          loop index
+        RollBackward cp _ct -> do
+          void $ updateWith index _errorVar $ Storable.rewind cp
 
-    loop index
+      loop index
 
 utxoWorker
   :: (Utxo.UtxoIndexer -> IO ())
@@ -236,27 +236,27 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
   cp <- toException . Storable.resumeFromStorage . view Storable.handle $ index
   mIndex <- newMVar index
   pure (innerLoop mIndex, cp)
- where
-  innerLoop :: MVar AddressDatumIndex -> IO ()
-  innerLoop index = do
-    signalQSemN _barrier 1
-    failWhenFull _errorVar
-    event <- atomically $ readTChan ch
-    case event of
-      RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _) _ -> do
-        -- TODO Redo. Inefficient filtering
-        let addressFilter =
-              fmap
-                (flip elem)
-                targetAddresses
-            addressDatumIndexEvent =
-              AddressDatum.toAddressDatumIndexEvent addressFilter txs (C.ChainPoint slotNo bh)
-        void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
-        void $ onInsert addressDatumIndexEvent
-        innerLoop index
-      RollBackward cp _ct -> do
-        void $ updateWith index _errorVar $ Storable.rewind cp
-        innerLoop index
+  where
+    innerLoop :: MVar AddressDatumIndex -> IO ()
+    innerLoop index = do
+      signalQSemN _barrier 1
+      failWhenFull _errorVar
+      event <- atomically $ readTChan ch
+      case event of
+        RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _) _ -> do
+          -- TODO Redo. Inefficient filtering
+          let addressFilter =
+                fmap
+                  (flip elem)
+                  targetAddresses
+              addressDatumIndexEvent =
+                AddressDatum.toAddressDatumIndexEvent addressFilter txs (C.ChainPoint slotNo bh)
+          void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
+          void $ onInsert addressDatumIndexEvent
+          innerLoop index
+        RollBackward cp _ct -> do
+          void $ updateWith index _errorVar $ Storable.rewind cp
+          innerLoop index
 
 -- * ScriptTx indexer
 
@@ -272,21 +272,21 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
   cp <- toException . Storable.resumeFromStorage . view Storable.handle $ indexer
   mIndexer <- newMVar indexer
   pure (loop mIndexer, cp, mIndexer)
- where
-  loop :: MVar ScriptTx.ScriptTxIndexer -> IO ()
-  loop index = do
-    signalQSemN _barrier 1
-    failWhenFull _errorVar
-    event <- atomically $ readTChan ch
-    case event of
-      RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs :: Block era) _ :: BlockInMode CardanoMode) _ct -> do
-        let u = ScriptTx.toUpdate txs (ChainPoint slotNo hsh)
-        void $ updateWith index _errorVar $ Storable.insert u
-        void $ onInsert u
-        loop index
-      RollBackward cp _ct -> do
-        void $ updateWith index _errorVar $ Storable.rewind cp
-        loop index
+  where
+    loop :: MVar ScriptTx.ScriptTxIndexer -> IO ()
+    loop index = do
+      signalQSemN _barrier 1
+      failWhenFull _errorVar
+      event <- atomically $ readTChan ch
+      case event of
+        RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs :: Block era) _ :: BlockInMode CardanoMode) _ct -> do
+          let u = ScriptTx.toUpdate txs (ChainPoint slotNo hsh)
+          void $ updateWith index _errorVar $ Storable.insert u
+          void $ onInsert u
+          loop index
+        RollBackward cp _ct -> do
+          void $ updateWith index _errorVar $ Storable.rewind cp
+          loop index
 
 scriptTxWorker
   :: (Storable.StorableEvent ScriptTx.ScriptTxHandle -> IO [()])
@@ -471,59 +471,59 @@ mkIndexerStream'
   -> S.Stream (S.Of (ChainSyncEvent a)) IO r
   -> IO ()
 mkIndexerStream' f coordinator = S.foldM_ step initial finish
- where
-  initial = pure coordinator
+  where
+    initial = pure coordinator
 
-  indexersHealthCheck :: Coordinator' a -> IO ()
-  indexersHealthCheck Coordinator{_errorVar} = do
-    err <- tryReadMVar _errorVar
-    case err of
-      Nothing -> pure ()
-      Just e -> throw e
+    indexersHealthCheck :: Coordinator' a -> IO ()
+    indexersHealthCheck Coordinator{_errorVar} = do
+      err <- tryReadMVar _errorVar
+      case err of
+        Nothing -> pure ()
+        Just e -> throw e
 
-  blockAfterChainPoint C.ChainPointAtGenesis _bim = True
-  blockAfterChainPoint (C.ChainPoint slotNo' _) bim = f bim > slotNo'
+    blockAfterChainPoint C.ChainPointAtGenesis _bim = True
+    blockAfterChainPoint (C.ChainPoint slotNo' _) bim = f bim > slotNo'
 
-  bufferIsFull c = c ^. buffer . bufferLength >= c ^. buffer . capacity
+    bufferIsFull c = c ^. buffer . bufferLength >= c ^. buffer . capacity
 
-  coordinatorHandleEvent c (RollForward bim ct)
-    | bufferIsFull c = case c ^. buffer . content of
-        buff Seq.:|> event' -> do
-          let c' = c & buffer . content .~ (bim Seq.:<| buff)
-          pure (c', Just $ RollForward event' ct)
-        Seq.Empty -> do
-          pure (c, Just $ RollForward bim ct)
-    | otherwise = do
-        let c' =
+    coordinatorHandleEvent c (RollForward bim ct)
+      | bufferIsFull c = case c ^. buffer . content of
+          buff Seq.:|> event' -> do
+            let c' = c & buffer . content .~ (bim Seq.:<| buff)
+            pure (c', Just $ RollForward event' ct)
+          Seq.Empty -> do
+            pure (c, Just $ RollForward bim ct)
+      | otherwise = do
+          let c' =
+                c
+                  & buffer . content %~ (bim Seq.:<|)
+                  & buffer . bufferLength +~ 1
+          pure (c', Nothing)
+    coordinatorHandleEvent c e@(RollBackward cp _) = case c ^. buffer . content of
+      buff@(_ Seq.:|> event') ->
+        let content' = Seq.dropWhileL (blockAfterChainPoint cp) buff
+            c' =
               c
-                & buffer . content %~ (bim Seq.:<|)
-                & buffer . bufferLength +~ 1
-        pure (c', Nothing)
-  coordinatorHandleEvent c e@(RollBackward cp _) = case c ^. buffer . content of
-    buff@(_ Seq.:|> event') ->
-      let content' = Seq.dropWhileL (blockAfterChainPoint cp) buff
-          c' =
-            c
-              & buffer . content .~ content'
-              & buffer . bufferLength .~ fromIntegral (length content')
-       in if blockAfterChainPoint cp event'
-            then pure (c', Just e)
-            else pure (c', Nothing)
-    Seq.Empty -> pure (c, Just e)
+                & buffer . content .~ content'
+                & buffer . bufferLength .~ fromIntegral (length content')
+         in if blockAfterChainPoint cp event'
+              then pure (c', Just e)
+              else pure (c', Nothing)
+      Seq.Empty -> pure (c, Just e)
 
-  step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
-    waitQSemN _barrier _indexerCount
-    indexersHealthCheck c
-    (c', mevent) <- coordinatorHandleEvent c event
-    case mevent of
-      Nothing -> do
-        signalQSemN _barrier _indexerCount
-        pure c'
-      Just event' -> do
-        atomically $ writeTChan _channel event'
-        pure c'
+    step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
+      waitQSemN _barrier _indexerCount
+      indexersHealthCheck c
+      (c', mevent) <- coordinatorHandleEvent c event
+      case mevent of
+        Nothing -> do
+          signalQSemN _barrier _indexerCount
+          pure c'
+        Just event' -> do
+          atomically $ writeTChan _channel event'
+          pure c'
 
-  finish _ = pure ()
+    finish _ = pure ()
 
 mkIndexerStream
   :: Coordinator

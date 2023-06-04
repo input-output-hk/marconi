@@ -59,29 +59,29 @@ genUtxoEventsWithTxs'
   -> Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs' txOutToUtxo = do
   fmap (\block -> (getStorableEventFromBlock block, block)) <$> genMockchain
- where
-  getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
-  getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
-    let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
-        utxoMap = foldMap getUtxosFromTx $ zip txs [0 ..]
-        resolvedUtxos =
-          Set.fromList $
-            mapMaybe (`Map.lookup` utxoMap) $
-              Set.toList utxos
-     in UtxoEvent resolvedUtxos spentTxOuts (C.ChainPoint slotNo blockHeaderHash)
+  where
+    getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
+    getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
+      let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
+          utxoMap = foldMap getUtxosFromTx $ zip txs [0 ..]
+          resolvedUtxos =
+            Set.fromList $
+              mapMaybe (`Map.lookup` utxoMap) $
+                Set.toList utxos
+       in UtxoEvent resolvedUtxos spentTxOuts (C.ChainPoint slotNo blockHeaderHash)
 
-  getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
-  getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =
-    let txId = C.getTxId txBody
-     in Map.fromList
-          $ fmap
-            ( \(txIx, txOut) ->
-                ( C.TxIn txId (C.TxIx txIx)
-                , txOutToUtxo txId txIndexInBlock (C.TxIx txIx) txOut
-                )
-            )
-          $ zip [0 ..]
-          $ C.txOuts txBodyContent
+    getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
+    getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =
+      let txId = C.getTxId txBody
+       in Map.fromList
+            $ fmap
+              ( \(txIx, txOut) ->
+                  ( C.TxIn txId (C.TxIx txIx)
+                  , txOutToUtxo txId txIndexInBlock (C.TxIx txIx) txOut
+                  )
+              )
+            $ zip [0 ..]
+            $ C.txOuts txBodyContent
 
 -- | The effect of a transaction (or a number of them) on the tx output set.
 data TxOutBalance = TxOutBalance

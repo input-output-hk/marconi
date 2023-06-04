@@ -295,88 +295,88 @@ data NodeConfig = NodeConfig
 instance FromJSON NodeConfig where
   parseJSON =
     Aeson.withObject "NodeConfig" parse
-   where
-    parse :: Object -> Parser NodeConfig
-    parse o =
-      NodeConfig
-        <$> o .:? "PBftSignatureThreshold"
-        <*> fmap GenesisFile (o .: "ByronGenesisFile")
-        <*> fmap GenesisHashByron (o .: "ByronGenesisHash")
-        <*> fmap GenesisFile (o .: "ShelleyGenesisFile")
-        <*> fmap GenesisHashShelley (o .: "ShelleyGenesisHash")
-        <*> fmap GenesisFile (o .: "AlonzoGenesisFile")
-        <*> fmap GenesisHashAlonzo (o .: "AlonzoGenesisHash")
-        <*> fmap GenesisFile (o .: "ConwayGenesisFile")
-        <*> fmap GenesisHashConway (o .: "ConwayGenesisHash")
-        <*> o .: "RequiresNetworkMagic"
-        <*> parseByronSoftwareVersion o
-        <*> parseByronProtocolVersion o
-        <*> ( Consensus.ProtocolTransitionParamsShelleyBased emptyFromByronTranslationContext
-                <$> parseShelleyHardForkEpoch o
-            )
-        <*> ( Consensus.ProtocolTransitionParamsShelleyBased ()
-                <$> parseAllegraHardForkEpoch o
-            )
-        <*> ( Consensus.ProtocolTransitionParamsShelleyBased ()
-                <$> parseMaryHardForkEpoch o
-            )
-        <*> parseAlonzoHardForkEpoch o
-        <*> parseBabbageHardForkEpoch o
-        <*> parseConwayHardForkEpoch o
+    where
+      parse :: Object -> Parser NodeConfig
+      parse o =
+        NodeConfig
+          <$> o .:? "PBftSignatureThreshold"
+          <*> fmap GenesisFile (o .: "ByronGenesisFile")
+          <*> fmap GenesisHashByron (o .: "ByronGenesisHash")
+          <*> fmap GenesisFile (o .: "ShelleyGenesisFile")
+          <*> fmap GenesisHashShelley (o .: "ShelleyGenesisHash")
+          <*> fmap GenesisFile (o .: "AlonzoGenesisFile")
+          <*> fmap GenesisHashAlonzo (o .: "AlonzoGenesisHash")
+          <*> fmap GenesisFile (o .: "ConwayGenesisFile")
+          <*> fmap GenesisHashConway (o .: "ConwayGenesisHash")
+          <*> o .: "RequiresNetworkMagic"
+          <*> parseByronSoftwareVersion o
+          <*> parseByronProtocolVersion o
+          <*> ( Consensus.ProtocolTransitionParamsShelleyBased emptyFromByronTranslationContext
+                  <$> parseShelleyHardForkEpoch o
+              )
+          <*> ( Consensus.ProtocolTransitionParamsShelleyBased ()
+                  <$> parseAllegraHardForkEpoch o
+              )
+          <*> ( Consensus.ProtocolTransitionParamsShelleyBased ()
+                  <$> parseMaryHardForkEpoch o
+              )
+          <*> parseAlonzoHardForkEpoch o
+          <*> parseBabbageHardForkEpoch o
+          <*> parseConwayHardForkEpoch o
 
-    parseByronProtocolVersion :: Object -> Parser Byron.ProtocolVersion
-    parseByronProtocolVersion o =
-      Byron.ProtocolVersion
-        <$> o .: "LastKnownBlockVersion-Major"
-        <*> o .: "LastKnownBlockVersion-Minor"
-        <*> o .: "LastKnownBlockVersion-Alt"
+      parseByronProtocolVersion :: Object -> Parser Byron.ProtocolVersion
+      parseByronProtocolVersion o =
+        Byron.ProtocolVersion
+          <$> o .: "LastKnownBlockVersion-Major"
+          <*> o .: "LastKnownBlockVersion-Minor"
+          <*> o .: "LastKnownBlockVersion-Alt"
 
-    parseByronSoftwareVersion :: Object -> Parser Byron.SoftwareVersion
-    parseByronSoftwareVersion o =
-      Byron.SoftwareVersion
-        <$> fmap Byron.ApplicationName (o .: "ApplicationName")
-        <*> o .: "ApplicationVersion"
+      parseByronSoftwareVersion :: Object -> Parser Byron.SoftwareVersion
+      parseByronSoftwareVersion o =
+        Byron.SoftwareVersion
+          <$> fmap Byron.ApplicationName (o .: "ApplicationName")
+          <*> o .: "ApplicationVersion"
 
-    parseShelleyHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
-    parseShelleyHardForkEpoch o =
-      asum
-        [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestShelleyHardForkAtEpoch"
-        , pure $ Consensus.TriggerHardForkAtVersion 2 -- Mainnet default
-        ]
+      parseShelleyHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
+      parseShelleyHardForkEpoch o =
+        asum
+          [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestShelleyHardForkAtEpoch"
+          , pure $ Consensus.TriggerHardForkAtVersion 2 -- Mainnet default
+          ]
 
-    parseAllegraHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
-    parseAllegraHardForkEpoch o =
-      asum
-        [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestAllegraHardForkAtEpoch"
-        , pure $ Consensus.TriggerHardForkAtVersion 3 -- Mainnet default
-        ]
+      parseAllegraHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
+      parseAllegraHardForkEpoch o =
+        asum
+          [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestAllegraHardForkAtEpoch"
+          , pure $ Consensus.TriggerHardForkAtVersion 3 -- Mainnet default
+          ]
 
-    parseMaryHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
-    parseMaryHardForkEpoch o =
-      asum
-        [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestMaryHardForkAtEpoch"
-        , pure $ Consensus.TriggerHardForkAtVersion 4 -- Mainnet default
-        ]
+      parseMaryHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
+      parseMaryHardForkEpoch o =
+        asum
+          [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestMaryHardForkAtEpoch"
+          , pure $ Consensus.TriggerHardForkAtVersion 4 -- Mainnet default
+          ]
 
-    parseAlonzoHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
-    parseAlonzoHardForkEpoch o =
-      asum
-        [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestAlonzoHardForkAtEpoch"
-        , pure $ Consensus.TriggerHardForkAtVersion 5 -- Mainnet default
-        ]
-    parseBabbageHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
-    parseBabbageHardForkEpoch o =
-      asum
-        [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestBabbageHardForkAtEpoch"
-        , pure $ Consensus.TriggerHardForkAtVersion 7 -- Mainnet default
-        ]
+      parseAlonzoHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
+      parseAlonzoHardForkEpoch o =
+        asum
+          [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestAlonzoHardForkAtEpoch"
+          , pure $ Consensus.TriggerHardForkAtVersion 5 -- Mainnet default
+          ]
+      parseBabbageHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
+      parseBabbageHardForkEpoch o =
+        asum
+          [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestBabbageHardForkAtEpoch"
+          , pure $ Consensus.TriggerHardForkAtVersion 7 -- Mainnet default
+          ]
 
-    parseConwayHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
-    parseConwayHardForkEpoch o =
-      asum
-        [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestConwayHardForkAtEpoch"
-        , pure $ Consensus.TriggerHardForkAtVersion 9 -- Mainnet default
-        ]
+      parseConwayHardForkEpoch :: Object -> Parser Consensus.TriggerHardFork
+      parseConwayHardForkEpoch o =
+        asum
+          [ Consensus.TriggerHardForkAtEpoch <$> o .: "TestConwayHardForkAtEpoch"
+          , pure $ Consensus.TriggerHardForkAtVersion 9 -- Mainnet default
+          ]
 
 readNetworkConfig :: NetworkConfigFile -> ExceptT Text IO NodeConfig
 readNetworkConfig (NetworkConfigFile ncf) = do
@@ -444,11 +444,11 @@ readShelleyGenesis (GenesisFile file) expectedGenesisHash = do
       . hoistEither
       $ Aeson.eitherDecodeStrict' content
   pure $ ShelleyConfig genesis genesisHash
- where
-  checkExpectedGenesisHash :: GenesisHashShelley -> ExceptT ShelleyGenesisError IO ()
-  checkExpectedGenesisHash actual =
-    when (actual /= expectedGenesisHash) $
-      left (ShelleyGenesisHashMismatch actual expectedGenesisHash)
+  where
+    checkExpectedGenesisHash :: GenesisHashShelley -> ExceptT ShelleyGenesisError IO ()
+    checkExpectedGenesisHash actual =
+      when (actual /= expectedGenesisHash) $
+        left (ShelleyGenesisHashMismatch actual expectedGenesisHash)
 
 readAlonzoGenesisConfig
   :: NodeConfig
@@ -469,11 +469,11 @@ readAlonzoGenesis (GenesisFile file) expectedGenesisHash = do
   firstExceptT (AlonzoGenesisDecodeError file . Text.pack)
     . hoistEither
     $ Aeson.eitherDecodeStrict' content
- where
-  checkExpectedGenesisHash :: GenesisHashAlonzo -> ExceptT AlonzoGenesisError IO ()
-  checkExpectedGenesisHash actual =
-    when (actual /= expectedGenesisHash) $
-      left (AlonzoGenesisHashMismatch actual expectedGenesisHash)
+  where
+    checkExpectedGenesisHash :: GenesisHashAlonzo -> ExceptT AlonzoGenesisError IO ()
+    checkExpectedGenesisHash actual =
+      when (actual /= expectedGenesisHash) $
+        left (AlonzoGenesisHashMismatch actual expectedGenesisHash)
 
 readConwayGenesisConfig
   :: NodeConfig
@@ -494,16 +494,16 @@ readConwayGenesis (GenesisFile file) expectedGenesisHash = do
   firstExceptT (ConwayGenesisDecodeError file . Text.pack)
     . hoistEither
     $ Aeson.eitherDecodeStrict' content
- where
-  checkExpectedGenesisHash :: GenesisHashConway -> ExceptT ConwayGenesisError IO ()
-  checkExpectedGenesisHash actual =
-    when (actual /= expectedGenesisHash) $
-      left (ConwayGenesisHashMismatch actual expectedGenesisHash)
+  where
+    checkExpectedGenesisHash :: GenesisHashConway -> ExceptT ConwayGenesisError IO ()
+    checkExpectedGenesisHash actual =
+      when (actual /= expectedGenesisHash) $
+        left (ConwayGenesisHashMismatch actual expectedGenesisHash)
 
 initExtLedgerStateVar :: GenesisConfig -> Ledger.ExtLedgerState (HFC.HardForkBlock (Consensus.CardanoEras Consensus.StandardCrypto))
 initExtLedgerStateVar genesisConfig = Consensus.pInfoInitLedger protocolInfo
- where
-  protocolInfo = mkProtocolInfoCardano genesisConfig
+  where
+    protocolInfo = mkProtocolInfoCardano genesisConfig
 
 mkProtocolInfoCardano
   :: GenesisConfig

@@ -195,20 +195,20 @@ addressesDatumToAddressDatumIndexEvent filterF cp addressDatums =
           mapMaybe (\(h, d) -> fmap (h,) (C.getScriptData <$> d)) $
             mapMaybe (\(_, datLoc) -> getDatumFromAnyLocation datLoc) filteredAddressDatums
    in AddressDatumIndexEvent addressDatumsMap datums cp
- where
-  getDatumFromAnyLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
-  getDatumFromAnyLocation NoDatumLocation = Nothing
-  getDatumFromAnyLocation (TxOutDatumHashLocation hd _) = Just (hd, Nothing)
-  getDatumFromAnyLocation (TxOutDatumInTxLocation hd d) = Just (hd, Just d)
-  getDatumFromAnyLocation (TxOutDatumInlineLocation hd d) = Just (hd, Just d)
-  getDatumFromAnyLocation (PlutusScriptDatumLocation hd d) = Just (hd, Just d)
+  where
+    getDatumFromAnyLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
+    getDatumFromAnyLocation NoDatumLocation = Nothing
+    getDatumFromAnyLocation (TxOutDatumHashLocation hd _) = Just (hd, Nothing)
+    getDatumFromAnyLocation (TxOutDatumInTxLocation hd d) = Just (hd, Just d)
+    getDatumFromAnyLocation (TxOutDatumInlineLocation hd d) = Just (hd, Just d)
+    getDatumFromAnyLocation (PlutusScriptDatumLocation hd d) = Just (hd, Just d)
 
-  getDatumFromTxOutLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
-  getDatumFromTxOutLocation NoDatumLocation = Nothing
-  getDatumFromTxOutLocation (TxOutDatumHashLocation hd _) = Just (hd, Nothing)
-  getDatumFromTxOutLocation (TxOutDatumInTxLocation hd d) = Just (hd, Just d)
-  getDatumFromTxOutLocation (TxOutDatumInlineLocation hd d) = Just (hd, Just d)
-  getDatumFromTxOutLocation (PlutusScriptDatumLocation _ _) = Nothing
+    getDatumFromTxOutLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
+    getDatumFromTxOutLocation NoDatumLocation = Nothing
+    getDatumFromTxOutLocation (TxOutDatumHashLocation hd _) = Just (hd, Nothing)
+    getDatumFromTxOutLocation (TxOutDatumInTxLocation hd d) = Just (hd, Just d)
+    getDatumFromTxOutLocation (TxOutDatumInlineLocation hd d) = Just (hd, Just d)
+    getDatumFromTxOutLocation (PlutusScriptDatumLocation _ _) = Nothing
 
 -- | TxOutDatumInScriptWitness C.ScriptData
 data DatumLocation

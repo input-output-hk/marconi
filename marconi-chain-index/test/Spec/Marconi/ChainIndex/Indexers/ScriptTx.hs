@@ -160,9 +160,9 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
   let -- Create an always succeeding validator script
       plutusScript :: C.PlutusScript C.PlutusScriptV1
       plutusScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode validator
-       where
-        validator :: PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
-        validator = $$(PlutusTx.compile [||\_ _ _ -> ()||])
+        where
+          validator :: PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
+          validator = $$(PlutusTx.compile [||\_ _ _ -> ()||])
 
       plutusScriptHash = C.hashScript $ C.PlutusScript C.PlutusScriptV1 plutusScript :: C.ScriptHash
       plutusScriptAddr :: C.Address C.ShelleyAddr

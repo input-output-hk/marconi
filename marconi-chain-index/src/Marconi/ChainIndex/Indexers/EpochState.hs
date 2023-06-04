@@ -225,41 +225,41 @@ getStakeMap extLedgerState = case O.ledgerState extLedgerState of
   O.LedgerStateAlonzo st -> getStakeMapFromShelleyBlock st
   O.LedgerStateBabbage st -> getStakeMapFromShelleyBlock st
   O.LedgerStateConway st -> getStakeMapFromShelleyBlock st
- where
-  getStakeMapFromShelleyBlock
-    :: forall proto era c
-     . (c ~ Ledger.EraCrypto era, c ~ O.StandardCrypto)
-    => O.LedgerState (O.ShelleyBlock proto era)
-    -> Map C.PoolId C.Lovelace
-  getStakeMapFromShelleyBlock st = sdd
-   where
-    nes = O.shelleyLedgerState st :: Ledger.NewEpochState era
+  where
+    getStakeMapFromShelleyBlock
+      :: forall proto era c
+       . (c ~ Ledger.EraCrypto era, c ~ O.StandardCrypto)
+      => O.LedgerState (O.ShelleyBlock proto era)
+      -> Map C.PoolId C.Lovelace
+    getStakeMapFromShelleyBlock st = sdd
+      where
+        nes = O.shelleyLedgerState st :: Ledger.NewEpochState era
 
-    stakeSnapshot = Ledger.ssStakeSet . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
+        stakeSnapshot = Ledger.ssStakeSet . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
 
-    stakes =
-      Ledger.unStake $
-        Ledger.ssStake stakeSnapshot
+        stakes =
+          Ledger.unStake $
+            Ledger.ssStake stakeSnapshot
 
-    delegations :: VMap.VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
-    delegations = Ledger.ssDelegations stakeSnapshot
+        delegations :: VMap.VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
+        delegations = Ledger.ssDelegations stakeSnapshot
 
-    sdd :: Map C.PoolId C.Lovelace
-    sdd =
-      Map.fromListWith (+) $
-        map swap $
-          catMaybes $
-            VMap.elems $
-              VMap.mapWithKey
-                ( \cred spkHash ->
-                    ( \c ->
-                        ( C.Lovelace $ coerce $ Ledger.fromCompact c
-                        , C.StakePoolKeyHash spkHash
+        sdd :: Map C.PoolId C.Lovelace
+        sdd =
+          Map.fromListWith (+) $
+            map swap $
+              catMaybes $
+                VMap.elems $
+                  VMap.mapWithKey
+                    ( \cred spkHash ->
+                        ( \c ->
+                            ( C.Lovelace $ coerce $ Ledger.fromCompact c
+                            , C.StakePoolKeyHash spkHash
+                            )
                         )
+                          <$> VMap.lookup cred stakes
                     )
-                      <$> VMap.lookup cred stakes
-                )
-                delegations
+                    delegations
 
 getEpochNo
   :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
@@ -272,8 +272,8 @@ getEpochNo extLedgerState = case O.ledgerState extLedgerState of
   O.LedgerStateAlonzo st -> getEpochNoFromShelleyBlock st
   O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
   O.LedgerStateConway st -> getEpochNoFromShelleyBlock st
- where
-  getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
+  where
+    getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
 
 data EpochSDDRow = EpochSDDRow
   { epochSDDRowEpochNo :: !C.EpochNo
@@ -328,13 +328,13 @@ getEpochNonce extLedgerState =
     O.ChainDepStateAlonzo st -> extractNonce st
     O.ChainDepStateBabbage st -> extractNoncePraos st
     O.ChainDepStateConway st -> extractNoncePraos st
- where
-  extractNonce :: O.TPraosState c -> Ledger.Nonce
-  extractNonce =
-    Shelley.ticknStateEpochNonce . Shelley.csTickn . O.tpraosStateChainDepState
+  where
+    extractNonce :: O.TPraosState c -> Ledger.Nonce
+    extractNonce =
+      Shelley.ticknStateEpochNonce . Shelley.csTickn . O.tpraosStateChainDepState
 
-  extractNoncePraos :: O.PraosState c -> Ledger.Nonce
-  extractNoncePraos = O.praosStateEpochNonce
+    extractNoncePraos :: O.PraosState c -> Ledger.Nonce
+    extractNoncePraos = O.praosStateEpochNonce
 
 data EpochNonceRow = EpochNonceRow
   { epochNonceRowEpochNo :: !C.EpochNo
@@ -731,12 +731,12 @@ readLedgerStateFileMetadata ledgerStateFilepath =
         <*> parseBlockNo blockNoStr
         <*> parseBlockNo chainTipBlockNoStr
     _anyOtherFailure -> Nothing
- where
-  parseSlotNo slotNoStr = C.SlotNo <$> readMaybe (Text.unpack slotNoStr)
-  parseBlockHeaderHash bhhStr = do
-    bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 bhhStr
-    either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
-  parseBlockNo blockNoStr = C.BlockNo <$> readMaybe (Text.unpack blockNoStr)
+  where
+    parseSlotNo slotNoStr = C.SlotNo <$> readMaybe (Text.unpack slotNoStr)
+    parseBlockHeaderHash bhhStr = do
+      bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 bhhStr
+      either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
+    parseBlockNo blockNoStr = C.BlockNo <$> readMaybe (Text.unpack blockNoStr)
 
 open
   :: O.TopLevelConfig (O.CardanoBlock O.StandardCrypto)

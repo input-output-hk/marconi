@@ -268,15 +268,15 @@ conversion =
 
 observeTrace :: Ix.ConvertibleEvent Int Int ()
 observeTrace = Ix.ConvertibleEvent go
- where
-  go :: IndexT -> IO Ix.Trace
-  go ix = do
-    r <- newIORef []
-    let tracer (Storable.CNRollForward _) = modifyIORef' r (Ix.TRollForward :)
-        tracer (Storable.CNRollBack _) = modifyIORef' r (Ix.TRollBack :)
-        tracer _ = pure () -- we ignore the application notifications for testing => weak bisimilarity
-    _ <- run (Tracer tracer) ix
-    readIORef r
+  where
+    go :: IndexT -> IO Ix.Trace
+    go ix = do
+      r <- newIORef []
+      let tracer (Storable.CNRollForward _) = modifyIORef' r (Ix.TRollForward :)
+          tracer (Storable.CNRollBack _) = modifyIORef' r (Ix.TRollBack :)
+          tracer _ = pure () -- we ignore the application notifications for testing => weak bisimilarity
+      _ <- run (Tracer tracer) ix
+      readIORef r
 
 -- We don't really have any notification implementation available for the new indexers.
 getNotifications

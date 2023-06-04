@@ -57,15 +57,15 @@ queryCurrentEra networkId socketPath = do
   case result of
     Left err -> toError err
     Right x -> pure x
- where
-  localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
-  localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
+  where
+    localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
+    localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
 
-  queryInMode :: C.QueryInMode C.CardanoMode C.AnyCardanoEra
-  queryInMode = C.QueryCurrentEra C.CardanoModeIsMultiEra
+    queryInMode :: C.QueryInMode C.CardanoMode C.AnyCardanoEra
+    queryInMode = C.QueryCurrentEra C.CardanoModeIsMultiEra
 
-  toError :: Show a => a -> ExceptT IndexerError IO b
-  toError = throwError . CantStartIndexer . pack . show
+    toError :: Show a => a -> ExceptT IndexerError IO b
+    toError = throwError . CantStartIndexer . pack . show
 
 -- | Query security param from the local node given a Shelley based era.
 querySecurityParamEra
@@ -82,17 +82,17 @@ querySecurityParamEra shelleyBasedEra networkId socketPath = do
     Right (Left err) -> toError err
     Right (Right x) -> pure x
   return $ fromIntegral $ C.protocolParamSecurity genesisParameters
- where
-  localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
-  localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
+  where
+    localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
+    localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
 
-  queryInMode :: C.QueryInMode C.CardanoMode (Either EraMismatch C.GenesisParameters)
-  queryInMode =
-    C.QueryInEra (toShelleyEraInCardanoMode shelleyBasedEra) $
-      C.QueryInShelleyBasedEra shelleyBasedEra C.QueryGenesisParameters
+    queryInMode :: C.QueryInMode C.CardanoMode (Either EraMismatch C.GenesisParameters)
+    queryInMode =
+      C.QueryInEra (toShelleyEraInCardanoMode shelleyBasedEra) $
+        C.QueryInShelleyBasedEra shelleyBasedEra C.QueryGenesisParameters
 
-  toError :: Show a => a -> ExceptT IndexerError IO b
-  toError = throwError . CantStartIndexer . pack . show
+    toError :: Show a => a -> ExceptT IndexerError IO b
+    toError = throwError . CantStartIndexer . pack . show
 
 {- | Return the first element of the list of chain points. If the list is empty, return the genesis
  point.

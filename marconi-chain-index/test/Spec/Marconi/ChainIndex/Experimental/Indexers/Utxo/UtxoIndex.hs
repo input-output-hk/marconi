@@ -436,27 +436,27 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       && null (filteredExpectedUtxoEvent ^. Core.event . Utxo.ueUtxos)
       then pure ()
       else filteredExpectedUtxoEvent === actualTimedUtxoEvents
- where
-  mkTargetAddressFromTxs
-    :: [C.Tx C.BabbageEra]
-    -> Maybe TargetAddresses
-  mkTargetAddressFromTxs txs =
-    foldMap
-      ( \(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) ->
-          mkTargetAddressFromTxOuts txOuts
-      )
-      txs
-
-  mkTargetAddressFromTxOuts
-    :: [C.TxOut C.CtxTx C.BabbageEra]
-    -> Maybe TargetAddresses
-  mkTargetAddressFromTxOuts txOuts =
-    nonEmpty $
-      mapMaybe
-        ( \(C.TxOut addr _ _ _) ->
-            addressAnyToShelley $ Utxo.toAddr addr
+  where
+    mkTargetAddressFromTxs
+      :: [C.Tx C.BabbageEra]
+      -> Maybe TargetAddresses
+    mkTargetAddressFromTxs txs =
+      foldMap
+        ( \(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) ->
+            mkTargetAddressFromTxOuts txOuts
         )
-        txOuts
+        txs
+
+    mkTargetAddressFromTxOuts
+      :: [C.TxOut C.CtxTx C.BabbageEra]
+      -> Maybe TargetAddresses
+    mkTargetAddressFromTxOuts txOuts =
+      nonEmpty $
+        mapMaybe
+          ( \(C.TxOut addr _ _ _) ->
+              addressAnyToShelley $ Utxo.toAddr addr
+          )
+          txOuts
 
 {- | The property we chack here is that upon inserts, the mixedIndexer maintains the most recent database sync point
    lastSyncPoint is where the database may resume from

@@ -83,18 +83,18 @@ storeWorker :: MVar [C.ChainPoint] -> LocalWorker C.ChainPoint
 storeWorker store c = do
   workerChannel <- atomically . dupTChan $ c ^. channel
   void . forkIO $ innerLoop workerChannel
- where
-  innerLoop ch = do
-    signalQSemN (c ^. barrier) 1
-    failWhenFull (c ^. errorVar)
-    event <- atomically $ readTChan ch
-    case event of
-      RollForward cp _ct -> do
-        modifyMVar_ store (pure . (cp :))
-        innerLoop ch
-      RollBackward cp _ct -> do
-        modifyMVar_ store (pure . dropWhile (> cp))
-        innerLoop ch
+  where
+    innerLoop ch = do
+      signalQSemN (c ^. barrier) 1
+      failWhenFull (c ^. errorVar)
+      event <- atomically $ readTChan ch
+      case event of
+        RollForward cp _ct -> do
+          modifyMVar_ store (pure . (cp :))
+          innerLoop ch
+        RollBackward cp _ct -> do
+          modifyMVar_ store (pure . dropWhile (> cp))
+          innerLoop ch
 
 resolve' :: [ChainSyncEvent C.ChainPoint] -> [C.ChainPoint] -> [C.ChainPoint]
 resolve' [] acc = acc

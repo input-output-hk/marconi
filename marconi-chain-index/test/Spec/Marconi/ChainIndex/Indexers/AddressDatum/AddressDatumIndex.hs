@@ -141,29 +141,29 @@ propAddressDatumAreQueryable = property $ do
           Storable.query finalIndex $
             AddressDatumQuery addr
     actualDatums === expectedDatums
- where
-  indexEventsToAddressDatumsMap
-    :: [Storable.StorableEvent AddressDatumHandle]
-    -> Map C.AddressAny (Set C.ScriptData)
-  indexEventsToAddressDatumsMap events =
-    indexEventToAddressDatumsMap $ fold events
+  where
+    indexEventsToAddressDatumsMap
+      :: [Storable.StorableEvent AddressDatumHandle]
+      -> Map C.AddressAny (Set C.ScriptData)
+    indexEventsToAddressDatumsMap events =
+      indexEventToAddressDatumsMap $ fold events
 
-  indexEventToAddressDatumsMap
-    :: Storable.StorableEvent AddressDatumHandle
-    -> Map C.AddressAny (Set C.ScriptData)
-  indexEventToAddressDatumsMap (AddressDatumIndexEvent addressDatumMap datumMap _chainPoint) =
-    Map.fromListWith (<>) $
-      foldMap (\(addr, datumHashes) -> [(addr, resolveMapKeys datumHashes datumMap)]) $
-        Map.toList addressDatumMap
+    indexEventToAddressDatumsMap
+      :: Storable.StorableEvent AddressDatumHandle
+      -> Map C.AddressAny (Set C.ScriptData)
+    indexEventToAddressDatumsMap (AddressDatumIndexEvent addressDatumMap datumMap _chainPoint) =
+      Map.fromListWith (<>) $
+        foldMap (\(addr, datumHashes) -> [(addr, resolveMapKeys datumHashes datumMap)]) $
+          Map.toList addressDatumMap
 
-  resolveMapKeys
-    :: (Ord k, Ord v)
-    => Set k
-    -> Map k v
-    -> Set v
-  resolveMapKeys keys m =
-    -- TODO Not efficient to convert back n forth between Set
-    Set.fromList $ mapMaybe (\k -> Map.lookup k m) $ Set.toList keys
+    resolveMapKeys
+      :: (Ord k, Ord v)
+      => Set k
+      -> Map k v
+      -> Set v
+    resolveMapKeys keys m =
+      -- TODO Not efficient to convert back n forth between Set
+      Set.fromList $ mapMaybe (\k -> Map.lookup k m) $ Set.toList keys
 
 {- | The property verifies that the datums of each address in those generated events are all
  queryable from the index given a 'C.ChainPoint' interval.
@@ -247,10 +247,10 @@ propRewindingWithNewSlotShouldKeepIndexState = property $ do
       raiseException $
         Storable.query finalIndex AllAddressesQuery
   actualAddrs === addrs
- where
-  insertAndRewind index e@(AddressDatumIndexEvent _ _ cp) = raiseException $ do
-    newIndex <- Storable.insert e index
-    Storable.rewind cp newIndex
+  where
+    insertAndRewind index e@(AddressDatumIndexEvent _ _ cp) = raiseException $ do
+      newIndex <- Storable.insert e index
+      Storable.rewind cp newIndex
 
 {- | The property verifies that inserting events in an index and rewinding that index to a previous
  slot will yield an empty index.
@@ -264,19 +264,19 @@ propRewindingWithOldSlotShouldBringIndexInPreviousState = property $ do
   (AllAddressesResult actualAddrs) <- liftIO $ raiseException $ do
     Storable.query finalIndex AllAddressesQuery
   Hedgehog.assert $ List.null actualAddrs
- where
-  insertAndRewindToPreviousPoint cps index e@(AddressDatumIndexEvent _ _ cp) = raiseException $ do
-    newIndex <- Storable.insert e index
-    Storable.rewind (previousChainPoint cp cps) newIndex
+  where
+    insertAndRewindToPreviousPoint cps index e@(AddressDatumIndexEvent _ _ cp) = raiseException $ do
+      newIndex <- Storable.insert e index
+      Storable.rewind (previousChainPoint cp cps) newIndex
 
-  previousChainPoint :: C.ChainPoint -> [C.ChainPoint] -> C.ChainPoint
-  previousChainPoint cp cps =
-    case List.elemIndex cp cps of
-      Nothing -> C.ChainPointAtGenesis
-      Just i ->
-        case List.splitAt i cps of
-          ([], _) -> C.ChainPointAtGenesis
-          (before, _) -> last before
+    previousChainPoint :: C.ChainPoint -> [C.ChainPoint] -> C.ChainPoint
+    previousChainPoint cp cps =
+      case List.elemIndex cp cps of
+        Nothing -> C.ChainPointAtGenesis
+        Just i ->
+          case List.splitAt i cps of
+            ([], _) -> C.ChainPointAtGenesis
+            (before, _) -> last before
 
 {- | The property verifies that the 'Storable.resumeFromStorage' call returns at least a point which
  is not 'C.ChainPointAtGenesis' when some events are inserted on disk.

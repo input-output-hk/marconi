@@ -220,47 +220,47 @@ toAddressDatumIndexEvent addressFilter txs chainPoint = do
         (fmap Map.keysSet filteredDatumsPerAddr)
         (Map.union datumMap getPlutusWitDatumsFromTxs)
         chainPoint
- where
-  getDatumsPerAddressFromTxs :: Map C.AddressAny (Map (C.Hash C.ScriptData) (Maybe C.ScriptData))
-  getDatumsPerAddressFromTxs =
-    Map.filter (not . Map.null) $
-      Map.fromListWith (Map.unionWith (<|>)) $
-        concatMap getDatumsPerAddressFromTx txs
+  where
+    getDatumsPerAddressFromTxs :: Map C.AddressAny (Map (C.Hash C.ScriptData) (Maybe C.ScriptData))
+    getDatumsPerAddressFromTxs =
+      Map.filter (not . Map.null) $
+        Map.fromListWith (Map.unionWith (<|>)) $
+          concatMap getDatumsPerAddressFromTx txs
 
-  getDatumsPerAddressFromTx
-    :: C.Tx era
-    -> [(C.AddressAny, Map (C.Hash C.ScriptData) (Maybe C.ScriptData))]
-  getDatumsPerAddressFromTx (C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) =
-    fmap
-      ( \(C.TxOut (C.AddressInEra _ addr) _ dat _) ->
-          ( C.toAddressAny addr
-          , maybe Map.empty (uncurry Map.singleton) $ getScriptDataFromTxOutDatum dat
-          )
-      )
-      txOuts
+    getDatumsPerAddressFromTx
+      :: C.Tx era
+      -> [(C.AddressAny, Map (C.Hash C.ScriptData) (Maybe C.ScriptData))]
+    getDatumsPerAddressFromTx (C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) =
+      fmap
+        ( \(C.TxOut (C.AddressInEra _ addr) _ dat _) ->
+            ( C.toAddressAny addr
+            , maybe Map.empty (uncurry Map.singleton) $ getScriptDataFromTxOutDatum dat
+            )
+        )
+        txOuts
 
-  getScriptDataFromTxOutDatum
-    :: C.TxOutDatum C.CtxTx era
-    -> Maybe (C.Hash C.ScriptData, Maybe C.ScriptData)
-  getScriptDataFromTxOutDatum (C.TxOutDatumHash _ dh) = Just (dh, Nothing)
-  getScriptDataFromTxOutDatum (C.TxOutDatumInTx _ d) = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
-  getScriptDataFromTxOutDatum (C.TxOutDatumInline _ d) = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
-  getScriptDataFromTxOutDatum _ = Nothing
+    getScriptDataFromTxOutDatum
+      :: C.TxOutDatum C.CtxTx era
+      -> Maybe (C.Hash C.ScriptData, Maybe C.ScriptData)
+    getScriptDataFromTxOutDatum (C.TxOutDatumHash _ dh) = Just (dh, Nothing)
+    getScriptDataFromTxOutDatum (C.TxOutDatumInTx _ d) = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
+    getScriptDataFromTxOutDatum (C.TxOutDatumInline _ d) = Just (C.hashScriptDataBytes d, Just $ C.getScriptData d)
+    getScriptDataFromTxOutDatum _ = Nothing
 
-  getPlutusWitDatumsFromTxs :: Map (C.Hash C.ScriptData) C.ScriptData
-  getPlutusWitDatumsFromTxs =
-    foldr (\acc x -> Map.union acc x) Map.empty $
-      fmap (\(C.Tx txBody _) -> getPlutusWitDatumsFromTxBody txBody) txs
+    getPlutusWitDatumsFromTxs :: Map (C.Hash C.ScriptData) C.ScriptData
+    getPlutusWitDatumsFromTxs =
+      foldr (\acc x -> Map.union acc x) Map.empty $
+        fmap (\(C.Tx txBody _) -> getPlutusWitDatumsFromTxBody txBody) txs
 
-  getPlutusWitDatumsFromTxBody :: C.TxBody era -> Map (C.Hash C.ScriptData) C.ScriptData
-  getPlutusWitDatumsFromTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (Ledger.TxDats' datum) _) _ _) =
-    -- TODO I'm recomputing the ScriptHash hash, because cardano-api doesn't provide the correct
-    -- functions to convert 'Ledger.DataHash' to 'C.Hash C.ScriptData'. This should go away once
-    -- we fully switch to `cardano-ledger` types.
-    Map.fromList $
-      fmap (\(_, alonzoDat) -> let d = C.fromAlonzoData alonzoDat in (C.hashScriptDataBytes d, C.getScriptData d)) $
-        Map.toList datum
-  getPlutusWitDatumsFromTxBody (C.TxBody _) = Map.empty
+    getPlutusWitDatumsFromTxBody :: C.TxBody era -> Map (C.Hash C.ScriptData) C.ScriptData
+    getPlutusWitDatumsFromTxBody (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (Ledger.TxDats' datum) _) _ _) =
+      -- TODO I'm recomputing the ScriptHash hash, because cardano-api doesn't provide the correct
+      -- functions to convert 'Ledger.DataHash' to 'C.Hash C.ScriptData'. This should go away once
+      -- we fully switch to `cardano-ledger` types.
+      Map.fromList $
+        fmap (\(_, alonzoDat) -> let d = C.fromAlonzoData alonzoDat in (C.hashScriptDataBytes d, C.getScriptData d)) $
+          Map.toList datum
+    getPlutusWitDatumsFromTxBody (C.TxBody _) = Map.empty
 
 instance Buffered AddressDatumHandle where
   persistToStorage
@@ -295,16 +295,16 @@ instance Buffered AddressDatumHandle where
            VALUES (?, ?)|]
       SQL.execute_ c "COMMIT"
       pure h
-   where
-    toAddressDatumHashRow :: StorableEvent AddressDatumHandle -> [AddressDatumHashRow]
-    toAddressDatumHashRow (AddressDatumIndexEvent _ _ C.ChainPointAtGenesis) = []
-    toAddressDatumHashRow (AddressDatumIndexEvent addressDatumHashMap _ (C.ChainPoint sl bh)) = do
-      (addr, dhs) <- Map.toList addressDatumHashMap
-      dh <- Set.toList dhs
-      pure $ AddressDatumHashRow addr dh sl bh
-    toDatumRow :: StorableEvent AddressDatumHandle -> [DatumRow]
-    toDatumRow (AddressDatumIndexEvent _ datumMap _) =
-      fmap (uncurry DatumRow) $ Map.toList datumMap
+    where
+      toAddressDatumHashRow :: StorableEvent AddressDatumHandle -> [AddressDatumHashRow]
+      toAddressDatumHashRow (AddressDatumIndexEvent _ _ C.ChainPointAtGenesis) = []
+      toAddressDatumHashRow (AddressDatumIndexEvent addressDatumHashMap _ (C.ChainPoint sl bh)) = do
+        (addr, dhs) <- Map.toList addressDatumHashMap
+        dh <- Set.toList dhs
+        pure $ AddressDatumHashRow addr dh sl bh
+      toDatumRow :: StorableEvent AddressDatumHandle -> [DatumRow]
+      toDatumRow (AddressDatumIndexEvent _ datumMap _) =
+        fmap (uncurry DatumRow) $ Map.toList datumMap
 
   getStoredEvents
     :: AddressDatumHandle
@@ -344,48 +344,48 @@ asEvents
   -> [StorableEvent AddressDatumHandle]
 asEvents events =
   fmap toEvent $ NonEmpty.groupWith (\(_, _, _, s, _) -> s) events
- where
-  toEvent
-    :: NonEmpty
-        ( C.AddressAny
-        , C.Hash C.ScriptData
-        , Maybe C.ScriptData
-        , C.SlotNo
-        , C.Hash C.BlockHeader
-        )
-    -> StorableEvent AddressDatumHandle
-  toEvent es =
-    let (_, _, _, slot, blockHash) = NonEmpty.head es
-     in AddressDatumIndexEvent (toAddressDatums es) (toDatumMap es) (C.ChainPoint slot blockHash)
+  where
+    toEvent
+      :: NonEmpty
+          ( C.AddressAny
+          , C.Hash C.ScriptData
+          , Maybe C.ScriptData
+          , C.SlotNo
+          , C.Hash C.BlockHeader
+          )
+      -> StorableEvent AddressDatumHandle
+    toEvent es =
+      let (_, _, _, slot, blockHash) = NonEmpty.head es
+       in AddressDatumIndexEvent (toAddressDatums es) (toDatumMap es) (C.ChainPoint slot blockHash)
 
-  toAddressDatums
-    :: NonEmpty
-        ( C.AddressAny
-        , C.Hash C.ScriptData
-        , Maybe C.ScriptData
-        , C.SlotNo
-        , C.Hash C.BlockHeader
-        )
-    -> Map C.AddressAny (Set (C.Hash C.ScriptData))
-  toAddressDatums es =
-    Map.fromListWith (<>) $
-      NonEmpty.toList $
-        fmap (\(addr, dh, _, _, _) -> (addr, Set.singleton dh)) es
-
-  toDatumMap
-    :: NonEmpty
-        ( C.AddressAny
-        , C.Hash C.ScriptData
-        , Maybe C.ScriptData
-        , C.SlotNo
-        , C.Hash C.BlockHeader
-        )
-    -> Map (C.Hash C.ScriptData) C.ScriptData
-  toDatumMap es =
-    Map.fromList $
-      catMaybes $
+    toAddressDatums
+      :: NonEmpty
+          ( C.AddressAny
+          , C.Hash C.ScriptData
+          , Maybe C.ScriptData
+          , C.SlotNo
+          , C.Hash C.BlockHeader
+          )
+      -> Map C.AddressAny (Set (C.Hash C.ScriptData))
+    toAddressDatums es =
+      Map.fromListWith (<>) $
         NonEmpty.toList $
-          fmap (\(_, dh, d, _, _) -> fmap (dh,) d) es
+          fmap (\(addr, dh, _, _, _) -> (addr, Set.singleton dh)) es
+
+    toDatumMap
+      :: NonEmpty
+          ( C.AddressAny
+          , C.Hash C.ScriptData
+          , Maybe C.ScriptData
+          , C.SlotNo
+          , C.Hash C.BlockHeader
+          )
+      -> Map (C.Hash C.ScriptData) C.ScriptData
+    toDatumMap es =
+      Map.fromList $
+        catMaybes $
+          NonEmpty.toList $
+            fmap (\(_, dh, d, _, _) -> fmap (dh,) d) es
 
 instance Queryable AddressDatumHandle where
   queryStorage
@@ -446,25 +446,25 @@ instance Queryable AddressDatumHandle where
           storableEventToResult
             q
             (AddressDatumIndexEvent addressDatumMap (datumMap <> resolvedDatumHashes) cp)
-   where
-    storableEventToResult
-      :: C.AddressAny
-      -> StorableEvent AddressDatumHandle
-      -> Set C.ScriptData
-    storableEventToResult targetAddr (AddressDatumIndexEvent addressDatumMap datumMap _chainPoint) =
-      Set.map snd $
-        Set.filter ((==) targetAddr . fst) $
-          foldMap (\(addr, datumHashes) -> Set.map (addr,) $ resolveMapKeys datumHashes datumMap) $
-            Map.toList addressDatumMap
+    where
+      storableEventToResult
+        :: C.AddressAny
+        -> StorableEvent AddressDatumHandle
+        -> Set C.ScriptData
+      storableEventToResult targetAddr (AddressDatumIndexEvent addressDatumMap datumMap _chainPoint) =
+        Set.map snd $
+          Set.filter ((==) targetAddr . fst) $
+            foldMap (\(addr, datumHashes) -> Set.map (addr,) $ resolveMapKeys datumHashes datumMap) $
+              Map.toList addressDatumMap
 
-    resolveMapKeys
-      :: (Ord k, Ord v)
-      => Set k
-      -> Map k v
-      -> Set v
-    resolveMapKeys keys m =
-      -- TODO Not efficient to convert back n forth between Set
-      Set.fromList $ mapMaybe (\k -> Map.lookup k m) $ Set.toList keys
+      resolveMapKeys
+        :: (Ord k, Ord v)
+        => Set k
+        -> Map k v
+        -> Set v
+      resolveMapKeys keys m =
+        -- TODO Not efficient to convert back n forth between Set
+        Set.fromList $ mapMaybe (\k -> Map.lookup k m) $ Set.toList keys
 
 instance Rewindable AddressDatumHandle where
   rewindStorage

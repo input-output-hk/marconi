@@ -150,28 +150,28 @@ withQueryAction
   -> IO (Either QueryExceptions GetUtxosFromAddressResult)
 withQueryAction env query =
   (atomically $ tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer) >>= action
- where
-  action Nothing = pure $ Right $ GetUtxosFromAddressResult [] -- may occures at startup before marconi-chain-index gets to update the indexer
-  action (Just indexer) = do
-    res <- runExceptT $ Storable.query indexer query
-    let spentInfo row =
-          -- either both parameters are Nothing or both are defined
-          SpentInfoResult <$> row ^? urSpentSlotNo <*> row ^? urSpentTxId
-    pure $ case res of
-      Right (Utxo.UtxoResult rows) ->
-        Right $
-          GetUtxosFromAddressResult $
-            rows <&> \row ->
-              AddressUtxoResult
-                (row ^. urCreationBlockHash)
-                (row ^. urCreationSlotNo)
-                (row ^. urUtxo . txIn)
-                (row ^. urUtxo . address)
-                (row ^. urUtxo . datumHash)
-                (row ^. urUtxo . datum)
-                (spentInfo row)
-      _other ->
-        Left $ UnexpectedQueryResult query
+  where
+    action Nothing = pure $ Right $ GetUtxosFromAddressResult [] -- may occures at startup before marconi-chain-index gets to update the indexer
+    action (Just indexer) = do
+      res <- runExceptT $ Storable.query indexer query
+      let spentInfo row =
+            -- either both parameters are Nothing or both are defined
+            SpentInfoResult <$> row ^? urSpentSlotNo <*> row ^? urSpentTxId
+      pure $ case res of
+        Right (Utxo.UtxoResult rows) ->
+          Right $
+            GetUtxosFromAddressResult $
+              rows <&> \row ->
+                AddressUtxoResult
+                  (row ^. urCreationBlockHash)
+                  (row ^. urCreationSlotNo)
+                  (row ^. urUtxo . txIn)
+                  (row ^. urUtxo . address)
+                  (row ^. urUtxo . datumHash)
+                  (row ^. urUtxo . datum)
+                  (spentInfo row)
+        _other ->
+          Left $ UnexpectedQueryResult query
 
 {- | report target addresses
  Used by JSON-RPC

@@ -128,19 +128,19 @@ getPolicyData txb (LM.MultiAsset m) = do
   let redeemerHash = C.ScriptDataHash $ Ledger.Api.hashData redeemer
   (assetName, quantity) :: (LM.AssetName, Integer) <- Map.toList assets
   pure (fromMaryPolicyID maryPolicyID, fromMaryAssetName assetName, C.Quantity quantity, index'', fromAlonzoData redeemer, redeemerHash)
- where
-  mintRedeemers :: [(Word64, (LB.Data (C.ShelleyLedgerEra era), LA.ExUnits))]
-  mintRedeemers =
-    txRedeemers txb
-      & Map.toList
-      & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
-      & map (\(LA.RdmrPtr _ w, a) -> (w, a))
+  where
+    mintRedeemers :: [(Word64, (LB.Data (C.ShelleyLedgerEra era), LA.ExUnits))]
+    mintRedeemers =
+      txRedeemers txb
+        & Map.toList
+        & filter (\(LA.RdmrPtr tag _, _) -> tag == LA.Mint)
+        & map (\(LA.RdmrPtr _ w, a) -> (w, a))
 
-  txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LB.Data (C.ShelleyLedgerEra era), LA.ExUnits)
-  txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
-    C.TxBodyScriptData _proof _datum (LA.Redeemers redeemers) -> redeemers
-    C.TxBodyNoScriptData -> mempty
-  txRedeemers _ = mempty
+    txRedeemers :: C.TxBody era -> Map.Map LA.RdmrPtr (LB.Data (C.ShelleyLedgerEra era), LA.ExUnits)
+    txRedeemers (C.ShelleyTxBody _ _ _ txScriptData _ _) = case txScriptData of
+      C.TxBodyScriptData _proof _datum (LA.Redeemers redeemers) -> redeemers
+      C.TxBodyNoScriptData -> mempty
+    txRedeemers _ = mempty
 
 -- ** Copy-paste
 
@@ -221,14 +221,14 @@ sqliteInit c = liftIO $ do
 
 sqliteInsert :: SQL.Connection -> [TxMintEvent] -> IO ()
 sqliteInsert c es = SQL.executeMany c template $ toRows =<< toList es
- where
-  template =
-    "INSERT INTO minting_policy_events   \
-    \ ( slotNo, blockHeaderHash, txId    \
-    \ , policyId, assetName, quantity    \
-    \ , redeemerIx, redeemerData         \
-    \ , redeemerHash )                   \
-    \ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+  where
+    template =
+      "INSERT INTO minting_policy_events   \
+      \ ( slotNo, blockHeaderHash, txId    \
+      \ , policyId, assetName, quantity    \
+      \ , redeemerIx, redeemerData         \
+      \ , redeemerHash )                   \
+      \ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
 
 toRows :: TxMintEvent -> [TxMintRow]
 toRows e = do
@@ -253,19 +253,19 @@ fromRows rows = do
   pure $ TxMintEvent (slotNo r) (hash r) $ do
     rs' <- NE.groupBy1 ((==) `on` txId) rs -- group by TxId
     pure (txId r, rowToMintAsset <$> rs')
- where
-  slotNo = view txMintRowSlotNo :: TxMintRow -> C.SlotNo
-  hash = view txMintRowBlockHeaderHash :: TxMintRow -> C.Hash C.BlockHeader
-  txId = view txMintRowTxId :: TxMintRow -> C.TxId
-  rowToMintAsset :: TxMintRow -> MintAsset
-  rowToMintAsset row =
-    MintAsset
-      (row ^. txMintRowPolicyId)
-      (row ^. txMintRowAssetName)
-      (row ^. txMintRowQuantity)
-      (row ^. txMintRowRedeemerIdx)
-      (row ^. txMintRowRedeemerData)
-      (row ^. txMintRowRedeemerHash)
+  where
+    slotNo = view txMintRowSlotNo :: TxMintRow -> C.SlotNo
+    hash = view txMintRowBlockHeaderHash :: TxMintRow -> C.Hash C.BlockHeader
+    txId = view txMintRowTxId :: TxMintRow -> C.TxId
+    rowToMintAsset :: TxMintRow -> MintAsset
+    rowToMintAsset row =
+      MintAsset
+        (row ^. txMintRowPolicyId)
+        (row ^. txMintRowAssetName)
+        (row ^. txMintRowQuantity)
+        (row ^. txMintRowRedeemerIdx)
+        (row ^. txMintRowRedeemerData)
+        (row ^. txMintRowRedeemerHash)
 
 queryStoredTxMintEvents
   :: SQL.Connection
@@ -273,18 +273,18 @@ queryStoredTxMintEvents
   -> IO [TxMintEvent]
 queryStoredTxMintEvents sqlCon (conditions, params) =
   fmap fromRows $ SQL.queryNamed sqlCon (SQL.Query query) params
- where
-  allConditions = Text.intercalate " AND " $ fmap SQL.fromQuery conditions
-  whereClause = if allConditions == "" then "" else "WHERE " <> allConditions
-  query =
-    " SELECT slotNo, blockHeaderHash, txId, policyId       \
-    \      , assetName, quantity, redeemerIx, redeemerData \
-    \      , redeemerHash                                  \
-    \   FROM minting_policy_events                         \
-    \   "
-      <> whereClause
-      <> "                              \
-         \  ORDER BY slotNo, txId                               "
+  where
+    allConditions = Text.intercalate " AND " $ fmap SQL.fromQuery conditions
+    whereClause = if allConditions == "" then "" else "WHERE " <> allConditions
+    query =
+      " SELECT slotNo, blockHeaderHash, txId, policyId       \
+      \      , assetName, quantity, redeemerIx, redeemerData \
+      \      , redeemerHash                                  \
+      \   FROM minting_policy_events                         \
+      \   "
+        <> whereClause
+        <> "                              \
+           \  ORDER BY slotNo, txId                               "
 
 groupBySlotAndHash :: [TxMintEvent] -> [TxMintEvent]
 groupBySlotAndHash events =
@@ -351,62 +351,62 @@ instance RI.Queryable MintBurnHandle where
           redeemerIx
           redeemerData
           redeemerHash
-   where
-    filteredMemoryEvents :: [TxMintEvent]
-    filteredMemoryEvents = coerce $ fromRows $ filter rowFilter $ toRows =<< (coerce $ toList memoryEvents)
+    where
+      filteredMemoryEvents :: [TxMintEvent]
+      filteredMemoryEvents = coerce $ fromRows $ filter rowFilter $ toRows =<< (coerce $ toList memoryEvents)
 
-    -- Applies every predicate to row, when all are True, then result is True.
-    rowFilter :: TxMintRow -> Bool
-    rowFilter row = let filters = mkRowPredicates query in all ($ row) filters
+      -- Applies every predicate to row, when all are True, then result is True.
+      rowFilter :: TxMintRow -> Bool
+      rowFilter row = let filters = mkRowPredicates query in all ($ row) filters
 
-    -- \* Filter in-memory events
+      -- \* Filter in-memory events
 
-    upToSlot :: Maybe C.SlotNo -> [TxMintRow -> Bool]
-    upToSlot = \case
-      Just slotNo -> [\row -> _txMintRowSlotNo row <= slotNo]
-      Nothing -> []
+      upToSlot :: Maybe C.SlotNo -> [TxMintRow -> Bool]
+      upToSlot = \case
+        Just slotNo -> [\row -> _txMintRowSlotNo row <= slotNo]
+        Nothing -> []
 
-    matchesAssetId :: C.PolicyId -> C.AssetName -> TxMintRow -> Bool
-    matchesAssetId policyId assetName row =
-      _txMintRowPolicyId row == policyId && _txMintRowAssetName row == assetName
+      matchesAssetId :: C.PolicyId -> C.AssetName -> TxMintRow -> Bool
+      matchesAssetId policyId assetName row =
+        _txMintRowPolicyId row == policyId && _txMintRowAssetName row == assetName
 
-    isBurn :: TxMintRow -> Bool
-    isBurn row = _txMintRowQuantity row < 0
+      isBurn :: TxMintRow -> Bool
+      isBurn row = _txMintRowQuantity row < 0
 
-    mkRowPredicates :: RI.StorableQuery MintBurnHandle -> [TxMintRow -> Bool]
-    mkRowPredicates = \case
-      QueryAllMintBurn maybeSlotNo -> upToSlot maybeSlotNo
-      QueryAllBurn maybeSlotNo -> upToSlot maybeSlotNo <> [isBurn]
-      QueryByAssetId policyId assetName maybeSlotNo -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName]
-      QueryBurnByAssetId policyId assetName maybeSlotNo -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName, isBurn]
+      mkRowPredicates :: RI.StorableQuery MintBurnHandle -> [TxMintRow -> Bool]
+      mkRowPredicates = \case
+        QueryAllMintBurn maybeSlotNo -> upToSlot maybeSlotNo
+        QueryAllBurn maybeSlotNo -> upToSlot maybeSlotNo <> [isBurn]
+        QueryByAssetId policyId assetName maybeSlotNo -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName]
+        QueryBurnByAssetId policyId assetName maybeSlotNo -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName, isBurn]
 
-    -- \* Filter sqlite events
+      -- \* Filter sqlite events
 
-    mkSqliteConditions :: RI.StorableQuery MintBurnHandle -> ([SQL.Query], [NamedParam])
-    mkSqliteConditions = \case
-      QueryAllMintBurn slotNo ->
-        mkUpperBoundCondition slotNo
-      QueryByAssetId policyId assetName slotNo ->
-        mkUpperBoundCondition slotNo
-          <> mkAssetIdCondition policyId assetName
-      QueryAllBurn slotNo ->
-        mkUpperBoundCondition slotNo
-          <> (["quantity < 0"], [])
-      QueryBurnByAssetId policyId assetName slotNo ->
-        mkUpperBoundCondition slotNo
-          <> mkAssetIdCondition policyId assetName
-          <> (["quantity < 0"], [])
+      mkSqliteConditions :: RI.StorableQuery MintBurnHandle -> ([SQL.Query], [NamedParam])
+      mkSqliteConditions = \case
+        QueryAllMintBurn slotNo ->
+          mkUpperBoundCondition slotNo
+        QueryByAssetId policyId assetName slotNo ->
+          mkUpperBoundCondition slotNo
+            <> mkAssetIdCondition policyId assetName
+        QueryAllBurn slotNo ->
+          mkUpperBoundCondition slotNo
+            <> (["quantity < 0"], [])
+        QueryBurnByAssetId policyId assetName slotNo ->
+          mkUpperBoundCondition slotNo
+            <> mkAssetIdCondition policyId assetName
+            <> (["quantity < 0"], [])
 
-    mkAssetIdCondition :: C.PolicyId -> C.AssetName -> ([SQL.Query], [NamedParam])
-    mkAssetIdCondition policyId assetName =
-      ( ["policyId = :policyId", "assetName = :assetName"]
-      , [":policyId" := policyId, ":assetName" := assetName]
-      )
+      mkAssetIdCondition :: C.PolicyId -> C.AssetName -> ([SQL.Query], [NamedParam])
+      mkAssetIdCondition policyId assetName =
+        ( ["policyId = :policyId", "assetName = :assetName"]
+        , [":policyId" := policyId, ":assetName" := assetName]
+        )
 
-    mkUpperBoundCondition :: Maybe C.SlotNo -> ([SQL.Query], [NamedParam])
-    mkUpperBoundCondition = \case
-      Nothing -> ([], [])
-      Just s -> (["slotNo <= :slotNo"], [":slotNo" := s])
+      mkUpperBoundCondition :: Maybe C.SlotNo -> ([SQL.Query], [NamedParam])
+      mkUpperBoundCondition = \case
+        Nothing -> ([], [])
+        Just s -> (["slotNo <= :slotNo"], [":slotNo" := s])
 
 instance RI.HasPoint (RI.StorableEvent MintBurnHandle) C.ChainPoint where
   getPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
@@ -422,13 +422,13 @@ instance RI.Buffered MintBurnHandle where
     liftSQLError CantQueryIndexer $
       do
         fmap MintBurnEvent . fromRows <$> SQL.query sqlCon query (SQL.Only k)
-   where
-    query =
-      " SELECT slotNo, blockHeaderHash, txId, policyId, assetName, quantity, \
-      \        redeemerIx, redeemerData                                      \
-      \   FROM minting_policy_events                                         \
-      \  WHERE slotNo >= (SELECT MAX(slotNo) - ? FROM minting_policy_events) \
-      \  ORDER BY slotNo DESC, txId                                          "
+    where
+      query =
+        " SELECT slotNo, blockHeaderHash, txId, policyId, assetName, quantity, \
+        \        redeemerIx, redeemerData                                      \
+        \   FROM minting_policy_events                                         \
+        \  WHERE slotNo >= (SELECT MAX(slotNo) - ? FROM minting_policy_events) \
+        \  ORDER BY slotNo DESC, txId                                          "
 
 instance RI.Resumable MintBurnHandle where
   resumeFromStorage (MintBurnHandle c _) =
@@ -439,12 +439,12 @@ instance RI.Resumable MintBurnHandle where
 instance RI.Rewindable MintBurnHandle where
   rewindStorage cp h@(MintBurnHandle sqlCon _k) =
     liftSQLError CantRollback $ doRewind >> pure h
-   where
-    doRewind = case cp of
-      C.ChainPoint slotNo _ ->
-        SQL.execute sqlCon "DELETE FROM minting_policy_events WHERE slotNo > ?" (SQL.Only slotNo)
-      C.ChainPointAtGenesis ->
-        SQL.execute_ sqlCon "DELETE FROM minting_policy_events"
+    where
+      doRewind = case cp of
+        C.ChainPoint slotNo _ ->
+          SQL.execute sqlCon "DELETE FROM minting_policy_events WHERE slotNo > ?" (SQL.Only slotNo)
+        C.ChainPointAtGenesis ->
+          SQL.execute_ sqlCon "DELETE FROM minting_policy_events"
 
 open :: FilePath -> SecurityParam -> StorableMonad MintBurnHandle MintBurnIndexer
 open dbPath bufferSize = do

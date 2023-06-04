@@ -46,14 +46,14 @@ optionsParser =
 networkIdParser :: Parser Cardano.Api.NetworkId
 networkIdParser =
   pMainnet' <|> fmap Cardano.Api.Testnet testnetMagicParser
- where
-  pMainnet' :: Parser Cardano.Api.NetworkId
-  pMainnet' =
-    flag'
-      Cardano.Api.Mainnet
-      ( long "mainnet"
-          <> help "Use the mainnet magic id."
-      )
+  where
+    pMainnet' :: Parser Cardano.Api.NetworkId
+    pMainnet' =
+      flag'
+        Cardano.Api.Mainnet
+        ( long "mainnet"
+            <> help "Use the mainnet magic id."
+        )
 
 testnetMagicParser :: Parser Cardano.Api.NetworkMagic
 testnetMagicParser =
