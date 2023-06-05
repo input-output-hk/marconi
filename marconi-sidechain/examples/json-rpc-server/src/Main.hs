@@ -1,4 +1,4 @@
-{-|
+{- |
 -- Sample JSON-RPC server program
 --
 -- Often we need to test the JSON-RPC http server without the cermony of marconi, or marconi
@@ -30,44 +30,54 @@ import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
 data CliOptions = CliOptions
-    { _utxoDirPath :: !FilePath -- ^ Filepath to utxo sqlite database
-    , _addresses   :: !(Maybe TargetAddresses)
-    }
+  { _utxoDirPath :: !FilePath
+  -- ^ Filepath to utxo sqlite database
+  , _addresses :: !(Maybe TargetAddresses)
+  }
 
 utxoDbFileName :: String
 utxoDbFileName = "utxo.db"
 cliParser :: Parser CliOptions
-cliParser = CliOptions
-    <$> strOption (long "utxo-db"
-                              <> short 'd'
-                              <> metavar "PATH"
-                              <> help "directory path to the utxo SQLite database.")
-     <*> (optional . multiString)
-            ( long "addresses-to-index"
-           <> help ( "Bech32 Shelley addresses to index."
-                  <> " i.e \"--address-to-index address-1 --address-to-index address-2 ...\""
-                   )
+cliParser =
+  CliOptions
+    <$> strOption
+      ( long "utxo-db"
+          <> short 'd'
+          <> metavar "PATH"
+          <> help "directory path to the utxo SQLite database."
+      )
+    <*> (optional . multiString)
+      ( long "addresses-to-index"
+          <> help
+            ( "Bech32 Shelley addresses to index."
+                <> " i.e \"--address-to-index address-1 --address-to-index address-2 ...\""
             )
+      )
 
 main :: IO ()
 main = do
-    (CliOptions dbDirPath addresses) <- execParser $ info (cliParser <**> helper) mempty
-    let dbpath = dbDirPath </> utxoDbFileName
-    putStrLn $ "Starting the Example RPC http-server:"
-        <>"\nport =" <> show (3000 :: Int)
-        <> "\nmarconi-db-dir =" <> dbpath
-        <> "\nnumber of addresses to index = " <> show (length <$> addresses)
-    env <- initializeSidechainEnv Nothing addresses
-    race_ (bootstrap env) (mocUtxoIndexer dbpath env)
+  (CliOptions dbDirPath addresses) <- execParser $ info (cliParser <**> helper) mempty
+  let dbpath = dbDirPath </> utxoDbFileName
+  putStrLn $
+    "Starting the Example RPC http-server:"
+      <> "\nport ="
+      <> show (3000 :: Int)
+      <> "\nmarconi-db-dir ="
+      <> dbpath
+      <> "\nnumber of addresses to index = "
+      <> show (length <$> addresses)
+  env <- initializeSidechainEnv Nothing addresses
+  race_ (bootstrap env) (mocUtxoIndexer dbpath env)
 
--- | moc marconi utxo indexer.
--- This will allow us to use the UtxoIndexer query interface without having cardano-node or marconi online
--- Effectively we are going to query SQLite only
+{- | moc marconi utxo indexer.
+ This will allow us to use the UtxoIndexer query interface without having cardano-node or marconi online
+ Effectively we are going to query SQLite only
+-}
 mocUtxoIndexer :: FilePath -> SidechainEnv -> IO ()
 mocUtxoIndexer dbpath env =
-        runExceptT (Utxo.open dbpath (Utxo.Depth 4) True) >>= handleError >>= callback >> innerLoop
-    where
-      handleError = either (const exitFailure) pure
-      callback :: Utxo.UtxoIndexer -> IO ()
-      callback = atomically . UIQ.updateEnvState (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
-      innerLoop = threadDelay 1000000 >> innerLoop -- create some latency
+  runExceptT (Utxo.open dbpath (Utxo.Depth 4) True) >>= handleError >>= callback >> innerLoop
+  where
+    handleError = either (const exitFailure) pure
+    callback :: Utxo.UtxoIndexer -> IO ()
+    callback = atomically . UIQ.updateEnvState (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
+    innerLoop = threadDelay 1000000 >> innerLoop -- create some latency

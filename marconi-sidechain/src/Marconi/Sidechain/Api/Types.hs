@@ -1,17 +1,17 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DeriveAnyClass        #-}
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE DerivingStrategies    #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE UndecidableInstances  #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | This module provides support for writing handlers for JSON-RPC endpoints.
 module Marconi.Sidechain.Api.Types where
@@ -28,52 +28,61 @@ import Marconi.Core.Storable (State, StorableQuery)
 import Network.Wai.Handler.Warp (Settings)
 
 -- | Type represents http port for JSON-RPC
-
 data CliArgs = CliArgs
-  { socket           :: !FilePath -- ^ POSIX socket file to communicate with cardano node
-  , nodeConfigPath   :: !FilePath -- ^ Path to the node config
-  , dbDir            :: !FilePath -- ^ Directory path containing the SQLite database files
-  , httpPort         :: !(Maybe Int) -- ^ optional tcp/ip port number for JSON-RPC http server
-  , networkId        :: !C.NetworkId -- ^ cardano network id
-  , minIndexingDepth :: !IndexingDepth  -- ^ Required depth of a block before it is indexed
-  , targetAddresses  :: !(Maybe TargetAddresses) -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
-  } deriving (Show)
+  { socket :: !FilePath
+  -- ^ POSIX socket file to communicate with cardano node
+  , nodeConfigPath :: !FilePath
+  -- ^ Path to the node config
+  , dbDir :: !FilePath
+  -- ^ Directory path containing the SQLite database files
+  , httpPort :: !(Maybe Int)
+  -- ^ optional tcp/ip port number for JSON-RPC http server
+  , networkId :: !C.NetworkId
+  -- ^ cardano network id
+  , minIndexingDepth :: !IndexingDepth
+  -- ^ Required depth of a block before it is indexed
+  , targetAddresses :: !(Maybe TargetAddresses)
+  -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
+  }
+  deriving (Show)
 
 -- | JSON-RPC as well as the Query Indexer Env
 data SidechainEnv = SidechainEnv
-    { _sidechainEnvHttpSettings :: !Settings -- ^ HTTP server setting
-    , _sidechainEnvIndexers     :: !SidechainIndexers -- ^ Used for query the indexers
-    }
+  { _sidechainEnvHttpSettings :: !Settings
+  -- ^ HTTP server setting
+  , _sidechainEnvIndexers :: !SidechainIndexers
+  -- ^ Used for query the indexers
+  }
 
 -- | Should contain all the indexers required by Sidechain.
 data SidechainIndexers = SidechainIndexers
-    { _sidechainAddressUtxoIndexer :: !AddressUtxoIndexerEnv
-    -- ^ For query thread to access in-memory utxos
-    , _sidechainEpochStateIndexer  :: !EpochStateIndexerEnv
-    -- ^ For query thread to access in-memory epoch state data
-    , _sidechainMintBurnIndexer    :: !MintBurnIndexerEnv
-    -- ^ For query thread to access in-memory mintBurn
-    }
+  { _sidechainAddressUtxoIndexer :: !AddressUtxoIndexerEnv
+  -- ^ For query thread to access in-memory utxos
+  , _sidechainEpochStateIndexer :: !EpochStateIndexerEnv
+  -- ^ For query thread to access in-memory epoch state data
+  , _sidechainMintBurnIndexer :: !MintBurnIndexerEnv
+  -- ^ For query thread to access in-memory mintBurn
+  }
 
 data AddressUtxoIndexerEnv = AddressUtxoIndexerEnv
-    { _addressUtxoIndexerEnvTargetAddresses :: !(Maybe TargetAddresses)
-    , _addressUtxoIndexerEnvIndexer         :: !(TMVar (State UtxoHandle))
-    }
+  { _addressUtxoIndexerEnvTargetAddresses :: !(Maybe TargetAddresses)
+  , _addressUtxoIndexerEnvIndexer :: !(TMVar (State UtxoHandle))
+  }
 
 newtype EpochStateIndexerEnv = EpochStateIndexerEnv
-    { _epochStateIndexerEnvIndexer         :: TMVar (State EpochStateHandle)
-    }
+  { _epochStateIndexerEnvIndexer :: TMVar (State EpochStateHandle)
+  }
 
 newtype MintBurnIndexerEnv = MintBurnIndexerEnv
-    { _mintBurnIndexerEnvIndexer         :: TMVar (State MintBurnHandle)
-    }
+  { _mintBurnIndexerEnvIndexer :: TMVar (State MintBurnHandle)
+  }
 
 data QueryExceptions
-    = AddressConversionError !QueryExceptions
-    | QueryError !String
-    | UnexpectedQueryResult !(StorableQuery UtxoHandle)
-    deriving stock Show
-    deriving anyclass  Exception
+  = AddressConversionError !QueryExceptions
+  | QueryError !String
+  | UnexpectedQueryResult !(StorableQuery UtxoHandle)
+  deriving stock (Show)
+  deriving anyclass (Exception)
 
 makeLenses ''SidechainEnv
 makeLenses ''SidechainIndexers

@@ -24,7 +24,7 @@
 
   fix-png-optimization = import ./fix-png-optimization.nix block;
 
-  fix-stylish-haskell = import ./fix-stylish-haskell.nix block;
+  fix-fourmolu = import ./fix-fourmolu.nix block;
 
   ghc = import ./ghc.nix block;
 
@@ -40,7 +40,7 @@
 
   repo-root = import ./repo-root.nix block;
 
-  stylish-haskell = import ./stylish-haskell.nix block;
+  fourmolu = import ./fourmolu.nix block;
 
   marconi-chain-index = import ./marconi-chain-index.nix block;
 

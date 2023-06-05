@@ -4,11 +4,11 @@
 
 cell.library.pkgs.writeShellApplication {
 
-  name = "fix-stylish-haskell";
+  name = "fix-fourmolu";
 
   runtimeInputs = [
     cell.library.pkgs.fd
-    cell.packages.stylish-haskell
+    cell.packages.fourmolu
   ];
 
   text = ''
@@ -17,6 +17,7 @@ cell.library.pkgs.writeShellApplication {
       --exclude 'dist-newstyle/*' \
       --exclude 'dist/*' \
       --exclude '.stack-work/*' \
-      --exec bash -c "stylish-haskell -i {}"
+      --exec bash -c "fourmolu -iq {}"
   '';
 }
+

@@ -1,5 +1,5 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs     #-}
+{-# LANGUAGE GADTs #-}
 
 module Cardano.Streaming.Callbacks where
 
@@ -18,16 +18,19 @@ import Cardano.Streaming.Helpers qualified as H
 -- * Raw chain-sync clients using callback
 
 blocksCallbackPipelined
-  :: Word32 -> C.LocalNodeConnectInfo C.CardanoMode -> C.ChainPoint
+  :: Word32
+  -> C.LocalNodeConnectInfo C.CardanoMode
+  -> C.ChainPoint
   -> (H.ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ())
   -> IO ()
 blocksCallbackPipelined n con point callback =
-  C.connectToLocalNode con $ C.LocalNodeClientProtocols
-    { C.localChainSyncClient    = C.LocalChainSyncClientPipelined $ CSP.ChainSyncClientPipelined $ pure $ CSP.SendMsgFindIntersect [point] onIntersect
-    , C.localTxSubmissionClient = Nothing
-    , C.localStateQueryClient   = Nothing
-    , C.localTxMonitoringClient = Nothing
-    }
+  C.connectToLocalNode con $
+    C.LocalNodeClientProtocols
+      { C.localChainSyncClient = C.LocalChainSyncClientPipelined $ CSP.ChainSyncClientPipelined $ pure $ CSP.SendMsgFindIntersect [point] onIntersect
+      , C.localTxSubmissionClient = Nothing
+      , C.localStateQueryClient = Nothing
+      , C.localTxMonitoringClient = Nothing
+      }
   where
     onIntersect =
       CSP.ClientPipelinedStIntersect
@@ -38,21 +41,26 @@ blocksCallbackPipelined n con point callback =
     work :: Word32 -> CSP.ClientPipelinedStIdle 'Z (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
     work pipelineSize = requestMore Origin Origin Zero
       where
-          requestMore -- was clientIdle_RequestMoreN
-            :: WithOrigin C.BlockNo -> WithOrigin C.BlockNo -> Nat n
-            -> CSP.ClientPipelinedStIdle n (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
-          requestMore clientTip serverTip rqsInFlight = let
-            in case pipelineDecisionMax pipelineSize rqsInFlight clientTip serverTip of
-                -- handle a response
+        requestMore -- was clientIdle_RequestMoreN
+          :: WithOrigin C.BlockNo
+          -> WithOrigin C.BlockNo
+          -> Nat n
+          -> CSP.ClientPipelinedStIdle n (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
+        requestMore clientTip serverTip rqsInFlight =
+          let -- handle a response
+
+              -- fire more requests
+
+           in case pipelineDecisionMax pipelineSize rqsInFlight clientTip serverTip of
                 Collect -> case rqsInFlight of
                   Succ predN -> CSP.CollectResponse Nothing (clientNextN predN)
-                -- fire more requests
                 _ -> CSP.SendMsgRequestNextPipelined (requestMore clientTip serverTip (Succ rqsInFlight))
 
-          clientNextN
-            :: Nat n
-            -> CSP.ClientStNext n (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
-          clientNextN rqsInFlight = CSP.ClientStNext
+        clientNextN
+          :: Nat n
+          -> CSP.ClientStNext n (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
+        clientNextN rqsInFlight =
+          CSP.ClientStNext
             { CSP.recvMsgRollForward = \bim ct -> do
                 callback $ H.RollForward bim ct
                 return $ requestMore (At $ H.bimBlockNo bim) (H.fromChainTip ct) rqsInFlight
@@ -62,16 +70,18 @@ blocksCallbackPipelined n con point callback =
             }
 
 blocksCallback
-  :: C.LocalNodeConnectInfo C.CardanoMode -> C.ChainPoint
+  :: C.LocalNodeConnectInfo C.CardanoMode
+  -> C.ChainPoint
   -> (H.ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ())
   -> IO ()
 blocksCallback con point callback =
-  C.connectToLocalNode con $ C.LocalNodeClientProtocols
-    { C.localChainSyncClient    = C.LocalChainSyncClient $ CS.ChainSyncClient $ pure $ CS.SendMsgFindIntersect [point] onIntersect
-    , C.localTxSubmissionClient = Nothing
-    , C.localStateQueryClient   = Nothing
-    , C.localTxMonitoringClient = Nothing
-    }
+  C.connectToLocalNode con $
+    C.LocalNodeClientProtocols
+      { C.localChainSyncClient = C.LocalChainSyncClient $ CS.ChainSyncClient $ pure $ CS.SendMsgFindIntersect [point] onIntersect
+      , C.localTxSubmissionClient = Nothing
+      , C.localStateQueryClient = Nothing
+      , C.localTxMonitoringClient = Nothing
+      }
   where
     onIntersect =
       CS.ClientStIntersect
@@ -80,7 +90,8 @@ blocksCallback con point callback =
         }
     sendRequestNext = pure $ CS.SendMsgRequestNext onNext (pure onNext)
       where
-        onNext = CS.ClientStNext
+        onNext =
+          CS.ClientStNext
             { CS.recvMsgRollForward = \bim ct -> CS.ChainSyncClient $ do
                 callback $ H.RollForward bim ct
                 sendRequestNext

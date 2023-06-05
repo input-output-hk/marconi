@@ -1,12 +1,19 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE NamedFieldPuns    #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.ChainIndex.Logging (logging) where
 
-import Cardano.Api (Block (Block), BlockHeader (BlockHeader), BlockInMode (BlockInMode), CardanoMode,
-                    ChainPoint (ChainPoint), ChainTip (ChainTip), SlotNo (SlotNo))
+import Cardano.Api (
+  Block (Block),
+  BlockHeader (BlockHeader),
+  BlockInMode (BlockInMode),
+  CardanoMode,
+  ChainPoint (ChainPoint),
+  ChainTip (ChainTip),
+  SlotNo (SlotNo),
+ )
 import Cardano.BM.Trace (Trace, logInfo)
 import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
@@ -22,18 +29,18 @@ import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward))
 import Marconi.ChainIndex.Orphans ()
 
 data SyncStats = SyncStats
-  { -- | Number of applied blocks since last message
-    syncStatsNumBlocks    :: !Int,
-    -- | Number of rollbacks
-    syncStatsNumRollbacks :: !Int,
-    -- | Timestamp of last printed message
-    syncStatsLastMessage  :: !(Maybe UTCTime)
+  { syncStatsNumBlocks :: !Int
+  -- ^ Number of applied blocks since last message
+  , syncStatsNumRollbacks :: !Int
+  -- ^ Number of rollbacks
+  , syncStatsLastMessage :: !(Maybe UTCTime)
+  -- ^ Timestamp of last printed message
   }
 
-logging ::
-  Trace IO Text ->
-  Stream (Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r ->
-  Stream (Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r
+logging
+  :: Trace IO Text
+  -> Stream (Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r
+  -> Stream (Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r
 logging tracer s = effect $ do
   stats <- newIORef (SyncStats 0 0 Nothing)
   return $ S.chain (update stats) s
@@ -45,15 +52,15 @@ logging tracer s = effect $ do
     update statsRef (RollForward bim ct) = do
       let cp = case bim of (BlockInMode (Block (BlockHeader slotNo hash _blockNo) _txs) _eim) -> ChainPoint slotNo hash
       modifyIORef' statsRef $ \stats ->
-        stats {syncStatsNumBlocks = syncStatsNumBlocks stats + 1}
+        stats{syncStatsNumBlocks = syncStatsNumBlocks stats + 1}
       printMessage statsRef cp ct
     update statsRef (RollBackward cp ct) = do
       modifyIORef' statsRef $ \stats ->
-        stats {syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1}
+        stats{syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1}
       printMessage statsRef cp ct
 
     printMessage statsRef cp ct = do
-      SyncStats {syncStatsNumBlocks, syncStatsNumRollbacks, syncStatsLastMessage} <- readIORef statsRef
+      SyncStats{syncStatsNumBlocks, syncStatsNumRollbacks, syncStatsLastMessage} <- readIORef statsRef
 
       now <- getCurrentTime
 
@@ -69,7 +76,7 @@ logging tracer s = effect $ do
                 <+> "seconds"
                 <+> let rate = fromIntegral syncStatsNumBlocks / realToFrac t :: Double
                      in pretty (printf "(%.0f blocks/sec)." rate :: String)
-                <+> k
+                          <+> k
 
       let rollbackMsg = case timeSinceLastMsg of
             Nothing -> id
@@ -89,7 +96,7 @@ logging tracer s = effect $ do
               -- 100 represents the number of slots before the
               -- node where we consider the chain-index to be synced.
               | chainTipSlot - chainPointSlot < 100 ->
-                "Synchronised."
+                  "Synchronised."
             (ChainPoint (SlotNo chainPointSlotNo) _, ChainTip (SlotNo chainTipSlotNo) _header _blockNo) ->
               let pct = (100 :: Double) * fromIntegral chainPointSlotNo / fromIntegral chainTipSlotNo
                in pretty
@@ -97,8 +104,8 @@ logging tracer s = effect $ do
                         "Synchronising. Current slot %d out of %d (%0.2f%%)."
                         chainPointSlotNo
                         chainTipSlotNo
-                        pct ::
-                        String
+                        pct
+                      :: String
                     )
             _ -> "Starting."
 
@@ -115,7 +122,7 @@ logging tracer s = effect $ do
               syncMsg <+> (blocksMsg $ rollbackMsg $ "Last block processed" <+> pretty cp <> ".")
         modifyIORef' statsRef $ \stats ->
           stats
-            { syncStatsNumBlocks = 0,
-              syncStatsNumRollbacks = 0,
-              syncStatsLastMessage = Just now
+            { syncStatsNumBlocks = 0
+            , syncStatsNumRollbacks = 0
+            , syncStatsLastMessage = Just now
             }

@@ -2,7 +2,7 @@
 
 cell.library.pkgs.haskell-nix.cabalProject' {
   # See https://github.com/haskell/haskell-language-server/issues/411.
-  # We want to use stylish-haskell, hlint, and implicit-hie as standalone tools
+  # We want to use fourmolu, hlint, and implicit-hie as standalone tools
   # *and* through HLS. But we need to have consistent versions in both cases,
   # otherwise e.g. you could format the code in HLS and then have the CI
   # complain that it's wrong
@@ -13,7 +13,7 @@ cell.library.pkgs.haskell-nix.cabalProject' {
   # b) Pull out the tools themselves from the HLS project so we can use
   #    them elsewhere
   cabalProjectLocal = ''
-    constraints: stylish-haskell==0.14.2.0, hlint==3.4.1
+    constraints: fourmolu==0.8.2.0, hlint==3.4.1
   '';
 
   src = inputs.haskell-language-server;

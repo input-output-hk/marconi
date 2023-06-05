@@ -1,9 +1,9 @@
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# OPTIONS_GHC -Wno-orphans    #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
-{-| Run the Marconi and cardano-db-sync comparison by:
+{- | Run the Marconi and cardano-db-sync comparison by:
 
 1. Sync up cardano-db-sync
 
@@ -27,7 +27,6 @@
    The --flag '-ci' is there to unset the "ci" cabal flag which is on
    by default as we don't want to run it on CI.
 -}
-
 module Main where
 
 import Control.Exception (throw)
@@ -71,18 +70,23 @@ main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Marconi to cardano-db-sync comparisons"
-  [ testPropertyNamed
-      "Compare all epoch nonces between Marconi and cardano-db-sync"
-      "propEpochNonce" propEpochNonce
-  , testPropertyNamed
-      "Compare all epoch stakepool sizes between Marconi and cardano-db-sync"
-      "propEpochStakepoolSize" propEpochStakepoolSize
-  ]
+tests =
+  testGroup
+    "Marconi to cardano-db-sync comparisons"
+    [ testPropertyNamed
+        "Compare all epoch nonces between Marconi and cardano-db-sync"
+        "propEpochNonce"
+        propEpochNonce
+    , testPropertyNamed
+        "Compare all epoch stakepool sizes between Marconi and cardano-db-sync"
+        "propEpochStakepoolSize"
+        propEpochStakepoolSize
+    ]
 
--- | Connect to cardano-db-sync's postgres instance, get minimum and
--- maximum epoch no from epoch_stake table, then compare random 10
--- epoch stakepool sizes to what we have in the indexer.
+{- | Connect to cardano-db-sync's postgres instance, get minimum and
+ maximum epoch no from epoch_stake table, then compare random 10
+ epoch stakepool sizes to what we have in the indexer.
+-}
 propEpochStakepoolSize :: H.Property
 propEpochStakepoolSize = H.withTests 1 $ H.property $ do
   conn <- getDbSyncPgConnection
@@ -91,31 +95,42 @@ propEpochStakepoolSize = H.withTests 1 $ H.property $ do
   let compareEpoch epochNo = do
         dbSyncResult <- liftIO $ dbSyncStakepoolSizes conn epochNo
         marconiResult <- liftIO $ indexerStakepoolSizes epochNo indexer
-        liftIO $ putStr
-          $ "\nComparing epoch " <> show epochNo
-          <> ", number of stakepools in epoch " <> show (Map.size dbSyncResult)
+        liftIO $
+          putStr $
+            "\nComparing epoch "
+              <> show epochNo
+              <> ", number of stakepools in epoch "
+              <> show (Map.size dbSyncResult)
         dbSyncResult === marconiResult
-  liftIO $ putStrLn
-     $ "Min and max epoch in cardano-db-sync postgres: "
-    <> show (coerce @_ @Word64 minEpochNo) <> " and " <> show (coerce @_ @Word64 maxEpochNo) <> ")"
+  liftIO $
+    putStrLn $
+      "Min and max epoch in cardano-db-sync postgres: "
+        <> show (coerce @_ @Word64 minEpochNo)
+        <> " and "
+        <> show (coerce @_ @Word64 maxEpochNo)
+        <> ")"
   forM_ [minEpochNo .. maxEpochNo] compareEpoch
 
 dbSyncStakepoolSizes :: PG.Connection -> C.EpochNo -> IO (Map.Map C.PoolId C.Lovelace)
 dbSyncStakepoolSizes conn epochNo = do
-  dbSyncRows :: [(C.PoolId, Rational)] <- liftIO $ PG.query conn
-    "   SELECT ph.hash_raw AS pool_hash             \
-    \        , sum(amount) AS sum_amount            \
-    \     FROM epoch_stake es                       \
-    \     JOIN pool_hash   ph ON es.pool_id = ph.id \
-    \    WHERE epoch_no = ?                         \
-    \ GROUP BY epoch_no, pool_hash                  \
-    \ ORDER BY sum_amount desc                      "
-    $ PG.Only epochNo
+  dbSyncRows :: [(C.PoolId, Rational)] <-
+    liftIO
+      $ PG.query
+        conn
+        "   SELECT ph.hash_raw AS pool_hash             \
+        \        , sum(amount) AS sum_amount            \
+        \     FROM epoch_stake es                       \
+        \     JOIN pool_hash   ph ON es.pool_id = ph.id \
+        \    WHERE epoch_no = ?                         \
+        \ GROUP BY epoch_no, pool_hash                  \
+        \ ORDER BY sum_amount desc                      "
+      $ PG.Only epochNo
   return $ Map.fromList $ map (\(a, b) -> (a, rationalToLovelace b)) dbSyncRows
   where
     rationalToLovelace :: Rational -> C.Lovelace
-    rationalToLovelace n | 1 <- denominator n = fromIntegral $ numerator n
-                   | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
+    rationalToLovelace n
+      | 1 <- denominator n = fromIntegral $ numerator n
+      | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
 
 indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
 indexerStakepoolSizes epochNo indexer = do
@@ -123,17 +138,17 @@ indexerStakepoolSizes epochNo indexer = do
   result <- throwIndexerError $ Storable.queryStorage [] (indexer ^. Storable.handle) query
   case result of
     EpochState.SDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
-    _                                  -> return undefined
+    _ -> return undefined
   where
     toPair row = (EpochState.epochSDDRowPoolId row, EpochState.epochSDDRowLovelace row)
 
+{- | Connect to cardano-db-sync's postgres instance, get all (EpochNo,
+ Nonce) tuples, query and compare all of these to the one found in
+ Marconi.
 
--- | Connect to cardano-db-sync's postgres instance, get all (EpochNo,
--- Nonce) tuples, query and compare all of these to the one found in
--- Marconi.
---
--- As the number of epochs is low (406 at the time of writing), then
--- all nonces found in postgres are compared.
+ As the number of epochs is low (406 at the time of writing), then
+ all nonces found in postgres are compared.
+-}
 propEpochNonce :: H.Property
 propEpochNonce = H.withTests 1 $ H.property $ do
   indexer <- openEpochStateIndexer
@@ -145,7 +160,7 @@ propEpochNonce = H.withTests 1 $ H.property $ do
       Just indexerNonce -> do
         H.footnote $ "Comparing epoch " <> show epochNo
         dbSyncNonce === indexerNonce
-      Nothing           ->
+      Nothing ->
         fail $ "Epoch not found in indexer, is it synchronised? Epoch no: " <> show epochNo
 
 queryIndexerEpochNonce :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Maybe Ledger.Nonce)
@@ -154,7 +169,7 @@ queryIndexerEpochNonce epochNo indexer = do
   res' <- throwIndexerError $ Storable.queryStorage [] (indexer ^. Storable.handle) query
   case res' of
     EpochState.NonceByEpochNoResult res -> return $ EpochState.epochNonceRowNonce <$> res
-    _                                   -> return Nothing
+    _ -> return Nothing
 
 openEpochStateIndexer :: H.PropertyT IO (Storable.State EpochState.EpochStateHandle)
 openEpochStateIndexer = do
@@ -165,7 +180,7 @@ openEpochStateIndexer = do
   networkMagic <- case networkMagicStr of
     "mainnet" -> return C.Mainnet
     _ -> case readMaybe networkMagicStr of
-      Nothing     -> fail $ "Can't parse network magic: " <> networkMagicStr
+      Nothing -> fail $ "Can't parse network magic: " <> networkMagicStr
       Just word32 -> return $ C.Testnet $ C.NetworkMagic word32
   liftIO $ do
     securityParam <- throwIndexerError $ Utils.querySecurityParamEra C.BabbageEraInCardanoMode networkMagic socketPath
@@ -177,12 +192,15 @@ openEpochStateIndexer = do
 throwIndexerError :: Monad m => ExceptT Marconi.IndexerError m a -> m a
 throwIndexerError action = either throw return =<< runExceptT action
 
--- | Connect to cardano-db-sync postgres with password from
--- DBSYNC_PGPASSWORD env variable.
+{- | Connect to cardano-db-sync postgres with password from
+ DBSYNC_PGPASSWORD env variable.
+-}
 getDbSyncPgConnection :: H.PropertyT IO PG.Connection
 getDbSyncPgConnection = do
   pgPassword <- envOrFail "DBSYNC_PGPASSWORD"
-  liftIO $ PG.connect $ PG.ConnectInfo
+  liftIO $
+    PG.connect $
+      PG.ConnectInfo
         { PG.connectHost = "localhost"
         , PG.connectPort = 5432
         , PG.connectUser = "postgres"
@@ -192,12 +210,13 @@ getDbSyncPgConnection = do
 
 -- | Get string from the environment or fail test with instruction.
 envOrFail :: String -> H.PropertyT IO String
-envOrFail str = liftIO (lookupEnv str) >>= \case
-  Just v  -> return v
-  Nothing -> fail $ str <> " environment variable not set!"
+envOrFail str =
+  liftIO (lookupEnv str) >>= \case
+    Just v -> return v
+    Nothing -> fail $ str <> " environment variable not set!"
 
 topLevelConfigFromNodeConfig
-  :: FilePath  -> IO (O.TopLevelConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto)))
+  :: FilePath -> IO (O.TopLevelConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto)))
 topLevelConfigFromNodeConfig nodeConfigPath = do
   nodeConfigE <- runExceptT $ GenesisConfig.readNetworkConfig (GenesisConfig.NetworkConfigFile nodeConfigPath)
   nodeConfig <- either (error . show) pure nodeConfigE
@@ -217,17 +236,19 @@ instance PG.FromField C.Lovelace where
   fromField f meta = fromIntegral @Integer <$> PG.fromField f meta
 
 instance PG.FromField Ledger.Nonce where
-  fromField f meta = bsToMaybeNonce <$> PG.fromField f meta >>= \case
-    Just a -> return a
-    _      -> PG.returnError PG.ConversionFailed f "Can't parse Nonce"
+  fromField f meta =
+    bsToMaybeNonce <$> PG.fromField f meta >>= \case
+      Just a -> return a
+      _ -> PG.returnError PG.ConversionFailed f "Can't parse Nonce"
     where
-    bsToMaybeNonce :: BS.ByteString -> Maybe Ledger.Nonce
-    bsToMaybeNonce bs = Ledger.Nonce <$> Crypto.hashFromBytes bs
+      bsToMaybeNonce :: BS.ByteString -> Maybe Ledger.Nonce
+      bsToMaybeNonce bs = Ledger.Nonce <$> Crypto.hashFromBytes bs
 
 instance PG.FromField C.PoolId where
-  fromField f meta = C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) <$> PG.fromField f meta >>= \case
-    Right a  -> return a
-    Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse PoolId, error: " <> show err
+  fromField f meta =
+    C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) <$> PG.fromField f meta >>= \case
+      Right a -> return a
+      Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse PoolId, error: " <> show err
 
 deriving newtype instance Real C.EpochNo
 deriving newtype instance Integral C.EpochNo

@@ -10,13 +10,13 @@ inputs.pre-commit-hooks-nix.lib.run {
 
   tools = {
     shellcheck = pkgs.shellcheck;
-    stylish-haskell = cell.packages.stylish-haskell;
+    fourmolu = cell.packages.fourmolu;
     nixpkgs-fmt = cell.packages.nixpkgs-fmt;
     cabal-fmt = cell.packages.cabal-fmt;
   };
 
   hooks = {
-    stylish-haskell.enable = true;
+    fourmolu.enable = true;
     cabal-fmt.enable = true;
     shellcheck.enable = true;
 
