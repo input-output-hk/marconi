@@ -21,8 +21,8 @@ import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (
   API,
   GetCurrentSyncedBlockResult,
+  GetEpochActiveStakePoolDelegationResult,
   GetEpochNonceResult,
-  GetEpochStakePoolDelegationResult,
   GetTxsBurningAssetIdParams (assetName, mintBurnSlot, policyId),
   GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
   GetUtxosFromAddressParams (queryAddress, queryCreatedAfterSlotNo, queryUnspentBeforeSlotNo),
@@ -163,11 +163,11 @@ getEpochStakePoolDelegationHandler
   -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
   -> Word64
   -- ^ EpochNo
-  -> Handler (Either (JsonRpcErr String) GetEpochStakePoolDelegationResult)
+  -> Handler (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
 getEpochStakePoolDelegationHandler env epochNo =
   liftIO $
     first toRpcErr
-      <$> EpochState.querySDDByEpochNo env epochNo
+      <$> EpochState.queryActiveSDDByEpochNo env epochNo
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochNonceHandler

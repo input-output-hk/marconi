@@ -22,8 +22,8 @@ import Marconi.Sidechain.Api.Routes (
   AddressUtxoResult (AddressUtxoResult),
   AssetIdTxResult (AssetIdTxResult),
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
+  GetEpochActiveStakePoolDelegationResult (GetEpochActiveStakePoolDelegationResult),
   GetEpochNonceResult (GetEpochNonceResult),
-  GetEpochStakePoolDelegationResult (GetEpochStakePoolDelegationResult),
   GetTxsBurningAssetIdParams (GetTxsBurningAssetIdParams),
   GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
@@ -46,7 +46,7 @@ tests =
             "propJSONRountripCurrentSyncedBlockResult"
             propJSONRountripCurrentSyncedBlockResult
         , testPropertyNamed
-            "GetEpochStakePoolDelegationResult"
+            "GetEpochActiveStakePoolDelegationResult "
             "propJSONRountripEpochStakePoolDelegationResult"
             propJSONRountripEpochStakePoolDelegationResult
         , testPropertyNamed
@@ -167,7 +167,7 @@ propJSONRountripGetTxsBurningAssetIdResult = property $ do
 
 propJSONRountripEpochStakePoolDelegationResult :: Property
 propJSONRountripEpochStakePoolDelegationResult = property $ do
-  sdds <- fmap GetEpochStakePoolDelegationResult $ forAll $ Gen.list (Range.linear 1 10) $ do
+  sdds <- fmap GetEpochActiveStakePoolDelegationResult $ forAll $ Gen.list (Range.linear 1 10) $ do
     EpochSDDRow
       <$> Gen.genEpochNo
       <*> Gen.genPoolId
@@ -310,7 +310,7 @@ goldenEpochStakePoolDelegationResult = do
       blockNo = C.BlockNo 64903
 
   let sdds = fmap (\poolId -> EpochSDDRow epochNo poolId lovelace slotNo blockHeaderHash blockNo) poolIds
-      result = GetEpochStakePoolDelegationResult sdds
+      result = GetEpochActiveStakePoolDelegationResult sdds
   pure $ Aeson.encodePretty result
 
 goldenEpochNonceResult :: IO ByteString

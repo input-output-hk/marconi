@@ -6,7 +6,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 
 {- | Module for indexing the stakepool delegation per epoch in the Cardano blockchain.
@@ -173,12 +172,13 @@ instance HasPoint (StorableEvent EpochStateHandle) C.ChainPoint where
   getPoint (EpochStateEvent _ _ _ _ s bhh _ _ _) = C.ChainPoint s bhh
 
 data instance StorableQuery EpochStateHandle
-  = SDDByEpochNoQuery C.EpochNo
+  = -- See Note [Active stake pool delegation query]
+    ActiveSDDByEpochNoQuery C.EpochNo
   | NonceByEpochNoQuery C.EpochNo
   | LedgerStateAtPointQuery C.ChainPoint
 
 data instance StorableResult EpochStateHandle
-  = SDDByEpochNoResult [EpochSDDRow]
+  = ActiveSDDByEpochNoResult [EpochSDDRow]
   | NonceByEpochNoResult (Maybe EpochNonceRow)
   | LedgerStateAtPointResult (Maybe (O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)))
   deriving (Eq, Show)
@@ -211,7 +211,7 @@ toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEvent
     isFirstEventOfEpoch
 
 {- | From LedgerState, get epoch stake pool delegation: a mapping of pool ID to amount staked in
- lovelace. We do this by getting the 'ssStakeSet' stake snapshot and then use 'ssDelegations' and
+ lovelace. We do this by getting the 'ssStakeMark stake snapshot and then use 'ssDelegations' and
  'ssStake' to resolve it into the desired mapping.
 -}
 getStakeMap
@@ -235,7 +235,7 @@ getStakeMap extLedgerState = case O.ledgerState extLedgerState of
       where
         nes = O.shelleyLedgerState st :: Ledger.NewEpochState era
 
-        stakeSnapshot = Ledger.ssStakeSet . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
+        stakeSnapshot = Ledger.ssStakeMark . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
 
         stakes =
           Ledger.unStake $
@@ -580,11 +580,12 @@ instance Queryable EpochStateHandle where
     -> EpochStateHandle
     -> StorableQuery EpochStateHandle
     -> StorableMonad EpochStateHandle (StorableResult EpochStateHandle)
-  queryStorage events (EpochStateHandle _ c _ _) (SDDByEpochNoQuery epochNo) =
+  queryStorage events (EpochStateHandle _ c _ _) (ActiveSDDByEpochNoQuery epochNo) =
     liftSQLError CantQueryIndexer $ do
-      case List.find (\e -> epochStateEventEpochNo e == Just epochNo) (toList events) of
+      -- See Note [Active stake pool delegation query] for why we do 'epochNo - 2' for the query.
+      case List.find (\e -> epochStateEventEpochNo e == Just (epochNo - 2)) (toList events) of
         Just e ->
-          pure $ SDDByEpochNoResult $ eventToEpochSDDRows e
+          pure $ ActiveSDDByEpochNoResult $ eventToEpochSDDRows e
         Nothing -> do
           res :: [EpochSDDRow] <-
             SQL.query
@@ -593,8 +594,8 @@ instance Queryable EpochStateHandle where
                      FROM epoch_sdd
                      WHERE epochNo = ?
                   |]
-              (SQL.Only epochNo)
-          pure $ SDDByEpochNoResult res
+              (SQL.Only $ epochNo - 2)
+          pure $ ActiveSDDByEpochNoResult res
   queryStorage events (EpochStateHandle _ c _ _) (NonceByEpochNoQuery epochNo) =
     liftSQLError CantQueryIndexer $ do
       case List.find (\e -> epochStateEventEpochNo e == Just epochNo) (toList events) of
@@ -790,3 +791,12 @@ readLedgerStateFromDisk fp topLevelConfig = do
           (O.decodeDisk codecConfig)
       )
       ledgerStateBs
+
+{- Note [Active stake pool delegation query]
+When processing the events, this indexer extracts and stores the 'mark' stake snapshot at the beginning of epoch 'n'.
+That 'mark' snapshot corresponds to the stake distribution of epoch 'n - 1'.
+Given current ledger rules, that snapshot (available at the beginning of epoch 'n') becomes *active* for computing the stake pool rewards at epoch 'n + 2'.
+
+In the 'ActiveSDDByEpochNoQuery', we are interested in the active stake pool delegation for a given epoch.
+Because we only store the 'mark' snapshot (not the active stake snapshot) of epoch 'n', we need to subtract '2' to the epoch provided as input.
+-}

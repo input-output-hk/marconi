@@ -34,7 +34,7 @@ type RpcAPI =
     :<|> RpcCurrentSyncedBlockMethod
     :<|> RpcPastAddressUtxoMethod
     :<|> RpcMintingPolicyHashTxMethod
-    :<|> RpcEpochStakePoolDelegationMethod
+    :<|> RpcEpochActiveStakePoolDelegationMethod
     :<|> RpcEpochNonceMethod
 
 type RpcEchoMethod = JsonRpc "echo" String String String
@@ -62,12 +62,12 @@ type RpcMintingPolicyHashTxMethod =
     String
     GetTxsBurningAssetIdResult
 
-type RpcEpochStakePoolDelegationMethod =
+type RpcEpochActiveStakePoolDelegationMethod =
   JsonRpc
-    "getStakePoolDelegationByEpoch"
+    "getActiveStakePoolDelegationByEpoch"
     Word64
     String
-    GetEpochStakePoolDelegationResult
+    GetEpochActiveStakePoolDelegationResult
 
 type RpcEpochNonceMethod =
   JsonRpc
@@ -260,6 +260,10 @@ instance FromJSON AssetIdTxResult where
 
 newtype GetEpochStakePoolDelegationResult
   = GetEpochStakePoolDelegationResult [EpochState.EpochSDDRow]
+  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+
+newtype GetEpochActiveStakePoolDelegationResult
+  = GetEpochActiveStakePoolDelegationResult [EpochState.EpochSDDRow]
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
 newtype GetEpochNonceResult

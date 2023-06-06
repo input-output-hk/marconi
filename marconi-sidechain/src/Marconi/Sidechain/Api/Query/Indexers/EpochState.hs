@@ -1,7 +1,7 @@
 module Marconi.Sidechain.Api.Query.Indexers.EpochState (
   initializeEnv,
   updateEnvState,
-  querySDDByEpochNo,
+  queryActiveSDDByEpochNo,
   queryNonceByEpochNo,
 ) where
 
@@ -13,14 +13,14 @@ import Control.Monad.STM (STM, atomically)
 import Data.Word (Word64)
 import Marconi.ChainIndex.Indexers.EpochState (
   EpochStateHandle,
-  StorableQuery (NonceByEpochNoQuery, SDDByEpochNoQuery),
-  StorableResult (NonceByEpochNoResult, SDDByEpochNoResult),
+  StorableQuery (ActiveSDDByEpochNoQuery, NonceByEpochNoQuery),
+  StorableResult (ActiveSDDByEpochNoResult, NonceByEpochNoResult),
  )
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (
+  GetEpochActiveStakePoolDelegationResult (GetEpochActiveStakePoolDelegationResult),
   GetEpochNonceResult (GetEpochNonceResult),
-  GetEpochStakePoolDelegationResult (GetEpochStakePoolDelegationResult),
  )
 import Marconi.Sidechain.Api.Types (
   EpochStateIndexerEnv (EpochStateIndexerEnv),
@@ -47,14 +47,14 @@ updateEnvState = writeTMVar
 {- | Retrieve SDD (stakepool delegation distribution) associated at the given 'EpochNo'.
  We return an empty list if the 'EpochNo' is not found.
 -}
-querySDDByEpochNo
+queryActiveSDDByEpochNo
   :: SidechainEnv
   -- ^ Query run time environment
   -> Word64
   -- ^ Bech32 Address
-  -> IO (Either QueryExceptions GetEpochStakePoolDelegationResult)
+  -> IO (Either QueryExceptions GetEpochActiveStakePoolDelegationResult)
   -- ^ Plutus address conversion error may occur
-querySDDByEpochNo env epochNo = do
+queryActiveSDDByEpochNo env epochNo = do
   -- We must stop the indexer inserts before doing the query.
   epochStateIndexer <-
     atomically $
@@ -67,9 +67,9 @@ querySDDByEpochNo env epochNo = do
     query indexer = do
       res <-
         runExceptT $
-          Storable.query indexer (SDDByEpochNoQuery $ C.EpochNo epochNo)
+          Storable.query indexer (ActiveSDDByEpochNoQuery $ C.EpochNo epochNo)
       case res of
-        Right (SDDByEpochNoResult epochSddRows) -> pure $ Right $ GetEpochStakePoolDelegationResult epochSddRows
+        Right (ActiveSDDByEpochNoResult epochSddRows) -> pure $ Right $ GetEpochActiveStakePoolDelegationResult epochSddRows
         _other -> pure $ Left $ QueryError "Query failed"
 
 {- | Retrieve the nonce associated at the given 'EpochNo'

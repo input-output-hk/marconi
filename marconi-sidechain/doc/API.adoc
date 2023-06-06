@@ -732,9 +732,9 @@ TBD
 TBD
 
 
-=== getStakePoolDelegationByEpoch
+=== getActiveStakePoolDelegationByEpoch
 
-Retrieves the stake pool delegation per epoch.
+Retrieves the active stake pool delegation per epoch.
 
 ==== JSON Schema
 

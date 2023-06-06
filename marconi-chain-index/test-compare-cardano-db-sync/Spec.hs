@@ -30,7 +30,6 @@
 module Main where
 
 import Control.Exception (throw)
-import Control.Lens ((^.))
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
@@ -83,65 +82,6 @@ tests =
         propEpochStakepoolSize
     ]
 
-{- | Connect to cardano-db-sync's postgres instance, get minimum and
- maximum epoch no from epoch_stake table, then compare random 10
- epoch stakepool sizes to what we have in the indexer.
--}
-propEpochStakepoolSize :: H.Property
-propEpochStakepoolSize = H.withTests 1 $ H.property $ do
-  conn <- getDbSyncPgConnection
-  indexer <- openEpochStateIndexer
-  [(minEpochNo :: C.EpochNo, maxEpochNo :: C.EpochNo)] <- liftIO $ PG.query_ conn "SELECT min(epoch_no), max(epoch_no) FROM epoch_stake"
-  let compareEpoch epochNo = do
-        dbSyncResult <- liftIO $ dbSyncStakepoolSizes conn epochNo
-        marconiResult <- liftIO $ indexerStakepoolSizes epochNo indexer
-        liftIO $
-          putStr $
-            "\nComparing epoch "
-              <> show epochNo
-              <> ", number of stakepools in epoch "
-              <> show (Map.size dbSyncResult)
-        dbSyncResult === marconiResult
-  liftIO $
-    putStrLn $
-      "Min and max epoch in cardano-db-sync postgres: "
-        <> show (coerce @_ @Word64 minEpochNo)
-        <> " and "
-        <> show (coerce @_ @Word64 maxEpochNo)
-        <> ")"
-  forM_ [minEpochNo .. maxEpochNo] compareEpoch
-
-dbSyncStakepoolSizes :: PG.Connection -> C.EpochNo -> IO (Map.Map C.PoolId C.Lovelace)
-dbSyncStakepoolSizes conn epochNo = do
-  dbSyncRows :: [(C.PoolId, Rational)] <-
-    liftIO
-      $ PG.query
-        conn
-        "   SELECT ph.hash_raw AS pool_hash             \
-        \        , sum(amount) AS sum_amount            \
-        \     FROM epoch_stake es                       \
-        \     JOIN pool_hash   ph ON es.pool_id = ph.id \
-        \    WHERE epoch_no = ?                         \
-        \ GROUP BY epoch_no, pool_hash                  \
-        \ ORDER BY sum_amount desc                      "
-      $ PG.Only epochNo
-  return $ Map.fromList $ map (\(a, b) -> (a, rationalToLovelace b)) dbSyncRows
-  where
-    rationalToLovelace :: Rational -> C.Lovelace
-    rationalToLovelace n
-      | 1 <- denominator n = fromIntegral $ numerator n
-      | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
-
-indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
-indexerStakepoolSizes epochNo indexer = do
-  let query = EpochState.SDDByEpochNoQuery epochNo
-  result <- throwIndexerError $ Storable.queryStorage [] (indexer ^. Storable.handle) query
-  case result of
-    EpochState.SDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
-    _ -> return undefined
-  where
-    toPair row = (EpochState.epochSDDRowPoolId row, EpochState.epochSDDRowLovelace row)
-
 {- | Connect to cardano-db-sync's postgres instance, get all (EpochNo,
  Nonce) tuples, query and compare all of these to the one found in
  Marconi.
@@ -166,10 +106,71 @@ propEpochNonce = H.withTests 1 $ H.property $ do
 queryIndexerEpochNonce :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Maybe Ledger.Nonce)
 queryIndexerEpochNonce epochNo indexer = do
   let query = EpochState.NonceByEpochNoQuery epochNo
-  res' <- throwIndexerError $ Storable.queryStorage [] (indexer ^. Storable.handle) query
+  res' <- throwIndexerError $ Storable.query indexer query
   case res' of
     EpochState.NonceByEpochNoResult res -> return $ EpochState.epochNonceRowNonce <$> res
     _ -> return Nothing
+
+{- | Connect to cardano-db-sync's postgres instance, get minimum and
+ maximum epoch no from epoch_stake table, then compare random 10
+ epoch stakepool sizes to what we have in the indexer.
+-}
+propEpochStakepoolSize :: H.Property
+propEpochStakepoolSize = H.withTests 1 $ H.property $ do
+  conn <- getDbSyncPgConnection
+  indexer <- openEpochStateIndexer
+  [(minEpochNo :: C.EpochNo, maxEpochNo :: C.EpochNo)] <- liftIO $ PG.query_ conn "SELECT min(epoch_no), max(epoch_no) FROM epoch_stake"
+  let compareEpoch epochNo = do
+        dbSyncResult <- liftIO $ dbSyncStakepoolSizes conn epochNo
+        marconiResult <- liftIO $ indexerStakepoolSizes epochNo indexer
+        H.footnote $
+          "Comparing epoch "
+            <> show epochNo
+            <> ", number of stakepools in epoch "
+            <> show (Map.size dbSyncResult)
+        dbSyncResult === marconiResult
+  H.footnote $
+    "Min and max epoch in cardano-db-sync postgres: "
+      <> show (coerce @_ @Word64 minEpochNo)
+      <> " and "
+      <> show (coerce @_ @Word64 maxEpochNo)
+      <> ")"
+  -- We do '+1' because we are interested in the *active* SDD per epoch, whereas db-sync indexes the
+  -- 'set' stake snapshot per epoch.
+  forM_ [minEpochNo + 1 .. maxEpochNo + 1] compareEpoch
+
+dbSyncStakepoolSizes :: PG.Connection -> C.EpochNo -> IO (Map.Map C.PoolId C.Lovelace)
+dbSyncStakepoolSizes conn epochNo = do
+  dbSyncRows :: [(C.PoolId, Rational)] <-
+    liftIO
+      $ PG.query
+        conn
+        "   SELECT ph.hash_raw AS pool_hash             \
+        \        , sum(amount) AS sum_amount            \
+        \     FROM epoch_stake es                       \
+        \     JOIN pool_hash ph ON es.pool_id = ph.id \
+        \    WHERE epoch_no = ?                         \
+        \ GROUP BY epoch_no, pool_hash                  \
+        \ ORDER BY sum_amount desc                      "
+      -- We do that for the same reason as above. The indexer query returns the *active* SDD for epoch
+      -- 'n', so we need to compare it with the db-sync SDD of epoch 'n - 1'.
+      $ PG.Only (epochNo - 1)
+  return $ Map.fromList $ map (\(a, b) -> (a, rationalToLovelace b)) dbSyncRows
+  where
+    rationalToLovelace :: Rational -> C.Lovelace
+    rationalToLovelace n
+      | 1 <- denominator n = fromIntegral $ numerator n
+      | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
+
+indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
+indexerStakepoolSizes epochNo indexer = do
+  let query = EpochState.ActiveSDDByEpochNoQuery epochNo
+  result <- throwIndexerError $ Storable.query indexer query
+  case result of
+    EpochState.ActiveSDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
+    _ -> return undefined
+  where
+    toPair row = (EpochState.epochSDDRowPoolId row, EpochState.epochSDDRowLovelace row)
 
 openEpochStateIndexer :: H.PropertyT IO (Storable.State EpochState.EpochStateHandle)
 openEpochStateIndexer = do
@@ -183,7 +184,7 @@ openEpochStateIndexer = do
       Nothing -> fail $ "Can't parse network magic: " <> networkMagicStr
       Just word32 -> return $ C.Testnet $ C.NetworkMagic word32
   liftIO $ do
-    securityParam <- throwIndexerError $ Utils.querySecurityParamEra C.BabbageEraInCardanoMode networkMagic socketPath
+    securityParam <- throwIndexerError $ Utils.querySecurityParam networkMagic socketPath
     topLevelConfig <- topLevelConfigFromNodeConfig nodeConfigPath
     let dbPath = dbDir </> epochStateDbName
         ledgerStateDirPath = dbDir </> "ledgerStates"
