@@ -12,6 +12,7 @@ import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
 
@@ -222,6 +223,8 @@ newtype GetTxsBurningAssetIdResult
 data AssetIdTxResult
   = AssetIdTxResult
       !(C.Hash C.BlockHeader)
+      !C.BlockNo
+      !TxIndexInBlock
       !C.SlotNo
       !C.TxId
       !(Maybe (C.Hash C.ScriptData))
@@ -230,9 +233,11 @@ data AssetIdTxResult
   deriving (Eq, Ord, Show, Generic)
 
 instance ToJSON AssetIdTxResult where
-  toJSON (AssetIdTxResult bhh slotNo txId redh red qty) =
+  toJSON (AssetIdTxResult bhh bn txIx slotNo txId redh red qty) =
     object
       [ "blockHeaderHash" .= bhh
+      , "blockNo" .= bn
+      , "txIx" .= txIx
       , "slotNo" .= slotNo
       , "txId" .= txId
       , "redeemerHash" .= redh
@@ -244,6 +249,8 @@ instance FromJSON AssetIdTxResult where
   parseJSON (Object v) = do
     AssetIdTxResult
       <$> v .: "blockHeaderHash"
+      <*> v .: "blockNo"
+      <*> v .: "txIx"
       <*> v .: "slotNo"
       <*> v .: "txId"
       <*> v .: "redeemerHash"
