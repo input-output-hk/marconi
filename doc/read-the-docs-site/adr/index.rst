@@ -34,3 +34,4 @@ The general process for creating an ADR is:
    0003-marconi-indexer-rollbacks
    0004-marconi-query-interface
    0005-marconi-indexers-query-synchronisation-primitive
+   0006-indexer-resuming-strategy
