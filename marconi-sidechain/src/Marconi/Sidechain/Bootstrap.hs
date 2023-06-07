@@ -12,7 +12,15 @@ import Marconi.ChainIndex.Indexers (epochStateWorker, mintBurnWorker, runIndexer
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
-import Marconi.ChainIndex.Types (TargetAddresses, epochStateDbName, mintBurnDbName, utxoDbName)
+import Marconi.ChainIndex.Types (
+  TargetAddresses,
+  UtxoIndexerConfig (UtxoIndexerConfig),
+  epochStateDbName,
+  mintBurnDbName,
+  ucEnableUtxoTxOutRef,
+  ucTargetAddresses,
+  utxoDbName,
+ )
 import Marconi.Core.Storable (State, StorableEvent)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurn
@@ -53,21 +61,26 @@ bootstrapIndexers args env = do
       addressUtxoCallback =
         atomically
           . AddressUtxo.updateEnvState (env ^. CLI.sidechainEnvIndexers . CLI.sidechainAddressUtxoIndexer)
-  let epochStateCallback :: (State EpochStateHandle, StorableEvent EpochStateHandle) -> IO ()
+      epochStateCallback :: (State EpochStateHandle, StorableEvent EpochStateHandle) -> IO ()
       epochStateCallback =
         atomically
           . EpochState.updateEnvState
             (env ^. CLI.sidechainEnvIndexers . CLI.sidechainEpochStateIndexer . CLI.epochStateIndexerEnvIndexer)
           . fst
-  let mintBurnCallback :: State MintBurnHandle -> IO ()
+      mintBurnCallback :: State MintBurnHandle -> IO ()
       dbPath = CLI.dbDir args
       mintBurnCallback =
         atomically
           . MintBurn.updateEnvState
             (env ^. CLI.sidechainEnvIndexers . CLI.sidechainMintBurnIndexer . CLI.mintBurnIndexerEnvIndexer)
+      utxoIndexerConfig =
+        UtxoIndexerConfig
+          { ucTargetAddresses = CLI.targetAddresses args
+          , ucEnableUtxoTxOutRef = False --  we do not save scriptRef for sidechain
+          }
   let indexers =
         [
-          ( utxoWorker addressUtxoCallback $ CLI.targetAddresses args
+          ( utxoWorker addressUtxoCallback utxoIndexerConfig
           , Just $ dbPath </> utxoDbName
           )
         ,

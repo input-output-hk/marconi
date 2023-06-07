@@ -22,6 +22,10 @@ parserCliArgs =
           <> Opt.help "Path to node configuration which you are connecting to."
       )
     <*> Cli.commonDbDir
+    <*> Opt.switch
+      ( Opt.long "enable-utxo-reference-script"
+          <> Opt.help "enable utxo indexers to store reference script of a Utxo."
+      )
     <*> Cli.commonMaybePort
     <*> Cli.pNetworkId
     <*> Cli.commonMinIndexingDepth

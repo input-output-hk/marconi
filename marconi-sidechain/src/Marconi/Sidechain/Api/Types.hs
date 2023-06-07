@@ -26,6 +26,7 @@ import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
 import Marconi.ChainIndex.Types as Export (IndexingDepth, TargetAddresses)
 import Marconi.Core.Storable (State, StorableQuery)
+
 import Network.Wai.Handler.Warp (Settings)
 
 -- | Type represents http port for JSON-RPC
@@ -36,6 +37,8 @@ data CliArgs = CliArgs
   -- ^ Path to the node config
   , dbDir :: !FilePath
   -- ^ Directory path containing the SQLite database files
+  , enableUtxoTxOutRef :: !Bool
+  -- ^ enable storing txout refScript,
   , httpPort :: !(Maybe Int)
   -- ^ optional tcp/ip port number for JSON-RPC http server
   , networkId :: !C.NetworkId

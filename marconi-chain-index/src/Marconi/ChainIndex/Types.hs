@@ -8,6 +8,9 @@ module Marconi.ChainIndex.Types (
   -- * Addresses alias used to query marconi
   TargetAddresses,
 
+  -- * Utxo indexer related configs
+  UtxoIndexerConfig (..),
+
   -- * Aliases for the current Cardano era
   CurrentEra,
   pattern AsCurrentEra,
@@ -21,7 +24,6 @@ module Marconi.ChainIndex.Types (
   -- * Database file names
   utxoDbName,
   addressDatumDbName,
-  datumDbName,
   scriptTxDbName,
   epochStateDbName,
   mintBurnDbName,
@@ -39,6 +41,13 @@ import Database.SQLite.Simple.ToField qualified as SQL
 
 -- | Typre represents non empty list of Bech32 Shelley compatable addresses
 type TargetAddresses = NonEmpty (C.Address C.ShelleyAddr)
+
+data UtxoIndexerConfig = UtxoIndexerConfig
+  { ucTargetAddresses :: Maybe TargetAddresses
+  -- ^ List of address utxo indexer to follow
+  , ucEnableUtxoTxOutRef :: Bool
+  -- ^ enable utxo indexer to store txOut refScript
+  }
 
 -- | An alias for the current era, to ease the transition from one era to the next one
 type CurrentEra = C.BabbageEra
@@ -77,9 +86,6 @@ utxoDbName = "utxo.db"
 
 addressDatumDbName :: FilePath
 addressDatumDbName = "addressdatum.db"
-
-datumDbName :: FilePath
-datumDbName = "datum.db"
 
 scriptTxDbName :: FilePath
 scriptTxDbName = "scripttx.db"
