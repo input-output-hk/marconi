@@ -18,7 +18,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.Core.Experiment qualified as Core
 
 import Control.Lens (folded, (^..))
-import Control.Monad (foldM, forM)
+import Control.Monad (forM)
 import Data.Foldable (fold)
 import Data.Functor ((<&>))
 import Data.Map (Map)
@@ -48,7 +48,7 @@ genUtxoEvents'
   -> Gen (Core.ListIndexer Utxo.UtxoEvent)
 genUtxoEvents' txOutToUtxo = do
   timedEvents <- fmap fst <$> genUtxoEventsWithTxs' txOutToUtxo
-  foldM (flip Core.index) Core.mkListIndexer timedEvents
+  Core.indexAll timedEvents Core.mkListIndexer
 
 -- | Generate ShelleyEra UtxoEvent
 genShelleyEraUtxoEvents :: Gen (Core.TimedEvent Utxo.UtxoEvent)
@@ -64,8 +64,6 @@ genShelleyEraUtxoEvents = do
   let cp :: C.ChainPoint
       cp = foldr max C.ChainPointAtGenesis (events ^.. folded . Core.point)
   pure $ Core.TimedEvent cp (fold utxoEvents')
-
--- foldM (flip Core.index) Core.mkListIndexer shelleyEvents
 
 genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.TimedEvent Utxo.UtxoEvent)
 genShelleyEraUtxoEventsAtChainPoint cp = do

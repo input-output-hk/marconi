@@ -384,21 +384,23 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   timedUtxoEvents :: [Core.TimedEvent Utxo.UtxoEvent] <-
     forAll $ traverse genShelleyEraUtxoEventsAtChainPoint chainPoints
   conn <- liftIO $ Utxo.initSQLite ":memory:"
-  let (keep, flush) = (1, 2) -- small memory to force SQL flush
+  let (keep, flush) = (1, 1) -- small memory to force SQL flush
       indexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
       indexer = Utxo.mkMixedIndexer' conn keep flush
   mixedIndexer <- Core.indexAllEither timedUtxoEvents indexer >>= Hedgehog.evalEither
   listIndexer :: Core.ListIndexer Utxo.UtxoEvent <-
-    foldM (flip Core.index) Core.mkListIndexer timedUtxoEvents -- add events to in-memory listIndexer
+    Core.indexAll timedUtxoEvents Core.mkListIndexer -- add events to in-memory listIndexer
   lastMemCp :: C.ChainPoint <- Core.lastSyncPoint (mixedIndexer ^. Core.inMemory)
+  lastDbCp :: C.ChainPoint <- Core.lastSyncPoint (mixedIndexer ^. Core.inDatabase)
   lastListIndexerCp :: C.ChainPoint <- Core.lastSyncPoint listIndexer -- mixedIndexer
-  Hedgehog.footnote $ show lastMemCp
+  Hedgehog.footnote $ "Mem chainpoint: " <> show lastMemCp
+  Hedgehog.footnote $ "Db chainpoint: " <> show lastDbCp
   -- syncpoint of listIndexer should reflect the latest chainpoint
   lastListIndexerCp === last chainPoints --
   -- with keep/flush at this level, we are garanteed to have some DB entires.
   -- the last syncpoint in DB should be less than the latest, but not genesis
-  lastMemCp /== C.ChainPointAtGenesis -- we have flushed to SQLite
-  Hedgehog.assert $ lastMemCp < last chainPoints
+  lastDbCp /== C.ChainPointAtGenesis -- we have flushed to SQLite
+  Hedgehog.assert $ lastDbCp < last chainPoints
 
 {- | Calling 'Utxo.getUtxoEventos' with target addresses that are extracted from all tx outputs from
  the initial generated txs should return the same 'UtxoEvent's as if there was no provided target

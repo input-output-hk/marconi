@@ -7,6 +7,7 @@ module Marconi.Core.Experiment.Class (
   IsIndex (..),
   indexEither,
   indexAllEither,
+  indexAllDescendingEither,
   Rollbackable (..),
   Resetable (..),
   Queryable (..),
@@ -21,7 +22,7 @@ module Marconi.Core.Experiment.Class (
 ) where
 
 import Control.Monad.Except (ExceptT, MonadError, runExceptT)
-import Data.Foldable (foldrM)
+import Data.Foldable (foldlM, foldrM)
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, TimedEvent)
 
 -- IsIndex
@@ -43,13 +44,23 @@ class Monad m => IsIndex m event indexer where
 
   -- | Index a bunch of event, associated to their point in time, in an indexer
   --
-  -- The events must be sorted in descending order (the most recent first)
+  -- The events must be sorted in ascending order (the most recent first)
   indexAll
     :: (Ord (Point event), Traversable f)
     => f (TimedEvent event)
     -> indexer event
     -> m (indexer event)
-  indexAll = flip (foldrM index)
+  indexAll = flip $ foldlM (flip index)
+
+  -- | Index a bunch of event, associated to their point in time, in an indexer
+  --
+  -- The events must be sorted in descending order (the most recent first)
+  indexAllDescending
+    :: (Ord (Point event), Traversable f)
+    => f (TimedEvent event)
+    -> indexer event
+    -> m (indexer event)
+  indexAllDescending = flip $ foldrM index
 
   {-# MINIMAL index #-}
 
@@ -77,6 +88,17 @@ indexAllEither
   -> indexer event
   -> m (Either err (indexer event))
 indexAllEither evt = runExceptT . indexAll evt
+
+-- | Like @indexAllDescending@, but internalise the error in the result.
+indexAllDescendingEither
+  :: ( IsIndex (ExceptT err m) event indexer
+     , Traversable f
+     , Ord (Point event)
+     )
+  => f (TimedEvent event)
+  -> indexer event
+  -> m (Either err (indexer event))
+indexAllDescendingEither evt = runExceptT . indexAllDescending evt
 
 -- Rollback
 

@@ -623,7 +623,7 @@ instance
   => Core.IsIndex m event (UnderCoordinator indexer)
   where
   index = Core.indexVia underCoordinator
-  indexAll = Core.indexAllVia underCoordinator
+  indexAllDescending = Core.indexAllDescendingVia underCoordinator
 
 instance MonadIO m => Core.IsSync m event (UnderCoordinator indexer) where
   lastSyncPoint = Core.lastSyncPointVia underCoordinator

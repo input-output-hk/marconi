@@ -36,7 +36,7 @@ import Data.Foldable (traverse_)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
  )
 import Marconi.Core.Experiment.Type (
@@ -191,7 +191,7 @@ instance
     runIndexQueries (indexer ^. handle) indexQueries
     pure $ indexer & dbLastSync .~ (timedEvent ^. point)
 
-  indexAll evts indexer = do
+  indexAllDescending evts indexer = do
     let indexQueries = indexer ^. buildInsert $ foldMap (indexer ^. prepareInsert) evts
         updateLastSync = maybe id (dbLastSync .~) (maximumOf (folded . point) evts)
 

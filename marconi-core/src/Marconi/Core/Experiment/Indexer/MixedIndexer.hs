@@ -28,7 +28,7 @@ import Marconi.Core.Experiment.Class (
   AppendResult (appendResult),
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
   Queryable (query),
   Rollbackable (rollback),
@@ -180,7 +180,7 @@ flush indexer = do
   (eventsToFlush, indexer') <-
     getCompose $
       inMemory (Compose . flushMemory keep) indexer
-  inDatabase (indexAll eventsToFlush) indexer'
+  inDatabase (indexAllDescending eventsToFlush) indexer'
 
 instance
   ( Ord (Point event)
@@ -193,7 +193,7 @@ instance
   where
   index timedEvent indexer =
     let isFull indexer' =
-          (indexer' ^. flushSize + indexer' ^. keepInMemory <)
+          (indexer' ^. flushSize + indexer' ^. keepInMemory <=)
             <$> indexer' ^. inMemory . to currentLength
 
         flushIfFull full = if full then flush else pure

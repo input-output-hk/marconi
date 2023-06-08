@@ -14,7 +14,7 @@ module Marconi.Core.Experiment.Transformer.IndexWrapper (
   rollbackVia,
   resetVia,
   indexVia,
-  indexAllVia,
+  indexAllDescendingVia,
   lastSyncPointVia,
   closeVia,
   queryVia,
@@ -26,7 +26,7 @@ import Control.Monad.Except (MonadError)
 import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
@@ -74,13 +74,13 @@ indexVia l = l . index
 {- | Helper to implement the @index@ functon of 'IsIndex' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.
 -}
-indexAllVia
+indexAllDescendingVia
   :: (Ord (Point event), IsIndex m event indexer, Traversable f)
   => Lens' s (indexer event)
   -> f (TimedEvent event)
   -> s
   -> m s
-indexAllVia l = l . indexAll
+indexAllDescendingVia l = l . indexAllDescending
 
 instance
   (IsIndex m event indexer)
