@@ -5,15 +5,15 @@
 -}
 module Marconi.Core.Experiment.Class (
   IsIndex (..),
-  index',
-  indexAll',
+  indexEither,
+  indexAllEither,
   Rollbackable (..),
   Resetable (..),
   Queryable (..),
   query',
   queryLatest,
   queryLatest',
-  ResumableResult (..),
+  AppendResult (..),
   Closeable (..),
   IsSync (..),
   isAheadOfSync,
@@ -58,17 +58,17 @@ class Monad m => IsIndex m event indexer where
  It's useful when you don't want to internalise the error in the monad stack to handle it explicitly,
  it's often used when we target IO as we don't want to mess with @IOException@.
 -}
-index'
+indexEither
   :: ( IsIndex (ExceptT err m) event indexer
      , Eq (Point event)
      )
   => TimedEvent event
   -> indexer event
   -> m (Either err (indexer event))
-index' evt = runExceptT . index evt
+indexEither evt = runExceptT . index evt
 
 -- | Like @indexAll@, but internalise the error in the result.
-indexAll'
+indexAllEither
   :: ( IsIndex (ExceptT err m) event indexer
      , Traversable f
      , Ord (Point event)
@@ -76,7 +76,7 @@ indexAll'
   => f (TimedEvent event)
   -> indexer event
   -> m (Either err (indexer event))
-indexAll' evt = runExceptT . indexAll evt
+indexAllEither evt = runExceptT . indexAll evt
 
 -- Rollback
 
@@ -156,8 +156,8 @@ queryLatest' q indexer = do
   query' p q indexer
 
 -- | The indexer can take a result and complete it with its events
-class ResumableResult m event query indexer where
-  resumeResult
+class AppendResult m event query indexer where
+  appendResult
     :: Ord (Point event)
     => Point event
     -> query

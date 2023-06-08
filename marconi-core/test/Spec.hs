@@ -23,7 +23,7 @@ experimentTests =
     [ testGroup
         "Indexing"
         [ E.indexingTestGroup "ListIndexer" E.listIndexerRunner
-        , E.indexingTestGroup "SQLiteIndexer" E.sqliteIndexerRunner
+        , E.indexingTestGroup "SQLiteIndexer" E.mkSqliteIndexerRunner
         , E.indexingTestGroup "MixedIndexer - low memory" E.mixedLowMemoryIndexerRunner
         , E.indexingTestGroup "MixedIndexer - high memory" E.mixedHighMemoryIndexerRunner
         , E.indexingTestGroup "WithTracer" $ E.withTracerRunner E.listIndexerRunner
@@ -33,7 +33,7 @@ experimentTests =
     , testGroup
         "WithDelay"
         [ E.delayTestGroup "ListIndexer" E.listIndexerRunner
-        , E.delayTestGroup "SQLiteIndexer" E.sqliteIndexerRunner
+        , E.delayTestGroup "SQLiteIndexer" E.mkSqliteIndexerRunner
         ]
     , testGroup
         "WithTransform"
@@ -54,7 +54,7 @@ experimentTests =
         ]
     , testGroup
         "Resuming"
-        [ E.resumeSQLiteLastSyncTest E.sqliteIndexerRunner
+        [ E.resumeSQLiteLastSyncTest E.mkSqliteIndexerRunner
         , E.resumeMixedLastSyncTest E.mixedNoMemoryIndexerRunner
         ]
     , testGroup

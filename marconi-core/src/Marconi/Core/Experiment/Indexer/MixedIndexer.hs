@@ -11,7 +11,7 @@
 module Marconi.Core.Experiment.Indexer.MixedIndexer (
   Flushable (..),
   MixedIndexer,
-  newMixedIndexer,
+  mkMixedIndexer,
   standardMixedIndexer,
   inMemory,
   inDatabase,
@@ -25,15 +25,15 @@ import Control.Lens.Operators ((&), (.~), (^.))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (
+  AppendResult (appendResult),
   Closeable (close),
   HasGenesis,
   IsIndex (index, indexAll),
   IsSync (lastSyncPoint),
   Queryable (query),
-  ResumableResult (resumeResult),
   Rollbackable (rollback),
  )
-import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
+import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (IndexWrapper),
@@ -91,7 +91,7 @@ makeLenses 'MixedIndexerConfig
 -}
 newtype MixedIndexer store mem event = MixedIndexer {_mixedWrapper :: IndexWrapper (MixedIndexerConfig store) mem event}
 
-newMixedIndexer
+mkMixedIndexer
   :: Word
   -- ^ how many events are kept in memory after a flush
   -> Word
@@ -99,7 +99,7 @@ newMixedIndexer
   -> store event
   -> mem event
   -> MixedIndexer store mem event
-newMixedIndexer keepNb flushNb db =
+mkMixedIndexer keepNb flushNb db =
   MixedIndexer . IndexWrapper (MixedIndexerConfig keepNb flushNb db)
 
 standardMixedIndexer
@@ -114,7 +114,7 @@ standardMixedIndexer
   -> m (MixedIndexer store ListIndexer event)
 standardMixedIndexer keepNb flushNb db = do
   lSync <- lastSyncPoint db
-  pure $ newMixedIndexer keepNb flushNb db (listIndexer & latest .~ lSync)
+  pure $ mkMixedIndexer keepNb flushNb db (mkListIndexer & latest .~ lSync)
 
 makeLenses ''MixedIndexer
 
@@ -218,13 +218,13 @@ instance
       else inDatabase (rollback p) indexer'
 
 instance
-  ( ResumableResult m event query ListIndexer
+  ( AppendResult m event query ListIndexer
   , Queryable m event query store
   )
   => Queryable m event query (MixedIndexer store ListIndexer)
   where
   query valid q indexer =
-    resumeResult
+    appendResult
       valid
       q
       (indexer ^. inMemory)

@@ -12,8 +12,8 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   prepareInsert,
   buildInsert,
   dbLastSync,
-  sqliteIndexer,
-  singleInsertSQLiteIndexer,
+  mkSqliteIndexer,
+  mkSingleInsertSqliteIndexer,
   rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
@@ -81,7 +81,12 @@ data SQLiteIndexer event = SQLiteIndexer
 
 makeLenses ''SQLiteIndexer
 
-sqliteIndexer
+{- | Start a new indexer or resume an existing SQLite indexer
+
+ The main difference with 'SQLiteIndexer' is
+ that we set 'dbLastSync' thanks to the provided query
+-}
+mkSqliteIndexer
   :: SQL.ToRow param
   => SQL.FromRow (Point event)
   => MonadIO m
@@ -96,7 +101,7 @@ sqliteIndexer
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-sqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery =
+mkSqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery =
   let getLastSync = do
         res <- runLastSyncQuery _handle lastSyncQuery
         case res of
@@ -113,7 +118,13 @@ sqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery =
             , _dbLastSync
             }
 
-singleInsertSQLiteIndexer
+{- | A smart constructor for indexer that want to map an event to a single table.
+ We just have to set the type family of `InsertRecord event` to `[param]` and
+ then to provide the expected parameters.
+
+ It is monomorphic restriction of 'mkSqliteIndexer'
+-}
+mkSingleInsertSqliteIndexer
   :: SQL.ToRow param
   => SQL.FromRow (Point event)
   => MonadIO m
@@ -128,7 +139,7 @@ singleInsertSQLiteIndexer
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-singleInsertSQLiteIndexer = sqliteIndexer
+mkSingleInsertSqliteIndexer = mkSqliteIndexer
 
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
 handleSQLErrors value =

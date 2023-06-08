@@ -48,7 +48,7 @@ genUtxoEvents'
   -> Gen (Core.ListIndexer Utxo.UtxoEvent)
 genUtxoEvents' txOutToUtxo = do
   timedEvents <- fmap fst <$> genUtxoEventsWithTxs' txOutToUtxo
-  foldM (flip Core.index) Core.listIndexer timedEvents
+  foldM (flip Core.index) Core.mkListIndexer timedEvents
 
 -- | Generate ShelleyEra UtxoEvent
 genShelleyEraUtxoEvents :: Gen (Core.TimedEvent Utxo.UtxoEvent)
@@ -65,7 +65,7 @@ genShelleyEraUtxoEvents = do
       cp = foldr max C.ChainPointAtGenesis (events ^.. folded . Core.point)
   pure $ Core.TimedEvent cp (fold utxoEvents')
 
--- foldM (flip Core.index) Core.listIndexer shelleyEvents
+-- foldM (flip Core.index) Core.mkListIndexer shelleyEvents
 
 genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.TimedEvent Utxo.UtxoEvent)
 genShelleyEraUtxoEventsAtChainPoint cp = do

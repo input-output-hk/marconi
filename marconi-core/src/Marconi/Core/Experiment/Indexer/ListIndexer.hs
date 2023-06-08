@@ -10,7 +10,7 @@ module Marconi.Core.Experiment.Indexer.ListIndexer (
   ListIndexer,
   events,
   latest,
-  listIndexer,
+  mkListIndexer,
 ) where
 
 import Control.Lens (makeLenses, view)
@@ -38,9 +38,9 @@ deriving stock instance (Show event, Show (Point event)) => Show (ListIndexer ev
 
 makeLenses ''ListIndexer
 
--- | A smart constructor for list indexer, starting at genesis with an empty list§.
-listIndexer :: HasGenesis (Point event) => ListIndexer event
-listIndexer = ListIndexer [] genesis
+-- | A smart constructor for list indexer, starting at genesis with an empty list.
+mkListIndexer :: HasGenesis (Point event) => ListIndexer event
+mkListIndexer = ListIndexer [] genesis
 
 instance Monad m => IsIndex m event ListIndexer where
   index timedEvent ix =

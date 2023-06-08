@@ -117,7 +117,7 @@ allqueryUtxosShouldBeUnspent = property $ do
       indexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
       indexer = Utxo.mkMixedIndexer' conn keep flush
   mixedIndexer <-
-    Core.index' timedUtxoEvent indexer
+    Core.indexEither timedUtxoEvent indexer
       >>= Hedgehog.evalEither
   let unprocessedUtxos :: [Core.TimedEvent Utxo.Utxo]
       unprocessedUtxos = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
@@ -193,7 +193,7 @@ propSaveAndQueryUtxoEvents = property $ do
       indexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
       indexer = Utxo.mkMixedIndexer' conn keep flush
   mixedIndexer <-
-    Core.index' timedUtxoEvent indexer
+    Core.indexEither timedUtxoEvent indexer
       >>= Hedgehog.evalEither
 
   [utxosSQLCount] <-
@@ -246,11 +246,11 @@ propMixedIndexerAndListIndexerProvideTheSameQueryResult = property $ do
       indexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
       indexer = Utxo.mkMixedIndexer' conn keep flush
   mixedIndexer <-
-    Core.index' timedUtxoEvent indexer
+    Core.indexEither timedUtxoEvent indexer
       >>= Hedgehog.evalEither
 
   listIndexer :: Core.ListIndexer Utxo.UtxoEvent <-
-    Core.index timedUtxoEvent Core.listIndexer -- add events to in-memory listIndexer
+    Core.index timedUtxoEvent Core.mkListIndexer -- add events to in-memory listIndexer
   [utxosSQLCount] <-
     liftIO
       (SQL.query_ conn "SELECT count(1) from unspent_transactions" :: IO [Integer])
@@ -265,7 +265,7 @@ propMixedIndexerAndListIndexerProvideTheSameQueryResult = property $ do
       fromSqliteIndexer <- Core.query cp q (mixedIndexer ^. Core.inDatabase)
       fromMixedIndexer <- Core.query cp q mixedIndexer
       fromMixedIndexerMem <- Core.query cp q (mixedIndexer ^. Core.inMemory)
-      fromListIndexer <- Core.resumeResult cp q listIndexer (pure [])
+      fromListIndexer <- Core.appendResult cp q listIndexer (pure [])
       Hedgehog.footnote $
         "\n== Counts =="
           <> "\nListIndexer count: "
@@ -304,10 +304,10 @@ propListIndexerAndMixedIndexerInMemroyIndexerProvideTheSameQueryResult = propert
       indexer = Utxo.mkMixedIndexer' conn keep flush
 
   mixedIndexer <-
-    Core.index' timedUtxoEvent indexer
+    Core.indexEither timedUtxoEvent indexer
       >>= Hedgehog.evalEither
   listIndexer :: Core.ListIndexer Utxo.UtxoEvent <-
-    Core.index timedUtxoEvent Core.listIndexer -- add events to in-memory listIndexer
+    Core.index timedUtxoEvent Core.mkListIndexer -- add events to in-memory listIndexer
 
   -- this is to verify we did not flush to database
   [utxosSQLCount] <-
@@ -324,7 +324,7 @@ propListIndexerAndMixedIndexerInMemroyIndexerProvideTheSameQueryResult = propert
       fromSqliteIndexer <- Core.query cp q (mixedIndexer ^. Core.inDatabase)
       fromMixedIndexer <- Core.query cp q mixedIndexer
       fromMixedIndexerMem <- Core.query cp q (mixedIndexer ^. Core.inMemory)
-      fromListIndexer <- Core.resumeResult cp q listIndexer (pure [])
+      fromListIndexer <- Core.appendResult cp q listIndexer (pure [])
 
       -- Check we arrive at the same results from both indexers
       Set.fromList fromListIndexer === Set.fromList fromMixedIndexerMem
@@ -346,7 +346,7 @@ propListIndexerUpdatesLastSyncPoint = property $ do
   timedUtxoEvent :: Core.TimedEvent Utxo.UtxoEvent <-
     forAll $ genShelleyEraUtxoEventsAtChainPoint cp
   listIndexer :: Core.ListIndexer Utxo.UtxoEvent <-
-    Core.index timedUtxoEvent Core.listIndexer -- add events to in-memory listIndexer
+    Core.index timedUtxoEvent Core.mkListIndexer -- add events to in-memory listIndexer
   let unProcessedUtxos :: [Core.TimedEvent Utxo.Utxo] -- These Utxos, are not processed yet and may have spent in them
       unProcessedUtxos = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
 
@@ -357,7 +357,7 @@ propListIndexerUpdatesLastSyncPoint = property $ do
     concat
       <$> traverse
         ( \q ->
-            Core.resumeResult cp q listIndexer (pure [])
+            Core.appendResult cp q listIndexer (pure [])
         )
         queryUtxos
   let retrievedCp :: Set C.ChainPoint
@@ -387,9 +387,9 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   let (keep, flush) = (1, 2) -- small memory to force SQL flush
       indexer :: Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
       indexer = Utxo.mkMixedIndexer' conn keep flush
-  mixedIndexer <- Core.indexAll' timedUtxoEvents indexer >>= Hedgehog.evalEither
+  mixedIndexer <- Core.indexAllEither timedUtxoEvents indexer >>= Hedgehog.evalEither
   listIndexer :: Core.ListIndexer Utxo.UtxoEvent <-
-    foldM (flip Core.index) Core.listIndexer timedUtxoEvents -- add events to in-memory listIndexer
+    foldM (flip Core.index) Core.mkListIndexer timedUtxoEvents -- add events to in-memory listIndexer
   lastMemCp :: C.ChainPoint <- Core.lastSyncPoint (mixedIndexer ^. Core.inMemory)
   lastListIndexerCp :: C.ChainPoint <- Core.lastSyncPoint listIndexer -- mixedIndexer
   Hedgehog.footnote $ show lastMemCp
@@ -472,7 +472,7 @@ propLastSyncPointIsUpdatedOnInserts = property $ do
     foldM
       ( \indx cp ->
           forAll (genShelleyEraUtxoEventsAtChainPoint cp)
-            >>= flip Core.index' indx
+            >>= flip Core.indexEither indx
             >>= Hedgehog.evalEither
       )
       indexer
@@ -517,7 +517,7 @@ propLastChainPointOnRewindIndexer = property $ do
     foldM
       ( \indx cp ->
           forAll (genShelleyEraUtxoEventsAtChainPoint cp)
-            >>= flip Core.index' indx
+            >>= flip Core.indexEither indx
             >>= Hedgehog.evalEither
       )
       indexer

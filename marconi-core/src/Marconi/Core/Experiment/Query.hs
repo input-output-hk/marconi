@@ -15,7 +15,7 @@ import Control.Lens (filtered, folded, view)
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError))
-import Marconi.Core.Experiment.Class (Queryable (query), ResumableResult (resumeResult), isAheadOfSync)
+import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events)
 import Marconi.Core.Experiment.Type (QueryError (AheadOfLastSync, NotStoredAnymore), Result, TimedEvent, event, point)
 
@@ -47,9 +47,9 @@ instance
 
 instance
   MonadError (QueryError (EventAtQuery event)) m
-  => ResumableResult m event (EventAtQuery event) ListIndexer
+  => AppendResult m event (EventAtQuery event) ListIndexer
   where
-  resumeResult p q indexer result =
+  appendResult p q indexer result =
     result `catchError` \case
       -- If we didn't find a result in the 1st indexer, try in memory
       _inDatabaseError -> query p q indexer
@@ -87,9 +87,9 @@ instance
 
 instance
   MonadError (QueryError (EventsMatchingQuery event)) m
-  => ResumableResult m event (EventsMatchingQuery event) ListIndexer
+  => AppendResult m event (EventsMatchingQuery event) ListIndexer
   where
-  resumeResult p q indexer result =
+  appendResult p q indexer result =
     let extractDbResult =
           result `catchError` \case
             -- If we find an incomplete result in the first indexer, complete it
