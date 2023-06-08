@@ -37,8 +37,6 @@ data CliArgs = CliArgs
   -- ^ Path to the node config
   , dbDir :: !FilePath
   -- ^ Directory path containing the SQLite database files
-  , enableUtxoTxOutRef :: !Bool
-  -- ^ enable storing txout refScript,
   , httpPort :: !(Maybe Int)
   -- ^ optional tcp/ip port number for JSON-RPC http server
   , networkId :: !C.NetworkId

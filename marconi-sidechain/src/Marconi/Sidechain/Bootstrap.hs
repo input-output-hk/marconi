@@ -78,7 +78,7 @@ bootstrapIndexers args env = do
           { ucTargetAddresses = CLI.targetAddresses args
           , ucEnableUtxoTxOutRef = False --  we do not save scriptRef for sidechain
           }
-  let indexers =
+      indexers =
         [
           ( utxoWorker addressUtxoCallback utxoIndexerConfig
           , Just $ dbPath </> utxoDbName
