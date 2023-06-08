@@ -1,10 +1,9 @@
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE TupleSections  #-}
+{-# LANGUAGE TupleSections #-}
 
-module Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators
-    ( genTxBodyContentWithPlutusScripts
-    )
-where
+module Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators (
+  genTxBodyContentWithPlutusScripts,
+) where
 
 import Cardano.Api qualified as C
 import Gen.Marconi.ChainIndex.Types (genProtocolParametersForPlutusScripts, genTxOutTxContext)
@@ -15,7 +14,7 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 genTxBodyContentWithPlutusScripts :: Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentWithPlutusScripts = do
-  txIns <- map (, C.BuildTxWith (C.KeyWitness C.KeyWitnessForSpending)) <$> Gen.list (Range.constant 1 10) CGen.genTxIn
+  txIns <- map (,C.BuildTxWith (C.KeyWitness C.KeyWitnessForSpending)) <$> Gen.list (Range.constant 1 10) CGen.genTxIn
   txInsCollateral <- C.TxInsCollateral C.CollateralInBabbageEra <$> Gen.list (Range.linear 1 10) CGen.genTxIn
   let txInsReference = C.TxInsReferenceNone
   txOuts <- Gen.list (Range.constant 1 10) (genTxOutTxContext C.BabbageEra)
@@ -33,29 +32,30 @@ genTxBodyContentWithPlutusScripts = do
   let txMintValue = C.TxMintNone
   let txScriptValidity = C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid
 
-  pure $ C.TxBodyContent
-    { C.txIns
-    , C.txInsCollateral
-    , C.txInsReference
-    , C.txOuts
-    , C.txTotalCollateral
-    , C.txReturnCollateral
-    , C.txFee
-    , C.txValidityRange
-    , C.txMetadata
-    , C.txAuxScripts
-    , C.txExtraKeyWits
-    , C.txProtocolParams
-    , C.txWithdrawals
-    , C.txCertificates
-    , C.txUpdateProposal
-    , C.txMintValue
-    , C.txScriptValidity
-    }
- where
+  pure $
+    C.TxBodyContent
+      { C.txIns
+      , C.txInsCollateral
+      , C.txInsReference
+      , C.txOuts
+      , C.txTotalCollateral
+      , C.txReturnCollateral
+      , C.txFee
+      , C.txValidityRange
+      , C.txMetadata
+      , C.txAuxScripts
+      , C.txExtraKeyWits
+      , C.txProtocolParams
+      , C.txWithdrawals
+      , C.txCertificates
+      , C.txUpdateProposal
+      , C.txMintValue
+      , C.txScriptValidity
+      }
+  where
     -- Copied from cardano-api. Delete when this function is reexported
     genTxFee :: C.CardanoEra era -> Gen (C.TxFee era)
     genTxFee era =
       case C.txFeesExplicitInEra era of
-        Left supported  -> pure (C.TxFeeImplicit supported)
+        Left supported -> pure (C.TxFeeImplicit supported)
         Right supported -> C.TxFeeExplicit supported <$> CGen.genLovelace

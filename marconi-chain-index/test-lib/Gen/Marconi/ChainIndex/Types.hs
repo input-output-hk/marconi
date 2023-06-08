@@ -1,32 +1,32 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
-module Gen.Marconi.ChainIndex.Types
-  ( nonEmptySubset
-  , genBlockHeader
-  , genHashBlockHeader
-  , genBlockNo
-  , genChainSyncEvents
-  , genChainPoints
-  , genChainPoint
-  , genChainPoint'
-  , genExecutionUnits
-  , genSlotNo
-  , genTxBodyContentWithTxInsCollateral
-  , genTxBodyWithTxIns
-  , genTxIndex
-  , genWitnessAndHashInEra
-  , genTxOutTxContext
-  , genAddressInEra
-  , genTxOutValue
-  , genSimpleScriptData
-  , genProtocolParametersForPlutusScripts
-  , genHashScriptData
-  , genAssetId
-  , genPolicyId
-  , genQuantity
-  , genEpochNo
-  , genPoolId
-  ) where
+module Gen.Marconi.ChainIndex.Types (
+  nonEmptySubset,
+  genBlockHeader,
+  genHashBlockHeader,
+  genBlockNo,
+  genChainSyncEvents,
+  genChainPoints,
+  genChainPoint,
+  genChainPoint',
+  genExecutionUnits,
+  genSlotNo,
+  genTxBodyContentWithTxInsCollateral,
+  genTxBodyWithTxIns,
+  genTxIndex,
+  genWitnessAndHashInEra,
+  genTxOutTxContext,
+  genAddressInEra,
+  genTxOutValue,
+  genSimpleScriptData,
+  genProtocolParametersForPlutusScripts,
+  genHashScriptData,
+  genAssetId,
+  genPolicyId,
+  genQuantity,
+  genEpochNo,
+  genPoolId,
+) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
@@ -61,9 +61,9 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 nonEmptySubset :: (MonadGen m, Ord a) => Set a -> m (Set a)
 nonEmptySubset s = do
-    e <- Gen.element (Set.toList s)
-    sub <- Gen.subset s
-    pure $ Set.singleton e <> sub
+  e <- Gen.element (Set.toList s)
+  sub <- Gen.subset s
+  pure $ Set.singleton e <> sub
 
 genSlotNo :: Hedgehog.MonadGen m => m C.SlotNo
 genSlotNo = C.SlotNo <$> Gen.word64 (Range.linear 10 1000)
@@ -74,8 +74,9 @@ genBlockNo = C.BlockNo <$> Gen.word64 (Range.linear 100 1000)
 validByteSizeLength :: Int
 validByteSizeLength = 32
 
--- | Generate an (almost) sound chain of 'ChainSyncEvent'.
--- "almost" because the 'ChainTip' of the events is always 'ChainTipAtGenesis'.
+{- | Generate an (almost) sound chain of 'ChainSyncEvent'.
+ "almost" because the 'ChainTip' of the events is always 'ChainTipAtGenesis'.
+-}
 genChainSyncEvents
   :: Hedgehog.MonadGen m
   => (a -> C.ChainPoint)
@@ -91,10 +92,11 @@ genChainSyncEvents
   -> m [ChainSyncEvent a]
 genChainSyncEvents getChainPoint f start lo hi = do
   nbOfEvents <- Gen.word64 $ Range.linear lo hi
-  reverse . toList <$> evalStateT (go nbOfEvents (RollForward start C.ChainTipAtGenesis:|[])) (start:|[])
+  reverse . toList <$> evalStateT (go nbOfEvents (RollForward start C.ChainTipAtGenesis :| [])) (start :| [])
   where
-      go n xs | n <= 0 = pure xs
-              | otherwise = do
+    go n xs
+      | n <= 0 = pure xs
+      | otherwise = do
           next <- genChainSyncEvent getChainPoint f
           go (n - 1) (cons next xs)
 
@@ -104,21 +106,22 @@ genChainSyncEvent
   -> (a -> m a)
   -> StateT (NonEmpty a) m (ChainSyncEvent a)
 genChainSyncEvent getChainPoint f = do
-    s@(x:|xs) <- get
-    let genNext = if null xs
-            then genRollForward x
-            else Gen.frequency [ (5, genRollBackward s) , (95, genRollForward x) ]
+  s@(x :| xs) <- get
+  let genNext =
+        if null xs
+          then genRollForward x
+          else Gen.frequency [(5, genRollBackward s), (95, genRollForward x)]
 
-    created <- lift genNext
-    case created of
-        RollForward y _  ->
-            modify (cons y)
-        RollBackward y _ ->
-            modify (fromList . dropWhile ((y >) . getChainPoint) . toList)
-    pure created
-    where
-        genRollBackward xs = RollBackward <$> (getChainPoint <$> Gen.element (NE.init xs)) <*> pure C.ChainTipAtGenesis
-        genRollForward x = RollForward <$> f x <*> pure C.ChainTipAtGenesis
+  created <- lift genNext
+  case created of
+    RollForward y _ ->
+      modify (cons y)
+    RollBackward y _ ->
+      modify (fromList . dropWhile ((y >) . getChainPoint) . toList)
+  pure created
+  where
+    genRollBackward xs = RollBackward <$> (getChainPoint <$> Gen.element (NE.init xs)) <*> pure C.ChainTipAtGenesis
+    genRollForward x = RollForward <$> f x <*> pure C.ChainTipAtGenesis
 
 genBlockHeader
   :: Hedgehog.MonadGen m
@@ -126,11 +129,11 @@ genBlockHeader
   -> m C.SlotNo
   -> m C.BlockHeader
 genBlockHeader genB genS = do
-  bs <- Gen.bytes(Range.singleton validByteSizeLength)
+  bs <- Gen.bytes (Range.singleton validByteSizeLength)
   sn <- genS
   bn <- genB
   let (hsh :: C.Hash C.BlockHeader) =
-        fromJust $ either (const Nothing) Just $ C.deserialiseFromRawBytes(C.proxyToAsType Proxy) bs
+        fromJust $ either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bs
   pure (C.BlockHeader sn hsh bn)
 
 genHashBlockHeader :: (MonadGen m) => m (C.Hash C.BlockHeader)
@@ -138,8 +141,8 @@ genHashBlockHeader = C.HeaderHash . BSS.toShort <$> Gen.bytes (Range.singleton 3
 
 genChainPoints :: (MonadGen m) => Word64 -> Word64 -> m [C.ChainPoint]
 genChainPoints b e = do
-    maxSlots <- Gen.word64 (Range.linear b e)
-    mapM (\s -> C.ChainPoint (C.SlotNo s) <$> genHashBlockHeader) [1..maxSlots]
+  maxSlots <- Gen.word64 (Range.linear b e)
+  mapM (\s -> C.ChainPoint (C.SlotNo s) <$> genHashBlockHeader) [1 .. maxSlots]
 
 genChainPoint'
   :: Hedgehog.MonadGen m
@@ -153,9 +156,9 @@ genChainPoint' genB genS = do
 genChainPoint :: Hedgehog.MonadGen m => m C.ChainPoint
 genChainPoint =
   Gen.frequency
-  [ (95, genChainPoint' genBlockNo genSlotNo)
-  , (5, pure C.ChainPointAtGenesis)
-  ]
+    [ (95, genChainPoint' genBlockNo genSlotNo)
+    , (5, pure C.ChainPointAtGenesis)
+    ]
 
 genTxIndex :: Gen C.TxIx
 genTxIndex = C.TxIx . fromIntegral <$> Gen.word16 Range.constantBounded
@@ -169,7 +172,7 @@ genTxBodyWithTxIns
 genTxBodyWithTxIns era txIns txInsCollateral = do
   txBodyContent <- genTxBodyContentWithTxInsCollateral era txIns txInsCollateral
   case C.createAndValidateTransactionBody txBodyContent of
-    Left err     -> fail $ C.displayError err
+    Left err -> fail $ C.displayError err
     Right txBody -> pure txBody
 
 genTxBodyContentWithTxInsCollateral
@@ -180,42 +183,49 @@ genTxBodyContentWithTxInsCollateral
 genTxBodyContentWithTxInsCollateral era txIns txInsCollateral = do
   txbody <- CGen.genTxBodyContent era
   txProtocolParams <- C.BuildTxWith . Just <$> CGen.genProtocolParameters
-  pure $ txbody
-    { C.txIns
-    , C.txInsCollateral
-    , C.txProtocolParams
-    }
+  pure $
+    txbody
+      { C.txIns
+      , C.txInsCollateral
+      , C.txProtocolParams
+      }
 
 genWitnessAndHashInEra :: C.CardanoEra era -> Gen (C.Witness C.WitCtxTxIn era, C.ScriptHash)
 genWitnessAndHashInEra era = do
   C.ScriptInEra scriptLanguageInEra script <- CGen.genScriptInEra era
-  witness :: C.Witness C.WitCtxTxIn era1 <- C.ScriptWitness C.ScriptWitnessForSpending <$> case script of
-    C.PlutusScript version plutusScript -> do
-      scriptData <- CGen.genHashableScriptData
-      executionUnits <- genExecutionUnits
-      pure $ C.PlutusScriptWitness
-        scriptLanguageInEra
-        version
-        (C.PScript plutusScript)
-        (C.ScriptDatumForTxIn scriptData)
-        scriptData
-        executionUnits
-    C.SimpleScript simpleScript ->
-      pure $ C.SimpleScriptWitness scriptLanguageInEra (C.SScript simpleScript)
+  witness :: C.Witness C.WitCtxTxIn era1 <-
+    C.ScriptWitness C.ScriptWitnessForSpending <$> case script of
+      C.PlutusScript version plutusScript -> do
+        scriptData <- CGen.genHashableScriptData
+        executionUnits <- genExecutionUnits
+        pure $
+          C.PlutusScriptWitness
+            scriptLanguageInEra
+            version
+            (C.PScript plutusScript)
+            (C.ScriptDatumForTxIn scriptData)
+            scriptData
+            executionUnits
+      C.SimpleScript simpleScript ->
+        pure $ C.SimpleScriptWitness scriptLanguageInEra (C.SScript simpleScript)
   pure (witness, C.hashScript script)
 
--- | TODO Copy-paste from cardano-node: cardano-api/gen/Gen/Cardano/Api/Typed.hs
--- Copied from cardano-api. Delete when this function is reexported
+{- | TODO Copy-paste from cardano-node: cardano-api/gen/Gen/Cardano/Api/Typed.hs
+ Copied from cardano-api. Delete when this function is reexported
+-}
 genExecutionUnits :: Gen C.ExecutionUnits
-genExecutionUnits = C.ExecutionUnits <$> Gen.integral (Range.constant 0 1000)
-                                     <*> Gen.integral (Range.constant 0 1000)
+genExecutionUnits =
+  C.ExecutionUnits
+    <$> Gen.integral (Range.constant 0 1000)
+    <*> Gen.integral (Range.constant 0 1000)
 
 genTxOutTxContext :: C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
 genTxOutTxContext era =
-  C.TxOut <$> genAddressInEra era
-          <*> genTxOutValue era
-          <*> genSimpleTxOutDatumHashTxContext era
-          <*> constantReferenceScript era
+  C.TxOut
+    <$> genAddressInEra era
+    <*> genTxOutValue era
+    <*> genSimpleTxOutDatumHashTxContext era
+    <*> constantReferenceScript era
 
 -- Copied from cardano-api. Delete when this function is reexported
 genAddressInEra :: C.CardanoEra era -> Gen (C.AddressInEra era)
@@ -223,10 +233,9 @@ genAddressInEra era =
   case C.cardanoEraStyle era of
     C.LegacyByronEra ->
       C.byronAddressInEra <$> CGen.genAddressByron
-
     C.ShelleyBasedEra _ ->
       Gen.choice
-        [ C.byronAddressInEra   <$> CGen.genAddressByron
+        [ C.byronAddressInEra <$> CGen.genAddressByron
         , C.shelleyAddressInEra <$> CGen.genAddressShelley
         ]
 
@@ -234,64 +243,73 @@ genAddressInEra era =
 genTxOutValue :: C.CardanoEra era -> Gen (C.TxOutValue era)
 genTxOutValue era =
   case C.multiAssetSupportedInEra era of
-    Left adaOnlyInEra     -> C.TxOutAdaOnly adaOnlyInEra <$> fmap (<> 1) CGen.genLovelace
+    Left adaOnlyInEra -> C.TxOutAdaOnly adaOnlyInEra <$> fmap (<> 1) CGen.genLovelace
     Right multiAssetInEra -> C.TxOutValue multiAssetInEra . C.lovelaceToValue <$> fmap (<> 1) CGen.genLovelace
 
 -- Copied from cardano-api, but removed the recursive construction because it is time consuming,
 -- about a factor of 20 when compared to this simple generator.
 genSimpleScriptData :: Gen C.ScriptData
 genSimpleScriptData =
-    Gen.choice
-        [ C.ScriptDataNumber <$> genInteger
-        , C.ScriptDataBytes  <$> genByteString
-        , C.ScriptDataConstructor <$> genInteger <*> pure []
-        , pure $ C.ScriptDataList []
-        , pure $ C.ScriptDataMap []
-        ]
+  Gen.choice
+    [ C.ScriptDataNumber <$> genInteger
+    , C.ScriptDataBytes <$> genByteString
+    , C.ScriptDataConstructor <$> genInteger <*> pure []
+    , pure $ C.ScriptDataList []
+    , pure $ C.ScriptDataMap []
+    ]
   where
     genInteger :: Gen Integer
-    genInteger = Gen.integral
-                  (Range.linear
-                    0
-                    (fromIntegral (maxBound :: Word64) :: Integer))
+    genInteger =
+      Gen.integral
+        ( Range.linear
+            0
+            (fromIntegral (maxBound :: Word64) :: Integer)
+        )
 
     genByteString :: Gen ByteString
-    genByteString = BS.pack <$> Gen.list (Range.linear 0 64)
-                                         (Gen.word8 Range.constantBounded)
+    genByteString =
+      BS.pack
+        <$> Gen.list
+          (Range.linear 0 64)
+          (Gen.word8 Range.constantBounded)
 
 constantReferenceScript :: C.CardanoEra era -> Gen (C.ReferenceScript era)
 constantReferenceScript era =
   case C.refInsScriptsAndInlineDatsSupportedInEra era of
     Nothing -> return C.ReferenceScriptNone
-    Just supp -> pure
-               $ C.ReferenceScript supp
-               $ C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV1)
-               $ C.PlutusScript C.PlutusScriptV1
-               $ C.examplePlutusScriptAlwaysSucceeds C.WitCtxTxIn
+    Just supp ->
+      pure $
+        C.ReferenceScript supp $
+          C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV1) $
+            C.PlutusScript C.PlutusScriptV1 $
+              C.examplePlutusScriptAlwaysSucceeds C.WitCtxTxIn
 
 genSimpleTxOutDatumHashTxContext :: C.CardanoEra era -> Gen (C.TxOutDatum C.CtxTx era)
 genSimpleTxOutDatumHashTxContext era = case era of
-    C.ByronEra   -> pure C.TxOutDatumNone
-    C.ShelleyEra -> pure C.TxOutDatumNone
-    C.AllegraEra -> pure C.TxOutDatumNone
-    C.MaryEra    -> pure C.TxOutDatumNone
-    C.AlonzoEra  -> Gen.choice
-                    [ pure C.TxOutDatumNone
-                    , C.TxOutDatumHash C.ScriptDataInAlonzoEra <$> genHashScriptData
-                    , C.TxOutDatumInTx C.ScriptDataInAlonzoEra <$> CGen.genHashableScriptData
-                    ]
-    C.BabbageEra -> Gen.choice
-                    [ pure C.TxOutDatumNone
-                    , C.TxOutDatumHash C.ScriptDataInBabbageEra <$> genHashScriptData
-                    , C.TxOutDatumInTx C.ScriptDataInBabbageEra <$> CGen.genHashableScriptData
-                    , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra <$> CGen.genHashableScriptData
-                    ]
-    C.ConwayEra -> Gen.choice
-                    [ pure C.TxOutDatumNone
-                    , C.TxOutDatumHash C.ScriptDataInConwayEra <$> genHashScriptData
-                    , C.TxOutDatumInTx C.ScriptDataInConwayEra <$> CGen.genHashableScriptData
-                    , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInConwayEra <$> CGen.genHashableScriptData
-                    ]
+  C.ByronEra -> pure C.TxOutDatumNone
+  C.ShelleyEra -> pure C.TxOutDatumNone
+  C.AllegraEra -> pure C.TxOutDatumNone
+  C.MaryEra -> pure C.TxOutDatumNone
+  C.AlonzoEra ->
+    Gen.choice
+      [ pure C.TxOutDatumNone
+      , C.TxOutDatumHash C.ScriptDataInAlonzoEra <$> genHashScriptData
+      , C.TxOutDatumInTx C.ScriptDataInAlonzoEra <$> CGen.genHashableScriptData
+      ]
+  C.BabbageEra ->
+    Gen.choice
+      [ pure C.TxOutDatumNone
+      , C.TxOutDatumHash C.ScriptDataInBabbageEra <$> genHashScriptData
+      , C.TxOutDatumInTx C.ScriptDataInBabbageEra <$> CGen.genHashableScriptData
+      , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra <$> CGen.genHashableScriptData
+      ]
+  C.ConwayEra ->
+    Gen.choice
+      [ pure C.TxOutDatumNone
+      , C.TxOutDatumHash C.ScriptDataInConwayEra <$> genHashScriptData
+      , C.TxOutDatumInTx C.ScriptDataInConwayEra <$> CGen.genHashableScriptData
+      , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInConwayEra <$> CGen.genHashableScriptData
+      ]
 
 -- Copied from cardano-api. Delete when this function is reexported
 genHashScriptData :: Gen (C.Hash C.ScriptData)
@@ -321,9 +339,12 @@ genProtocolParametersForPlutusScripts =
     <*> CGen.genRational
     <*> CGen.genRational
     <*> pure Nothing -- Obsolete from babbage onwards
-    <*> pure (Map.fromList
-      [ (C.AnyPlutusScriptVersion C.PlutusScriptV1, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
-      , (C.AnyPlutusScriptVersion C.PlutusScriptV2, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams) ])
+    <*> pure
+      ( Map.fromList
+          [ (C.AnyPlutusScriptVersion C.PlutusScriptV1, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
+          , (C.AnyPlutusScriptVersion C.PlutusScriptV2, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
+          ]
+      )
     <*> (Just <$> genExecutionUnitPrices)
     <*> (Just <$> genExecutionUnits)
     <*> (Just <$> genExecutionUnits)
@@ -331,11 +352,11 @@ genProtocolParametersForPlutusScripts =
     <*> (Just <$> genNat)
     <*> (Just <$> genNat)
     <*> (Just <$> CGen.genLovelace)
- where
+  where
     -- Copied from cardano-api. Delete when this function is reexported
     genRationalInt64 :: Gen Rational
     genRationalInt64 =
-        (\d -> ratioToRational (1 % d)) <$> genDenominator
+      (\d -> ratioToRational (1 % d)) <$> genDenominator
       where
         genDenominator :: Gen Int64
         genDenominator = Gen.integral (Range.linear 1 maxBound)
@@ -353,19 +374,20 @@ genProtocolParametersForPlutusScripts =
 
 -- TODO Copied from cardano-api. Delete once reexported
 genAssetId :: Gen C.AssetId
-genAssetId = Gen.choice [ C.AssetId <$> genPolicyId <*> CGen.genAssetName
-                        , return C.AdaAssetId
-                        ]
+genAssetId =
+  Gen.choice
+    [ C.AssetId <$> genPolicyId <*> CGen.genAssetName
+    , return C.AdaAssetId
+    ]
 
 -- TODO Copied from cardano-api. Delete once reexported
 genPolicyId :: Gen C.PolicyId
 genPolicyId =
   Gen.frequency
-      -- mostly from a small number of choices, so we get plenty of repetition
-    [ (9, Gen.element [ fromString (x : replicate 55 '0') | x <- ['a'..'c'] ])
-
-       -- and some from the full range of the type
-    , (1, C.PolicyId <$> CGen.genScriptHash)
+    -- mostly from a small number of choices, so we get plenty of repetition
+    [ (9, Gen.element [fromString (x : replicate 55 '0') | x <- ['a' .. 'c']])
+    , -- and some from the full range of the type
+      (1, C.PolicyId <$> CGen.genScriptHash)
     ]
 
 -- TODO Copied from cardano-api. Delete once reexported
@@ -377,7 +399,7 @@ genEpochNo :: Gen C.EpochNo
 genEpochNo = C.EpochNo <$> Gen.word64 (Range.linear 0 10)
 
 genPoolId :: Gen (C.Hash C.StakePoolKey)
-genPoolId = C.StakePoolKeyHash  . KeyHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
+genPoolId = C.StakePoolKeyHash . KeyHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
   where
     mkDummyHash :: forall h a. CRYPTO.HashAlgorithm h => Int -> CRYPTO.Hash h a
     mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR

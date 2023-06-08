@@ -6,7 +6,9 @@ import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 import Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex qualified as UtxoIndex
 
 tests :: TestTree
-tests = localOption (HedgehogTestLimit $ Just 200) $
-    testGroup "Spec.Marconi.ChainIndex.Indexer.Utxo"
-    [ UtxoIndex.tests
-    ]
+tests =
+  localOption (HedgehogTestLimit $ Just 200) $
+    testGroup
+      "Spec.Marconi.ChainIndex.Indexer.Utxo"
+      [ UtxoIndex.tests
+      ]

@@ -1,7 +1,7 @@
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TupleSections      #-}
-{-# LANGUAGE TypeApplications   #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Spec.Marconi.ChainIndex.Indexers.EpochState (tests) where
 
@@ -46,9 +46,11 @@ integration :: HasCallStack => H.Integration () -> H.Property
 integration = H.withTests 1 . H.propertyOnce
 
 tests :: TestTree
-tests = testGroup "EpochState"
-  [ testPropertyNamed "prop_epoch_stakepool_size" "test" test
-  ]
+tests =
+  testGroup
+    "EpochState"
+    [ testPropertyNamed "prop_epoch_stakepool_size" "test" test
+    ]
 
 -- This test creates two sets of payment and stake addresses,
 -- transfers funds to them from the genesis address, then creates a
@@ -63,12 +65,13 @@ tests = testGroup "EpochState"
 -- interface.
 test :: H.Property
 test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath -> do
-
   -- start testnet
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  let testnetOptions = TN.CardanoOnlyTestnetOptions $ TN.cardanoDefaultTestnetOptions
-        { TN.cardanoSlotLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
-        }
+  let testnetOptions =
+        TN.CardanoOnlyTestnetOptions $
+          TN.cardanoDefaultTestnetOptions
+            { TN.cardanoSlotLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
+            }
   (con, conf, runtime) <- TN.startTestnet testnetOptions base tempAbsPath
   let networkId = TN.getNetworkId runtime
   socketPath <- TN.getPoolSocketPathAbs conf runtime
@@ -77,11 +80,10 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
   -- Load genesis keys, these already exist (were already created when testnet started)
   genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.vkey"
   genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.skey"
-  let
-    paymentKeyFromGenesisKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
-    genesisVKeyHash = C.PaymentCredentialByKey $ C.verificationKeyHash paymentKeyFromGenesisKey
-    genesisAddress :: C.Address C.ShelleyAddr
-    genesisAddress = C.makeShelleyAddress networkId genesisVKeyHash C.NoStakeAddress :: C.Address C.ShelleyAddr
+  let paymentKeyFromGenesisKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
+      genesisVKeyHash = C.PaymentCredentialByKey $ C.verificationKeyHash paymentKeyFromGenesisKey
+      genesisAddress :: C.Address C.ShelleyAddr
+      genesisAddress = C.makeShelleyAddress networkId genesisVKeyHash C.NoStakeAddress :: C.Address C.ShelleyAddr
 
   -- Create two payment and stake keys
   (paymentAddress, stakeSKey, stakeCredential) <- liftIO $ createPaymentAndStakeKey networkId
@@ -91,24 +93,24 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
   let stakedLovelace = 50_000_000
       stakedLovelace2 = 70_000_000
       totalStakedLovelace = stakedLovelace + stakedLovelace2
-  TN.submitAwaitTx con =<<
-      TN.mkTransferTx
-          networkId
-          con
-          (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-          genesisAddress
-          paymentAddress
-          [C.WitnessGenesisUTxOKey genesisSKey]
-          stakedLovelace
-  TN.submitAwaitTx con =<<
-      TN.mkTransferTx
-          networkId
-          con
-          (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-          genesisAddress
-          paymentAddress2
-          [C.WitnessGenesisUTxOKey genesisSKey]
-          stakedLovelace2
+  TN.submitAwaitTx con
+    =<< TN.mkTransferTx
+      networkId
+      con
+      (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+      genesisAddress
+      paymentAddress
+      [C.WitnessGenesisUTxOKey genesisSKey]
+      stakedLovelace
+  TN.submitAwaitTx con
+    =<< TN.mkTransferTx
+      networkId
+      con
+      (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+      genesisAddress
+      paymentAddress2
+      [C.WitnessGenesisUTxOKey genesisSKey]
+      stakedLovelace2
 
   -- Register stake addresses
   TN.submitAwaitTx con =<< registerStakeAddress networkId con pparams genesisAddress genesisSKey stakeCredential
@@ -133,54 +135,57 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
   coordinator <- liftIO $ Indexers.initialCoordinator 1 0
   ch <- liftIO $ STM.atomically . STM.dupTChan $ Indexers._channel coordinator
   let dbPath = tempAbsPath </> "epoch_stakepool_sizes.db"
-  (loop, _cp, indexerMVar) <- liftIO $ Indexers.epochStateWorker_
-      (TN.configurationFile runtime)
-      (STM.writeChan indexedTxs)
-      10
-      coordinator
-      ch
-      dbPath
+  (loop, _cp, indexerMVar) <-
+    liftIO $
+      Indexers.epochStateWorker_
+        (TN.configurationFile runtime)
+        (STM.writeChan indexedTxs)
+        10
+        coordinator
+        ch
+        dbPath
   liftIO $ do
-      void $ IO.async loop
-      -- Receive ChainSyncEvents and pass them on to indexer's channel
-      void $ IO.async $ do
-        let chainPoint = C.ChainPointAtGenesis
-        c <- defaultConfigStdout
-        withTrace c "marconi" $ \trace ->
-            let indexerWorker =
-                    withChainSyncEventStream socketPath networkId [chainPoint]
-                    $ S.mapM_
-                    $ \chainSyncEvent -> STM.atomically $ STM.writeTChan ch chainSyncEvent
-                handleException NoIntersectionFound =
-                    logError trace
-                    $ renderStrict
-                    $ layoutPretty defaultLayoutOptions
-                    $ "No intersection found for chain point" <+> pretty chainPoint <> "."
-             in indexerWorker `catch` handleException :: IO ()
+    void $ IO.async loop
+    -- Receive ChainSyncEvents and pass them on to indexer's channel
+    void $ IO.async $ do
+      let chainPoint = C.ChainPointAtGenesis
+      c <- defaultConfigStdout
+      withTrace c "marconi" $ \trace ->
+        let indexerWorker =
+              withChainSyncEventStream socketPath networkId [chainPoint] $
+                S.mapM_ $
+                  \chainSyncEvent -> STM.atomically $ STM.writeTChan ch chainSyncEvent
+            handleException NoIntersectionFound =
+              logError trace $
+                renderStrict $
+                  layoutPretty defaultLayoutOptions $
+                    "No intersection found for chain point" <+> pretty chainPoint <> "."
+         in indexerWorker `catch` handleException :: IO ()
 
   found <- liftIO IO.newEmptyMVar
   liftIO $ (IO.link =<<) $ IO.async $ forever $ do
-      (_, event) <- IO.readChan indexedTxs
-      case Map.lookup poolVKey (EpochState.epochStateEventSDD event) of
-          Just lovelace ->
-              when (lovelace == totalStakedLovelace) $
-                  IO.putMVar found (EpochState.epochStateEventEpochNo event) -- Event found!
-          Nothing       ->
-              return ()
+    (_, event) <- IO.readChan indexedTxs
+    case Map.lookup poolVKey (EpochState.epochStateEventSDD event) of
+      Just lovelace ->
+        when (lovelace == totalStakedLovelace) $
+          IO.putMVar found (EpochState.epochStateEventEpochNo event) -- Event found!
+      Nothing ->
+        return ()
 
   -- This is filled when the epoch stakepool size has been indexed
   Just epochNo <- liftIO $ IO.takeMVar found
 
   -- Let's find it in the database as well
   indexer <- liftIO $ STM.readMVar indexerMVar
-  queryResult <- liftIO $ raiseException $ Storable.query indexer (EpochState.SDDByEpochNoQuery epochNo)
+  queryResult <- liftIO $ raiseException $ Storable.query indexer (EpochState.ActiveSDDByEpochNoQuery epochNo)
   case queryResult of
-      EpochState.SDDByEpochNoResult stakeMap ->
-          let actualTotalStakedLovelace =
-                  fmap EpochState.epochSDDRowLovelace
-                       (List.find (\epochSddRow -> EpochState.epochSDDRowPoolId epochSddRow == poolVKey) stakeMap)
-           in H.assert $ actualTotalStakedLovelace == Just totalStakedLovelace
-      _otherResult -> fail "Wrong response from the given query"
+    EpochState.ActiveSDDByEpochNoResult stakeMap ->
+      let actualTotalStakedLovelace =
+            fmap
+              EpochState.epochSDDRowLovelace
+              (List.find (\epochSddRow -> EpochState.epochSDDRowPoolId epochSddRow == poolVKey) stakeMap)
+       in H.assert $ actualTotalStakedLovelace == Just totalStakedLovelace
+    _otherResult -> fail "Wrong response from the given query"
 
 -- | This is a pure version of `runStakePoolRegistrationCert` defined in /cardano-node/cardano-cli/src/Cardano/CLI/Shelley/Run/Pool.hs::60
 makeStakePoolRegistrationCert_
@@ -195,36 +200,36 @@ makeStakePoolRegistrationCert_
   -> Maybe C.StakePoolMetadataReference
   -> C.NetworkId
   -> C.Certificate
-makeStakePoolRegistrationCert_ stakePoolVerKey vrfVerKey pldg pCost pMrgn rwdStakeVerKey sPoolOwnerVkeys relays mbMetadata network = let
-  -- Pool verification key
-  stakePoolId' = C.verificationKeyHash stakePoolVerKey
-  -- VRF verification key
-  vrfKeyHash' = C.verificationKeyHash vrfVerKey
-  -- Pool reward account
-  stakeCred = C.StakeCredentialByKey (C.verificationKeyHash rwdStakeVerKey)
-  rewardAccountAddr = C.makeStakeAddress network stakeCred
-  -- Pool owner(s)
-  stakePoolOwners' = map C.verificationKeyHash sPoolOwnerVkeys
-  stakePoolParams =
-    C.StakePoolParameters
-      { C.stakePoolId = stakePoolId'
-      , C.stakePoolVRF = vrfKeyHash'
-      , C.stakePoolCost = pCost
-      , C.stakePoolMargin = pMrgn
-      , C.stakePoolRewardAccount = rewardAccountAddr
-      , C.stakePoolPledge = pldg
-      , C.stakePoolOwners = stakePoolOwners'
-      , C.stakePoolRelays = relays
-      , C.stakePoolMetadata = mbMetadata
-      }
-  in C.makeStakePoolRegistrationCertificate stakePoolParams
+makeStakePoolRegistrationCert_ stakePoolVerKey vrfVerKey pldg pCost pMrgn rwdStakeVerKey sPoolOwnerVkeys relays mbMetadata network =
+  let -- Pool verification key
+      stakePoolId' = C.verificationKeyHash stakePoolVerKey
+      -- VRF verification key
+      vrfKeyHash' = C.verificationKeyHash vrfVerKey
+      -- Pool reward account
+      stakeCred = C.StakeCredentialByKey (C.verificationKeyHash rwdStakeVerKey)
+      rewardAccountAddr = C.makeStakeAddress network stakeCred
+      -- Pool owner(s)
+      stakePoolOwners' = map C.verificationKeyHash sPoolOwnerVkeys
+      stakePoolParams =
+        C.StakePoolParameters
+          { C.stakePoolId = stakePoolId'
+          , C.stakePoolVRF = vrfKeyHash'
+          , C.stakePoolCost = pCost
+          , C.stakePoolMargin = pMrgn
+          , C.stakePoolRewardAccount = rewardAccountAddr
+          , C.stakePoolPledge = pldg
+          , C.stakePoolOwners = stakePoolOwners'
+          , C.stakePoolRelays = relays
+          , C.stakePoolMetadata = mbMetadata
+          }
+   in C.makeStakePoolRegistrationCertificate stakePoolParams
 
 -- | Create a payment and related stake keys
 createPaymentAndStakeKey :: C.NetworkId -> IO (C.Address C.ShelleyAddr, C.SigningKey C.StakeKey, C.StakeCredential)
 createPaymentAndStakeKey networkId = do
   -- Payment key pair: cardano-cli address key-gen
   paymentSKey :: C.SigningKey C.PaymentKey <- C.generateSigningKey C.AsPaymentKey
-  let paymentVKey = C.getVerificationKey paymentSKey :: C.VerificationKey  C.PaymentKey
+  let paymentVKey = C.getVerificationKey paymentSKey :: C.VerificationKey C.PaymentKey
       paymentVKeyHash = C.PaymentCredentialByKey $ C.verificationKeyHash paymentVKey
 
   -- Stake key pair, cardano-cli stake-address key-gen
@@ -237,12 +242,15 @@ createPaymentAndStakeKey networkId = do
   let paymentAddress = C.makeShelleyAddress networkId paymentVKeyHash stakeAddressReference :: C.Address C.ShelleyAddr
   return (paymentAddress, stakeSKey, stakeCredential)
 
-
 registerStakeAddress
-  :: C.NetworkId -> C.LocalNodeConnectInfo C.CardanoMode -> C.ProtocolParameters -> C.Address C.ShelleyAddr -> C.SigningKey C.GenesisUTxOKey -> C.StakeCredential
+  :: C.NetworkId
+  -> C.LocalNodeConnectInfo C.CardanoMode
+  -> C.ProtocolParameters
+  -> C.Address C.ShelleyAddr
+  -> C.SigningKey C.GenesisUTxOKey
+  -> C.StakeCredential
   -> HE.Integration (C.Tx C.BabbageEra, C.TxBody C.BabbageEra)
 registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredential = do
-
   -- Create a registration certificate: cardano-cli stake-address registration-certificate
   let stakeAddressRegCert = C.makeStakeAddressRegistrationCertificate stakeCredential :: C.Certificate
 
@@ -254,28 +262,39 @@ registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredentia
   let keyWitnesses = [C.WitnessGenesisUTxOKey payerSKey]
       mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
       validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-  (feeLovelace, tx) <- TN.calculateAndUpdateTxFee pparams networkId (length txIns) (length keyWitnesses) (TN.emptyTxBodyContent validityRange pparams)
-    { C.txIns = map (, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
-    , C.txOuts = mkTxOuts 0
-    , C.txCertificates = C.TxCertificates C.CertificatesInBabbageEra [stakeAddressRegCert] (C.BuildTxWith mempty)
-    }
-  txBody <- HE.leftFail $ C.createAndValidateTransactionBody $ tx { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
+  (feeLovelace, tx) <-
+    TN.calculateAndUpdateTxFee
+      pparams
+      networkId
+      (length txIns)
+      (length keyWitnesses)
+      (TN.emptyTxBodyContent validityRange pparams)
+        { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
+        , C.txOuts = mkTxOuts 0
+        , C.txCertificates = C.TxCertificates C.CertificatesInBabbageEra [stakeAddressRegCert] (C.BuildTxWith mempty)
+        }
+  txBody <- HE.leftFail $ C.createAndValidateTransactionBody $ tx{C.txOuts = mkTxOuts $ totalLovelace - feeLovelace}
   return (C.signShelleyTransaction txBody keyWitnesses, txBody)
 
 registerPool
-  :: C.LocalNodeConnectInfo C.CardanoMode -> C.NetworkId -> C.ProtocolParameters -> FilePath
-  -> [C.ShelleyWitnessSigningKey] -> [C.StakeCredential] -> C.Address C.ShelleyAddr
+  :: C.LocalNodeConnectInfo C.CardanoMode
+  -> C.NetworkId
+  -> C.ProtocolParameters
+  -> FilePath
+  -> [C.ShelleyWitnessSigningKey]
+  -> [C.StakeCredential]
+  -> C.Address C.ShelleyAddr
   -> HE.Integration (C.PoolId, C.Tx C.BabbageEra, C.TxBody C.BabbageEra)
-registerPool con networkId pparams tempAbsPath   keyWitnesses stakeCredentials payerAddress = do
-
+registerPool con networkId pparams tempAbsPath keyWitnesses stakeCredentials payerAddress = do
   -- Create the metadata file
-  HE.lbsWriteFile (tempAbsPath </> "poolMetadata.json") . J.encode $ J.object
-    -- [ "heavyDelThd" .= J.toJSON @String "300000000000"
-    [ "name" .= id @String "TestPool"
-    , "description" .= id @String "The pool that tests all the pools"
-    , "ticker" .= id @String "TEST"
-    , "homepage" .= id @String "https://teststakepool.com"
-    ]
+  HE.lbsWriteFile (tempAbsPath </> "poolMetadata.json") . J.encode $
+    J.object
+      -- [ "heavyDelThd" .= J.toJSON @String "300000000000"
+      [ "name" .= id @String "TestPool"
+      , "description" .= id @String "The pool that tests all the pools"
+      , "ticker" .= id @String "TEST"
+      , "homepage" .= id @String "https://teststakepool.com"
+      ]
   lbs <- HE.lbsReadFile (tempAbsPath </> "poolMetadata.json")
   -- cardano-cli stake-pool metadata-hash --pool-metadata-file
   (_poolMetadata, poolMetadataHash) <- HE.leftFail $ C.validateAndHashStakePoolMetadata $ BL.toStrict lbs
@@ -293,34 +312,49 @@ registerPool con networkId pparams tempAbsPath   keyWitnesses stakeCredentials p
 
   -- Generate Stake pool registration certificate: cardano-cli stake-pool registration-certificate
   let poolRegistration :: C.Certificate
-      poolRegistration = makeStakePoolRegistrationCert_
-        coldVKey -- stakePoolVerKey; :: C.VerificationKey C.StakePoolKey; node key-gen
-        vkeyVrf -- vrfVerKey -> C.VerificationKey C.VrfKey
-        0 -- pldg -> C.Lovelace
-        0 -- pCost -> C.Lovelace
-        0 -- pMrgn -> Rational
-        stakeVKey -- rwdStakeVerKey -> C.VerificationKey C.StakeKey -- TODO correct key used?
-        [] -- sPoolOwnerVkeys -> [C.VerificationKey C.StakeKey]
-        [] -- relays -> [C.StakePoolRelay]
-        (Just $ C.StakePoolMetadataReference "" poolMetadataHash) -- -> Maybe C.StakePoolMetadataReference
-        networkId -- -> C.NetworkId
+      poolRegistration =
+        makeStakePoolRegistrationCert_
+          coldVKey -- stakePoolVerKey; :: C.VerificationKey C.StakePoolKey; node key-gen
+          vkeyVrf -- vrfVerKey -> C.VerificationKey C.VrfKey
+          0 -- pldg -> C.Lovelace
+          0 -- pCost -> C.Lovelace
+          0 -- pMrgn -> Rational
+          stakeVKey -- rwdStakeVerKey -> C.VerificationKey C.StakeKey -- TODO correct key used?
+          [] -- sPoolOwnerVkeys -> [C.VerificationKey C.StakeKey]
+          [] -- relays -> [C.StakePoolRelay]
+          (Just $ C.StakePoolMetadataReference "" poolMetadataHash) -- -> Maybe C.StakePoolMetadataReference
+          networkId -- -> C.NetworkId
 
   -- Generate delegation certificate pledge: cardano-cli stake-address delegation-certificate
   let delegationCertificates = map (\c -> C.makeStakeAddressDelegationCertificate c coldVKeyHash) stakeCredentials
-      keyWitnesses' = keyWitnesses <> [ C.WitnessStakePoolKey coldSKey ]
+      keyWitnesses' = keyWitnesses <> [C.WitnessStakePoolKey coldSKey]
 
   -- Create transaction
-  do (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
-     let mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
-         validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-     (feeLovelace, txbc) <- TN.calculateAndUpdateTxFee pparams networkId (length txIns) (length keyWitnesses) (TN.emptyTxBodyContent validityRange pparams)
-       { C.txIns = map (, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
-       , C.txOuts = mkTxOuts 0
-       , C.txCertificates = C.TxCertificates C.CertificatesInBabbageEra ([poolRegistration] <> delegationCertificates)
-         (C.BuildTxWith mempty) -- BuildTxWith build (Map StakeCredential (Witness WitCtxStake era))
-       }
-     txBody :: C.TxBody C.BabbageEra <- HE.leftFail $ C.createAndValidateTransactionBody $ txbc
-       { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace }
-     let tx = C.signShelleyTransaction txBody keyWitnesses'
+  do
+    (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
+    let mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
+        validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+    (feeLovelace, txbc) <-
+      TN.calculateAndUpdateTxFee
+        pparams
+        networkId
+        (length txIns)
+        (length keyWitnesses)
+        (TN.emptyTxBodyContent validityRange pparams)
+          { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
+          , C.txOuts = mkTxOuts 0
+          , C.txCertificates =
+              C.TxCertificates
+                C.CertificatesInBabbageEra
+                ([poolRegistration] <> delegationCertificates)
+                (C.BuildTxWith mempty) -- BuildTxWith build (Map StakeCredential (Witness WitCtxStake era))
+          }
+    txBody :: C.TxBody C.BabbageEra <-
+      HE.leftFail $
+        C.createAndValidateTransactionBody $
+          txbc
+            { C.txOuts = mkTxOuts $ totalLovelace - feeLovelace
+            }
+    let tx = C.signShelleyTransaction txBody keyWitnesses'
 
-     return (coldVKeyHash, tx, txBody)
+    return (coldVKeyHash, tx, txBody)

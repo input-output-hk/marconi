@@ -7,8 +7,10 @@ import Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex qualified
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent qualified as AddressDatumIndexEvent
 
 tests :: TestTree
-tests = localOption (HedgehogTestLimit $ Just 200) $
-    testGroup "Spec.Marconi.ChainIndex.Indexers.AddressDatum"
-    [ AddressDatumIndexEvent.tests
-    , AddressDatumIndex.tests
-    ]
+tests =
+  localOption (HedgehogTestLimit $ Just 200) $
+    testGroup
+      "Spec.Marconi.ChainIndex.Indexers.AddressDatum"
+      [ AddressDatumIndexEvent.tests
+      , AddressDatumIndex.tests
+      ]

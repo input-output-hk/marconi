@@ -1,7 +1,8 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
-{-# LANGUAGE GADTs      #-}
-{-# LANGUAGE LambdaCase #-}
+
 module Cardano.Streaming.Helpers where
 
 import Control.Concurrent.Async qualified as IO
@@ -60,20 +61,20 @@ bimSlotNo (C.BlockInMode (C.Block (C.BlockHeader slotNo _ _) _) _) = slotNo
 
 getEpochNo :: C.LedgerState -> Maybe CS.EpochNo
 getEpochNo ledgerState' = case ledgerState' of
-  C.LedgerStateByron _st  -> Nothing
+  C.LedgerStateByron _st -> Nothing
   C.LedgerStateShelley st -> fromState st
   C.LedgerStateAllegra st -> fromState st
-  C.LedgerStateMary st    -> fromState st
-  C.LedgerStateAlonzo st  -> fromState st
+  C.LedgerStateMary st -> fromState st
+  C.LedgerStateAlonzo st -> fromState st
   C.LedgerStateBabbage st -> fromState st
-  C.LedgerStateConway st  -> fromState st
+  C.LedgerStateConway st -> fromState st
   where
     fromState = Just . SL.nesEL . O.shelleyLedgerState
 
 fromChainTip :: C.ChainTip -> WithOrigin C.BlockNo
 fromChainTip ct = case ct of
   C.ChainTipAtGenesis -> Origin
-  C.ChainTip _ _ bno  -> At bno
+  C.ChainTip _ _ bno -> At bno
 
 -- * IO
 
@@ -83,47 +84,51 @@ linkedAsync action = IO.link =<< IO.async action
 -- * LocalNodeConnectInfo
 
 mkLocalNodeConnectInfo :: C.NetworkId -> FilePath -> C.LocalNodeConnectInfo C.CardanoMode
-mkLocalNodeConnectInfo networkId socketPath = C.LocalNodeConnectInfo
-  { C.localConsensusModeParams = C.CardanoModeParams epochSlots
-  , C.localNodeNetworkId = networkId
-  , C.localNodeSocketPath = socketPath
-  }
-  -- This a parameter needed only for the Byron era. Since the Byron
-  -- era is over and the parameter has never changed it is ok to
-  -- hardcode this. See comment on `Cardano.Api.ConsensusModeParams` in
-  -- cardano-node.
-  where epochSlots = C.EpochSlots 21600 -- TODO: is this configurable? see below
+mkLocalNodeConnectInfo networkId socketPath =
+  C.LocalNodeConnectInfo
+    { C.localConsensusModeParams = C.CardanoModeParams epochSlots
+    , C.localNodeNetworkId = networkId
+    , C.localNodeSocketPath = socketPath
+    }
+  where
+    -- This a parameter needed only for the Byron era. Since the Byron
+    -- era is over and the parameter has never changed it is ok to
+    -- hardcode this. See comment on `Cardano.Api.ConsensusModeParams` in
+    -- cardano-node.
+    epochSlots = C.EpochSlots 21600 -- TODO: is this configurable? see below
 
 -- | Derive LocalNodeConnectInfo from Env.
 mkConnectInfo :: C.Env -> FilePath -> C.LocalNodeConnectInfo C.CardanoMode
-mkConnectInfo env socketPath = C.LocalNodeConnectInfo
-  { C.localConsensusModeParams = cardanoModeParams
-  , C.localNodeNetworkId       = networkId'
-  , C.localNodeSocketPath      = socketPath
-  }
+mkConnectInfo env socketPath =
+  C.LocalNodeConnectInfo
+    { C.localConsensusModeParams = cardanoModeParams
+    , C.localNodeNetworkId = networkId'
+    , C.localNodeSocketPath = socketPath
+    }
   where
     -- Derive the NetworkId as described in network-magic.md from the
     -- cardano-ledger-specs repo.
-    byronConfig
-      = (\(Consensus.WrapPartialLedgerConfig (Consensus.ByronPartialLedgerConfig bc _) :* _) -> bc)
-      . HFC.getPerEraLedgerConfig
-      . HFC.hardForkLedgerConfigPerEra
-      $ C.envLedgerConfig env
+    byronConfig =
+      (\(Consensus.WrapPartialLedgerConfig (Consensus.ByronPartialLedgerConfig bc _) :* _) -> bc)
+        . HFC.getPerEraLedgerConfig
+        . HFC.hardForkLedgerConfigPerEra
+        $ C.envLedgerConfig env
 
-    networkMagic
-      = C.NetworkMagic
-      $ unProtocolMagicId
-      $ Cardano.Chain.Genesis.gdProtocolMagicId
-      $ Cardano.Chain.Genesis.configGenesisData byronConfig
+    networkMagic =
+      C.NetworkMagic $
+        unProtocolMagicId $
+          Cardano.Chain.Genesis.gdProtocolMagicId $
+            Cardano.Chain.Genesis.configGenesisData byronConfig
 
     networkId' = case Cardano.Chain.Genesis.configReqNetMagic byronConfig of
       RequiresNoMagic -> C.Mainnet
-      RequiresMagic   -> C.Testnet networkMagic
+      RequiresMagic -> C.Testnet networkMagic
 
     cardanoModeParams = C.CardanoModeParams . C.EpochSlots $ 10 * C.envSecurityParam env
 
--- | Ignore rollback events in the chainsync event stream. Useful for
--- monitor which blocks has been seen by the node, regardless whether
--- they are permanent.
+{- | Ignore rollback events in the chainsync event stream. Useful for
+ monitor which blocks has been seen by the node, regardless whether
+ they are permanent.
+-}
 ignoreRollbacks :: Monad m => S.Stream (S.Of (ChainSyncEvent a)) m r -> S.Stream (S.Of a) m r
 ignoreRollbacks = S.mapMaybe (\case RollForward e _ -> Just e; _ -> Nothing)

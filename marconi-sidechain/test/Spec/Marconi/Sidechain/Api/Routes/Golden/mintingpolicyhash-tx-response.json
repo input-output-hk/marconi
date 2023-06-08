@@ -1,18 +1,26 @@
 [
     {
         "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
+        "blockNo": 1047,
         "quantity": -10,
-        "redeemer": "34",
-        "redeemerHash": "eb8649214997574e20c464388a172420d25403682bbbb80c496831c8cc1f8f0d",
+        "redeemer": {
+            "int": 34
+        },
+        "redeemerHash": "6d683f9bd0c3b874cdf3da1793b5eb0ea73a074d3e4b66bc62279b09d387fa8d",
         "slotNo": 1,
-        "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
+        "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
+        "txIx": 0
     },
     {
         "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
+        "blockNo": 1047,
         "quantity": 10,
-        "redeemer": "34",
-        "redeemerHash": "eb8649214997574e20c464388a172420d25403682bbbb80c496831c8cc1f8f0d",
+        "redeemer": {
+            "int": 34
+        },
+        "redeemerHash": "6d683f9bd0c3b874cdf3da1793b5eb0ea73a074d3e4b66bc62279b09d387fa8d",
         "slotNo": 1,
-        "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
+        "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
+        "txIx": 1
     }
 ]

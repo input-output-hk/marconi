@@ -1,8 +1,8 @@
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TupleSections      #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 module Marconi.ChainIndex.Extract.Datum where
 
@@ -44,8 +44,9 @@ toHashedData alonzoDat = let d = C.fromAlonzoData alonzoDat in (C.hashScriptData
 txScriptHashDatumMap :: C.TxBody era -> Maybe (Map (DataHash (EraCrypto (C.ShelleyLedgerEra era))) (Data (C.ShelleyLedgerEra era)))
 txScriptHashDatumMap = \case
   C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (Ledger.TxDats' data_) _) _ _ -> Just data_
-  _                                                                         -> Nothing
-  -- ^ Can't match on C.ByronTxBody as it's not exported.
+  _ -> Nothing
+
+-- \^ Can't match on C.ByronTxBody as it's not exported.
 
 -- * Datums from transaction outputs
 
@@ -65,14 +66,14 @@ filteredAddressDatums addressFilter txs = filter' $ concatMap txAddressDatums tx
         -- Target addresses filter are only shelley addresses. Therefore, as we
         -- encounter Byron addresses with datum, we don't filter them. However, that
         -- is highly improbable as Byron addresses are almost never used anymore.
-        C.AddressByron _       -> True
+        C.AddressByron _ -> True
         C.AddressShelley addr' -> f addr'
 
 -- | Get an association list from address to either datum hash or a pair of datum hash and datum itself.
 txAddressDatums
   :: C.Tx era
   -> [(C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))]
-txAddressDatums (C.Tx (C.TxBody C.TxBodyContent { C.txOuts }) _) = mapMaybe maybePair txOuts
+txAddressDatums (C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) = mapMaybe maybePair txOuts
   where
     maybePair :: C.TxOut C.CtxTx era -> Maybe (C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))
     maybePair (C.TxOut (C.AddressInEra _ addr) _ dat _) = (C.toAddressAny addr,) <$> txOutDatumOrHash dat
@@ -84,17 +85,18 @@ txOutsDatumsOrHashes txOuts = mapMaybe (txOutDatumOrHash . txOutDatum) txOuts
 
 txOutDatumOrHash :: C.TxOutDatum C.CtxTx era -> Maybe (Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))
 txOutDatumOrHash = \case
-  C.TxOutDatumHash _ dh  -> Just $ Left dh
-  C.TxOutDatumInTx _ d   -> Just $ Right (C.hashScriptDataBytes d, C.getScriptData d)
+  C.TxOutDatumHash _ dh -> Just $ Left dh
+  C.TxOutDatumInTx _ d -> Just $ Right (C.hashScriptDataBytes d, C.getScriptData d)
   C.TxOutDatumInline _ d -> Just $ Right (C.hashScriptDataBytes d, C.getScriptData d)
-  C.TxOutDatumNone       -> Nothing
+  C.TxOutDatumNone -> Nothing
 
 -- * Sqlite
 
 data DatumRow = DatumRow
-    { datumRowDatumHash :: C.Hash C.ScriptData
-    , datumRowDatum     :: C.ScriptData
-    } deriving (Show, Generic)
+  { datumRowDatumHash :: C.Hash C.ScriptData
+  , datumRowDatum :: C.ScriptData
+  }
+  deriving (Show, Generic)
 
 instance SQL.ToRow DatumRow where
   toRow (DatumRow dh d) = [SQL.toField dh, SQL.toField d]
@@ -102,16 +104,22 @@ instance SQL.ToRow DatumRow where
 deriving anyclass instance SQL.FromRow DatumRow
 
 createTable :: SQL.Connection -> IO ()
-createTable c = SQL.execute_ c
-  " CREATE TABLE IF NOT EXISTS datumhash_datum \
-  \   ( datum_hash BLOB PRIMARY KEY \
-  \   , datum BLOB \
-  \   ) "
+createTable c =
+  SQL.execute_
+    c
+    " CREATE TABLE IF NOT EXISTS datumhash_datum \
+    \   ( datum_hash BLOB PRIMARY KEY \
+    \   , datum BLOB \
+    \   ) "
 
 createIndex :: SQL.Connection -> IO ()
-createIndex c = SQL.execute_ c
-  "CREATE INDEX IF NOT EXISTS datumhash_datum_index ON datumhash_datum (datum_hash)"
+createIndex c =
+  SQL.execute_
+    c
+    "CREATE INDEX IF NOT EXISTS datumhash_datum_index ON datumhash_datum (datum_hash)"
 
 insertRows :: SQL.Connection -> [DatumRow] -> IO ()
-insertRows c = SQL.executeMany c
-  "INSERT OR IGNORE INTO datumhash_datum (datum_hash, datum) VALUES (?, ?)"
+insertRows c =
+  SQL.executeMany
+    c
+    "INSERT OR IGNORE INTO datumhash_datum (datum_hash, datum) VALUES (?, ?)"

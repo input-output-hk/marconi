@@ -420,10 +420,10 @@ See link:https://plutus-apps.readthedocs.io/en/latest/adr/index.html[the readthe
 
 === Code formatting
 
-We use `stylish-haskell` for Haskell code formatting, and `cabal-fmt` for cabal files.
+We use `fourmolu` for Haskell code formatting, and `cabal-fmt` for cabal files.
 They are run automatically as pre-commit hooks, but CI will run them again and expect that to be a no-op, so if you somehow don’t apply them your PR will not go green.
 
-To run `stylish-haskell` or `cabal-fmt` manually over your tree, type `fix-stylish-haskell` or `fix-cabal-fmt` respectively.
+To run `fourmolu` or `cabal-fmt` manually over your tree, type `fix-fourmolu` or `fix-cabal-fmt` respectively.
 They are provided by the `nix develop` environment.
 === Compiler warnings
 

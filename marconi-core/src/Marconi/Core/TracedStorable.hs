@@ -1,40 +1,41 @@
-module Marconi.Core.TracedStorable
-  ( -- * State
-    Config
-  , memoryBufferSize
-  , State
-  , handle
-  , config
-  , emptyState
-  , Storage
-  , storage
-  , events
-  , cursor
-  , getMemoryEvents
-  , getEvents
-  , StorableEvent
-  , StorablePoint
-  , StorableQuery
-  , StorableResult
-  , StorableMonad
-  , StorableNotifications
-    -- * API
-  , SyntheticEvent(..)
-  , ControlNotification(..)
-  , Buffered(..)
-  , Queryable(..)
-  , Resumable(..)
-  , Rewindable(..)
-  , HasPoint(..)
-  , syntheticPoint
-  , foldEvents
-  , insert
-  , checkpoint
-  , insertMany
-  , rewind
-  , resume
-  , query
-  ) where
+module Marconi.Core.TracedStorable (
+  -- * State
+  Config,
+  memoryBufferSize,
+  State,
+  handle,
+  config,
+  emptyState,
+  Storage,
+  storage,
+  events,
+  cursor,
+  getMemoryEvents,
+  getEvents,
+  StorableEvent,
+  StorablePoint,
+  StorableQuery,
+  StorableResult,
+  StorableMonad,
+  StorableNotifications,
+
+  -- * API
+  SyntheticEvent (..),
+  ControlNotification (..),
+  Buffered (..),
+  Queryable (..),
+  Resumable (..),
+  Rewindable (..),
+  HasPoint (..),
+  syntheticPoint,
+  foldEvents,
+  insert,
+  checkpoint,
+  insertMany,
+  rewind,
+  resume,
+  query,
+) where
 
 import Control.Lens.Operators ((%~), (.~), (^.))
 import Control.Lens.TH qualified as Lens
@@ -69,8 +70,9 @@ import GHC.Generics (Generic)
 -}
 data family StorableEvent h
 
--- | The resume and query functionality requires a way to specify points on the chain from which we
--- want to resume, or points up to which we want to query.
+{- | The resume and query functionality requires a way to specify points on the chain from which we
+ want to resume, or points up to which we want to query.
+-}
 type family StorablePoint h
 
 data family StorableQuery h
@@ -80,9 +82,9 @@ data family StorableResult h
 -- TODO: Rename `Storable` to `Indexer`.
 data family StorableNotifications h
 
-data ControlNotification pt n =
-    CNRollForward !pt
-  | CNRollBack    !pt
+data ControlNotification pt n
+  = CNRollForward !pt
+  | CNRollBack !pt
   | CNApplication !n
   deriving (Generic)
 
@@ -91,7 +93,6 @@ type family StorableMonad h :: Type -> Type
 type ControlTracer h = Tracer (StorableMonad h) (ControlNotification (StorablePoint h) (StorableNotifications h))
 
 type AppTracer h = Tracer (StorableMonad h) (StorableNotifications h)
-
 
 {-
    The first, `Buffered` class explains what it means for an indexer to be accumulating
@@ -192,15 +193,16 @@ class HasPoint e p where
 -}
 newtype Config = Config
   { _memoryBufferSize :: Int
-  } deriving (Show, Eq)
+  }
+  deriving (Show, Eq)
 $(Lens.makeLenses ''Config)
 
-data SyntheticEvent e p =
-    Event     !e
+data SyntheticEvent e p
+  = Event !e
   | Synthetic !p
 
 syntheticPoint :: HasPoint e p => SyntheticEvent e p -> p
-syntheticPoint (Event e)     = getPoint e
+syntheticPoint (Event e) = getPoint e
 syntheticPoint (Synthetic p) = p
 
 foldEvents :: forall f h. Foldable f => f (SyntheticEvent (StorableEvent h) (StorablePoint h)) -> [StorableEvent h]
@@ -208,7 +210,7 @@ foldEvents = reverse . foldl' unwrap []
   where
     unwrap :: [StorableEvent h] -> SyntheticEvent (StorableEvent h) (StorablePoint h) -> [StorableEvent h]
     unwrap acc (Synthetic _) = acc
-    unwrap acc (Event e)     = e : acc
+    unwrap acc (Event e) = e : acc
 
 data Storage h = Storage
   { _events :: !(VM.MVector (PrimState (StorableMonad h)) (SyntheticEvent (StorableEvent h) (StorablePoint h)))
@@ -217,9 +219,9 @@ data Storage h = Storage
 $(Lens.makeLenses ''Storage)
 
 data State h = State
-  { _config  :: !Config
+  { _config :: !Config
   , _storage :: !(Storage h)
-  , _handle  :: !h
+  , _handle :: !h
   }
 $(Lens.makeLenses ''State)
 
@@ -230,13 +232,19 @@ emptyState
   -> StorableMonad h (State h)
 emptyState memBuf hdl = do
   v <- VM.new memBuf
-  pure $ State { _config = Config { _memoryBufferSize = memBuf
-                                  }
-               , _storage = Storage { _events = v
-                                    , _cursor = 0
-                                    }
-               , _handle = hdl
-               }
+  pure $
+    State
+      { _config =
+          Config
+            { _memoryBufferSize = memBuf
+            }
+      , _storage =
+          Storage
+            { _events = v
+            , _cursor = 0
+            }
+      , _handle = hdl
+      }
 
 -- Get events from the memory buffer.
 getMemoryEvents
@@ -251,9 +259,11 @@ getEvents
   => State h
   -> StorableMonad h [StorableEvent h]
 getEvents s = do
-  memoryEs <- getMemoryEvents (s ^. storage)
-              & V.freeze <&> foldEvents . V.toList
-  diskEs   <- getStoredEvents (s ^. handle)
+  memoryEs <-
+    getMemoryEvents (s ^. storage)
+      & V.freeze
+      <&> foldEvents . V.toList
+  diskEs <- getStoredEvents (s ^. handle)
   pure $ diskEs ++ memoryEs
 
 {- This function is used to add a checkpoint to the in-memory part of event indexers.
@@ -290,9 +300,9 @@ checkpoint
   -> State h
   -> StorableMonad h (State h)
 checkpoint t p s = do
-  state'   <- flushBuffer t s
+  state' <- flushBuffer t s
   storage' <- appendEvent (Synthetic p) (state' ^. storage)
-  pure $ state' { _storage = storage' }
+  pure $ state'{_storage = storage'}
 
 insert
   :: Buffered h
@@ -303,10 +313,10 @@ insert
   -> State h
   -> StorableMonad h (State h)
 insert t e s = do
-  state'   <- flushBuffer (contramap CNApplication t) s
+  state' <- flushBuffer (contramap CNApplication t) s
   storage' <- appendEvent (Event e) (state' ^. storage)
   traceWith t (CNRollForward $ getPoint e)
-  pure $ state' { _storage = storage' }
+  pure $ state'{_storage = storage'}
 
 appendEvent
   :: PrimMonad (StorableMonad h)
@@ -316,7 +326,7 @@ appendEvent
 appendEvent e s = do
   let cr = s ^. cursor
   VM.write (s ^. events) cr e
-  pure $ s & cursor %~ (+1)
+  pure $ s & cursor %~ (+ 1)
 
 flushBuffer
   :: Buffered h
@@ -329,12 +339,14 @@ flushBuffer t s = do
       es = getMemoryEvents $ s ^. storage
       mx = s ^. config . memoryBufferSize
   if mx == cr
-  then do
-    es' <- foldEvents <$> V.freeze es
-    h' <- persistToStorage t es' (s ^. handle)
-    pure $ s & storage . cursor .~ 0
-             & handle .~ h'
-  else pure s
+    then do
+      es' <- foldEvents <$> V.freeze es
+      h' <- persistToStorage t es' (s ^. handle)
+      pure $
+        s
+          & storage . cursor .~ 0
+          & handle .~ h'
+    else pure s
 
 insertMany
   :: Foldable f
@@ -349,8 +361,8 @@ insertMany t es s =
   foldlM (\s' e -> insert t e s') s es
 
 rewind
-  :: forall h.
-     Rewindable h
+  :: forall h
+   . Rewindable h
   => PrimMonad (StorableMonad h)
   => Ord (StorablePoint h)
   => HasPoint (StorableEvent h) (StorablePoint h)
@@ -361,23 +373,23 @@ rewind
 rewind t p s = do
   traceWith t (CNRollBack p)
   if s ^. storage . cursor == 0
-  -- Buffer is empty, rewind storage just in case:
-  then do
-    void $ rewindStorage (contramap CNApplication t) p (s ^. handle)
-    return $ Just s
-  -- Something in buffer:
-  else do
-    v <- V.freeze $ VM.slice 0 (s ^. storage . cursor) (s ^. storage . events)
-    case VG.findIndex (\e -> syntheticPoint e > p) v of
-      -- All of buffer is later than p, reset memory and rewind storage
-      Just 0 -> do
-        void $ rewindStorage (contramap CNApplication t) p (s ^. handle)
-        return $ Just $ s & storage . cursor .~ 0
-      -- Some of buffer is later than p, truncate memory to that
-      Just ix -> return $ Just $ s & storage . cursor .~ ix
-      -- No point is larger than p => everything is smaller. Since
-      -- buffer was not empty then don't do anything:
-      _       -> return $ Just s
+    then -- Buffer is empty, rewind storage just in case:
+    do
+      void $ rewindStorage (contramap CNApplication t) p (s ^. handle)
+      return $ Just s
+    else -- Something in buffer:
+    do
+      v <- V.freeze $ VM.slice 0 (s ^. storage . cursor) (s ^. storage . events)
+      case VG.findIndex (\e -> syntheticPoint e > p) v of
+        -- All of buffer is later than p, reset memory and rewind storage
+        Just 0 -> do
+          void $ rewindStorage (contramap CNApplication t) p (s ^. handle)
+          return $ Just $ s & storage . cursor .~ 0
+        -- Some of buffer is later than p, truncate memory to that
+        Just ix -> return $ Just $ s & storage . cursor .~ ix
+        -- No point is larger than p => everything is smaller. Since
+        -- buffer was not empty then don't do anything:
+        _ -> return $ Just s
 
 resume
   :: Resumable h
@@ -395,5 +407,5 @@ query
   -> StorableQuery h
   -> StorableMonad h (StorableResult h)
 query t sp s q = do
-  es  <- getMemoryEvents (s ^. storage) & V.freeze <&> foldEvents . V.toList
+  es <- getMemoryEvents (s ^. storage) & V.freeze <&> foldEvents . V.toList
   queryStorage t sp es (s ^. handle) q

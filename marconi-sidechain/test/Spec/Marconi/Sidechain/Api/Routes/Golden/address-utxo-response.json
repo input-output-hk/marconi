@@ -12,8 +12,10 @@
     {
         "address": "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc",
         "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
-        "datum": "34",
-        "datumHash": "eb8649214997574e20c464388a172420d25403682bbbb80c496831c8cc1f8f0d",
+        "datum": {
+            "int": 34
+        },
+        "datumHash": "6d683f9bd0c3b874cdf3da1793b5eb0ea73a074d3e4b66bc62279b09d387fa8d",
         "slotNo": 1,
         "spentBy": {
             "slot": 12,

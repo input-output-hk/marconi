@@ -1,13 +1,12 @@
-{-# LANGUAGE ApplicativeDo        #-}
-{-# LANGUAGE ConstraintKinds      #-}
-{-# LANGUAGE DerivingVia          #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE StrictData           #-}
+{-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
-
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 {-# OPTIONS_GHC -Wno-missing-import-lists #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 {- |
  This module propose an alternative to the index implementation proposed in @Storable@.
@@ -179,338 +178,427 @@
 
     Then you also probably need to provide a helper to create workers for this indexer.
 -}
-module Marconi.Core.Experiment
-    (
+module Marconi.Core.Experiment (
+  -- * Core types and typeclasses
 
-    -- * Core types and typeclasses
+  -- ** Core types
 
-    -- ** Core types
-    --
-    -- | Marconi's indexers relies on three main concepts:
-    --
-    --     1. @event@ the information we index;
-    --     2. @indexer@ that stores relevant (for it) pieces of information
-    --     from the @event@s;
-    --     3. @query@ that defines what can be asked to an @indexer@.
-    --
-      Point
-    , Result
-    , TimedEvent (TimedEvent)
-        , point
-        , event
-    -- ** Core typeclasses
-    , HasGenesis (..)
-    , IsIndex (..)
-    , index'
-    , indexAll'
-    , Rollbackable (..)
-    , Resetable (..)
-    , resumeFrom
-    , IsSync (..)
-    , Closeable (..)
-    , isAheadOfSync
-    , Queryable (..)
-    , query'
-    , queryLatest
-    , queryLatest'
-    , ResumableResult (..)
-    -- ** Errors
-    , IndexerError (..)
-    , QueryError (..)
+  --
 
-    -- * Core Indexers
-    --
-    -- | A bunch of indexers that should cover the general need.
-    --
-    --     * 'ListIndexer' to store events in memory.
-    --     * 'SQLiteIndexer' to store events in a SQLite database.
-    --     * 'MixedIndexer' to store recent events in an indexer
-    --       and older events in another one.
+  -- | Marconi's indexers relies on three main concepts:
+  --
+  --     1. @event@ the information we index;
+  --     2. @indexer@ that stores relevant (for it) pieces of information
+  --     from the @event@s;
+  --     3. @query@ that defines what can be asked to an @indexer@.
+  Point,
+  Result,
+  TimedEvent (TimedEvent),
+  point,
+  event,
 
-    -- ** In memory
-    --
-    -- | A Full in memory indexer, backed by a simple list of events.
-    -- Most of the logic for this indexer is generic.
-    --
-    -- To create an indexer instance that uses a list indexer,
-    -- you have to define:
-    --
-    --     * the type of @event@ you want to store
-    --     * the type(s) of query your indexer instance must handle
-    --     * the 'Queryable' interface for these queries.
-    , ListIndexer
-        , listIndexer
-        , events
-        , latest
+  -- ** Core typeclasses
+  HasGenesis (..),
+  IsIndex (..),
+  index',
+  indexAll',
+  Rollbackable (..),
+  Resetable (..),
+  resumeFrom,
+  IsSync (..),
+  Closeable (..),
+  isAheadOfSync,
+  Queryable (..),
+  query',
+  queryLatest,
+  queryLatest',
+  ResumableResult (..),
 
-    -- ** In database
-    --
-    -- | An in-memory indexer that stores its events in a SQLite database.
-    --
-    -- We try to provide as much machinery as possible to minimize the work needed
-    -- to create an indexer instance that uses a 'SQLiteIndexer'.
-    -- Populating a constructor and defining the queries
-    -- (and the corresponding 'Queryable' interface)
-    -- should be enough to have an operational indexer.
-    , SQLiteIndexer (SQLiteIndexer)
-        -- | Start a new indexer or resume an existing SQLite indexer
-        --
-        -- The main difference with 'SQLiteIndexer' is
-        -- that we set 'dbLastSync' thanks to the provided query
-        , sqliteIndexer
-        -- | A smart constructor for indexer that want to map an event to a single table.
-        -- We just have to set the type family of `InsertRecord event` to `[param]` and
-        -- then to provide the expected parameters.
-        --
-        -- It is monomorphic restriction of 'sqliteIndexer'
-        , singleInsertSQLiteIndexer
-        , handle
-        , prepareInsert
-        , buildInsert
-        , dbLastSync
-        , rollbackSQLiteIndexerWith
-        , querySQLiteIndexerWith
-        , querySyncedOnlySQLiteIndexerWith
-    -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
-    -- ending with several insert.
-    --
-    -- This leads to two major issues:
-    --     - Each query has its own parameter type, we consequently don't have a unique type for a parametrised query.
-    --     - When we perform the insert, we want to process in the same way all the queries.
-    --     - We can't know in the general case neither how many query will be needed, nor the param types.
-    --     - We want to minimise the boilerplate for a end user.
-    --
-    -- To tackle these issue, we wrap our queries in a opaque type, @IndexQuery@,
-    -- which hides the query parameters.
-    -- Internally, we only have to deal with an @[IndexQuery]@ to be able to insert an event.
-    , IndexQuery (..)
-    -- | How we map an event to its sql representation
-    --
-    -- In general, it consists in breaking the event in many fields of a record,
-    -- each field corresponding to the parameters required to insert a part of the event in one table.
-    --
-    -- Usually, an insert record will be of the form:
-    --
-    -- @
-    -- data MyInsertRecord
-    --     = MyInsertRecord
-    --     { _tableA :: [ParamsForTableA]
-    --     { _tableB :: [ParamsForTableB]
-    --     -- ...
-    --     }
-    -- type InsertRecord MyEvent = MyInsertRecord
-    -- @
-    , InsertRecord
-    -- | The indexer of the most recent events must be able to send a part
-    -- of its events to the other indexer when they are stable.
-    --
-    -- The number of events that are sent and the number of events kept in memory
-    -- is controlled by the 'MixedIndexer'
-    , Flushable (..)
+  -- ** Errors
+  IndexerError (..),
+  QueryError (..),
 
-    -- ** Mixed indexer
-    --
-    -- | An indexer that uses two indexer internally:
-    -- one for the most recents points, another for the older points.
-    --
-    -- The idea is that recent events are _volatile_ and can be rollbacked,
-    -- so they must be easy to delete if needed.
-    -- Older events are stable and can be store on disk to be persisted.
-    , MixedIndexer
-          -- | A smart constructor for 'MixedIndexer'.
-          -- It doesn't sync up the last syncEvent of inMemory and in Database indexers.
-          --
-          -- As a consequence, if these indexers aren't empty, you probably want to
-          -- modify the result of the constructor.
-        , newMixedIndexer
-          -- | A smart constructor for a /standard/ 'MixedIndexer':
-          -- an on-disk indexer and a 'ListIndexer' for the in-memory part.
-          --
-          -- Contrary to 'newMixedIndexer',
-          -- this smart constructor checks the content of the on-disk indexer
-          -- to set the 'lastSyncPoint' correctly.
-        , standardMixedIndexer
-        , inMemory
-        , inDatabase
-    -- | A type class that give access to the configuration of a 'MixedIndexer'
-    , HasMixedConfig (flushSize, keepInMemory)
-    -- ** LastPointIndexer
-    , LastPointIndexer
-        , lastPointIndexer
+  -- * Core Indexers
 
-    -- * Running indexers
-    -- | To control a set of indexers simultaneously,
-    -- we want to be able to consider a list of them.
-    -- Unfortunately, each indexer has its own purpose and (usually) operates
-    -- on its own @event@ type.
-    -- As a consequence, a list of indexer would be an heterogeneous list,
-    -- which is hard to manipulate.
-    -- 'WorkerM' (and 'Worker') offers an opaque representation of a 'Worker',
-    -- which can be embed in a homogeneous list.
-    --
-    -- Coordinator take a bunch of 'Worker' and synchronise their work,
-    -- sending them events and rollbacks.
+  --
 
-    -- ** Workers
-    , WorkerM (..)
-    , Worker
-    , WorkerIndexer
-    , startWorker
-    , createWorker'
-    , createWorker
-    , createWorkerPure
-    , ProcessedInput (..)
-    -- ** Coordinator
-    , Coordinator
-        , lastSync
-        , workers
-        , threadIds
-        , tokens
-        , channel
-        , nbWorkers
-    , start
-    , step
+  -- | A bunch of indexers that should cover the general need.
+  --
+  --     * 'ListIndexer' to store events in memory.
+  --     * 'SQLiteIndexer' to store events in a SQLite database.
+  --     * 'MixedIndexer' to store recent events in an indexer
+  --       and older events in another one.
 
-    -- * Common queries
-    --
-    -- Queries that can be implemented for all indexers
-    , EventAtQuery (..)
-    , EventsMatchingQuery (..)
-    , allEvents
+  -- ** In memory
 
-    -- * Indexer Transformers
-    , IndexerTrans (..)
-    , IndexerMapTrans (..)
-    -- ** Tracer
-    , WithTracer
-        , withTracer
-    , HasTracerConfig (tracer)
-    -- ** Delay
-    , WithDelay
-        , withDelay
-        , delayBuffer
-    -- | A type class that give access to the configuration of 'WithDelay'
-    , HasDelayConfig (delayCapacity)
-    -- ** Pruning
-    , WithPruning
-        , withPruning
-        , nextPruning
-        , stepsBeforeNext
-        , currentDepth
-    , Prunable (..)
-    , HasPruningConfig (securityParam, pruneEvery)
-    -- ** Caching
-    , WithCache
-        , withCache
-        , addCacheFor
-    , HasCacheConfig (cache)
-    -- ** Transforming input
-    , WithTransform
-        , withTransform
-        , HasTransformConfig (..)
-    , WithAggregate
-        , withAggregate
-        , HasAggregateConfig (..)
-    -- ** Index Wrapper
-    --
-    -- | Wrap an indexer with some extra information to modify its behaviour
-    --
-    -- The wrapper comes with some instances that relay the function to the wrapped indexer,
-    -- without any extra behaviour.
-    --
-    -- An indexer transformer can be a newtype of 'IndexWrapper',
-    -- reuse some of its instances with @deriving via@,
-    -- and specifies its own instances when it wants to add logic in it.
+  --
 
-    -- *** Derive via machinery
-    , IndexWrapper (IndexWrapper)
-        , wrappedIndexer
-        , wrapperConfig
-    -- *** Helpers
-    --
-    -- | Via methods have two major utilities.
-    --
-    --     1. In some cases, we can't use deriving via to derive a typeclass,
-    --     then, via method can help in the declaration of our typeclasses.
-    --     2. Often, when an indexer transformer modify the default behaviour
-    --     of an indexer typeclass, we need to call the some methods of the
-    --     underlying indexer, via methods make it easier.
-    , pruneVia
-    , pruningPointVia
-    , rollbackVia
-    , resetVia
-    , indexVia
-    , indexAllVia
-    , lastSyncPointVia
-    , closeVia
-    , queryVia
-    , queryLatestVia
-    ) where
+  -- | A Full in memory indexer, backed by a simple list of events.
+  -- Most of the logic for this indexer is generic.
+  --
+  -- To create an indexer instance that uses a list indexer,
+  -- you have to define:
+  --
+  --     * the type of @event@ you want to store
+  --     * the type(s) of query your indexer instance must handle
+  --     * the 'Queryable' interface for these queries.
+  ListIndexer,
+  listIndexer,
+  events,
+  latest,
+
+  -- ** In database
+
+  --
+
+  -- | An in-memory indexer that stores its events in a SQLite database.
+  --
+  -- We try to provide as much machinery as possible to minimize the work needed
+  -- to create an indexer instance that uses a 'SQLiteIndexer'.
+  -- Populating a constructor and defining the queries
+  -- (and the corresponding 'Queryable' interface)
+  -- should be enough to have an operational indexer.
+  SQLiteIndexer (SQLiteIndexer),
+  -- | Start a new indexer or resume an existing SQLite indexer
+  --
+  -- The main difference with 'SQLiteIndexer' is
+  -- that we set 'dbLastSync' thanks to the provided query
+  sqliteIndexer,
+  -- | A smart constructor for indexer that want to map an event to a single table.
+  -- We just have to set the type family of `InsertRecord event` to `[param]` and
+  -- then to provide the expected parameters.
+  --
+  -- It is monomorphic restriction of 'sqliteIndexer'
+  singleInsertSQLiteIndexer,
+  handle,
+  prepareInsert,
+  buildInsert,
+  dbLastSync,
+  rollbackSQLiteIndexerWith,
+  querySQLiteIndexerWith,
+  querySyncedOnlySQLiteIndexerWith,
+  -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
+  -- ending with several insert.
+  --
+  -- This leads to two major issues:
+  --     - Each query has its own parameter type, we consequently don't have a unique type for a parametrised query.
+  --     - When we perform the insert, we want to process in the same way all the queries.
+  --     - We can't know in the general case neither how many query will be needed, nor the param types.
+  --     - We want to minimise the boilerplate for a end user.
+  --
+  -- To tackle these issue, we wrap our queries in a opaque type, @IndexQuery@,
+  -- which hides the query parameters.
+  -- Internally, we only have to deal with an @[IndexQuery]@ to be able to insert an event.
+  IndexQuery (..),
+  -- | How we map an event to its sql representation
+  --
+  -- In general, it consists in breaking the event in many fields of a record,
+  -- each field corresponding to the parameters required to insert a part of the event in one table.
+  --
+  -- Usually, an insert record will be of the form:
+  --
+  -- @
+  -- data MyInsertRecord
+  --     = MyInsertRecord
+  --     { _tableA :: [ParamsForTableA]
+  --     { _tableB :: [ParamsForTableB]
+  --     -- ...
+  --     }
+  -- type InsertRecord MyEvent = MyInsertRecord
+  -- @
+  InsertRecord,
+  -- | The indexer of the most recent events must be able to send a part
+  -- of its events to the other indexer when they are stable.
+  --
+  -- The number of events that are sent and the number of events kept in memory
+  -- is controlled by the 'MixedIndexer'
+  Flushable (..),
+
+  -- ** Mixed indexer
+
+  --
+
+  -- | An indexer that uses two indexer internally:
+  -- one for the most recents points, another for the older points.
+  --
+  -- The idea is that recent events are _volatile_ and can be rollbacked,
+  -- so they must be easy to delete if needed.
+  -- Older events are stable and can be store on disk to be persisted.
+  MixedIndexer,
+  -- | A smart constructor for 'MixedIndexer'.
+  -- It doesn't sync up the last syncEvent of inMemory and in Database indexers.
+  --
+  -- As a consequence, if these indexers aren't empty, you probably want to
+  -- modify the result of the constructor.
+  newMixedIndexer,
+  -- | A smart constructor for a /standard/ 'MixedIndexer':
+  -- an on-disk indexer and a 'ListIndexer' for the in-memory part.
+  --
+  -- Contrary to 'newMixedIndexer',
+  -- this smart constructor checks the content of the on-disk indexer
+  -- to set the 'lastSyncPoint' correctly.
+  standardMixedIndexer,
+  inMemory,
+  inDatabase,
+  -- | A type class that give access to the configuration of a 'MixedIndexer'
+  HasMixedConfig (flushSize, keepInMemory),
+
+  -- ** LastPointIndexer
+  LastPointIndexer,
+  lastPointIndexer,
+
+  -- * Running indexers
+
+  -- | To control a set of indexers simultaneously,
+  -- we want to be able to consider a list of them.
+  -- Unfortunately, each indexer has its own purpose and (usually) operates
+  -- on its own @event@ type.
+  -- As a consequence, a list of indexer would be an heterogeneous list,
+  -- which is hard to manipulate.
+  -- 'WorkerM' (and 'Worker') offers an opaque representation of a 'Worker',
+  -- which can be embed in a homogeneous list.
+  --
+  -- Coordinator take a bunch of 'Worker' and synchronise their work,
+  -- sending them events and rollbacks.
+
+  -- ** Workers
+  WorkerM (..),
+  Worker,
+  WorkerIndexer,
+  startWorker,
+  createWorker',
+  createWorker,
+  createWorkerPure,
+  ProcessedInput (..),
+
+  -- ** Coordinator
+  Coordinator,
+  lastSync,
+  workers,
+  threadIds,
+  tokens,
+  channel,
+  nbWorkers,
+  start,
+  step,
+
+  -- * Common queries
+
+  --
+  -- Queries that can be implemented for all indexers
+  EventAtQuery (..),
+  EventsMatchingQuery (..),
+  allEvents,
+
+  -- * Indexer Transformers
+  IndexerTrans (..),
+  IndexerMapTrans (..),
+
+  -- ** Tracer
+  WithTracer,
+  withTracer,
+  HasTracerConfig (tracer),
+
+  -- ** Delay
+  WithDelay,
+  withDelay,
+  delayBuffer,
+  -- | A type class that give access to the configuration of 'WithDelay'
+  HasDelayConfig (delayCapacity),
+
+  -- ** Pruning
+  WithPruning,
+  withPruning,
+  nextPruning,
+  stepsBeforeNext,
+  currentDepth,
+  Prunable (..),
+  HasPruningConfig (securityParam, pruneEvery),
+
+  -- ** Caching
+  WithCache,
+  withCache,
+  addCacheFor,
+  HasCacheConfig (cache),
+
+  -- ** Transforming input
+  WithTransform,
+  withTransform,
+  HasTransformConfig (..),
+  WithAggregate,
+  withAggregate,
+  HasAggregateConfig (..),
+
+  -- ** Index Wrapper
+
+  --
+
+  -- | Wrap an indexer with some extra information to modify its behaviour
+  --
+  -- The wrapper comes with some instances that relay the function to the wrapped indexer,
+  -- without any extra behaviour.
+  --
+  -- An indexer transformer can be a newtype of 'IndexWrapper',
+  -- reuse some of its instances with @deriving via@,
+  -- and specifies its own instances when it wants to add logic in it.
+
+  -- *** Derive via machinery
+  IndexWrapper (IndexWrapper),
+  wrappedIndexer,
+  wrapperConfig,
+
+  -- *** Helpers
+
+  --
+
+  -- | Via methods have two major utilities.
+  --
+  --     1. In some cases, we can't use deriving via to derive a typeclass,
+  --     then, via method can help in the declaration of our typeclasses.
+  --     2. Often, when an indexer transformer modify the default behaviour
+  --     of an indexer typeclass, we need to call the some methods of the
+  --     underlying indexer, via methods make it easier.
+  pruneVia,
+  pruningPointVia,
+  rollbackVia,
+  resetVia,
+  indexVia,
+  indexAllVia,
+  lastSyncPointVia,
+  closeVia,
+  queryVia,
+  queryLatestVia,
+) where
 
 import Control.Monad.Except (MonadError (catchError, throwError))
 
-import Marconi.Core.Experiment.Class (Closeable (..), HasGenesis (..), IsIndex (..), IsSync (..), Queryable (..),
-                                      Resetable (..), ResumableResult (..), Rollbackable (..), index', indexAll',
-                                      isAheadOfSync, query', queryLatest, queryLatest')
-import Marconi.Core.Experiment.Coordinator (Coordinator, channel, lastSync, nbWorkers, start, step, threadIds, tokens,
-                                            workers)
+import Marconi.Core.Experiment.Class (
+  Closeable (..),
+  HasGenesis (..),
+  IsIndex (..),
+  IsSync (..),
+  Queryable (..),
+  Resetable (..),
+  ResumableResult (..),
+  Rollbackable (..),
+  index',
+  indexAll',
+  isAheadOfSync,
+  query',
+  queryLatest,
+  queryLatest',
+ )
+import Marconi.Core.Experiment.Coordinator (
+  Coordinator,
+  channel,
+  lastSync,
+  nbWorkers,
+  start,
+  step,
+  threadIds,
+  tokens,
+  workers,
+ )
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
-import Marconi.Core.Experiment.Indexer.MixedIndexer (Flushable (..), HasMixedConfig (flushSize, keepInMemory),
-                                                     MixedIndexer, inDatabase, inMemory, newMixedIndexer,
-                                                     standardMixedIndexer)
-import Marconi.Core.Experiment.Indexer.SQLiteIndexer (IndexQuery (..), InsertRecord, SQLiteIndexer (..), buildInsert,
-                                                      dbLastSync, handle, prepareInsert, querySQLiteIndexerWith,
-                                                      querySyncedOnlySQLiteIndexerWith, rollbackSQLiteIndexerWith,
-                                                      singleInsertSQLiteIndexer, sqliteIndexer)
+import Marconi.Core.Experiment.Indexer.MixedIndexer (
+  Flushable (..),
+  HasMixedConfig (flushSize, keepInMemory),
+  MixedIndexer,
+  inDatabase,
+  inMemory,
+  newMixedIndexer,
+  standardMixedIndexer,
+ )
+import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
+  IndexQuery (..),
+  InsertRecord,
+  SQLiteIndexer (..),
+  buildInsert,
+  dbLastSync,
+  handle,
+  prepareInsert,
+  querySQLiteIndexerWith,
+  querySyncedOnlySQLiteIndexerWith,
+  rollbackSQLiteIndexerWith,
+  singleInsertSQLiteIndexer,
+  sqliteIndexer,
+ )
 import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (IndexWrapper (..), IndexerTrans (..), closeVia, indexAllVia,
-                                                         indexVia, lastSyncPointVia, queryLatestVia, queryVia, resetVia,
-                                                         rollbackVia, wrappedIndexer, wrapperConfig)
+import Marconi.Core.Experiment.Transformer.IndexWrapper (
+  IndexWrapper (..),
+  IndexerTrans (..),
+  closeVia,
+  indexAllVia,
+  indexVia,
+  lastSyncPointVia,
+  queryLatestVia,
+  queryVia,
+  resetVia,
+  rollbackVia,
+  wrappedIndexer,
+  wrapperConfig,
+ )
 import Marconi.Core.Experiment.Transformer.WithAggregate (HasAggregateConfig (..), WithAggregate, withAggregate)
 import Marconi.Core.Experiment.Transformer.WithCache (HasCacheConfig (cache), WithCache, addCacheFor, withCache)
 import Marconi.Core.Experiment.Transformer.WithDelay (HasDelayConfig (delayCapacity), WithDelay, delayBuffer, withDelay)
-import Marconi.Core.Experiment.Transformer.WithPruning (HasPruningConfig (pruneEvery, securityParam), Prunable (..),
-                                                        WithPruning, currentDepth, nextPruning, pruneEvery, pruneVia,
-                                                        pruningPointVia, securityParam, stepsBeforeNext, withPruning)
+import Marconi.Core.Experiment.Transformer.WithPruning (
+  HasPruningConfig (pruneEvery, securityParam),
+  Prunable (..),
+  WithPruning,
+  currentDepth,
+  nextPruning,
+  pruneEvery,
+  pruneVia,
+  pruningPointVia,
+  securityParam,
+  stepsBeforeNext,
+  withPruning,
+ )
 import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
 import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
 import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, point)
-import Marconi.Core.Experiment.Worker (ProcessedInput (..), Worker, WorkerIndexer, WorkerM (..), createWorker,
-                                       createWorker', createWorkerPure, startWorker)
+import Marconi.Core.Experiment.Worker (
+  ProcessedInput (..),
+  Worker,
+  WorkerIndexer,
+  WorkerM (..),
+  createWorker,
+  createWorker',
+  createWorkerPure,
+  startWorker,
+ )
 
+{- | Try to rollback to a given point to resume the indexer.
 
-
--- | Try to rollback to a given point to resume the indexer.
---
--- If we can't resume from here,
--- either we allow reset and we restart the indexer from genesis,
--- or we don't and we throw an error.
+ If we can't resume from here,
+ either we allow reset and we restart the indexer from genesis,
+ or we don't and we throw an error.
+-}
 resumeFrom
-    :: Rollbackable m event indexer
-    => MonadError IndexerError m
-    => Resetable m event indexer
-    => IsSync m event indexer
-    => HasGenesis (Point event)
-    => Ord (Point event)
-    => Point event
-    -- ^ expected resume point
-    -> Bool
-    -- ^ do we allow reset?
-    -> indexer event
-    -- ^ the indexer to resume
-    -> m (Point event, indexer event)
-    -- ^ the indexer back to the provided given point
-resumeFrom p allowReset indexer = let
-
-    handleError = \case
-        RollbackBehindHistory -> if allowReset
+  :: Rollbackable m event indexer
+  => MonadError IndexerError m
+  => Resetable m event indexer
+  => IsSync m event indexer
+  => HasGenesis (Point event)
+  => Ord (Point event)
+  => Point event
+  -- ^ expected resume point
+  -> Bool
+  -- ^ do we allow reset?
+  -> indexer event
+  -- ^ the indexer to resume
+  -> m (Point event, indexer event)
+  -- ^ the indexer back to the provided given point
+resumeFrom p allowReset indexer =
+  let handleError = \case
+        RollbackBehindHistory ->
+          if allowReset
             then reset indexer
             else throwError RollbackBehindHistory
         err -> throwError err
-
-    in do
+   in do
         indexer' <- rollback p indexer `catchError` handleError
-        resumePoint <-  lastSyncPoint indexer'
+        resumePoint <- lastSyncPoint indexer'
         pure (resumePoint, indexer')

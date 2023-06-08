@@ -14,7 +14,7 @@ import Streaming.Prelude qualified as S
 
 main :: IO ()
 main = do
-  Options {optionsSocketPath, optionsNetworkId, optionsChainPoint} <- parseOptions
+  Options{optionsSocketPath, optionsNetworkId, optionsChainPoint} <- parseOptions
 
   withChainSyncEventStream optionsSocketPath optionsNetworkId [optionsChainPoint] $
     S.stdoutLn

@@ -1,11 +1,11 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# OPTIONS_GHC -Wno-orphans    #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 module Spec.Marconi.ChainIndex.Indexers.ScriptTx (tests) where
@@ -55,31 +55,38 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Cardano.Testnet qualified as TN
 import Helpers qualified as TN
 import Marconi.ChainIndex.Error (raiseException)
--- ^ Although these are defined in this cabal component, they are
--- helpers for interacting with the testnet, thus TN
+
+{- ^ Although these are defined in this cabal component, they are
+ helpers for interacting with the testnet, thus TN
+-}
 
 integration :: HasCallStack => H.Integration () -> H.Property
 integration = H.withTests 1 . H.propertyOnce
 
-
 tests :: TestTree
-tests = testGroup "Spec.Marconi.ChainIndex.Indexers.ScriptTx"
-  [ testPropertyNamed
-    "Transaction with script hash survives `createAndValidateTransactionBody`"
-    "propGetTxBodyScriptsRoundtrip" propGetTxBodyScriptsRoundtrip
-  , testPropertyNamed
-    "Submitted transactions with script address show up in indexer"
-    "propEndToEndScriptTx" propEndToEndScriptTx
-  ]
+tests =
+  testGroup
+    "Spec.Marconi.ChainIndex.Indexers.ScriptTx"
+    [ testPropertyNamed
+        "Transaction with script hash survives `createAndValidateTransactionBody`"
+        "propGetTxBodyScriptsRoundtrip"
+        propGetTxBodyScriptsRoundtrip
+    , testPropertyNamed
+        "Submitted transactions with script address show up in indexer"
+        "propEndToEndScriptTx"
+        propEndToEndScriptTx
+    ]
 
--- | Create @nScripts@ scripts, add them to a transaction body, then
--- generate a transaction with @createAndValidateTransactionBody@ and check if the
--- scripts put in are present in the generated transaction.
+{- | Create @nScripts@ scripts, add them to a transaction body, then
+ generate a transaction with @createAndValidateTransactionBody@ and check if the
+ scripts put in are present in the generated transaction.
+-}
 propGetTxBodyScriptsRoundtrip :: Property
 propGetTxBodyScriptsRoundtrip = property $ do
   nScripts <- forAll $ Gen.integral (Range.linear 5 500)
-  C.AnyCardanoEra (era :: C.CardanoEra era) <- forAll $
-    Gen.enum (C.AnyCardanoEra C.AllegraEra) maxBound
+  C.AnyCardanoEra (era :: C.CardanoEra era) <-
+    forAll $
+      Gen.enum (C.AnyCardanoEra C.AllegraEra) maxBound
 
   txIns <- replicateM nScripts $ forAll CGen.genTxIn
   witnessesHashes <- replicateM nScripts $ forAll $ genWitnessAndHashInEra era
@@ -87,7 +94,7 @@ propGetTxBodyScriptsRoundtrip = property $ do
   let (witnesses, scriptHashes) = unzip witnessesHashes
       collateral = case C.collateralSupportedInEra era of
         Just yes -> C.TxInsCollateral yes txIns
-        _        -> C.TxInsCollateralNone
+        _ -> C.TxInsCollateralNone
 
   txBody <- forAll $ genTxBodyWithTxIns era (zip txIns $ map C.BuildTxWith witnesses) collateral
   let hashesFound = map coerce $ ScriptTx.getTxBodyScripts txBody :: [C.ScriptHash]
@@ -121,12 +128,11 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
   indexedTxs <- liftIO IO.newChan
   let writeScriptUpdate (ScriptTx.ScriptTxEvent txScripts _slotNo) = case txScripts of
         (x : xs) -> IO.writeChan indexedTxs $ x :| xs
-        _        -> pure ()
+        _ -> pure ()
 
   -- Start indexer
   let sqliteDb = tempAbsPath </> "script-tx.db"
   indexer <- liftIO $ do
-
     coordinator <- M.initialCoordinator 1 0
     ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
     (loop, _, indexer) <- M.scriptTxWorker_ (\update -> writeScriptUpdate update $> []) (ScriptTx.Depth 1) coordinator ch sqliteDb
@@ -135,29 +141,32 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
     void $ IO.forkIO $ do
       let chainPoint = C.ChainPointAtGenesis :: C.ChainPoint
       c <- defaultConfigStdout
-      withTrace c "marconi" $ \trace -> let
-        indexerWorker = withChainSyncEventStream socketPathAbs networkId [chainPoint] $ S.mapM_ $
-          \chainSyncEvent -> IO.atomically $ IO.writeTChan ch chainSyncEvent
-        handleException NoIntersectionFound = logError trace $ renderStrict $ layoutPretty defaultLayoutOptions $
-          "No intersection found for chain point" <+> pretty chainPoint <> "."
-        in indexerWorker `catch` handleException :: IO ()
+      withTrace c "marconi" $ \trace ->
+        let indexerWorker = withChainSyncEventStream socketPathAbs networkId [chainPoint] $
+              S.mapM_ $
+                \chainSyncEvent -> IO.atomically $ IO.writeTChan ch chainSyncEvent
+            handleException NoIntersectionFound =
+              logError trace $
+                renderStrict $
+                  layoutPretty defaultLayoutOptions $
+                    "No intersection found for chain point" <+> pretty chainPoint <> "."
+         in indexerWorker `catch` handleException :: IO ()
 
     -- Start indexer worker loop
     void $ IO.forkIO loop
 
     return indexer
 
-  let
-    -- Create an always succeeding validator script
-    plutusScript :: C.PlutusScript C.PlutusScriptV1
-    plutusScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode validator
-      where
-        validator :: PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
-        validator = $$(PlutusTx.compile [|| \_ _ _ -> () ||])
+  let -- Create an always succeeding validator script
+      plutusScript :: C.PlutusScript C.PlutusScriptV1
+      plutusScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode validator
+        where
+          validator :: PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
+          validator = $$(PlutusTx.compile [||\_ _ _ -> ()||])
 
-    plutusScriptHash = C.hashScript $ C.PlutusScript C.PlutusScriptV1 plutusScript :: C.ScriptHash
-    plutusScriptAddr :: C.Address C.ShelleyAddr
-    plutusScriptAddr = C.makeShelleyAddress networkId (C.PaymentCredentialByScript plutusScriptHash) C.NoStakeAddress
+      plutusScriptHash = C.hashScript $ C.PlutusScript C.PlutusScriptV1 plutusScript :: C.ScriptHash
+      plutusScriptAddr :: C.Address C.ShelleyAddr
+      plutusScriptAddr = C.makeShelleyAddress networkId (C.PaymentCredentialByScript plutusScriptHash) C.NoStakeAddress
 
   -- Step 1: Create a tx ouput with a datum hash at the script address. In order for a tx ouput to be locked
   -- by a plutus script, it must have a datahash. We also need collateral tx inputs so we split the utxo
@@ -168,13 +177,14 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
   genesisSKey :: C.SigningKey C.GenesisUTxOKey <-
     TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempAbsPath </> "utxo-keys/utxo1.skey"
 
-  let
-    paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
-    address :: C.Address C.ShelleyAddr
-    address = C.makeShelleyAddress
-      networkId
-      (C.PaymentCredentialByKey (C.verificationKeyHash paymentKey :: C.Hash C.PaymentKey))
-      C.NoStakeAddress :: C.Address C.ShelleyAddr
+  let paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
+      address :: C.Address C.ShelleyAddr
+      address =
+        C.makeShelleyAddress
+          networkId
+          (C.PaymentCredentialByKey (C.verificationKeyHash paymentKey :: C.Hash C.PaymentKey))
+          C.NoStakeAddress
+        :: C.Address C.ShelleyAddr
 
   (tx1in, C.TxOut _ v _ _) <- do
     utxo <- TN.findUTxOByAddress @C.BabbageEra localNodeConnectInfo address
@@ -188,32 +198,36 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
       -- Must return everything that was not paid to script and that didn't went to fees:
       amountReturned = totalLovelace - amountPaid :: C.Lovelace
       txOut1 :: C.TxOut ctx C.BabbageEra
-      txOut1 = C.TxOut
-        (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) plutusScriptAddr)
-        (C.TxOutValue C.MultiAssetInBabbageEra $ C.lovelaceToValue amountPaid)
-        (C.TxOutDatumHash C.ScriptDataInBabbageEra scriptDatumHash)
-        C.ReferenceScriptNone
+      txOut1 =
+        C.TxOut
+          (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) plutusScriptAddr)
+          (C.TxOutValue C.MultiAssetInBabbageEra $ C.lovelaceToValue amountPaid)
+          (C.TxOutDatumHash C.ScriptDataInBabbageEra scriptDatumHash)
+          C.ReferenceScriptNone
       mkTxOut2 :: C.Lovelace -> C.TxOut ctx C.BabbageEra
       mkTxOut2 lovelace = TN.mkAddressAdaTxOut address lovelace
       keyWitnesses = [C.WitnessPaymentKey $ C.castSigningKey genesisSKey]
       tx1ins = [(tx1in, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending)]
       validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
 
-  (tx1fee, txbc0) <- TN.calculateAndUpdateTxFee pparams networkId (length tx1ins) (length keyWitnesses) (TN.emptyTxBodyContent validityRange pparams)
-    { C.txIns = tx1ins
-    , C.txOuts = [txOut1, mkTxOut2 amountReturned]
-    , C.txProtocolParams = C.BuildTxWith $ Just pparams
-    }
-  let txbc1 = txbc0 { C.txOuts = [txOut1, mkTxOut2 $ amountReturned - tx1fee] }
+  (tx1fee, txbc0) <-
+    TN.calculateAndUpdateTxFee
+      pparams
+      networkId
+      (length tx1ins)
+      (length keyWitnesses)
+      (TN.emptyTxBodyContent validityRange pparams)
+        { C.txIns = tx1ins
+        , C.txOuts = [txOut1, mkTxOut2 amountReturned]
+        , C.txProtocolParams = C.BuildTxWith $ Just pparams
+        }
+  let txbc1 = txbc0{C.txOuts = [txOut1, mkTxOut2 $ amountReturned - tx1fee]}
   tx1body :: C.TxBody C.BabbageEra <- H.leftFail $ C.createAndValidateTransactionBody txbc1
   TN.submitTx localNodeConnectInfo $ C.makeSignedTransaction (map (C.makeShelleyKeyWitness tx1body) keyWitnesses) tx1body
-
-
 
   -- Second transaction: spend the UTXO specified in the first transaction
 
   _ <- liftIO $ IO.readChan indexedTxs -- wait for the first transaction to be accepted
-
   tx2collateralTxIn <- H.headM . Map.keys . C.unUTxO =<< TN.findUTxOByAddress @C.BabbageEra localNodeConnectInfo address
 
   (scriptTxIn, C.TxOut _ valueAtScript _ _) <- do
@@ -222,32 +236,37 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
 
   let lovelaceAtScript = C.txOutValueToLovelace valueAtScript
   assert $ lovelaceAtScript == 10_000_000 -- script has the 10 ADA we put there in tx1
-
   redeemer <- H.forAll CGen.genHashableScriptData -- The script always returns true so any redeemer will do
-  let
-      -- The following execution unit and fee values were found by
+  let -- The following execution unit and fee values were found by
       -- trial and error. When the transaction which we are in the
       -- process of creating, fails, then it will report the values it
       -- wants. And although they change again after you correct them,
       -- then the procedure converges quickly.
-      executionUnits = C.ExecutionUnits {C.executionSteps = 500_000, C.executionMemory = 10_000 }
+      executionUnits = C.ExecutionUnits{C.executionSteps = 500_000, C.executionMemory = 10_000}
 
       scriptWitness :: C.Witness C.WitCtxTxIn C.BabbageEra
-      scriptWitness = C.ScriptWitness C.ScriptWitnessForSpending $
-        C.PlutusScriptWitness C.PlutusScriptV1InBabbage C.PlutusScriptV1 (C.PScript plutusScript)
-        (C.ScriptDatumForTxIn $ C.unsafeHashableScriptData scriptDatum) redeemer executionUnits
+      scriptWitness =
+        C.ScriptWitness C.ScriptWitnessForSpending $
+          C.PlutusScriptWitness
+            C.PlutusScriptV1InBabbage
+            C.PlutusScriptV1
+            (C.PScript plutusScript)
+            (C.ScriptDatumForTxIn $ C.unsafeHashableScriptData scriptDatum)
+            redeemer
+            executionUnits
 
       tx2ins = [(scriptTxIn, C.BuildTxWith scriptWitness)]
       mkTx2Outs lovelace = [TN.mkAddressAdaTxOut address lovelace]
       tx2witnesses = [C.WitnessGenesisUTxOKey genesisSKey]
       tx2fee = 1000303 :: C.Lovelace
 
-      tx2bodyContent = (TN.emptyTxBodyContent validityRange pparams)
-        { C.txIns              = tx2ins
-        , C.txInsCollateral    = C.TxInsCollateral C.CollateralInBabbageEra [tx2collateralTxIn]
-        , C.txOuts             = mkTx2Outs $ lovelaceAtScript - tx2fee
-        , C.txFee              = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra tx2fee
-        }
+      tx2bodyContent =
+        (TN.emptyTxBodyContent validityRange pparams)
+          { C.txIns = tx2ins
+          , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra [tx2collateralTxIn]
+          , C.txOuts = mkTx2Outs $ lovelaceAtScript - tx2fee
+          , C.txFee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra tx2fee
+          }
   tx2body :: C.TxBody C.BabbageEra <- H.leftFail $ C.createAndValidateTransactionBody tx2bodyContent
   let tx2 = C.signShelleyTransaction tx2body tx2witnesses
   TN.submitTx localNodeConnectInfo tx2
