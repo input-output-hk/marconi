@@ -126,13 +126,13 @@ genTxMintValueRange min' max' = do
   -- TODO: fix bug RewindableIndex.Storable.rewind and change range to start from 0.
   policyAssets <- replicateM n genAsset
   let (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy policyAssets
-  pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith $ Map.singleton policyId policyWitness)
+      buildInfo = C.BuildTxWith $ Map.singleton policyId policyWitness
+  pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues buildInfo
   where
     genAsset :: Gen (C.AssetName, C.Quantity)
     genAsset = (,) <$> genAssetName <*> genQuantity
-      where
-        genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
-        genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
+    genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
+    genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
 
 -- * Helpers
 
@@ -202,14 +202,12 @@ equalSet :: (H.MonadTest m, Show a, Ord a) => [a] -> [a] -> m ()
 equalSet a b = Set.fromList a === Set.fromList b
 
 getPolicyAssets :: C.TxMintValue C.BuildTx C.BabbageEra -> [(C.PolicyId, C.AssetName, C.Quantity)]
-getPolicyAssets txMintValue = case txMintValue of
+getPolicyAssets = \case
   (C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith _policyIdToWitnessMap)) ->
-    mapMaybe
-      ( \(assetId, quantity) -> case assetId of
+    let extractAssetId (assetId, quantity) = case assetId of
           C.AssetId policyId assetName -> Just (policyId, assetName, quantity)
           C.AdaAssetId -> Nothing
-      )
-      $ C.valueToList mintedValues
+     in mapMaybe extractAssetId $ C.valueToList mintedValues
   _ -> []
 
 getValue :: C.TxMintValue C.BuildTx C.BabbageEra -> Maybe C.Value

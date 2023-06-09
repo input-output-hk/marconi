@@ -76,6 +76,7 @@ data TxMintInfo = TxMintInfo
   }
   deriving (Show, Eq, Ord)
 
+-- | Gather all the relevant minting in a block
 data TxMintEvent = TxMintEvent
   { txMintEventSlotNo :: !C.SlotNo
   , txMintEventBlockHeaderHash :: !(C.Hash C.BlockHeader)
@@ -101,6 +102,7 @@ toUpdate mTokens (C.BlockInMode (C.Block (C.BlockHeader slotNo blockHeaderHash b
     x : xs -> Just $ TxMintEvent slotNo blockHeaderHash blockNo (x NE.:| xs)
     [] -> Nothing
 
+-- | Extracs TxMintInfo from a Tx
 txMints :: Maybe [(C.AssetName, C.PolicyId)] -> TxIndexInBlock -> C.Tx era -> Maybe TxMintInfo
 txMints mTokens ix (C.Tx txb _) =
   let isTarget m = case mTokens of
