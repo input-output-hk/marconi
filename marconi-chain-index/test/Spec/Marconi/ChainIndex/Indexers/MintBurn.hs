@@ -43,7 +43,7 @@ import Helpers qualified as TN
 import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers qualified as M
 import Marconi.ChainIndex.Indexers.MintBurn (
-  MintAsset (MintAsset),
+  MintAsset,
   MintBurnHandle (MintBurnHandle),
   StorableQuery (QueryAllMintBurn, QueryByAssetId),
   StorableResult (MintBurnResult),
@@ -187,19 +187,7 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
   MintBurnResult allTxMintRows <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 
   -- Getting all AssetIds from generated events
-  let assetIds =
-        concatMap
-          ( \e ->
-              concat
-                $ NonEmpty.toList
-                $ fmap
-                  ( fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
-                      . NonEmpty.toList
-                      . MintBurn.txMintAsset
-                  )
-                $ MintBurn.txMintEventTxAssets e
-          )
-          insertedEvents
+  let assetIds = getAssetIds insertedEvents
   combinedTxMintRows <- fmap concat <$> forM assetIds $ \(policyId, assetName) -> do
     (MintBurnResult rows) <-
       liftIO $
@@ -235,19 +223,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
           QueryAllMintBurn (Just slotNo)
 
   -- Getting all AssetIds from generated events
-  let assetIds =
-        concatMap
-          ( \e ->
-              concat
-                $ NonEmpty.toList
-                $ fmap
-                  ( fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
-                      . NonEmpty.toList
-                      . MintBurn.txMintAsset
-                  )
-                $ MintBurn.txMintEventTxAssets e
-          )
-          insertedEvents
+  let assetIds = getAssetIds insertedEvents
   combinedTxMintRows <- fmap concat <$> forM assetIds $ \(policyId, assetName) -> do
     (MintBurnResult rows) <-
       liftIO $
@@ -282,19 +258,7 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
       latestSlotNo = if null possibleSlots then C.SlotNo 0 else List.maximum possibleSlots
 
   -- Getting all AssetIds from generated events
-  let assetIds =
-        concatMap
-          ( \e ->
-              concat
-                $ NonEmpty.toList
-                $ fmap
-                  ( fmap (\(MintAsset policyId assetName _ _ _ _) -> (policyId, assetName))
-                      . NonEmpty.toList
-                      . MintBurn.txMintAsset
-                  )
-                $ MintBurn.txMintEventTxAssets e
-          )
-          insertedEvents
+  let assetIds = getAssetIds insertedEvents
 
   forM_ assetIds $ \(policyId, assetName) -> do
     (MintBurnResult allTxMintRows) <-
@@ -342,7 +306,8 @@ rewind = H.property $ do
   rewoundIndexer <- liftIO (raiseException $ RI.rewind cp indexer)
   MintBurnResult queryResult <- liftIO $ raiseException $ RI.query rewoundIndexer $ QueryAllMintBurn Nothing
   -- Expect only older than rollback events.
-  let expected = filter (\e -> MintBurn.txMintEventSlotNo e <= rollbackSlotNo) events
+  let isBeforeRollback e = MintBurn.txMintEventSlotNo e <= rollbackSlotNo
+      expected = filter isBeforeRollback events
   equalSet expected (MintBurn.fromRows queryResult)
 
 {- | Start testnet, start mint/burn indexer on it, create a single
@@ -362,7 +327,7 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   liftIO $ do
     coordinator <- M.initialCoordinator 1 0
     ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
-    (loop, _indexerMVar) <- M.mintBurnWorker_ 123 (IO.writeChan indexedTxs) coordinator ch (tempPath </> "db.db")
+    (loop, _indexerMVar) <- M.mintBurnWorker_ 123 (IO.writeChan indexedTxs) Nothing coordinator ch (tempPath </> "db.db")
     void $ IO.async loop
     -- Receive ChainSyncEvents and pass them on to indexer's channel
     void $ IO.async $ do
@@ -430,9 +395,8 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
     liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
   case MintBurn.fromRows txMintRows of
     event : _ -> case MintBurn.txMintEventTxAssets event of
-      (MintBurn.TxMintInfo _txId _txIx gottenMintEvents) :| [] ->
-        let
-         in equalSet (mintsToPolicyAssets $ NonEmpty.toList gottenMintEvents) (getPolicyAssets txMintValue)
+      (MintBurn.TxMintInfo _txId _txIx gottenMintEvents :| []) ->
+        equalSet (mintsToPolicyAssets $ NonEmpty.toList gottenMintEvents) (getPolicyAssets txMintValue)
       _ -> fail "More than one mint/burn event, but we created only one!"
     _ -> fail "No events in indexer, but we inserted one!"
 
@@ -515,3 +479,13 @@ getValue = \case
 mintsToPolicyAssets :: [MintAsset] -> [(C.PolicyId, C.AssetName, C.Quantity)]
 mintsToPolicyAssets =
   map (\mint -> (MintBurn.mintAssetPolicyId mint, MintBurn.mintAssetAssetName mint, MintBurn.mintAssetQuantity mint))
+
+-- | Getting all AssetIds from generated events
+getAssetIds :: [MintBurn.TxMintEvent] -> [(C.PolicyId, C.AssetName)]
+getAssetIds =
+  let extractInfo m = (MintBurn.mintAssetPolicyId m, MintBurn.mintAssetAssetName m)
+   in concatMap $
+        concat
+          . NonEmpty.toList
+          . fmap (fmap extractInfo . NonEmpty.toList . MintBurn.txMintAsset)
+          . MintBurn.txMintEventTxAssets

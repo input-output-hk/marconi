@@ -49,8 +49,9 @@ genIndexerWithEvents dbPath = do
   H.classify "Buffer doesn't overflow" $ not (null events) && not overflow
   H.classify "Buffer overflows" $ not (null events) && overflow
   indexer <- liftIO $ do
+    let storeEvent event = raiseException . Storable.insert (MintBurn.MintBurnEvent event)
     indexer <- raiseException $ MintBurn.open dbPath bufferSize
-    foldM (\indexer' event -> raiseException $ Storable.insert (MintBurn.MintBurnEvent event) indexer') indexer events
+    foldM (flip storeEvent) indexer events
   pure (indexer, events, (bufferSize, nTx))
 
 {- | Generate transactions which have mints inside, then extract
@@ -74,7 +75,10 @@ genMintEvents = do
   txAll <- forM txAll' $ \case
     (Right tx, slotNo) -> pure (tx, slotNo)
     (Left txBodyError, _) -> fail $ "Failed to create a transaction! This shouldn't happen, the generator should be fixed. TxBodyError: " <> show txBodyError
-  let events = mapMaybe (\(ix, (tx, slotNo)) -> MintBurn.TxMintEvent slotNo dummyBlockHeaderHash dummyBlockNo . pure <$> MintBurn.txMints ix tx) $ zip [0 ..] txAll
+  let buildEvent ix (tx, slotNo) =
+        MintBurn.TxMintEvent slotNo dummyBlockHeaderHash dummyBlockNo . pure
+          <$> MintBurn.txMints Nothing ix tx
+      events = mapMaybe (uncurry buildEvent) $ zip [0 ..] txAll
   pure (events, (fromIntegral bufferSize, nTx))
 
 genTxWithMint

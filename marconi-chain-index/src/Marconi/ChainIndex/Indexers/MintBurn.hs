@@ -95,16 +95,22 @@ data MintAsset = MintAsset
   deriving (Show, Eq, Ord)
 
 -- | Extract the mint events from a block
-toUpdate :: C.BlockInMode C.CardanoMode -> Maybe TxMintEvent
-toUpdate (C.BlockInMode (C.Block (C.BlockHeader slotNo blockHeaderHash blockNo) txs) _) =
-  case mapMaybe (uncurry txMints) $ zip [0 ..] txs of
+toUpdate :: Maybe [(C.AssetName, C.PolicyId)] -> C.BlockInMode C.CardanoMode -> Maybe TxMintEvent
+toUpdate mTokens (C.BlockInMode (C.Block (C.BlockHeader slotNo blockHeaderHash blockNo) txs) _) =
+  case mapMaybe (uncurry $ txMints mTokens) $ zip [0 ..] txs of
     x : xs -> Just $ TxMintEvent slotNo blockHeaderHash blockNo (x NE.:| xs)
     [] -> Nothing
 
-txMints :: TxIndexInBlock -> C.Tx era -> Maybe TxMintInfo
-txMints ix (C.Tx txb _) = case txbMints txb of
-  x : xs -> Just $ TxMintInfo (C.getTxId txb) ix (x NE.:| xs)
-  [] -> Nothing
+txMints :: Maybe [(C.AssetName, C.PolicyId)] -> TxIndexInBlock -> C.Tx era -> Maybe TxMintInfo
+txMints mTokens ix (C.Tx txb _) =
+  let isTarget m = case mTokens of
+        Just xs ->
+          mintAssetAssetName m `elem` (fst <$> xs)
+            && mintAssetPolicyId m `elem` (snd <$> xs)
+        Nothing -> True
+   in case filter isTarget $ txbMints txb of
+        x : xs -> Just $ TxMintInfo (C.getTxId txb) ix (x NE.:| xs)
+        [] -> Nothing
 
 txbMints :: C.TxBody era -> [MintAsset]
 txbMints txb = case txb of
