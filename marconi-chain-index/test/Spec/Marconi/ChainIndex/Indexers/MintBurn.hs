@@ -17,7 +17,7 @@ import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
 import Control.Lens (view, (^.))
-import Control.Monad (forM, forM_, unless, void)
+import Control.Monad (forM, forM_, guard, unless, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Coerce (coerce)
@@ -121,6 +121,14 @@ tests =
         "Querying only burn events will only query the events with negative value"
         "propQueryingOnlyBurn"
         propQueryingOnlyBurn
+    , testPropertyNamed
+        "Event extraction filters in the targeted assets"
+        "propFilterIncludeTargetAssets"
+        propFilterIncludeTargetAssets
+    , testPropertyNamed
+        "Event extraction filters out the non-targeted assets"
+        "propFilterIncludeTargetAssets"
+        propFilterExcludeNonTargetAssets
     ]
 
 {- | This is a sanity-check test that turns a TxBodyContent with mint
@@ -433,6 +441,25 @@ propQueryingOnlyBurn = H.property $ do
     let resultEvents' = MintBurn.fromRows resultEventRows'
         expectedEvents = MintBurn.fromRows $ filter (\row -> MintBurn._txMintRowPolicyId row == somePolicyId && MintBurn._txMintRowAssetName row == someAssetName) $ MintBurn.toRows =<< burnEvents
     equalSet resultEvents' expectedEvents
+
+-- check that the target assets filtering keep the tx that mint the targeted asset
+propFilterIncludeTargetAssets :: Property
+propFilterIncludeTargetAssets = H.property $ do
+  assetName <- forAll Gen.genAssetName
+  Right tx <- forAll $ Gen.genTxWithAsset assetName 10
+  let event = MintBurn.txMints (Just [(assetName, Gen.commonMintingPolicyId)]) 2 tx
+  void $ H.evalMaybe event
+
+-- check that the target assets filtering keep the tx that mint the targeted asset
+propFilterExcludeNonTargetAssets :: Property
+propFilterExcludeNonTargetAssets = H.property $ do
+  assetName <- forAll Gen.genAssetName
+  otherAssetName <- forAll Gen.genAssetName
+  guard $ assetName /= otherAssetName
+  H.annotate $ "PolicyId: " <> show Gen.commonMintingPolicyId
+  Right tx <- forAll $ Gen.genTxWithAsset assetName 10
+  let event = MintBurn.txMints (Just [(otherAssetName, Gen.commonMintingPolicyId)]) 2 tx
+  void $ event === Nothing
 
 -- * Helpers
 

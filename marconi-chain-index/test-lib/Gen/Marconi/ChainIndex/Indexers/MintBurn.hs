@@ -10,7 +10,10 @@ module Gen.Marconi.ChainIndex.Indexers.MintBurn (
   genTxMintValueRange,
   genMintEvents,
   genTxWithMint,
+  genTxWithAsset,
   genTxMintValue,
+  genAssetName,
+  commonMintingPolicyId,
 ) where
 
 import Cardano.Api qualified as C
@@ -131,8 +134,10 @@ genTxMintValueRange min' max' = do
   where
     genAsset :: Gen (C.AssetName, C.Quantity)
     genAsset = (,) <$> genAssetName <*> genQuantity
-    genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
     genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
+
+genAssetName :: Gen C.AssetName
+genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
 
 -- * Helpers
 
@@ -183,6 +188,12 @@ mkMintValue policy policyAssets = (policyId, policyWitness, mintedValues)
 
 commonMintingPolicy :: MintingPolicy
 commonMintingPolicy = $$(PlutusTx.compile [||\_ _ -> ()||])
+
+commonMintingPolicyId :: C.PolicyId
+commonMintingPolicyId =
+  let serialisedPolicyScript =
+        C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode commonMintingPolicy
+   in C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV1 serialisedPolicyScript :: C.PolicyId
 
 {- | Recreate an indexe, useful because the sql connection to a
  :memory: database can be reused.
