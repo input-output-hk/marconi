@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
 
 module Marconi.ChainIndex.CLI where
@@ -6,16 +7,20 @@ import Control.Applicative (optional, some)
 import Data.ByteString.Char8 qualified as C8
 import Data.Functor ((<&>))
 import Data.List (nub)
-import Data.List.NonEmpty (fromList)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (Proxy))
-import Data.Text (pack)
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Options.Applicative qualified as Opt
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.String (IsString (fromString))
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   TargetAddresses,
@@ -57,8 +62,8 @@ chainPointParser =
  Note, if the targetAddress parser fails, or is empty, there is nothing to do for the hotStore.
  In such case we should fail fast
 -}
-fromJustWithError :: (Show e) => Either e a -> a
-fromJustWithError v = case v of
+fromEitherWithError :: (Show e) => Either e a -> a
+fromEitherWithError v = case v of
   Left e ->
     error $ "\n!!!\n Abnormal Termination with Error: " <> show e <> "\n!!!\n"
   Right accounts -> accounts
@@ -85,8 +90,8 @@ pTestnetMagic =
 {- | parses CLI params to valid NonEmpty list of Shelley addresses
  We error out if there are any invalid addresses
 -}
-multiString :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser TargetAddresses
-multiString desc = fromList . concat <$> some single
+multiAddresses :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser TargetAddresses
+multiAddresses desc = NonEmpty.fromList . concat <$> some single
   where
     single :: Opt.Parser [C.Address C.ShelleyAddr]
     single = Opt.option (Opt.str <&> parseCardanoAddresses) desc
@@ -94,8 +99,8 @@ multiString desc = fromList . concat <$> some single
 parseCardanoAddresses :: String -> [C.Address C.ShelleyAddr]
 parseCardanoAddresses =
   nub
-    . fromJustWithError
-    . traverse (deserializeToCardano . pack)
+    . fromEitherWithError
+    . traverse (deserializeToCardano . Text.pack)
     . words
   where
     deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
@@ -123,6 +128,7 @@ data Options = Options
   , optionsDisableEpochState :: !Bool
   , optionsDisableMintBurn :: !Bool
   , optionsTargetAddresses :: !(Maybe TargetAddresses)
+  , optionsTargetAssets :: !(Maybe (NonEmpty (C.AssetName, C.PolicyId)))
   , optionsNodeConfigPath :: !(Maybe FilePath)
   }
   deriving (Show)
@@ -169,16 +175,12 @@ optionsParser =
           <> Opt.help "disable mint/burn indexers."
       )
     <*> commonMaybeTargetAddress
+    <*> commonMaybeTargetAsset
     <*> ( optional $
             Opt.strOption $
               Opt.long "node-config-path"
                 <> Opt.help "Path to node configuration which you are connecting to."
         )
-
-optAddressesParser
-  :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr]
-  -> Opt.Parser (Maybe TargetAddresses)
-optAddressesParser = optional . multiString
 
 -- * Database paths
 
@@ -260,13 +262,38 @@ commonMaybePort =
 commonMaybeTargetAddress :: Opt.Parser (Maybe TargetAddresses)
 commonMaybeTargetAddress =
   Opt.optional $
-    multiString $
+    multiAddresses $
       Opt.long "addresses-to-index"
         <> Opt.short 'a'
         <> Opt.metavar "BECH32-ADDRESS"
         <> Opt.help
           "Bech32 Shelley addresses to index. \
           \ i.e \"--address-to-index address-1 --address-to-index address-2 ...\""
+
+commonMaybeTargetAsset :: Opt.Parser (Maybe (NonEmpty (C.AssetName, C.PolicyId)))
+commonMaybeTargetAsset =
+  let parseAsset :: Text -> Opt.ReadM (C.AssetName, C.PolicyId)
+      parseAsset arg = do
+        case Text.splitOn "," arg of
+          [rawPolicyId, rawAssetName] -> (,) <$> parseAssetName rawAssetName <*> parsePolicyId rawPolicyId
+          _other -> fail $ "Invalid format: expected POLICY_ID,ASSET_NAME. Got " <> Text.unpack arg
+      assetPair
+        :: Opt.Mod Opt.OptionFields [(C.AssetName, C.PolicyId)]
+        -> Opt.Parser [(C.AssetName, C.PolicyId)]
+      assetPair = Opt.option $ Opt.str >>= fmap pure . parseAsset
+   in Opt.optional $
+        (fmap (NonEmpty.fromList . concat) . some . assetPair) $
+          Opt.long "match-asset-id"
+            <> Opt.metavar "POLICY_ID,ASSET_NAME"
+            <> Opt.help
+              "Bech32 Shelley addresses to index. \
+              \ i.e \"--match-asset-id assetname-1,policy-id-1 --match-asset-id assetname-2,policy-id-2 ...\""
+
+parseAssetName :: Text -> Opt.ReadM C.AssetName
+parseAssetName = pure . fromString . Text.unpack
+
+parsePolicyId :: Text -> Opt.ReadM C.PolicyId
+parsePolicyId = either (fail . show) pure . C.deserialiseFromRawBytesHex C.AsPolicyId . Text.encodeUtf8
 
 commonMinIndexingDepth :: Opt.Parser IndexingDepth
 commonMinIndexingDepth =
