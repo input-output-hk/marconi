@@ -19,7 +19,7 @@ import Control.Lens.Operators ((^.))
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
@@ -28,7 +28,7 @@ import Marconi.Core.Experiment.Class (
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   closeVia,
-  indexAllVia,
+  indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
   queryVia,
@@ -85,11 +85,11 @@ instance
         asOutput = TimedEvent point' event'
     indexVia unwrapMap asOutput indexer
 
-  indexAll events indexer = do
+  indexAllDescending events indexer = do
     let event' = indexer ^. transformEvent
         toOutput te = TimedEvent (te ^. point) (event' $ te ^. event)
         asOutputs = toOutput <$> events
-    indexAllVia unwrapMap asOutputs indexer
+    indexAllDescendingVia unwrapMap asOutputs indexer
 
 instance
   (Point output ~ Point event, IsSync m output indexer)

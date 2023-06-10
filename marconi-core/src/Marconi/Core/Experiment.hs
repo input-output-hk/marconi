@@ -86,7 +86,7 @@
  Follow in order the steps for the creation of a 'ListIndexer' (the in-memory part)
  and the ones for a 'SQLiteIndexer' (the on-disk part).
 
- Once it's done, you need to implement the 'ResumableResult' for the in-memory part.
+ Once it's done, you need to implement the 'AppendResult' for the in-memory part.
  It's purpose is to take the result of an on-disk query and to update it with on-memory events.
 
  You can choose different indexers for your in-memory part or on-disk part,
@@ -164,7 +164,7 @@
         * 'IsSync'
         * 'IsIndex'
         * 'Rollbackable'
-        * 'ResumableResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
+        * 'AppendResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
         * 'Queryable'
         * 'Closeable' (if you plan to use it in a worker, and you probably plan to)
 
@@ -200,8 +200,9 @@ module Marconi.Core.Experiment (
   -- ** Core typeclasses
   HasGenesis (..),
   IsIndex (..),
-  index',
-  indexAll',
+  indexEither,
+  indexAllEither,
+  indexAllDescendingEither,
   Rollbackable (..),
   Resetable (..),
   resumeFrom,
@@ -212,7 +213,7 @@ module Marconi.Core.Experiment (
   query',
   queryLatest,
   queryLatest',
-  ResumableResult (..),
+  AppendResult (..),
 
   -- ** Errors
   IndexerError (..),
@@ -243,7 +244,7 @@ module Marconi.Core.Experiment (
   --     * the type(s) of query your indexer instance must handle
   --     * the 'Queryable' interface for these queries.
   ListIndexer,
-  listIndexer,
+  mkListIndexer,
   events,
   latest,
 
@@ -263,13 +264,13 @@ module Marconi.Core.Experiment (
   --
   -- The main difference with 'SQLiteIndexer' is
   -- that we set 'dbLastSync' thanks to the provided query
-  sqliteIndexer,
+  mkSqliteIndexer,
   -- | A smart constructor for indexer that want to map an event to a single table.
   -- We just have to set the type family of `InsertRecord event` to `[param]` and
   -- then to provide the expected parameters.
   --
-  -- It is monomorphic restriction of 'sqliteIndexer'
-  singleInsertSQLiteIndexer,
+  -- It is monomorphic restriction of 'mkSqliteIndexer'
+  mkSingleInsertSqliteIndexer,
   handle,
   prepareInsert,
   buildInsert,
@@ -330,11 +331,11 @@ module Marconi.Core.Experiment (
   --
   -- As a consequence, if these indexers aren't empty, you probably want to
   -- modify the result of the constructor.
-  newMixedIndexer,
+  mkMixedIndexer,
   -- | A smart constructor for a /standard/ 'MixedIndexer':
   -- an on-disk indexer and a 'ListIndexer' for the in-memory part.
   --
-  -- Contrary to 'newMixedIndexer',
+  -- Contrary to 'mkMixedIndexer',
   -- this smart constructor checks the content of the on-disk indexer
   -- to set the 'lastSyncPoint' correctly.
   standardMixedIndexer,
@@ -463,7 +464,7 @@ module Marconi.Core.Experiment (
   rollbackVia,
   resetVia,
   indexVia,
-  indexAllVia,
+  indexAllDescendingVia,
   lastSyncPointVia,
   closeVia,
   queryVia,
@@ -473,16 +474,17 @@ module Marconi.Core.Experiment (
 import Control.Monad.Except (MonadError (catchError, throwError))
 
 import Marconi.Core.Experiment.Class (
+  AppendResult (..),
   Closeable (..),
   HasGenesis (..),
   IsIndex (..),
   IsSync (..),
   Queryable (..),
   Resetable (..),
-  ResumableResult (..),
   Rollbackable (..),
-  index',
-  indexAll',
+  indexAllDescendingEither,
+  indexAllEither,
+  indexEither,
   isAheadOfSync,
   query',
   queryLatest,
@@ -500,14 +502,14 @@ import Marconi.Core.Experiment.Coordinator (
   workers,
  )
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
-import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
+import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
 import Marconi.Core.Experiment.Indexer.MixedIndexer (
   Flushable (..),
   HasMixedConfig (flushSize, keepInMemory),
   MixedIndexer,
   inDatabase,
   inMemory,
-  newMixedIndexer,
+  mkMixedIndexer,
   standardMixedIndexer,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
@@ -517,12 +519,12 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   buildInsert,
   dbLastSync,
   handle,
+  mkSingleInsertSqliteIndexer,
+  mkSqliteIndexer,
   prepareInsert,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   rollbackSQLiteIndexerWith,
-  singleInsertSQLiteIndexer,
-  sqliteIndexer,
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
@@ -530,7 +532,7 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (..),
   IndexerTrans (..),
   closeVia,
-  indexAllVia,
+  indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
   queryLatestVia,

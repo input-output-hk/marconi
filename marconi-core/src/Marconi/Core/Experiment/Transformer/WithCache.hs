@@ -25,7 +25,7 @@ import Data.Map qualified as Map
 import Marconi.Core.Experiment.Class (
   Closeable,
   HasGenesis (genesis),
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync,
   Queryable (query),
   Resetable (reset),
@@ -36,7 +36,7 @@ import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (IndexWrapper),
   IndexerTrans (Config, unwrap, wrap),
-  indexAllVia,
+  indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
   queryVia,
@@ -184,8 +184,8 @@ instance
     indexer' <- indexVia unwrap timedEvent indexer
     pure $ indexer' & cacheEntries %~ (indexer' ^. onForward) timedEvent
 
-  indexAll evts indexer = do
-    indexer' <- indexAllVia unwrap evts indexer
+  indexAllDescending evts indexer = do
+    indexer' <- indexAllDescendingVia unwrap evts indexer
     pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
 
 rollbackCache

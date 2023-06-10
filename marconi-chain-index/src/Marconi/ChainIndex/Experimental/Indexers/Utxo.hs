@@ -46,8 +46,6 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam), TargetAddresses, TxOut, pattern CurrentEra)
 import Marconi.Core.Experiment qualified as Core
-import Marconi.Core.Experiment.Indexer.ListIndexer (listIndexer)
-import Marconi.Core.Experiment.Indexer.MixedIndexer (newMixedIndexer)
 
 data Utxo = Utxo
   { _utxoAddress :: !C.AddressAny
@@ -92,16 +90,16 @@ newtype QueryUtxoByAddress = QueryUtxoByAddress (C.AddressAny, Maybe C.SlotNo)
 type instance Core.Result QueryUtxoByAddress = [Core.TimedEvent Utxo] -- use this instead of the utxorow
 
 -- | Take the query results from two indexers, merge the results and re-compute Unspent
-instance MonadIO m => Core.ResumableResult m UtxoEvent QueryUtxoByAddress Core.ListIndexer where
-  resumeResult
+instance MonadIO m => Core.AppendResult m UtxoEvent QueryUtxoByAddress Core.ListIndexer where
+  appendResult
     :: Ord (Core.Point UtxoEvent)
     => Core.Point UtxoEvent -- \^ give me all you know to this point
     -> QueryUtxoByAddress -- \^ utxoEvent query
     -> Core.ListIndexer UtxoEvent -- \^ the indexer
     -> m (Core.Result QueryUtxoByAddress) -- \^ any result set from other indexers
     -> m (Core.Result QueryUtxoByAddress)
-  resumeResult C.ChainPointAtGenesis _ _ _ = pure []
-  resumeResult cp@(C.ChainPoint _ _) q ix queryResult =
+  appendResult C.ChainPointAtGenesis _ _ _ = pure []
+  appendResult cp@(C.ChainPoint _ _) q ix queryResult =
     let inputsTxIns :: UtxoEvent -> Set C.TxIn
         inputsTxIns = Set.map unSpent . _ueInputs
 
@@ -177,11 +175,11 @@ type instance
     ([Core.TimedEvent Utxo], [Core.TimedEvent Spent])
 
 -- | Make a SQLiteIndexer to store indexer in SQLite
-sqliteIndexer
+mkSqliteIndexer
   :: SQL.Connection
   -- ^ SQL connection to database
   -> Core.SQLiteIndexer UtxoEvent
-sqliteIndexer conn =
+mkSqliteIndexer conn =
   let utxoInsertQuery :: SQL.Query -- Utxo table SQL statement
       utxoInsertQuery =
         [r|INSERT
@@ -332,7 +330,7 @@ mkMixedIndexer'
   -- ^ flush size
   -> Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer UtxoEvent
 mkMixedIndexer' conn keep flush =
-  newMixedIndexer keep flush (sqliteIndexer conn) listIndexer
+  Core.mkMixedIndexer keep flush (mkSqliteIndexer conn) Core.mkListIndexer
 
 -----------------------------------------------------------------------
 -- SQL table mappings
