@@ -54,7 +54,7 @@ tests rpcClientAction =
 queryMintingPolicyTest :: Property
 queryMintingPolicyTest = property $ do
   (events, _) <- forAll genMintEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing
+  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
   let callback :: MintBurn.MintBurnIndexer -> IO ()
       callback =
         atomically

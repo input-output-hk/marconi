@@ -40,8 +40,9 @@ Available options:
                            "--address-to-index address-1 --address-to-index
                            address-2 ..."
   --match-asset-id POLICY_ID,ASSET_NAME
-                           Bech32 Shelley addresses to index. i.e
-                           "--match-asset-id assetname-1,policy-id-1
-                           --match-asset-id assetname-2,policy-id-2 ..."
+                           Asset to index, defined by the policy id and the
+                           asset name i.e "--match-asset-id
+                           assetname-1,policy-id-1 --match-asset-id
+                           assetname-2,policy-id-2 ..."
   --node-config-path ARG   Path to node configuration which you are connecting
                            to.

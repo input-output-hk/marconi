@@ -11,11 +11,12 @@ main = do
   o <- Cli.parseOptions
   createDirectoryIfMissing True (Cli.optionsDbPath o)
   let maybeTargetAddresses = Cli.optionsTargetAddresses o
+  let maybeTargetAssets = Cli.optionsTargetAssets o
       indexers =
         [ (Indexers.utxoWorker (\_ -> pure ()) maybeTargetAddresses, Cli.utxoDbPath o)
         , (Indexers.addressDatumWorker (\_ -> pure []) maybeTargetAddresses, Cli.addressDatumDbPath o)
         , (Indexers.scriptTxWorker (\_ -> pure []), Cli.scriptTxDbPath o)
-        , (Indexers.mintBurnWorker (\_ -> pure ()), Cli.mintBurnDbPath o)
+        , (Indexers.mintBurnWorker (\_ -> pure ()) maybeTargetAssets, Cli.mintBurnDbPath o)
         ]
           <> case Cli.optionsNodeConfigPath o of
             Just configPath ->

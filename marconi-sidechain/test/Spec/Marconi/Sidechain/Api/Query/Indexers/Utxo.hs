@@ -60,7 +60,7 @@ tests rpcClientAction =
 queryTargetAddressTest :: Property
 queryTargetAddressTest = property $ do
   events <- forAll genShelleyEraUtxoEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing
+  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
   let callback :: Utxo.UtxoIndexer -> IO ()
       callback =
         atomically

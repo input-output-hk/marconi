@@ -13,6 +13,7 @@ import Control.Lens ((^.))
 import Data.Word (Word64)
 
 import Control.Monad.Except (runExceptT)
+import Data.List.NonEmpty (NonEmpty)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle, StorableResult (MintBurnResult), TxMintRow)
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Core.Storable (State)
@@ -33,11 +34,12 @@ import Marconi.Sidechain.Utils (writeTMVar)
  The main issue we try to avoid here is mixing inserts and quries in SQLite to avoid locking the database
 -}
 initializeEnv
-  :: IO MintBurnIndexerEnv
+  :: Maybe (NonEmpty (C.PolicyId, C.AssetName))
+  -> IO MintBurnIndexerEnv
   -- ^ returns Query runtime environment
-initializeEnv = do
+initializeEnv targets = do
   ix <- newEmptyTMVarIO
-  pure $ MintBurnIndexerEnv ix
+  pure $ MintBurnIndexerEnv targets ix
 
 updateEnvState :: TMVar (State MintBurnHandle) -> State MintBurnHandle -> STM ()
 updateEnvState = writeTMVar

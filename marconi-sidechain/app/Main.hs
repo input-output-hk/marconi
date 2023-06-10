@@ -17,8 +17,8 @@ import Marconi.Sidechain.CLI (parseCli)
 -}
 main :: IO ()
 main = do
-  cli@CliArgs{httpPort, targetAddresses} <- parseCli
-  rpcEnv <- initializeSidechainEnv httpPort targetAddresses
+  cli@CliArgs{httpPort, targetAddresses, targetAssets} <- parseCli
+  rpcEnv <- initializeSidechainEnv httpPort targetAddresses targetAssets
 
   race_
     (Http.bootstrap rpcEnv) -- Start HTTP server
