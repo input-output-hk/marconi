@@ -439,7 +439,10 @@ propQueryingOnlyBurn = H.property $ do
     MintBurnResult (resultEventRows' :: [MintBurn.TxMintRow]) <-
       liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryBurnByAssetId somePolicyId someAssetName Nothing
     let resultEvents' = MintBurn.fromRows resultEventRows'
-        expectedEvents = MintBurn.fromRows $ filter (\row -> MintBurn._txMintRowPolicyId row == somePolicyId && MintBurn._txMintRowAssetName row == someAssetName) $ MintBurn.toRows =<< burnEvents
+        eventFilter row =
+          MintBurn._txMintRowPolicyId row == somePolicyId
+            && MintBurn._txMintRowAssetName row == someAssetName
+        expectedEvents = MintBurn.fromRows $ filter eventFilter $ MintBurn.toRows =<< burnEvents
     equalSet resultEvents' expectedEvents
 
 -- check that the target assets filtering keep the tx that mint the targeted asset
@@ -447,7 +450,7 @@ propFilterIncludeTargetAssets :: Property
 propFilterIncludeTargetAssets = H.property $ do
   assetName <- forAll Gen.genAssetName
   Right tx <- forAll $ Gen.genTxWithAsset assetName 10
-  let event = MintBurn.txMints (Just $ pure (assetName, Gen.commonMintingPolicyId)) 2 tx
+  let event = MintBurn.txMints (Just $ pure (Gen.commonMintingPolicyId, assetName)) 2 tx
   void $ H.evalMaybe event
 
 -- check that the target assets filtering keep the tx that mint the targeted asset
@@ -458,7 +461,7 @@ propFilterExcludeNonTargetAssets = H.property $ do
   guard $ assetName /= otherAssetName
   H.annotate $ "PolicyId: " <> show Gen.commonMintingPolicyId
   Right tx <- forAll $ Gen.genTxWithAsset assetName 10
-  let event = MintBurn.txMints (Just $ pure (otherAssetName, Gen.commonMintingPolicyId)) 2 tx
+  let event = MintBurn.txMints (Just $ pure (Gen.commonMintingPolicyId, otherAssetName)) 2 tx
   void $ event === Nothing
 
 -- * Helpers
