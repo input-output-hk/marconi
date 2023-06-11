@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 {- |
@@ -9,8 +10,7 @@
 module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   SQLiteIndexer (SQLiteIndexer),
   handle,
-  prepareInsert,
-  buildInsert,
+  insertPlan,
   dbLastSync,
   mkSqliteIndexer,
   mkSingleInsertSqliteIndexer,
@@ -18,6 +18,7 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
+  PlanPart (PlanPart, planInsert, planExtractor),
   InsertRecord,
   IndexQuery (..),
 ) where
@@ -32,7 +33,6 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
-import Debug.Trace qualified
 
 import Data.Foldable (Foldable (toList), traverse_)
 import Marconi.Core.Experiment.Class (
@@ -60,28 +60,20 @@ data IndexQuery = forall param.
   -- ^ It's a list because me want to be able to deal with bulk insert.
   }
 
+data PlanPart event = forall a.
+  SQL.ToRow a =>
+  PlanPart {planExtractor :: TimedEvent event -> [a], planInsert :: SQL.Query}
+
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
 data SQLiteIndexer event = SQLiteIndexer
   { _handle :: SQL.Connection
   -- ^ The connection used to interact with the database
-  , _prepareInsert :: TimedEvent event -> InsertRecord event
-  -- ^ 'InsertRecord' is the typed representation of what has to be inserted in the database
-  -- It should be a monoid, to allow insertion of 0 to n rows in a single transaction.
-  --
-  -- A list is fine if you plan to perform a single insert to store your event.
-  -- If you need several inserts, a record where each field correspond to a list is probably
-  -- a good choice.
-  , _buildInsert :: InsertRecord event -> [[IndexQuery]]
-  -- ^ Map the 'InsertRecord' representation to a list of 'IndexQuery',
-  -- to actually performed the insertion in the database.
-  -- One can think at the insert record as a typed representation of the parameters of the queries,
-  --
-  -- The return type is a list of list because each list will be run sequentialy.
+  , _insertPlan :: [[PlanPart event]]
   , _dbLastSync :: Point event
   -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
   }
 
-makeLenses ''SQLiteIndexer
+makeLenses 'SQLiteIndexer
 
 {- | Start a new indexer or resume an existing SQLite indexer
 
@@ -89,21 +81,17 @@ makeLenses ''SQLiteIndexer
  that we set 'dbLastSync' thanks to the provided query
 -}
 mkSqliteIndexer
-  :: SQL.ToRow param
-  => SQL.FromRow (Point event)
-  => MonadIO m
+  :: MonadIO m
   => MonadError IndexerError m
-  => InsertRecord event ~ [param]
   => HasGenesis (Point event)
+  => SQL.FromRow (Point event)
   => SQL.Connection
-  -> (TimedEvent event -> [param])
+  -> [[PlanPart event]]
   -- ^ extract @param@ out of a 'TimedEvent'
-  -> SQL.Query
-  -- ^ the insert query
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-mkSqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery =
+mkSqliteIndexer _handle _insertPlan lastSyncQuery =
   let getLastSync = do
         res <- runLastSyncQuery _handle lastSyncQuery
         case res of
@@ -115,8 +103,7 @@ mkSqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery =
         pure $
           SQLiteIndexer
             { _handle
-            , _prepareInsert
-            , _buildInsert = pure . pure . IndexQuery insertQuery
+            , _insertPlan
             , _dbLastSync
             }
 
@@ -127,21 +114,20 @@ mkSqliteIndexer _handle _prepareInsert insertQuery lastSyncQuery =
  It is monomorphic restriction of 'mkSqliteIndexer'
 -}
 mkSingleInsertSqliteIndexer
-  :: SQL.ToRow param
-  => SQL.FromRow (Point event)
-  => MonadIO m
+  :: MonadIO m
   => MonadError IndexerError m
-  => InsertRecord event ~ [param]
+  => SQL.FromRow (Point event)
+  => SQL.ToRow param
   => HasGenesis (Point event)
   => SQL.Connection
-  -> (TimedEvent event -> [param])
+  -> (TimedEvent event -> param)
   -- ^ extract @param@ out of a 'TimedEvent'
   -> SQL.Query
   -- ^ the insert query
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-mkSingleInsertSqliteIndexer = mkSqliteIndexer
+mkSingleInsertSqliteIndexer con extract insert = mkSqliteIndexer con [[PlanPart (pure . extract) insert]]
 
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
 handleSQLErrors value =
@@ -155,14 +141,14 @@ runIndexQueriesStep
   :: MonadIO m
   => MonadError IndexerError m
   => SQL.Connection
-  -> [IndexQuery]
+  -> [TimedEvent event]
+  -> [PlanPart event]
   -> m ()
-runIndexQueriesStep _ [] = pure ()
-runIndexQueriesStep c xs =
-  let runIndexQuery (IndexQuery insertQuery params) =
-        SQL.executeMany c insertQuery params
-   in either throwError pure <=< liftIO $ do
-        Debug.Trace.traceM $ "InParallel: " <> show (length xs)
+runIndexQueriesStep _ _ [] = pure ()
+runIndexQueriesStep c events xs =
+  let runIndexQuery (PlanPart planExtractor planInsert) =
+        SQL.executeMany c planInsert (planExtractor =<< events)
+   in either throwError pure <=< liftIO $
         handleSQLErrors (SQL.withTransaction c $ Async.mapConcurrently_ runIndexQuery xs)
 
 -- | Run a list of insert queries in one single transaction.
@@ -170,9 +156,10 @@ runIndexQueries
   :: MonadIO m
   => MonadError IndexerError m
   => SQL.Connection
-  -> [[IndexQuery]]
+  -> [TimedEvent event]
+  -> [[PlanPart event]]
   -> m ()
-runIndexQueries c = traverse_ (runIndexQueriesStep c)
+runIndexQueries c = traverse_ . runIndexQueriesStep c
 
 runLastSyncQuery
   :: MonadError IndexerError m
@@ -190,17 +177,15 @@ instance
   => IsIndex m event SQLiteIndexer
   where
   index timedEvent indexer = do
-    let indexQueries = indexer ^. buildInsert $ indexer ^. prepareInsert $ timedEvent
-    runIndexQueries (indexer ^. handle) indexQueries
+    runIndexQueries (indexer ^. handle) [timedEvent] (indexer ^. insertPlan)
     pure $ indexer & dbLastSync .~ (timedEvent ^. point)
 
   indexAllDescending evts indexer = do
-    let indexQueries = indexer ^. buildInsert $ foldMap (indexer ^. prepareInsert) evts
-        updateLastSync = case toList evts of
+    let updateLastSync = case toList evts of
           [] -> id
           (x : _xs) -> dbLastSync .~ (x ^. point)
 
-    runIndexQueries (indexer ^. handle) indexQueries
+    runIndexQueries (indexer ^. handle) (toList evts) (indexer ^. insertPlan)
     pure $ updateLastSync indexer
 
 instance MonadIO m => IsSync m event SQLiteIndexer where

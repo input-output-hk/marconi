@@ -42,7 +42,7 @@ utxoWorker
 utxoWorker depth dbPath = do
   c <- Utxo.initSQLite dbPath -- TODO handle error
   let extract (C.BlockInMode block _) = Utxo.getUtxoEventsFromBlock Nothing block
-  Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c (3 * depth)
+  Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c depth
 
 mkIndexerStream
   :: Core.Coordinator (C.BlockInMode C.CardanoMode)

@@ -28,7 +28,6 @@ import Control.Monad.Trans (MonadTrans (lift))
 
 import Control.Lens.Operators ((^.))
 import Control.Monad (forever, void)
-import Debug.Trace qualified
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index),
@@ -139,15 +138,12 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
         -- We don't need to check if tryPutMVar succeed
         -- because if @errorBox@ is already full, our job is done anyway
         void $ Con.tryPutMVar errorBox err
-        unlockCoordinator
         pure indexer
 
       handleRollback p = do
         Con.modifyMVar_ ix $ \indexer -> do
-          Debug.Trace.traceM "DoRollback"
           result <- runExceptT $ hoistError $ rollback p indexer
-          Debug.Trace.traceM "RollbackDone"
-          either (raiseError indexer) ((unlockCoordinator >>) . pure) result
+          either (raiseError indexer) pure result
 
       swallowPill = do
         indexer <- Con.readMVar ix

@@ -487,7 +487,7 @@ sqliteModelIndexer :: SQL.Connection -> ExceptT Core.IndexerError IO (Core.SQLit
 sqliteModelIndexer con =
   Core.mkSingleInsertSqliteIndexer
     con
-    (\t -> pure (t ^. Core.point, t ^. Core.event))
+    (\t -> (t ^. Core.point, t ^. Core.event))
     "INSERT INTO index_model VALUES (?, ?)"
     "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
 

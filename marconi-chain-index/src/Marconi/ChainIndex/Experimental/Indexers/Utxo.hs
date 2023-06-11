@@ -208,23 +208,13 @@ mkSqliteIndexer conn =
                 blockHash
               ) VALUES
               (?, ?, ?, ?)|]
-
-      prepareInsert'
-        :: Core.TimedEvent UtxoEvent -- UtxoEvent
-        -> Core.InsertRecord UtxoEvent -- SQL mapping of Utxo and Spent parameters
-      prepareInsert' utxoEv =
-        let tUtxos = timedUtxosFromTimedUtxoEvent utxoEv -- timed Utxo
-            tSpents = timedSpentsFromTimedUtxoEvent utxoEv -- timed Spent
-         in (tUtxos, tSpents)
-
-      buildInsert' :: Core.InsertRecord UtxoEvent -> [[Core.IndexQuery]]
-      buildInsert' (us, ss) =
-        pure
-          [Core.IndexQuery utxoInsertQuery us, Core.IndexQuery spentInsertQuery ss]
    in Core.SQLiteIndexer
         conn
-        prepareInsert'
-        buildInsert'
+        [
+          [ Core.PlanPart timedUtxosFromTimedUtxoEvent utxoInsertQuery
+          , Core.PlanPart timedSpentsFromTimedUtxoEvent spentInsertQuery
+          ]
+        ]
         Core.genesis
 
 -- | combine UtxoEvents and balance
@@ -410,7 +400,7 @@ instance
   --   -> QueryUtxoByAddress
   --   -> Core.SQLiteIndexer UtxoEvent
   --   -> m (Core.Result QueryUtxoByAddress)
-  query cp q (Core.SQLiteIndexer conn _ _ _) =
+  query cp q (Core.SQLiteIndexer conn _ _) =
     let action :: SQL.Connection -> IO (Core.Result QueryUtxoByAddress)
         action = mkUtxoAddressQueryAction cp q
      in liftIO $ action conn
@@ -468,8 +458,8 @@ instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
   rollback C.ChainPointAtGenesis ix = do
     Debug.Trace.traceM "Rollback UTXO"
     let c = ix ^. Core.handle
-    liftIO $ Core.handleSQLErrors $ SQL.execute_ c "DELETE FROM TABLE unspent_transactions"
-    liftIO $ Core.handleSQLErrors $ SQL.execute_ c "DELETE FROM TABLE spent"
+    liftIO $ SQL.execute_ c "DELETE FROM unspent_transactions"
+    liftIO $ SQL.execute_ c "DELETE FROM spent"
     Debug.Trace.traceM "Rollback UTXO done"
 
     pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
