@@ -24,6 +24,7 @@ import Control.Lens (Lens', makeLenses, to, view)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import Data.Kind (Type)
+import Debug.Trace qualified
 import Marconi.Core.Experiment.Class (
   AppendResult (appendResult),
   Closeable (close),
@@ -212,10 +213,13 @@ instance
   => Rollbackable m event (MixedIndexer store ListIndexer)
   where
   rollback p indexer = do
+    Debug.Trace.traceM "Rollback Memory"
     indexer' <- inMemory (rollback p) indexer
-    if not $ null $ indexer' ^. inMemory . events
-      then pure indexer'
-      else inDatabase (rollback p) indexer'
+    if null $ indexer' ^. inMemory . events
+      then do
+        Debug.Trace.traceM "Rollback Db"
+        inDatabase (rollback p) indexer'
+      else pure indexer'
 
 instance
   ( AppendResult m event query ListIndexer

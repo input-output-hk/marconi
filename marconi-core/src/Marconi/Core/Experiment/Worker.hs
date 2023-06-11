@@ -28,6 +28,7 @@ import Control.Monad.Trans (MonadTrans (lift))
 
 import Control.Lens.Operators ((^.))
 import Control.Monad (forever, void)
+import Debug.Trace qualified
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index),
@@ -120,7 +121,8 @@ startWorker
   -> m ThreadId
 startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
   let unlockCoordinator :: IO ()
-      unlockCoordinator = Con.signalQSemN tokens 1
+      unlockCoordinator = do
+        Con.signalQSemN tokens 1
 
       fresherThan :: Ord (Point event) => TimedEvent event -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
@@ -140,9 +142,12 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
         unlockCoordinator
         pure indexer
 
-      handleRollback p = Con.modifyMVar_ ix $ \indexer -> do
-        result <- runExceptT $ hoistError $ rollback p indexer
-        either (raiseError indexer) pure result
+      handleRollback p = do
+        Con.modifyMVar_ ix $ \indexer -> do
+          Debug.Trace.traceM "DoRollback"
+          result <- runExceptT $ hoistError $ rollback p indexer
+          Debug.Trace.traceM "RollbackDone"
+          either (raiseError indexer) ((unlockCoordinator >>) . pure) result
 
       swallowPill = do
         indexer <- Con.readMVar ix

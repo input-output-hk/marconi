@@ -196,6 +196,7 @@ module Marconi.Core.Experiment (
   TimedEvent (TimedEvent),
   point,
   event,
+  mapTimedEvent,
 
   -- ** Core typeclasses
   HasGenesis (..),
@@ -278,6 +279,7 @@ module Marconi.Core.Experiment (
   rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+  handleSQLErrors,
   -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
   -- ending with several insert.
   --
@@ -519,6 +521,7 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   buildInsert,
   dbLastSync,
   handle,
+  handleSQLErrors,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
   prepareInsert,
@@ -560,7 +563,7 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
 import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
-import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, point)
+import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, mapTimedEvent, point)
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (..),
   Worker,

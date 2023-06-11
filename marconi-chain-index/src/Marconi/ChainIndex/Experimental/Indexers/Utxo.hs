@@ -42,6 +42,7 @@ import Cardano.Api ()
 import Cardano.Api qualified as C
 import Cardano.Api qualified as Core
 import Cardano.Api.Shelley qualified as C
+import Debug.Trace qualified
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam), TargetAddresses, TxOut, pattern CurrentEra)
@@ -465,9 +466,11 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
 
 instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
   rollback C.ChainPointAtGenesis ix = do
+    Debug.Trace.traceM "Rollback UTXO"
     let c = ix ^. Core.handle
-    liftIO $ SQL.execute_ c "DELETE FROM TABLE unspent_transactions"
-    liftIO $ SQL.execute_ c "DELETE FROM TABLE spent"
+    liftIO $ Core.handleSQLErrors $ SQL.execute_ c "DELETE FROM TABLE unspent_transactions"
+    liftIO $ Core.handleSQLErrors $ SQL.execute_ c "DELETE FROM TABLE spent"
+    Debug.Trace.traceM "Rollback UTXO done"
 
     pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
   rollback p@(C.ChainPoint sno _) ix = do
@@ -486,10 +489,10 @@ getUtxoEventsFromBlock
   => Maybe TargetAddresses
   -- ^ target addresses to filter for
   -> C.Block era
-  -> Core.TimedEvent UtxoEvent
+  -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock maybeTargetAddresses (C.Block (C.BlockHeader slotNo hsh _) txs) =
-  getUtxoEvents maybeTargetAddresses txs (C.ChainPoint slotNo hsh)
+getUtxoEventsFromBlock maybeTargetAddresses (C.Block _ txs) =
+  getUtxoEvents maybeTargetAddresses txs
 
 -- | Extract UtxoEvents from Cardano Transactions
 getUtxoEvents
@@ -497,12 +500,9 @@ getUtxoEvents
   => Maybe TargetAddresses
   -- ^ target addresses to filter for
   -> [C.Tx era]
-  -> C.ChainPoint
-  -> Core.TimedEvent UtxoEvent
+  -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEvents _ _ C.ChainPointAtGenesis =
-  Core.TimedEvent C.ChainPointAtGenesis (UtxoEvent Set.empty Set.empty)
-getUtxoEvents maybeTargetAddresses txs cp =
+getUtxoEvents maybeTargetAddresses txs =
   let (TxOutBalance utxos spentTxOuts) =
         foldMap (balanceUtxoFromTx maybeTargetAddresses) txs
 
@@ -514,7 +514,7 @@ getUtxoEvents maybeTargetAddresses txs cp =
 
       event :: UtxoEvent
       event = UtxoEvent resolvedUtxos spents
-   in Core.TimedEvent cp event
+   in event
 
 -- | Extract TxOut from Cardano TxBodyContent
 getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]

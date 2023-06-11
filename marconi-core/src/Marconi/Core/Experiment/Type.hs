@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -13,6 +14,7 @@ module Marconi.Core.Experiment.Type (
   TimedEvent (TimedEvent),
   point,
   event,
+  mapTimedEvent,
 
   -- * Error types
   IndexerError (..),
@@ -47,6 +49,12 @@ data TimedEvent event = TimedEvent
   }
 
 deriving stock instance (Show event, Show (Point event)) => Show (TimedEvent event)
+
+{- | A functor like function for TimedEvent, which requires that both @a@ and @b@ have the same
+ point instance.
+-}
+mapTimedEvent :: Point a ~ Point b => (a -> b) -> TimedEvent a -> TimedEvent b
+mapTimedEvent f (TimedEvent p x) = TimedEvent p $ f x
 
 -- | When was this event created
 point :: Lens' (TimedEvent event) (Point event)

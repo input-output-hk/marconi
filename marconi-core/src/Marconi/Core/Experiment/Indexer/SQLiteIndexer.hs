@@ -17,13 +17,14 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+  handleSQLErrors,
   InsertRecord,
   IndexQuery (..),
 ) where
 
 import Control.Concurrent.Async qualified as Async
 import Control.Exception (catch)
-import Control.Lens (folded, makeLenses, maximumOf)
+import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
 import Control.Monad.Except (MonadError (throwError))
@@ -31,8 +32,9 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
+import Debug.Trace qualified
 
-import Data.Foldable (traverse_)
+import Data.Foldable (Foldable (toList), traverse_)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
@@ -159,7 +161,8 @@ runIndexQueriesStep _ [] = pure ()
 runIndexQueriesStep c xs =
   let runIndexQuery (IndexQuery insertQuery params) =
         SQL.executeMany c insertQuery params
-   in either throwError pure <=< liftIO $
+   in either throwError pure <=< liftIO $ do
+        Debug.Trace.traceM $ "InParallel: " <> show (length xs)
         handleSQLErrors (SQL.withTransaction c $ Async.mapConcurrently_ runIndexQuery xs)
 
 -- | Run a list of insert queries in one single transaction.
@@ -193,7 +196,9 @@ instance
 
   indexAllDescending evts indexer = do
     let indexQueries = indexer ^. buildInsert $ foldMap (indexer ^. prepareInsert) evts
-        updateLastSync = maybe id (dbLastSync .~) (maximumOf (folded . point) evts)
+        updateLastSync = case toList evts of
+          [] -> id
+          (x : _xs) -> dbLastSync .~ (x ^. point)
 
     runIndexQueries (indexer ^. handle) indexQueries
     pure $ updateLastSync indexer
