@@ -206,8 +206,8 @@ mkSqliteIndexer conn =
    in Core.SQLiteIndexer
         conn
         [
-          [ Core.PlanPart timedUtxosFromTimedUtxoEvent utxoInsertQuery
-          , Core.PlanPart timedSpentsFromTimedUtxoEvent spentInsertQuery
+          [ Core.SQLInsertPlan timedUtxosFromTimedUtxoEvent utxoInsertQuery
+          , Core.SQLInsertPlan timedSpentsFromTimedUtxoEvent spentInsertQuery
           ]
         ]
         Core.genesis
