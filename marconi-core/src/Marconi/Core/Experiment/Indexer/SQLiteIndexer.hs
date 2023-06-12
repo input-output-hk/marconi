@@ -19,8 +19,6 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
   PlanPart (PlanPart, planInsert, planExtractor),
-  InsertRecord,
-  IndexQuery (..),
 ) where
 
 import Control.Concurrent.Async qualified as Async
@@ -50,25 +48,23 @@ import Marconi.Core.Experiment.Type (
   point,
  )
 
-type family InsertRecord event
-
-data IndexQuery = forall param.
-  SQL.ToRow param =>
-  IndexQuery
-  { insertQuery :: SQL.Query
-  , params :: [param]
-  -- ^ It's a list because me want to be able to deal with bulk insert.
-  }
-
+-- | A 'PlanPart' provides a piece information about how an event should be inserted in the database
 data PlanPart event = forall a.
   SQL.ToRow a =>
-  PlanPart {planExtractor :: TimedEvent event -> [a], planInsert :: SQL.Query}
+  PlanPart
+  { planExtractor :: TimedEvent event -> [a]
+  -- ^ How to transform the event into a type that can be handle by the database
+  , planInsert :: SQL.Query
+  -- ^ The insert statement for the extracted data
+  }
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
 data SQLiteIndexer event = SQLiteIndexer
   { _handle :: SQL.Connection
   -- ^ The connection used to interact with the database
   , _insertPlan :: [[PlanPart event]]
+  -- ^ A plan is a list of list : each 'PlanPart' in a list is executed concurrently.
+  -- The different @[PlanPart]@ are executed in sequence.
   , _dbLastSync :: Point event
   -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
   }
@@ -146,8 +142,12 @@ runIndexQueriesStep
   -> m ()
 runIndexQueriesStep _ _ [] = pure ()
 runIndexQueriesStep c events xs =
-  let runIndexQuery (PlanPart planExtractor planInsert) =
-        SQL.executeMany c planInsert (planExtractor =<< events)
+  let runIndexQuery (PlanPart planExtractor planInsert) = do
+        let rows = planExtractor =<< events
+        case rows of
+          [] -> pure ()
+          [x] -> SQL.execute c planInsert x
+          _nonEmpty -> SQL.executeMany c planInsert rows
    in either throwError pure <=< liftIO $
         handleSQLErrors (SQL.withTransaction c $ Async.mapConcurrently_ runIndexQuery xs)
 
@@ -173,7 +173,7 @@ runLastSyncQuery connection lastSyncQuery =
     handleSQLErrors (SQL.query connection lastSyncQuery ())
 
 instance
-  (MonadIO m, Monoid (InsertRecord event), MonadError IndexerError m)
+  (MonadIO m, MonadError IndexerError m)
   => IsIndex m event SQLiteIndexer
   where
   index timedEvent indexer = do

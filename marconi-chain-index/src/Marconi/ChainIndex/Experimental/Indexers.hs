@@ -11,8 +11,11 @@ import Cardano.Streaming (
   ChainSyncEventException (NoIntersectionFound),
   withChainSyncEventStream,
  )
-import Control.Concurrent (MVar)
+import Control.Concurrent (MVar, modifyMVar_, newMVar)
+import Control.Concurrent.Async (concurrently_)
+import Control.Concurrent.STM (TBQueue, atomically, newTBQueueIO, readTBQueue, writeTBQueue)
 import Control.Exception (Exception, catch, throw)
+import Control.Monad (forever)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Text qualified as Text
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
@@ -44,17 +47,25 @@ utxoWorker depth dbPath = do
   let extract (C.BlockInMode block _) = Utxo.getUtxoEventsFromBlock Nothing block
   Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c depth
 
-mkIndexerStream
-  :: Core.Coordinator (C.BlockInMode C.CardanoMode)
+readEvent
+  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode))
+  -> MVar (Core.Coordinator (C.BlockInMode C.CardanoMode))
+  -> IO r
+readEvent q cBox = forever $ do
+  e <- atomically $ readTBQueue q
+  modifyMVar_ cBox $ \c -> toException $ Core.step c e
+
+mkEventStream
+  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode))
   -> S.Stream (S.Of (ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
   -> IO r
-mkIndexerStream c =
+mkEventStream q =
   let processEvent
         :: ChainSyncEvent (C.BlockInMode C.CardanoMode)
         -> Core.ProcessedInput (C.BlockInMode C.CardanoMode)
       processEvent (RollForward x _) = Core.Index $ blockTimedEvent x
       processEvent (RollBackward x _) = Core.Rollback x
-   in S.mapM_ $ toException . Core.step c . processEvent
+   in S.mapM_ $ atomically . writeTBQueue q . processEvent
 
 runIndexers
   :: FilePath
@@ -64,21 +75,26 @@ runIndexers
   -> IO ()
 runIndexers socketPath networkId _startingPoint traceName = do
   securityParam <- toException $ Utils.querySecurityParam networkId socketPath
+  eventQueue <- newTBQueueIO $ fromIntegral securityParam
   (_, worker) <-
     utxoWorker
       securityParam
       "/Users/nicolasbiri/IOG/marco/marconi-experimental/utxo.db"
   coordinator <- Core.start [worker]
+  cBox <- newMVar coordinator
   c <- defaultConfigStdout
-  withTrace c traceName $ \trace ->
-    let io = withChainSyncEventStream socketPath networkId [Core.genesis] (mkIndexerStream coordinator . logging trace)
-        handleException NoIntersectionFound =
-          logError trace $
-            renderStrict $
-              layoutPretty
-                defaultLayoutOptions
-                "No intersection found"
-     in io `catch` handleException
+  concurrently_
+    ( withTrace c traceName $ \trace ->
+        let io = withChainSyncEventStream socketPath networkId [Core.genesis] (mkEventStream eventQueue . logging trace)
+            handleException NoIntersectionFound =
+              logError trace $
+                renderStrict $
+                  layoutPretty
+                    defaultLayoutOptions
+                    "No intersection found"
+         in io `catch` handleException
+    )
+    (readEvent eventQueue cBox)
 
 toException :: Exception err => ExceptT err IO a -> IO a
 toException mx = do

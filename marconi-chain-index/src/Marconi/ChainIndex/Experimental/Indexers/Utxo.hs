@@ -171,10 +171,6 @@ timedSpentsFromTimedUtxoEvent timedUtxoEvent =
   | spent <- Set.toList (timedUtxoEvent ^. Core.event . ueInputs)
   ]
 
-type instance
-  Core.InsertRecord UtxoEvent =
-    ([Core.TimedEvent Utxo], [Core.TimedEvent Spent])
-
 -- | Make a SQLiteIndexer to store indexer in SQLite
 mkSqliteIndexer
   :: SQL.Connection
