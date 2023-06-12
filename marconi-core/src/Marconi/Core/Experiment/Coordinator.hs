@@ -14,7 +14,7 @@ module Marconi.Core.Experiment.Coordinator (
   tokens,
   channel,
   nbWorkers,
-  start,
+  mkCoordinator,
   step,
 ) where
 
@@ -63,13 +63,13 @@ data Coordinator input = Coordinator
 -- TODO handwrite lenses to avoid invalid states
 makeLenses 'Coordinator
 
--- | create a coordinator with started workers
-start
+-- | create a coordinator and starts its workers
+mkCoordinator
   :: HasGenesis (Point input)
   => Ord (Point input)
   => [Worker input (Point input)]
   -> IO (Coordinator input)
-start workers' =
+mkCoordinator workers' =
   let startWorkers channel' tokens' = traverse (startWorker channel' tokens') workers'
    in do
         let nb = length workers'

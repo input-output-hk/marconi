@@ -273,7 +273,7 @@ module Marconi.Core.Experiment (
   -- It is monomorphic restriction of 'mkSqliteIndexer'
   mkSingleInsertSqliteIndexer,
   handle,
-  PlanPart (PlanPart, planExtractor, planInsert),
+  SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   dbLastSync,
   rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
@@ -351,7 +351,7 @@ module Marconi.Core.Experiment (
   tokens,
   channel,
   nbWorkers,
-  start,
+  mkCoordinator,
   step,
 
   -- * Common queries
@@ -465,8 +465,8 @@ import Marconi.Core.Experiment.Coordinator (
   Coordinator,
   channel,
   lastSync,
+  mkCoordinator,
   nbWorkers,
-  start,
   step,
   threadIds,
   tokens,
@@ -484,7 +484,7 @@ import Marconi.Core.Experiment.Indexer.MixedIndexer (
   standardMixedIndexer,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
-  PlanPart (..),
+  SQLInsertPlan (..),
   SQLiteIndexer (..),
   dbLastSync,
   handle,

@@ -80,7 +80,7 @@ runIndexers socketPath networkId _startingPoint traceName = do
     utxoWorker
       securityParam
       "/Users/nicolasbiri/IOG/marco/marconi-experimental/utxo.db"
-  coordinator <- Core.start [worker]
+  coordinator <- Core.mkCoordinator [worker]
   cBox <- newMVar coordinator
   c <- defaultConfigStdout
   concurrently_
