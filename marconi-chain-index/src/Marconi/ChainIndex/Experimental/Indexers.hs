@@ -26,6 +26,7 @@ import Marconi.Core.Experiment qualified as Core
 import Prettyprinter (defaultLayoutOptions, layoutPretty)
 import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
+import System.FilePath ((</>))
 
 type instance Core.Point (C.BlockInMode C.CardanoMode) = C.ChainPoint
 
@@ -38,15 +39,17 @@ blockTimedEvent
 blockTimedEvent b@(C.BlockInMode (C.Block (C.BlockHeader slotNo hsh _) _) _) =
   Core.TimedEvent (C.ChainPoint slotNo hsh) b
 
-utxoWorker
-  :: SecurityParam
-  -> FilePath
+-- | Create a worker for the utxo indexer
+utxoWorker -- Should go in Utxo module?
+  :: FilePath
+  -> SecurityParam
   -> IO (MVar UtxoIndexer, Core.Worker (C.BlockInMode C.CardanoMode) C.ChainPoint)
-utxoWorker depth dbPath = do
+utxoWorker dbPath depth = do
   c <- Utxo.initSQLite dbPath -- TODO handle error
   let extract (C.BlockInMode block _) = Utxo.getUtxoEventsFromBlock Nothing block
   Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c depth
 
+-- | Process the next event in the queue with the coordinator
 readEvent
   :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode))
   -> MVar (Core.Coordinator (C.BlockInMode C.CardanoMode))
@@ -55,6 +58,7 @@ readEvent q cBox = forever $ do
   e <- atomically $ readTBQueue q
   modifyMVar_ cBox $ \c -> toException $ Core.step c e
 
+-- | Event preprocessing, to ease the coordinator work
 mkEventStream
   :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode))
   -> S.Stream (S.Of (ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
@@ -67,19 +71,22 @@ mkEventStream q =
       processEvent (RollBackward x _) = Core.Rollback x
    in S.mapM_ $ atomically . writeTBQueue q . processEvent
 
+-- | Start the utxo indexer (the only one we have so far)
 runIndexers
   :: FilePath
   -> C.NetworkId
   -> C.ChainPoint
   -> Text.Text
+  -> FilePath
+  -- ^ base dir for indexers
   -> IO ()
-runIndexers socketPath networkId _startingPoint traceName = do
+runIndexers socketPath networkId _startingPoint traceName dbDir = do
   securityParam <- toException $ Utils.querySecurityParam networkId socketPath
   eventQueue <- newTBQueueIO $ fromIntegral securityParam
   (_, worker) <-
     utxoWorker
+      (dbDir </> "utxo.db")
       securityParam
-      "/Users/nicolasbiri/IOG/marco/marconi-experimental/utxo.db"
   coordinator <- Core.mkCoordinator [worker]
   cBox <- newMVar coordinator
   c <- defaultConfigStdout
