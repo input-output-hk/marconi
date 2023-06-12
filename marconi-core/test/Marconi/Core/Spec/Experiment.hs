@@ -481,8 +481,6 @@ initSQLite = do
 
   pure con
 
-type instance Core.InsertRecord TestEvent = [(TestPoint, TestEvent)]
-
 sqliteModelIndexer :: SQL.Connection -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer con =
   Core.mkSingleInsertSqliteIndexer
@@ -668,7 +666,7 @@ coordinatorIndexerRunner wRunner =
           Core.createWorker
             pure
             wrapped
-      UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.start [run])
+      UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.mkCoordinator [run])
 
 data ParityQuery = OddTestEvent | EvenTestEvent
   deriving (Eq, Ord, Show)
