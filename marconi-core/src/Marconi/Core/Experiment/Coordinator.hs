@@ -30,7 +30,6 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes, listToMaybe)
 
-import Debug.Trace qualified
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
@@ -90,8 +89,8 @@ step
   -> m (Coordinator input)
 step coordinator input = do
   case input of
-    Index e -> Debug.Trace.traceM "got an event" >> index e coordinator
-    Rollback p -> Debug.Trace.traceM "got a rollback" >> rollback p coordinator
+    Index e -> index e coordinator
+    Rollback p -> rollback p coordinator
 
 waitWorkers :: Coordinator input -> IO ()
 waitWorkers coordinator = Con.waitQSemN (coordinator ^. tokens) (coordinator ^. nbWorkers)
@@ -135,11 +134,8 @@ instance
 
         rollbackWorkers :: Coordinator event -> m (Coordinator event)
         rollbackWorkers c = do
-          Debug.Trace.traceM "Send Rollback"
           liftIO $ dispatchNewInput c $ Rollback p
-          Debug.Trace.traceM "Wait rollback result"
           liftIO $ waitWorkers c
-          Debug.Trace.traceM "Check errors"
           errors <- healthCheck c
           case errors of
             Just err -> close c *> throwError err

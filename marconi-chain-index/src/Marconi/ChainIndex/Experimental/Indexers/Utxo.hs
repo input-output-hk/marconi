@@ -42,7 +42,6 @@ import Cardano.Api ()
 import Cardano.Api qualified as C
 import Cardano.Api qualified as Core
 import Cardano.Api.Shelley qualified as C
-import Debug.Trace qualified
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam), TargetAddresses, TxOut, pattern CurrentEra)
@@ -452,11 +451,9 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
 
 instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
   rollback C.ChainPointAtGenesis ix = do
-    Debug.Trace.traceM "Rollback UTXO"
     let c = ix ^. Core.handle
     liftIO $ SQL.execute_ c "DELETE FROM unspent_transactions"
     liftIO $ SQL.execute_ c "DELETE FROM spent"
-    Debug.Trace.traceM "Rollback UTXO done"
 
     pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
   rollback p@(C.ChainPoint sno _) ix = do
