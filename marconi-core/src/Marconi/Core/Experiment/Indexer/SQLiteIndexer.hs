@@ -18,7 +18,7 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
-  PlanPart (PlanPart, planInsert, planExtractor),
+  SQLInsertPlan (SQLInsertPlan, planInsert, planExtractor),
 ) where
 
 import Control.Concurrent.Async qualified as Async
@@ -48,10 +48,10 @@ import Marconi.Core.Experiment.Type (
   point,
  )
 
--- | A 'PlanPart' provides a piece information about how an event should be inserted in the database
-data PlanPart event = forall a.
+-- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
+data SQLInsertPlan event = forall a.
   SQL.ToRow a =>
-  PlanPart
+  SQLInsertPlan
   { planExtractor :: TimedEvent event -> [a]
   -- ^ How to transform the event into a type that can be handle by the database
   , planInsert :: SQL.Query
@@ -62,9 +62,9 @@ data PlanPart event = forall a.
 data SQLiteIndexer event = SQLiteIndexer
   { _handle :: SQL.Connection
   -- ^ The connection used to interact with the database
-  , _insertPlan :: [[PlanPart event]]
-  -- ^ A plan is a list of list : each 'PlanPart' in a list is executed concurrently.
-  -- The different @[PlanPart]@ are executed in sequence.
+  , _insertPlan :: [[SQLInsertPlan event]]
+  -- ^ A plan is a list of lists : each 'SQLInsertPlan' in a list is executed concurrently.
+  -- The different @[SQLInsertPlan]@ are executed in sequence.
   , _dbLastSync :: Point event
   -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
   }
@@ -82,7 +82,7 @@ mkSqliteIndexer
   => HasGenesis (Point event)
   => SQL.FromRow (Point event)
   => SQL.Connection
-  -> [[PlanPart event]]
+  -> [[SQLInsertPlan event]]
   -- ^ extract @param@ out of a 'TimedEvent'
   -> SQL.Query
   -- ^ the lastSyncQuery
@@ -123,7 +123,7 @@ mkSingleInsertSqliteIndexer
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-mkSingleInsertSqliteIndexer con extract insert = mkSqliteIndexer con [[PlanPart (pure . extract) insert]]
+mkSingleInsertSqliteIndexer con extract insert = mkSqliteIndexer con [[SQLInsertPlan (pure . extract) insert]]
 
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
 handleSQLErrors value =
@@ -138,11 +138,11 @@ runIndexQueriesStep
   => MonadError IndexerError m
   => SQL.Connection
   -> [TimedEvent event]
-  -> [PlanPart event]
+  -> [SQLInsertPlan event]
   -> m ()
 runIndexQueriesStep _ _ [] = pure ()
 runIndexQueriesStep c events xs =
-  let runIndexQuery (PlanPart planExtractor planInsert) = do
+  let runIndexQuery (SQLInsertPlan planExtractor planInsert) = do
         let rows = planExtractor =<< events
         case rows of
           [] -> pure ()
@@ -157,7 +157,7 @@ runIndexQueries
   => MonadError IndexerError m
   => SQL.Connection
   -> [TimedEvent event]
-  -> [[PlanPart event]]
+  -> [[SQLInsertPlan event]]
   -> m ()
 runIndexQueries c = traverse_ . runIndexQueriesStep c
 
