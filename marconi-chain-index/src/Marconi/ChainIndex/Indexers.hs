@@ -416,7 +416,7 @@ epochStateWorker nodeConfigPath onInsert securityParam coordinator path = do
 mintBurnWorker_
   :: SecurityParam
   -> (MintBurn.MintBurnIndexer -> IO ())
-  -> Maybe (NonEmpty (C.PolicyId, C.AssetName))
+  -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
@@ -441,7 +441,7 @@ mintBurnWorker_ securityParam callback mAssets Coordinator{_barrier, _errorVar} 
 
 mintBurnWorker
   :: (MintBurn.MintBurnIndexer -> IO ())
-  -> Maybe (NonEmpty (C.PolicyId, C.AssetName))
+  -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> Worker
 mintBurnWorker callback mAssets securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator

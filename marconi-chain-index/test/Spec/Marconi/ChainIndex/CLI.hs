@@ -15,17 +15,54 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
 
 import Marconi.ChainIndex.CLI (programParser)
+import Test.Tasty.Hedgehog (testProperty)
+
+import Cardano.Api qualified as C
+import Control.Monad (join)
+import Data.List.NonEmpty (toList)
+import Hedgehog (Property, annotate, forAll, property, (===))
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range (linear)
+import Marconi.ChainIndex.CLI qualified as CLI
+import Options.Applicative qualified as Opt
+import Test.Gen.Cardano.Api.Typed qualified as Gen
 
 tests :: TestTree
 tests =
   testGroup
     "marconi-chain-index CLI Specs"
-    [ genTest commands
-    | commands <-
-        [ ["--disable-address-data"] -- invalid command
-        , ["--help"] -- display help
-        ]
-    ]
+    $ [ genTest commands
+      | commands <-
+          [ ["--disable-address-data"] -- invalid command
+          , ["--help"] -- display help
+          ]
+      ]
+      ++ [ testProperty
+            "Check asset Parsing"
+            parseAssets
+         ]
+
+parseAssets :: Property
+parseAssets = property $ do
+  assets <-
+    forAll $
+      Gen.list
+        (linear 1 4)
+        ((,) <$> Gen.genPolicyId <*> Gen.maybe Gen.genAssetName)
+  let toString (p, an) = T.unpack $ case an of
+        Nothing -> C.serialiseToRawBytesHexText p
+        Just x ->
+          C.serialiseToRawBytesHexText p
+            <> ","
+            <> C.serialiseToRawBytesHexText x
+      assetsText = unwords $ toString <$> assets
+      parsed =
+        Opt.execParserPure
+          (Opt.prefs mempty)
+          (Opt.info CLI.commonMaybeTargetAsset mempty)
+          ["--match-asset-id", assetsText]
+  annotate $ show parsed
+  (toList <$> join (Opt.getParseResult parsed)) === Just assets
 
 -- | Test generate golden tests from the list of commands
 genTest :: [T.Text] -> TestTree

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE TupleSections #-}
 
 module Marconi.ChainIndex.CLI where
 
@@ -20,7 +21,6 @@ import System.FilePath ((</>))
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.String (IsString (fromString))
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   TargetAddresses,
@@ -128,7 +128,7 @@ data Options = Options
   , optionsDisableEpochState :: !Bool
   , optionsDisableMintBurn :: !Bool
   , optionsTargetAddresses :: !(Maybe TargetAddresses)
-  , optionsTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, C.AssetName)))
+  , optionsTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   , optionsNodeConfigPath :: !(Maybe FilePath)
   }
   deriving (Show)
@@ -270,32 +270,34 @@ commonMaybeTargetAddress =
           "Bech32 Shelley addresses to index. \
           \ i.e \"--address-to-index address-1 --address-to-index address-2 ...\""
 
-commonMaybeTargetAsset :: Opt.Parser (Maybe (NonEmpty (C.PolicyId, C.AssetName)))
+commonMaybeTargetAsset :: Opt.Parser (Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
 commonMaybeTargetAsset =
-  let parseAsset :: Text -> Opt.ReadM (C.PolicyId, C.AssetName)
-      parseAsset arg = do
-        case Text.splitOn "," arg of
-          [rawPolicyId, rawAssetName] ->
-            (,) <$> parsePolicyId rawPolicyId <*> parseAssetName rawAssetName
-          _other ->
-            fail $ "Invalid format: expected POLICY_ID,ASSET_NAME. Got " <> Text.unpack arg
-      assetPair
-        :: Opt.Mod Opt.OptionFields [(C.PolicyId, C.AssetName)]
-        -> Opt.Parser [(C.PolicyId, C.AssetName)]
-      assetPair = Opt.option $ Opt.str >>= fmap pure . parseAsset
+  let assetPair
+        :: Opt.Mod Opt.OptionFields [(C.PolicyId, Maybe C.AssetName)]
+        -> Opt.Parser [(C.PolicyId, Maybe C.AssetName)]
+      assetPair = Opt.option $ Opt.str >>= traverse parseAsset . Text.words
    in Opt.optional $
         (fmap (NonEmpty.fromList . concat) . some . assetPair) $
           Opt.long "match-asset-id"
-            <> Opt.metavar "POLICY_ID,ASSET_NAME"
+            <> Opt.metavar "POLICY_ID[,ASSET_NAME]"
             <> Opt.help
               "Asset to index, defined by the policy id and the asset name\
-              \ i.e \"--match-asset-id assetname-1,policy-id-1 --match-asset-id assetname-2,policy-id-2 ...\""
+              \ i.e \"--match-asset-id assetname-1,policy-id-1 --match-asset-id policy-id-2 ...\""
 
-parseAssetName :: Text -> Opt.ReadM C.AssetName
-parseAssetName = pure . fromString . Text.unpack
+parseAsset :: Text -> Opt.ReadM (C.PolicyId, Maybe C.AssetName)
+parseAsset arg = do
+  let parseAssetName :: Text -> Opt.ReadM C.AssetName
+      parseAssetName = either (fail . show) pure . C.deserialiseFromRawBytesHex C.AsAssetName . Text.encodeUtf8
 
-parsePolicyId :: Text -> Opt.ReadM C.PolicyId
-parsePolicyId = either (fail . show) pure . C.deserialiseFromRawBytesHex C.AsPolicyId . Text.encodeUtf8
+      parsePolicyId :: Text -> Opt.ReadM C.PolicyId
+      parsePolicyId = either (fail . show) pure . C.deserialiseFromRawBytesHex C.AsPolicyId . Text.encodeUtf8
+  case Text.splitOn "," arg of
+    [rawPolicyId, rawAssetName] ->
+      (,) <$> parsePolicyId rawPolicyId <*> (Just <$> parseAssetName rawAssetName)
+    [rawPolicyId] ->
+      (,Nothing) <$> parsePolicyId rawPolicyId
+    _other ->
+      fail $ "Invalid format: expected POLICY_ID[,ASSET_NAME]. Got " <> Text.unpack arg
 
 commonMinIndexingDepth :: Opt.Parser IndexingDepth
 commonMinIndexingDepth =
