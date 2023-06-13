@@ -170,10 +170,6 @@ timedSpentsFromTimedUtxoEvent timedUtxoEvent =
   | spent <- Set.toList (timedUtxoEvent ^. Core.event . ueInputs)
   ]
 
-type instance
-  Core.InsertRecord UtxoEvent =
-    ([Core.TimedEvent Utxo], [Core.TimedEvent Spent])
-
 -- | Make a SQLiteIndexer to store indexer in SQLite
 mkSqliteIndexer
   :: SQL.Connection
@@ -207,23 +203,13 @@ mkSqliteIndexer conn =
                 blockHash
               ) VALUES
               (?, ?, ?, ?)|]
-
-      prepareInsert'
-        :: Core.TimedEvent UtxoEvent -- UtxoEvent
-        -> Core.InsertRecord UtxoEvent -- SQL mapping of Utxo and Spent parameters
-      prepareInsert' utxoEv =
-        let tUtxos = timedUtxosFromTimedUtxoEvent utxoEv -- timed Utxo
-            tSpents = timedSpentsFromTimedUtxoEvent utxoEv -- timed Spent
-         in (tUtxos, tSpents)
-
-      buildInsert' :: Core.InsertRecord UtxoEvent -> [[Core.IndexQuery]]
-      buildInsert' (us, ss) =
-        pure
-          [Core.IndexQuery utxoInsertQuery us, Core.IndexQuery spentInsertQuery ss]
    in Core.SQLiteIndexer
         conn
-        prepareInsert'
-        buildInsert'
+        [
+          [ Core.SQLInsertPlan timedUtxosFromTimedUtxoEvent utxoInsertQuery
+          , Core.SQLInsertPlan timedSpentsFromTimedUtxoEvent spentInsertQuery
+          ]
+        ]
         Core.genesis
 
 -- | combine UtxoEvents and balance
@@ -409,7 +395,7 @@ instance
   --   -> QueryUtxoByAddress
   --   -> Core.SQLiteIndexer UtxoEvent
   --   -> m (Core.Result QueryUtxoByAddress)
-  query cp q (Core.SQLiteIndexer conn _ _ _) =
+  query cp q (Core.SQLiteIndexer conn _ _) =
     let action :: SQL.Connection -> IO (Core.Result QueryUtxoByAddress)
         action = mkUtxoAddressQueryAction cp q
      in liftIO $ action conn
@@ -466,8 +452,8 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
 instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
   rollback C.ChainPointAtGenesis ix = do
     let c = ix ^. Core.handle
-    liftIO $ SQL.execute_ c "DELETE FROM TABLE unspent_transactions"
-    liftIO $ SQL.execute_ c "DELETE FROM TABLE spent"
+    liftIO $ SQL.execute_ c "DELETE FROM unspent_transactions"
+    liftIO $ SQL.execute_ c "DELETE FROM spent"
 
     pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
   rollback p@(C.ChainPoint sno _) ix = do
@@ -486,10 +472,10 @@ getUtxoEventsFromBlock
   => Maybe TargetAddresses
   -- ^ target addresses to filter for
   -> C.Block era
-  -> Core.TimedEvent UtxoEvent
+  -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock maybeTargetAddresses (C.Block (C.BlockHeader slotNo hsh _) txs) =
-  getUtxoEvents maybeTargetAddresses txs (C.ChainPoint slotNo hsh)
+getUtxoEventsFromBlock maybeTargetAddresses (C.Block _ txs) =
+  getUtxoEvents maybeTargetAddresses txs
 
 -- | Extract UtxoEvents from Cardano Transactions
 getUtxoEvents
@@ -497,12 +483,9 @@ getUtxoEvents
   => Maybe TargetAddresses
   -- ^ target addresses to filter for
   -> [C.Tx era]
-  -> C.ChainPoint
-  -> Core.TimedEvent UtxoEvent
+  -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEvents _ _ C.ChainPointAtGenesis =
-  Core.TimedEvent C.ChainPointAtGenesis (UtxoEvent Set.empty Set.empty)
-getUtxoEvents maybeTargetAddresses txs cp =
+getUtxoEvents maybeTargetAddresses txs =
   let (TxOutBalance utxos spentTxOuts) =
         foldMap (balanceUtxoFromTx maybeTargetAddresses) txs
 
@@ -514,7 +497,7 @@ getUtxoEvents maybeTargetAddresses txs cp =
 
       event :: UtxoEvent
       event = UtxoEvent resolvedUtxos spents
-   in Core.TimedEvent cp event
+   in event
 
 -- | Extract TxOut from Cardano TxBodyContent
 getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]

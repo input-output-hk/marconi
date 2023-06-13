@@ -56,6 +56,7 @@ library
   exposed-modules:
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Experimental.Indexers
     Marconi.ChainIndex.Experimental.Indexers.Utxo
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
@@ -159,6 +160,23 @@ executable marconi-chain-index
   import:         lang
   hs-source-dirs: app
   main-is:        Main.hs
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-chain-index >=1.2.0
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , base       >=4.9 && <5
+    , directory
+
+executable marconi-chain-index-experimental
+  import:         lang
+  hs-source-dirs: app
+  main-is:        Experimental.hs
 
   --------------------
   -- Local components

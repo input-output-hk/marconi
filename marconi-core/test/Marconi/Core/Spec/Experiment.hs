@@ -481,13 +481,11 @@ initSQLite = do
 
   pure con
 
-type instance Core.InsertRecord TestEvent = [(TestPoint, TestEvent)]
-
 sqliteModelIndexer :: SQL.Connection -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer con =
   Core.mkSingleInsertSqliteIndexer
     con
-    (\t -> pure (t ^. Core.point, t ^. Core.event))
+    (\t -> (t ^. Core.point, t ^. Core.event))
     "INSERT INTO index_model VALUES (?, ?)"
     "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
 
@@ -668,7 +666,7 @@ coordinatorIndexerRunner wRunner =
           Core.createWorker
             pure
             wrapped
-      UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.start [run])
+      UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.mkCoordinator [run])
 
 data ParityQuery = OddTestEvent | EvenTestEvent
   deriving (Eq, Ord, Show)

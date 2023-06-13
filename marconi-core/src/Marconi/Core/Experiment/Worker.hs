@@ -120,7 +120,8 @@ startWorker
   -> m ThreadId
 startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
   let unlockCoordinator :: IO ()
-      unlockCoordinator = Con.signalQSemN tokens 1
+      unlockCoordinator = do
+        Con.signalQSemN tokens 1
 
       fresherThan :: Ord (Point event) => TimedEvent event -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
@@ -137,12 +138,12 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
         -- We don't need to check if tryPutMVar succeed
         -- because if @errorBox@ is already full, our job is done anyway
         void $ Con.tryPutMVar errorBox err
-        unlockCoordinator
         pure indexer
 
-      handleRollback p = Con.modifyMVar_ ix $ \indexer -> do
-        result <- runExceptT $ hoistError $ rollback p indexer
-        either (raiseError indexer) pure result
+      handleRollback p = do
+        Con.modifyMVar_ ix $ \indexer -> do
+          result <- runExceptT $ hoistError $ rollback p indexer
+          either (raiseError indexer) pure result
 
       swallowPill = do
         indexer <- Con.readMVar ix

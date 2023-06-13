@@ -213,9 +213,9 @@ instance
   where
   rollback p indexer = do
     indexer' <- inMemory (rollback p) indexer
-    if not $ null $ indexer' ^. inMemory . events
-      then pure indexer'
-      else inDatabase (rollback p) indexer'
+    if null $ indexer' ^. inMemory . events
+      then inDatabase (rollback p) indexer'
+      else pure indexer'
 
 instance
   ( AppendResult m event query ListIndexer

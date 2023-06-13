@@ -196,6 +196,7 @@ module Marconi.Core.Experiment (
   TimedEvent (TimedEvent),
   point,
   event,
+  mapTimedEvent,
 
   -- ** Core typeclasses
   HasGenesis (..),
@@ -272,42 +273,12 @@ module Marconi.Core.Experiment (
   -- It is monomorphic restriction of 'mkSqliteIndexer'
   mkSingleInsertSqliteIndexer,
   handle,
-  prepareInsert,
-  buildInsert,
+  SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   dbLastSync,
   rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
-  -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
-  -- ending with several insert.
-  --
-  -- This leads to two major issues:
-  --     - Each query has its own parameter type, we consequently don't have a unique type for a parametrised query.
-  --     - When we perform the insert, we want to process in the same way all the queries.
-  --     - We can't know in the general case neither how many query will be needed, nor the param types.
-  --     - We want to minimise the boilerplate for a end user.
-  --
-  -- To tackle these issue, we wrap our queries in a opaque type, @IndexQuery@,
-  -- which hides the query parameters.
-  -- Internally, we only have to deal with an @[IndexQuery]@ to be able to insert an event.
-  IndexQuery (..),
-  -- | How we map an event to its sql representation
-  --
-  -- In general, it consists in breaking the event in many fields of a record,
-  -- each field corresponding to the parameters required to insert a part of the event in one table.
-  --
-  -- Usually, an insert record will be of the form:
-  --
-  -- @
-  -- data MyInsertRecord
-  --     = MyInsertRecord
-  --     { _tableA :: [ParamsForTableA]
-  --     { _tableB :: [ParamsForTableB]
-  --     -- ...
-  --     }
-  -- type InsertRecord MyEvent = MyInsertRecord
-  -- @
-  InsertRecord,
+  handleSQLErrors,
   -- | The indexer of the most recent events must be able to send a part
   -- of its events to the other indexer when they are stable.
   --
@@ -380,7 +351,7 @@ module Marconi.Core.Experiment (
   tokens,
   channel,
   nbWorkers,
-  start,
+  mkCoordinator,
   step,
 
   -- * Common queries
@@ -494,8 +465,8 @@ import Marconi.Core.Experiment.Coordinator (
   Coordinator,
   channel,
   lastSync,
+  mkCoordinator,
   nbWorkers,
-  start,
   step,
   threadIds,
   tokens,
@@ -513,15 +484,13 @@ import Marconi.Core.Experiment.Indexer.MixedIndexer (
   standardMixedIndexer,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
-  IndexQuery (..),
-  InsertRecord,
+  SQLInsertPlan (..),
   SQLiteIndexer (..),
-  buildInsert,
   dbLastSync,
   handle,
+  handleSQLErrors,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
-  prepareInsert,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   rollbackSQLiteIndexerWith,
@@ -560,7 +529,7 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
 import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
-import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, point)
+import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, mapTimedEvent, point)
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (..),
   Worker,
