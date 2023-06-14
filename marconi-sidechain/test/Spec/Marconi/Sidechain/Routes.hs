@@ -7,6 +7,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Crypto.Hash.Class qualified as Crypto
 import Cardano.Ledger.Shelley.API qualified as Ledger
+import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Monad (forM)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as Aeson
@@ -14,21 +15,33 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Gen.Marconi.ChainIndex.Types qualified as Gen
-import Hedgehog (Gen, Property, forAll, property, tripping)
+import Hedgehog (
+  Gen,
+  Property,
+  forAll,
+  property,
+  tripping,
+ )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Marconi.ChainIndex.Indexers.EpochState (EpochNonceRow (EpochNonceRow), EpochSDDRow (EpochSDDRow))
+import Marconi.ChainIndex.Indexers.EpochState (
+  EpochNonceRow (EpochNonceRow),
+  EpochSDDRow (EpochSDDRow),
+ )
+import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
+import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Sidechain.Api.Routes (
   AddressUtxoResult (AddressUtxoResult),
   AssetIdTxResult (AssetIdTxResult),
+  GetBurnTokenEventsParams (GetBurnTokenEventsParams),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
   GetEpochActiveStakePoolDelegationResult (GetEpochActiveStakePoolDelegationResult),
   GetEpochNonceResult (GetEpochNonceResult),
-  GetTxsBurningAssetIdParams (GetTxsBurningAssetIdParams),
-  GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   SpentInfoResult (SpentInfoResult),
+  UtxoTxInput (UtxoTxInput),
  )
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
@@ -58,13 +71,13 @@ tests =
             "propJSONRountripGetUtxosFromAddressResult"
             propJSONRountripGetUtxosFromAddressResult
         , testPropertyNamed
-            "GetTxsBurningAssetIdParams"
-            "propJSONRountripGetTxsBurningAssetIdParams"
-            propJSONRountripGetTxsBurningAssetIdParams
+            "GetBurnTokenEventsParams"
+            "propJSONRountripGetBurnTokenEventsParams"
+            propJSONRountripGetBurnTokenEventsParams
         , testPropertyNamed
-            "GetTxsBurningAssetIdResult"
-            "propJSONRountripGetTxsBurningAssetIdResult"
-            propJSONRountripGetTxsBurningAssetIdResult
+            "GetBurnTokenEventsResult"
+            "propJSONRountripGetBurnTokenEventsResult"
+            propJSONRountripGetBurnTokenEventsResult
         ]
     , testGroup
         "Golden test for query results"
@@ -103,8 +116,20 @@ tests =
 
 propJSONRountripCurrentSyncedBlockResult :: Property
 propJSONRountripCurrentSyncedBlockResult = property $ do
-  cp <- GetCurrentSyncedBlockResult <$> forAll Gen.genChainPoint
-  tripping cp Aeson.encode Aeson.decode
+  let genBlockInfo =
+        BlockInfo
+          <$> Gen.genSlotNo
+          <*> Gen.genHashBlockHeader
+          <*> Gen.genBlockNo
+          <*> pure 0
+          <*> Gen.genEpochNo
+  blockInfo <-
+    forAll $
+      Gen.choice
+        [ pure Origin
+        , At <$> genBlockInfo
+        ]
+  tripping (GetCurrentSyncedBlockResult blockInfo) Aeson.encode Aeson.decode
 
 propJSONRountripGetUtxosFromAddressParams :: Property
 propJSONRountripGetUtxosFromAddressParams = property $ do
@@ -119,18 +144,20 @@ propJSONRountripGetUtxosFromAddressParams = property $ do
 propJSONRountripGetUtxosFromAddressResult :: Property
 propJSONRountripGetUtxosFromAddressResult = property $ do
   r <- fmap GetUtxosFromAddressResult $ forAll $ Gen.list (Range.linear 0 10) $ do
-    (C.TxIn txId txIx) <- CGen.genTxIn
     hsd <- Gen.maybe CGen.genHashableScriptData
     AddressUtxoResult
-      <$> Gen.genHashBlockHeader
-      <*> Gen.genSlotNo
-      <*> pure (C.TxIn txId txIx)
+      <$> Gen.genSlotNo
+      <*> Gen.genHashBlockHeader
+      <*> Gen.genBlockNo
+      <*> fmap fromIntegral (Gen.word64 $ Range.linear 0 5)
+      <*> CGen.genTxIn
       <*> ( fmap (\(C.AddressInEra _ addr) -> C.toAddressAny addr) $
               Gen.genAddressInEra C.BabbageEra
           )
       <*> pure (fmap C.hashScriptDataBytes hsd)
       <*> pure (fmap C.getScriptData hsd)
       <*> Gen.maybe genSpentInfo
+      <*> Gen.list (Range.linear 0 10) (UtxoTxInput <$> CGen.genTxIn)
 
   tripping r Aeson.encode Aeson.decode
 
@@ -140,25 +167,25 @@ genSpentInfo = do
   (C.TxIn txId _) <- CGen.genTxIn
   pure $ SpentInfoResult slotNo txId
 
-propJSONRountripGetTxsBurningAssetIdParams :: Property
-propJSONRountripGetTxsBurningAssetIdParams = property $ do
+propJSONRountripGetBurnTokenEventsParams :: Property
+propJSONRountripGetBurnTokenEventsParams = property $ do
   r <-
     forAll $
-      GetTxsBurningAssetIdParams
+      GetBurnTokenEventsParams
         <$> (C.PolicyId <$> CGen.genScriptHash)
         <*> (fromString <$> Gen.string (Range.linear 1 10) Gen.alphaNum)
         <*> (Gen.maybe $ Gen.integral (Range.linear 1 10))
+        <*> Gen.maybe CGen.genTxId
   tripping r Aeson.encode Aeson.decode
 
-propJSONRountripGetTxsBurningAssetIdResult :: Property
-propJSONRountripGetTxsBurningAssetIdResult = property $ do
-  r <- fmap GetTxsBurningAssetIdResult $ forAll $ Gen.list (Range.linear 0 10) $ do
+propJSONRountripGetBurnTokenEventsResult :: Property
+propJSONRountripGetBurnTokenEventsResult = property $ do
+  r <- fmap GetBurnTokenEventsResult $ forAll $ Gen.list (Range.linear 0 10) $ do
     hsd <- Gen.maybe CGen.genHashableScriptData
     AssetIdTxResult
-      <$> Gen.genHashBlockHeader
+      <$> Gen.genSlotNo
+      <*> Gen.genHashBlockHeader
       <*> Gen.genBlockNo
-      <*> (Gen.integral $ Range.linear 0 10)
-      <*> Gen.genSlotNo
       <*> CGen.genTxId
       <*> pure (fmap C.hashScriptDataBytes hsd)
       <*> pure (fmap C.getScriptData hsd)
@@ -179,18 +206,25 @@ propJSONRountripEpochStakePoolDelegationResult = property $ do
 
 goldenCurrentChainPointGenesisResult :: IO ByteString
 goldenCurrentChainPointGenesisResult = do
-  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult C.ChainPointAtGenesis
+  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult Origin
 
 goldenCurrentChainPointResult :: IO ByteString
 goldenCurrentChainPointResult = do
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
+      epochNo = C.EpochNo 6
+      blockNo = C.BlockNo 64903
+      blockTimestamp = 0
   blockHeaderHash <-
     either
       (error . show)
       pure
       $ C.deserialiseFromRawBytesHex (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader)) blockHeaderHashRawBytes
 
-  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult $ C.ChainPoint (C.SlotNo 1) blockHeaderHash
+  pure $
+    Aeson.encodePretty $
+      GetCurrentSyncedBlockResult $
+        At $
+          BlockInfo (C.SlotNo 1) blockHeaderHash blockNo blockTimestamp epochNo
 
 goldenAddressUtxoResult :: IO ByteString
 goldenAddressUtxoResult = do
@@ -225,21 +259,27 @@ goldenAddressUtxoResult = do
 
   let utxos =
         [ AddressUtxoResult
-            blockHeaderHash
             (C.SlotNo 1)
+            blockHeaderHash
+            (C.BlockNo 1)
+            (TxIndexInBlock 0)
             (C.TxIn txId (C.TxIx 0))
             (C.AddressShelley addr)
             Nothing
             Nothing
             Nothing
+            []
         , AddressUtxoResult
-            blockHeaderHash
             (C.SlotNo 1)
+            blockHeaderHash
+            (C.BlockNo 1)
+            (TxIndexInBlock 0)
             (C.TxIn txId (C.TxIx 0))
             (C.AddressShelley addr)
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
             (Just datum)
             (Just $ SpentInfoResult (C.SlotNo 12) spentTxId)
+            [UtxoTxInput $ C.TxIn txId (C.TxIx 0)]
         ]
       result = GetUtxosFromAddressResult utxos
   pure $ Aeson.encodePretty result
@@ -263,25 +303,15 @@ goldenMintingPolicyHashTxResult = do
 
   let mints =
         [ AssetIdTxResult
+            (C.SlotNo 1)
             blockHeaderHash
             (C.BlockNo 1047)
-            0
-            (C.SlotNo 1)
-            txId
-            (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
-            (Just redeemerData)
-            (C.Quantity $ -10)
-        , AssetIdTxResult
-            blockHeaderHash
-            (C.BlockNo 1047)
-            1
-            (C.SlotNo 1)
             txId
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
             (Just redeemerData)
             (C.Quantity 10)
         ]
-      result = GetTxsBurningAssetIdResult mints
+      result = GetBurnTokenEventsResult mints
   pure $ Aeson.encodePretty result
 
 goldenEpochStakePoolDelegationResult :: IO ByteString

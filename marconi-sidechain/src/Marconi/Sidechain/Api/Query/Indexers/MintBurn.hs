@@ -63,7 +63,9 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
       tryReadTMVar $
         env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
   case mintBurnIndexer of
-    Nothing -> pure $ Left $ QueryError "Failed to read MintBurn indexer"
+    Nothing ->
+      -- May occur at startup before marconi-sidechain gets to update the indexer
+      pure $ Right []
     Just indexer -> query indexer
   where
     query indexer = do
@@ -76,10 +78,9 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
     toAssetIdTxResult :: TxMintRow -> AssetIdTxResult
     toAssetIdTxResult x =
       AssetIdTxResult
+        (x ^. MintBurn.txMintRowSlotNo)
         (x ^. MintBurn.txMintRowBlockHeaderHash)
         (x ^. MintBurn.txMintRowBlockNo)
-        (x ^. MintBurn.txMintRowTxIx)
-        (x ^. MintBurn.txMintRowSlotNo)
         (x ^. MintBurn.txMintRowTxId)
         (Just $ x ^. MintBurn.txMintRowRedeemerHash)
         (Just $ x ^. MintBurn.txMintRowRedeemerData)

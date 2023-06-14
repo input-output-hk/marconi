@@ -95,7 +95,7 @@ library
     , cardano-ledger-mary            ^>=1.1
     , cardano-ledger-shelley
     , cardano-protocol-tpraos        ^>=1.0
-    , cardano-slotting
+    , cardano-slotting               ^>=0.1.1.1
     , iohk-monitoring
     , ouroboros-consensus
     , ouroboros-consensus-byron
@@ -331,6 +331,7 @@ test-suite marconi-chain-index-test
     , cardano-ledger-alonzo                                             ^>=1.1
     , cardano-ledger-core
     , cardano-ledger-shelley
+    , cardano-slotting                                                  ^>=0.1.1.1
     , cardano-testnet
     , hedgehog-extras
     , iohk-monitoring

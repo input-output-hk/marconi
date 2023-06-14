@@ -2,26 +2,37 @@
     {
         "address": "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc",
         "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
+        "blockNo": 1,
         "datum": null,
         "datumHash": null,
         "slotNo": 1,
         "spentBy": null,
         "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
+        "txIndexInBlock": 0,
+        "txInputs": [],
         "txIx": 0
     },
     {
         "address": "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc",
         "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
+        "blockNo": 1,
         "datum": {
             "int": 34
         },
         "datumHash": "6d683f9bd0c3b874cdf3da1793b5eb0ea73a074d3e4b66bc62279b09d387fa8d",
         "slotNo": 1,
         "spentBy": {
-            "slot": 12,
+            "slotNo": 12,
             "txId": "2e19f40cdf462444234d0de049163d5269ee1150feda868560315346dd12807d"
         },
         "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
+        "txIndexInBlock": 0,
+        "txInputs": [
+            {
+                "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
+                "txIx": 0
+            }
+        ],
         "txIx": 0
     }
 ]

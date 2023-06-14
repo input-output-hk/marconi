@@ -25,12 +25,17 @@ module Network.JsonRpc.Types (
   JsonRpcErr (..),
   JsonRpcResponse (..),
 
-  -- ** Standard error codes
+  -- ** Standard error codes and messages
   parseErrorCode,
+  parseErrorMessage,
   invalidRequestCode,
+  invalidRequestMessage,
   methodNotFoundCode,
+  methodNotFoundMessage,
   invalidParamsCode,
+  invalidParamsMessage,
   internalErrorCode,
+  internalErrorMessage,
 
   -- * Type rewriting
   JsonRpcEndpoint,
@@ -111,17 +116,32 @@ data JsonRpcErr e = JsonRpcErr
 parseErrorCode :: Int
 parseErrorCode = -32700
 
+parseErrorMessage :: String
+parseErrorMessage = "Parse error"
+
 invalidRequestCode :: Int
 invalidRequestCode = -32600
+
+invalidRequestMessage :: String
+invalidRequestMessage = "Invalid request"
 
 methodNotFoundCode :: Int
 methodNotFoundCode = -32601
 
+methodNotFoundMessage :: String
+methodNotFoundMessage = "Method not found"
+
 invalidParamsCode :: Int
 invalidParamsCode = -32602
 
+invalidParamsMessage :: String
+invalidParamsMessage = "Invalid params"
+
 internalErrorCode :: Int
 internalErrorCode = -32603
+
+internalErrorMessage :: String
+internalErrorMessage = "Internal error"
 
 instance (FromJSON e, FromJSON r) => FromJSON (JsonRpcResponse e r) where
   parseJSON = withObject "Response" $ \obj -> do
