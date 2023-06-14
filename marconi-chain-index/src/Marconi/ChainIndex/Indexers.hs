@@ -50,7 +50,7 @@ import Control.Exception (Exception, catch)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
-import Control.Monad (forever, void, when)
+import Control.Monad (forM_, forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.Functor (($>))
@@ -417,6 +417,7 @@ mintBurnWorker_
   :: SecurityParam
   -> (MintBurn.MintBurnIndexer -> IO ())
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  -- ^ Target assets to filter for
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
@@ -442,6 +443,7 @@ mintBurnWorker_ securityParam callback mAssets Coordinator{_barrier, _errorVar} 
 mintBurnWorker
   :: (MintBurn.MintBurnIndexer -> IO ())
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  -- ^ Target assets to filter for
   -> Worker
 mintBurnWorker callback mAssets securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
@@ -480,11 +482,9 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
     initial = pure coordinator
 
     indexersHealthCheck :: Coordinator' a -> IO ()
-    indexersHealthCheck Coordinator{_errorVar} = do
-      err <- tryReadMVar _errorVar
-      case err of
-        Nothing -> pure ()
-        Just e -> throw e
+    indexersHealthCheck c = do
+      err <- tryReadMVar (c ^. errorVar)
+      forM_ err throw
 
     blockAfterChainPoint C.ChainPointAtGenesis _bim = True
     blockAfterChainPoint (C.ChainPoint slotNo' _) bim = f bim > slotNo'

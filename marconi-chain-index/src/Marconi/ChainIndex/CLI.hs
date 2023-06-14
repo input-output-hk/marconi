@@ -20,6 +20,7 @@ import System.FilePath ((</>))
 
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
+import Control.Monad (guard)
 import Data.List.NonEmpty qualified as NonEmpty
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
@@ -32,6 +33,9 @@ import Marconi.ChainIndex.Types (
   utxoDbName,
  )
 
+{- | Allow the user to set a starting point for indexing the user needs to provide both
+ a @BlockHeaderHash@ (encoded in RawBytesHex) and a @SlotNo@ (a natural number).
+-}
 chainPointParser :: Opt.Parser C.ChainPoint
 chainPointParser =
   pure C.ChainPointAtGenesis Opt.<|> (C.ChainPoint <$> slotNoParser <*> blockHeaderHashParser)
@@ -96,14 +100,14 @@ multiAddresses desc = NonEmpty.fromList . concat <$> some single
     single :: Opt.Parser [C.Address C.ShelleyAddr]
     single = Opt.option (Opt.str <&> parseCardanoAddresses) desc
 
-parseCardanoAddresses :: String -> [C.Address C.ShelleyAddr]
-parseCardanoAddresses =
-  nub
-    . fromEitherWithError
-    . traverse (deserializeToCardano . Text.pack)
-    . words
-  where
-    deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
+    parseCardanoAddresses :: String -> [C.Address C.ShelleyAddr]
+    parseCardanoAddresses =
+      nub
+        . fromEitherWithError
+        . traverse (deserializeToCardano . Text.pack)
+        . words
+      where
+        deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
 
 {- | This executable is meant to exercise a set of indexers (for now datumhash -> datum)
      against the mainnet (meant to be used for testing).
@@ -209,10 +213,9 @@ scriptTxDbPath o =
     else Just (optionsDbPath o </> scriptTxDbName)
 
 epochStateDbPath :: Options -> Maybe FilePath
-epochStateDbPath o =
-  if optionsDisableEpochState o
-    then Nothing
-    else Just (optionsDbPath o </> epochStateDbName)
+epochStateDbPath o = do
+  guard $ optionsDisableEpochState o
+  pure $ optionsDbPath o </> epochStateDbName
 
 mintBurnDbPath :: Options -> Maybe FilePath
 mintBurnDbPath o =
@@ -230,6 +233,7 @@ commonSocketPath =
       <> Opt.help "Path to node socket."
       <> Opt.metavar "FILE-PATH"
 
+-- | Root directory for the SQLite storage of all the indexers
 commonDbDir :: Opt.Parser String
 commonDbDir =
   Opt.strOption $
@@ -259,6 +263,9 @@ commonMaybePort =
         <> Opt.metavar "HTTP-PORT"
         <> Opt.help "JSON-RPC http port number, default is port 3000."
 
+{- | Parse the addresses to index. Addresses should be ginev in Bech32 format
+ Several addresses can be given in a single string, if they are separated by a space
+-}
 commonMaybeTargetAddress :: Opt.Parser (Maybe TargetAddresses)
 commonMaybeTargetAddress =
   Opt.optional $
@@ -270,6 +277,12 @@ commonMaybeTargetAddress =
           "Bech32 Shelley addresses to index. \
           \ i.e \"--address-to-index address-1 --address-to-index address-2 ...\""
 
+{- | Parse target assets, both the @PolicyId@ and the @AssetName@ are expected to be in their
+ RawBytesHex representation, they must be separated by a comma.
+ The asset name can be omited, if it is the case, any asset with the expected policy ID will
+ be matched.
+ Several assets can be given in a single string if you separate them with a space.
+-}
 commonMaybeTargetAsset :: Opt.Parser (Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
 commonMaybeTargetAsset =
   let assetPair
@@ -284,6 +297,7 @@ commonMaybeTargetAsset =
               "Asset to index, defined by the policy id and the asset name\
               \ i.e \"--match-asset-id assetname-1,policy-id-1 --match-asset-id policy-id-2 ...\""
 
+-- | Asset parser, see @commonMaybeTargetAsset@ for more info.
 parseAsset :: Text -> Opt.ReadM (C.PolicyId, Maybe C.AssetName)
 parseAsset arg = do
   let parseAssetName :: Text -> Opt.ReadM C.AssetName
@@ -299,6 +313,7 @@ parseAsset arg = do
     _other ->
       fail $ "Invalid format: expected POLICY_ID[,ASSET_NAME]. Got " <> Text.unpack arg
 
+-- | Allow the user to specify how deep must be a block before we index it.
 commonMinIndexingDepth :: Opt.Parser IndexingDepth
 commonMinIndexingDepth =
   let maxIndexingDepth =
