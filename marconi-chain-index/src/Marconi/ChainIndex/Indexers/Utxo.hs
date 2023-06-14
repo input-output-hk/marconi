@@ -94,7 +94,11 @@ import Database.SQLite.Simple (
  )
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (returnError)
-import Database.SQLite.Simple.FromRow (FromRow (fromRow), field, fieldWith)
+import Database.SQLite.Simple.FromRow (
+  FromRow (fromRow),
+  field,
+  fieldWith,
+ )
 import Database.SQLite.Simple.ToField (ToField (toField), toField)
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
@@ -777,7 +781,7 @@ instance Buffered UtxoHandle where
       pure h
 
   getStoredEvents :: UtxoHandle -> StorableMonad UtxoHandle [StorableEvent UtxoHandle]
-  getStoredEvents (UtxoHandle _ _ _) = error "!!! This Buffered class method will be removed"
+  getStoredEvents (UtxoHandle{}) = error "!!! This Buffered class method will be removed"
 
 sqliteQuery :: FromRow r => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
 sqliteQuery c (filters, params) maybeMore = SQL.queryNamed c query params

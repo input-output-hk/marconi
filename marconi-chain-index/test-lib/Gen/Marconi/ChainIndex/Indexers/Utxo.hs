@@ -5,10 +5,9 @@ module Gen.Marconi.ChainIndex.Indexers.Utxo (
   genUtxoEvents,
   genShelleyEraUtxoEvents,
   genUtxoEventsWithTxs,
-  genTxBodyContentFromTxIns,
-  genTxBodyContentFromTxinsWihtPhase2Validation,
-  genTx,
-  genTx',
+  genUtxoEventsWithTxs',
+  Gen.genTxBodyContentFromTxIns,
+  Gen.genTxBodyContentFromTxInsWithPhase2Validation,
 ) where
 
 import Cardano.Api qualified as C
@@ -23,10 +22,8 @@ import GHC.Generics (Generic)
 import Gen.Marconi.ChainIndex.Mockchain (
   BlockHeader (BlockHeader),
   MockBlock (MockBlock),
-  genMockchain,
-  genTxBodyContentFromTxIns,
-  genTxBodyContentFromTxinsWihtPhase2Validation,
  )
+import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Hedgehog (Gen)
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
@@ -53,8 +50,13 @@ genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs
    * for any spent tx output, there must be a UTXO created in a previous event
 -}
 genUtxoEventsWithTxs :: Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
-genUtxoEventsWithTxs = do
-  fmap (\block -> (getStorableEventFromBlock block, block)) <$> genMockchain
+genUtxoEventsWithTxs = genUtxoEventsWithTxs' Gen.genTxBodyContentFromTxIns
+
+genUtxoEventsWithTxs'
+  :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra))
+  -> Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
+genUtxoEventsWithTxs' genTxBodyContent = do
+  fmap (\block -> (getStorableEventFromBlock block, block)) <$> Gen.genMockchainWithTxBodyGen genTxBodyContent
   where
     getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
     getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash blockNo) txs) =
@@ -150,21 +152,3 @@ genShelleyEraUtxoEvents = do
       a <- CGen.genAddressShelley
       pure $ utxo{_address = C.toAddressAny a}
     pure event{Utxo.ueUtxos = Set.fromList us}
-
-{- | Generate Cardano TX
- This generator may be used phase2-validation test cases
--}
-genTx :: Gen (C.Tx C.BabbageEra)
-genTx = genTx' genTxBodyContentFromTxinsWihtPhase2Validation
-
-{- | Generate Cardano TX
- Given a TxBodyContent generator, generate a Cardano TX
--}
-genTx'
-  :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra))
-  -> Gen (C.Tx C.BabbageEra)
-genTx' gen = do
-  txIn <- CGen.genTxIn
-  txBodyContent <- gen [txIn]
-  txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
-  pure $ C.makeSignedTransaction [] txBody
