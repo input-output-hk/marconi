@@ -47,7 +47,7 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
    * for any spent tx output, there must be a UTXO created in a previous event
 -}
 genUtxoEvents :: Gen [StorableEvent UtxoHandle]
-genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs' convertTxOutToUtxo
+genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs
 
 {- | Generates a list of UTXO events, along with the list of transactions that generated each of
  them.
@@ -58,12 +58,7 @@ genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs' convertTxOutToUtxo
    * for any spent tx output, there must be a UTXO created in a previous event
 -}
 genUtxoEventsWithTxs :: Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
-genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
-
-genUtxoEventsWithTxs'
-  :: (C.TxId -> TxIndexInBlock -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
-  -> Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
-genUtxoEventsWithTxs' txOutToUtxo = do
+genUtxoEventsWithTxs = do
   fmap (\block -> (getStorableEventFromBlock block, block)) <$> genMockchain
   where
     getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
@@ -90,7 +85,7 @@ genUtxoEventsWithTxs' txOutToUtxo = do
             $ fmap
               ( \(txIx, txOut) ->
                   ( C.TxIn txId (C.TxIx txIx)
-                  , txOutToUtxo txId txIndexInBlock (C.TxIx txIx) txOut
+                  , convertTxOutToUtxo txId txIndexInBlock (C.TxIx txIx) txOut
                   )
               )
             $ zip [0 ..]
@@ -131,7 +126,7 @@ txOutBalanceFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
 
 convertTxOutToUtxo :: C.TxId -> TxIndexInBlock -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo
 convertTxOutToUtxo txid txIndexInBlock txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum refScript) =
-  let (scriptDataHash, scriptData) =
+  let (scriptDataHash, _scriptData) =
         case txOutDatum of
           C.TxOutDatumNone -> (Nothing, Nothing)
           C.TxOutDatumHash _ dh -> (Just dh, Nothing)
@@ -145,39 +140,21 @@ convertTxOutToUtxo txid txIndexInBlock txix (C.TxOut (C.AddressInEra _ addr) val
    in Utxo
         (C.toAddressAny addr)
         (C.TxIn txid txix)
-        (C.getScriptData <$> scriptData)
         scriptDataHash
         (C.txOutValueToValue val)
         script
         scriptHash
         txIndexInBlock
 
-{- | Override the Utxo address with ShelleyEra address
- This is used to generate ShelleyEra Utxo events
--}
-utxoAddressOverride
-  :: C.Address C.ShelleyAddr
-  -> Utxo
-  -> Utxo
-utxoAddressOverride addr utxo = utxo{_address = C.toAddressAny addr}
-
--- | Generate ShelleyEra Utxo Events
+-- | Generate Utxo events with Shelley ero addresses
 genShelleyEraUtxoEvents :: Gen [StorableEvent Utxo.UtxoHandle]
 genShelleyEraUtxoEvents = do
   events <- genUtxoEvents
-  forM
-    events
-    ( \e -> do
-        let utxos = Utxo.ueUtxos e
-        us <-
-          forM
-            (Set.toList utxos)
-            ( \u -> do
-                a <- CGen.genAddressShelley
-                pure $ utxoAddressOverride a u
-            )
-        pure e{Utxo.ueUtxos = Set.fromList us}
-    )
+  forM events $ \event -> do
+    us <- forM (Set.toList $ Utxo.ueUtxos event) $ \utxo -> do
+      a <- CGen.genAddressShelley
+      pure $ utxo{_address = C.toAddressAny a}
+    pure event{Utxo.ueUtxos = Set.fromList us}
 
 {- | Generate Cardano TX
  This generator may be used phase2-validation test cases

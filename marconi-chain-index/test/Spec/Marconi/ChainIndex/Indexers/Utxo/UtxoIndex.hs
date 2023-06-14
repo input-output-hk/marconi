@@ -17,6 +17,7 @@ import Control.Lens (
 import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
+import Data.Either (partitionEithers)
 import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
 import Data.List qualified as List
@@ -24,6 +25,7 @@ import Data.List.NonEmpty (nonEmpty)
 import Data.Map (Map)
 import Data.Map qualified
 import Data.Maybe (
+  fromJust,
   fromMaybe,
   isJust,
   isNothing,
@@ -182,8 +184,7 @@ allQueryUtxosShouldBeUnspent = property $ do
         =
         List.nub
           . fmap
-            ( Utxo.QueryUtxoByAddressWrapper
-                . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
+            ( flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
                 . view Utxo.address
             )
           . concatMap (Set.toList . Utxo.ueUtxos)
@@ -228,18 +229,17 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
           $ events
       addressQueries :: C.SlotNo -> [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
       addressQueries sn =
-        Utxo.QueryUtxoByAddressWrapper
-          . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual sn)
+        flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual sn)
           <$> allAddresses
   indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries upperBound
   let getResult = \case
         Utxo.UtxoResult rs -> rs
         Utxo.LastSyncPointResult _ -> []
-      retrievedUtxoRows :: [Utxo.UtxoResult] = concatMap getResult results
+      utxoResults :: [Utxo.UtxoResult] = concatMap getResult results
       txinsFromRetrievedUtsoRows :: [C.TxIn] -- get all the TxIn from quried UtxoRows
         =
-        map Utxo.utxoResultTxIn retrievedUtxoRows
+        map Utxo.utxoResultTxIn utxoResults
 
       getAlreadySpent :: StorableEvent Utxo.UtxoHandle -> [C.TxIn]
       getAlreadySpent (Utxo.UtxoEvent _ ins cp _) =
@@ -247,34 +247,47 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
           then Map.keys ins
           else []
 
-      getFutureSpent :: StorableEvent Utxo.UtxoHandle -> Set.Set C.TxIn
-      getFutureSpent (Utxo.UtxoEvent _ ins cp _) =
-        if maybe False (upperBound <) $ C.chainPointToSlotNo cp
-          then Map.keysSet ins
-          else mempty
-
-      txInsFromGeneratedEvents :: [C.TxIn] -- get all the TxIn from quried UtxoRows
-        =
-        foldMap getAlreadySpent events
-
-      futureSpentHasSpentTxId :: Utxo.UtxoResult -> Bool
-      futureSpentHasSpentTxId u =
-        let futureSpents = foldMap getFutureSpent events
-            txin = Utxo.utxoResultTxIn u
-         in txin `Set.notMember` futureSpents || isJust (Utxo.utxoResultSpentInfo u)
+      -- Take only the txins that are in the future with regarding to upperBound:
+      txInsFromGeneratedEvents :: [C.TxIn]
+      txInsFromGeneratedEvents =
+        foldMap getAlreadySpent $
+          filter (\event -> upperBound < (fromJust $ maybeSlotNo $ Utxo.ueChainPoint event)) events
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
-  -- when retrievedUtxoRows is an empty list
+  -- when utxoResults is an empty list
   Hedgehog.footnote
     "Regression test must return at least one Utxo. Utxo's may not have any Spent in the Orig. event"
-  Hedgehog.assert (not . null $ retrievedUtxoRows)
+  Hedgehog.assert (not . null $ utxoResults)
 
-  -- There should be no `Spent` in the retrieved UtxoRows
+  -- No retrieved utxo should be spent by upperBound if it's spent after that
   traverse_ (Hedgehog.assert . flip notElem txInsFromGeneratedEvents) txinsFromRetrievedUtsoRows
 
-  -- Should have spent
-  traverse_ (Hedgehog.assert . futureSpentHasSpentTxId) retrievedUtxoRows
+  let allSpent = flip map events $ \(Utxo.UtxoEvent _ ins cp _) ->
+        if fromJust (maybeSlotNo cp) > upperBound
+          then Left $ Map.keysSet ins
+          else Right $ Map.keysSet ins
+
+      (futureSpent', currentSpent') = partitionEithers allSpent
+      futureSpent = mconcat futureSpent'
+      currentSpent = mconcat currentSpent'
+
+      correctSpentInfo :: Utxo.UtxoResult -> Bool
+      correctSpentInfo utxoResult = case Utxo.utxoResultSpentInfo utxoResult of
+        Nothing ->
+          Utxo.utxoResultTxIn utxoResult `Set.notMember` futureSpent
+            && Utxo.utxoResultTxIn utxoResult `Set.notMember` currentSpent
+        Just spentInfo ->
+          if Utxo._siSlotNo spentInfo > upperBound
+            then Utxo.utxoResultTxIn utxoResult `Set.member` futureSpent
+            else Utxo.utxoResultTxIn utxoResult `Set.member` currentSpent
+
+  Hedgehog.assert $ all correctSpentInfo utxoResults
+  where
+    maybeSlotNo :: C.ChainPoint -> Maybe C.SlotNo
+    maybeSlotNo = \case
+      C.ChainPoint slotNo _ -> Just slotNo
+      C.ChainPointAtGenesis -> Nothing
 
 {- |
   The property verifies that we
@@ -403,16 +416,16 @@ propSaveAndRetrieveUtxoEvents = property $ do
   let getResult = \case
         Utxo.UtxoResult rs -> rs
         Utxo.LastSyncPointResult _ -> []
-      rowsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
-      fromStorageTxIns :: [C.TxIn] =
-        map Utxo.utxoResultTxIn rowsFromStorage
-      fromEventsTxIns :: [C.TxIn] =
-        concatMap (\(Utxo.UtxoEvent _ ins _ _) -> Map.keys ins) events
+      resultsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
+      fromStorageTxIns :: Set.Set C.TxIn =
+        Set.fromList $ map Utxo.utxoResultTxIn resultsFromStorage
+      fromEventsTxIns :: Set.Set C.TxIn =
+        Set.fromList $ map Utxo._txIn $ concatMap (\(Utxo.UtxoEvent utxoSet _ _ _) -> Set.toList utxoSet) events
 
   -- A property of the generator is that there is at least one unspent transaction
-  Hedgehog.assert (not . null $ rowsFromStorage)
+  Hedgehog.assert (not . null $ resultsFromStorage)
   -- The result set should only contain `unspent` utxos
-  Hedgehog.assert $ and [u `notElem` fromEventsTxIns | u <- fromStorageTxIns]
+  fromStorageTxIns === fromEventsTxIns
 
 ---------------------------------------------------------------------
 -- TODO --
@@ -703,6 +716,6 @@ mkUtxoQueries events slotInterval =
       qAddresses =
         Set.toList
           . Set.fromList
-          . concatMap (\e -> Utxo.ueUtxos e ^.. folded . Utxo.address)
+          . concatMap (\(Utxo.UtxoEvent utxoSet _ _ _) -> map Utxo._address $ Set.toList utxoSet)
           $ events
-   in fmap (Utxo.QueryUtxoByAddressWrapper . flip Utxo.QueryUtxoByAddress slotInterval) qAddresses
+   in fmap (flip Utxo.QueryUtxoByAddress slotInterval) qAddresses
