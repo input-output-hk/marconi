@@ -100,14 +100,15 @@ multiAddresses desc = NonEmpty.fromList . concat <$> some single
     single :: Opt.Parser [C.Address C.ShelleyAddr]
     single = Opt.option (Opt.str <&> parseCardanoAddresses) desc
 
+    deserializeToCardano :: Text -> Either C.Bech32DecodeError (C.Address C.ShelleyAddr)
+    deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
+
     parseCardanoAddresses :: String -> [C.Address C.ShelleyAddr]
     parseCardanoAddresses =
       nub
         . fromEitherWithError
         . traverse (deserializeToCardano . Text.pack)
         . words
-      where
-        deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
 
 {- | This executable is meant to exercise a set of indexers (for now datumhash -> datum)
      against the mainnet (meant to be used for testing).
