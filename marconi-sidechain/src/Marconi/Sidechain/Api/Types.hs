@@ -44,7 +44,7 @@ data CliArgs = CliArgs
   -- ^ Required depth of a block before it is indexed
   , targetAddresses :: !(Maybe TargetAddresses)
   -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
-  , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, C.AssetName)))
+  , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   -- ^ a list of asset to track
   }
   deriving (Show)
