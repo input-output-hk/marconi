@@ -150,7 +150,7 @@ propTxInWhenPhase2ValidationFails :: Property
 propTxInWhenPhase2ValidationFails = property $ do
   tx@(C.Tx (C.TxBody C.TxBodyContent{..}) _) <- forAll genTxWithCollateral
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo
-  let event :: Core.TimedEvent Utxo.UtxoEvent = Utxo.getUtxoEvents Nothing [tx] cp
+  let event :: Core.TimedEvent Utxo.UtxoEvent = Core.TimedEvent cp $ Utxo.getUtxoEvents Nothing [tx]
       computedTxins :: [C.TxIn]
       computedTxins = Set.toList $ Set.map Utxo.unSpent (event ^. Core.event . Utxo.ueInputs)
       expectedTxins :: [C.TxIn] = fmap fst txIns
@@ -419,10 +419,9 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       isNothing expectedAddresses
     let actualTimedUtxoEvents :: Core.TimedEvent Utxo.UtxoEvent
         actualTimedUtxoEvents =
-          Utxo.getUtxoEvents
-            expectedAddresses
-            txs
+          Core.TimedEvent
             (expectedTimedUtxoEvent ^. Core.point)
+            $ Utxo.getUtxoEvents expectedAddresses txs
     let -- (expectedTimedUtxoEvent ^. Core.event . Utxo.ueUtxos)
         filteredExpectedUtxoEvent :: Core.TimedEvent Utxo.UtxoEvent
         filteredExpectedUtxoEvent =
