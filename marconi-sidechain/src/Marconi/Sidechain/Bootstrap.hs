@@ -32,7 +32,7 @@ import System.FilePath ((</>))
 initializeSidechainEnv
   :: Maybe Port
   -> Maybe TargetAddresses
-  -> Maybe (NonEmpty (C.PolicyId, C.AssetName))
+  -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> IO SidechainEnv
 initializeSidechainEnv maybePort targetAddresses targetAssets = do
   let httpsettings = maybe defaultSettings (flip setPort defaultSettings) maybePort

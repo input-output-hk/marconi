@@ -34,7 +34,7 @@ import Marconi.Sidechain.Utils (writeTMVar)
  The main issue we try to avoid here is mixing inserts and quries in SQLite to avoid locking the database
 -}
 initializeEnv
-  :: Maybe (NonEmpty (C.PolicyId, C.AssetName))
+  :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> IO MintBurnIndexerEnv
   -- ^ returns Query runtime environment
 initializeEnv targets = do

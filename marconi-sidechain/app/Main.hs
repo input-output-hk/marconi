@@ -4,7 +4,7 @@ module Main where
 
 import Control.Concurrent.Async (race_)
 import Marconi.Sidechain.Api.HttpServer qualified as Http
-import Marconi.Sidechain.Api.Types (CliArgs (CliArgs, httpPort, targetAddresses))
+import Marconi.Sidechain.Api.Types (CliArgs (CliArgs, httpPort, targetAddresses, targetAssets))
 import Marconi.Sidechain.Bootstrap (bootstrapIndexers, initializeSidechainEnv)
 import Marconi.Sidechain.CLI (parseCli)
 

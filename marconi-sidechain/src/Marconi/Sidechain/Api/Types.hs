@@ -77,7 +77,7 @@ newtype EpochStateIndexerEnv = EpochStateIndexerEnv
   }
 
 data MintBurnIndexerEnv = MintBurnIndexerEnv
-  { _mintBurnIndexerEnvTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, C.AssetName)))
+  { _mintBurnIndexerEnvTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   , _mintBurnIndexerEnvIndexer :: TMVar (State MintBurnHandle)
   }
 
