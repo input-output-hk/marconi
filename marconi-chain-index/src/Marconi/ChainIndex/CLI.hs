@@ -294,11 +294,11 @@ commonMaybeTargetAsset =
    in Opt.optional $
         (fmap (NonEmpty.fromList . concat) . some . assetPair) $
           Opt.long "match-asset-id"
-            <> Opt.metavar "POLICY_ID[,ASSET_NAME]"
+            <> Opt.metavar "POLICY_ID[.ASSET_NAME]"
             <> Opt.help
               "Asset to index, defined by the policy id and an optional asset name\
-              \ i.e \"--match-asset-id assetname-1,policy-id-1 --match-asset-id policy-id-2 ...\"\
-              \ or \"--match-asset-id \"assetname-1,policy-id-1 policy-id-2\" ...\""
+              \ i.e \"--match-asset-id assetname-1.policy-id-1 --match-asset-id policy-id-2 ...\"\
+              \ or \"--match-asset-id \"assetname-1.policy-id-1 policy-id-2\" ...\""
 
 -- | Asset parser, see @commonMaybeTargetAsset@ for more info.
 parseAsset :: Text -> Opt.ReadM (C.PolicyId, Maybe C.AssetName)
@@ -308,7 +308,7 @@ parseAsset arg = do
 
       parsePolicyId :: Text -> Opt.ReadM C.PolicyId
       parsePolicyId = either (fail . show) pure . C.deserialiseFromRawBytesHex C.AsPolicyId . Text.encodeUtf8
-  case Text.splitOn "," arg of
+  case Text.splitOn "." arg of
     [rawPolicyId, rawAssetName] ->
       (,) <$> parsePolicyId rawPolicyId <*> (Just <$> parseAssetName rawAssetName)
     [rawPolicyId] ->

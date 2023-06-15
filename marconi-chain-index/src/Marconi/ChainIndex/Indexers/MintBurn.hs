@@ -54,7 +54,6 @@ import Data.Text qualified as Text
 import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
-import Debug.Trace qualified
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
