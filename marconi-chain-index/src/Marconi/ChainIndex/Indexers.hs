@@ -437,6 +437,7 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
               updateWith indexerMVar (c ^. errorVar) $
                 Storable.insert $
                   MintBurn.MintBurnEvent event'
+            -- we only send callback if an event with assets is indexed
             unless
               (null $ MintBurn.txMintEventTxAssets event')
               (void $ readMVar indexerMVar >>= callback)
