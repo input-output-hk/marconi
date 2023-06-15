@@ -2,9 +2,16 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use fewer imports" #-}
 
 module Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex (tests) where
 
+import Cardano.Api qualified as C
+import Cardano.Slotting.Slot (
+  WithOrigin (At, Origin),
+ )
 import Control.Lens (filtered, folded, toListOf, view, (^.), (^..))
 import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
@@ -18,30 +25,25 @@ import Data.Map qualified
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Set qualified as Set
-
-import Cardano.Api (chainPointToSlotNo)
-import Cardano.Api qualified as C
-import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents, genTx, genUtxoEvents)
 import Gen.Marconi.ChainIndex.Indexers.Utxo qualified as UtxoGen
 import Gen.Marconi.ChainIndex.Mockchain (MockBlock (mockBlockChainPoint, mockBlockTxs))
-import Gen.Marconi.ChainIndex.Types (genBlockNo, genChainPoint, genChainPoints)
+import Gen.Marconi.ChainIndex.Types qualified as Gen
+import Hedgehog (Gen, Property, cover, forAll, property, (/==), (===))
+import Hedgehog qualified
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import Helpers (addressAnyToShelley)
 import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers.Utxo (
   BlockInfo (BlockInfo),
-  StorableEvent (ueChainPoint, ueInputs, ueUtxos),
+  StorableEvent (ueBlockInfo, ueInputs, ueUtxos),
   StorableQuery (LastSyncedBlockInfoQuery),
   StorableResult (LastSyncedBlockInfoResult),
  )
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses, UtxoIndexerConfig (UtxoIndexerConfig), ucEnableUtxoTxOutRef, ucTargetAddresses)
 import Marconi.Core.Storable qualified as Storable
-
-import Hedgehog (Gen, Property, cover, forAll, property, (/==), (===))
-import Hedgehog qualified
-import Hedgehog.Gen qualified as Gen
-import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -80,7 +82,7 @@ tests =
     , testPropertyNamed
         "Supress saving Utxo inLineScript and inLineScriptHash"
         "supressSavingInlineScriptAndInlineScriptHash"
-        supressSavingInlineScriptAndInlineScriptHash
+        propSupressSavingInlineScriptAndInlineScriptHash
     , testPropertyNamed
         "Roundtrip save and retrieve from storage store property"
         "propSaveToAndRetrieveFromUtxoInMemoryStore"
@@ -156,7 +158,7 @@ allQueryUtxosShouldBeUnspent = property $ do
   -- It is crtical that we perform NO vacuum.
   -- With depth at such small numbers, the likelihood of SQLite vaccume is almost certain in
   indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
-  let upperBound = maximum $ mapMaybe (chainPointToSlotNo . ueChainPoint) events
+  let upperBound = maximum $ fmap (Utxo._blockInfoSlotNo . ueBlockInfo) events
       addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
         =
         List.nub
@@ -177,7 +179,7 @@ allQueryUtxosShouldBeUnspent = property $ do
         view (Utxo.urUtxo . Utxo.txIn) <$> retrievedUtxoRows
       txInsFromGeneratedEvents :: [C.TxIn] -- get all the TxIn from quried UtxoRows
         =
-        concatMap (\(Utxo.UtxoEvent _ ins _ _) -> Map.keys ins) events
+        concatMap (\(Utxo.UtxoEvent _ ins _) -> Map.keys ins) events
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
@@ -197,7 +199,7 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
   depth <- forAll $ Gen.int (Range.constantFrom (numOfEvents - 1) 1 (numOfEvents + 1))
   Hedgehog.classify "Query both in-memory and storage " $ depth <= numOfEvents
   Hedgehog.classify "Query in-memory only" $ depth > numOfEvents
-  let slots = mapMaybe (chainPointToSlotNo . ueChainPoint) events
+  let slots = fmap (Utxo._blockInfoSlotNo . ueBlockInfo) events
 
   upperBound <- forAll $ Gen.element slots
   let allAddresses =
@@ -221,14 +223,14 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
         view (Utxo.urUtxo . Utxo.txIn) <$> retrievedUtxoRows
 
       getAlreadySpent :: StorableEvent Utxo.UtxoHandle -> [C.TxIn]
-      getAlreadySpent (Utxo.UtxoEvent _ ins cp _) =
-        if maybe False (upperBound >=) $ C.chainPointToSlotNo cp
+      getAlreadySpent (Utxo.UtxoEvent _ ins bi) =
+        if upperBound >= Utxo._blockInfoSlotNo bi
           then Map.keys ins
           else []
 
       getFutureSpent :: StorableEvent Utxo.UtxoHandle -> Set.Set C.TxIn
-      getFutureSpent (Utxo.UtxoEvent _ ins cp _) =
-        if maybe False (upperBound <) $ C.chainPointToSlotNo cp
+      getFutureSpent (Utxo.UtxoEvent _ ins bi) =
+        if upperBound < Utxo._blockInfoSlotNo bi
           then Map.keysSet ins
           else mempty
 
@@ -264,15 +266,16 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
 propTxInWhenPhase2ValidationFails :: Property
 propTxInWhenPhase2ValidationFails = property $ do
   tx@(C.Tx (C.TxBody C.TxBodyContent{..}) _) <- forAll genTx
-  cp <- forAll genChainPoint
-  bn <- forAll genBlockNo
-  let utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
-      event :: StorableEvent Utxo.UtxoHandle
-      event = Utxo.getUtxoEvents utxoIndexerConfig [tx] cp bn
-      computedTxins :: [C.TxIn]
-      computedTxins = fmap (view Utxo.sTxIn) . Utxo.getSpentFrom $ event
-      expectedTxins :: [C.TxIn]
-      expectedTxins = fmap fst txIns
+  slotNo@(C.SlotNo sn) <- forAll Gen.genSlotNo
+  bhh <- forAll Gen.genHashBlockHeader
+  let blockInfo = BlockInfo slotNo bhh (C.BlockNo sn) 0 1
+      utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
+      event :: StorableEvent Utxo.UtxoHandle = Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo
+      computedTxins :: [C.TxIn] =
+        fmap (view Utxo.sTxIn)
+          . Utxo.getSpentFrom
+          $ event
+      expectedTxins :: [C.TxIn] = fmap fst txIns
 
   case txScriptValidity of
     -- this is the same as script is valid, see https://github.com/input-output-hk/cardano-node/pull/4569
@@ -332,14 +335,12 @@ propRoundTripEventsToRowConversion = property $ do
       f :: C.SlotNo -> IO (Map C.TxIn C.TxId)
       f sn = pure $ fromMaybe Map.empty (Data.Map.lookup sn txInsMap)
       g :: StorableEvent Utxo.UtxoHandle -> [(C.SlotNo, Map C.TxIn C.TxId)]
-      g (Utxo.UtxoEvent _ ins (C.ChainPoint sn _) _) = [(sn, ins)]
-      g _ = []
+      g (Utxo.UtxoEvent _ ins bi) = [(Utxo._blockInfoSlotNo bi, ins)]
 
-      postGenesisEvents = filter (\e -> C.ChainPointAtGenesis /= Utxo.ueChainPoint e) events
       rows :: [Utxo.UtxoRow]
-      rows = concatMap Utxo.eventToRows postGenesisEvents
+      rows = concatMap Utxo.eventToRows events
   computedEvent <- liftIO . Utxo.rowsToEvents f $ rows
-  Set.fromList computedEvent === Set.fromList postGenesisEvents
+  Set.fromList computedEvent === Set.fromList events
 
 {- |
     Insert Utxo events in storage, and retreive the events
@@ -391,7 +392,7 @@ propSaveAndRetrieveUtxoEvents = property $ do
       fromStorageTxIns :: [C.TxIn] =
         view (Utxo.urUtxo . Utxo.txIn) <$> rowsFromStorage
       fromEventsTxIns :: [C.TxIn] =
-        concatMap (\(Utxo.UtxoEvent _ ins _ _) -> Map.keys ins) events
+        concatMap (\(Utxo.UtxoEvent _ ins _) -> Map.keys ins) events
 
   -- A property of the generator is that there is at least one unspent transaction
   Hedgehog.assert (not . null $ rowsFromStorage)
@@ -415,12 +416,17 @@ propSaveAndRetrieveUtxoEvents = property $ do
 propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll :: Property
 propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 7 5 20
-  chainPoints :: [C.ChainPoint] <- forAll $ genChainPoints 2 highSlotNo
-  events :: [StorableEvent Utxo.UtxoHandle] <- forAll $ forM chainPoints genEventWithShelleyAddressAtChainPoint <&> concat
+  upperBoundSlotNo <- forAll $ Gen.word64 (Range.linear 2 highSlotNo)
+  blockInfos <- forAll $ forM [1 .. upperBoundSlotNo] $ \slotNo -> do
+    BlockInfo (C.SlotNo slotNo)
+      <$> Gen.genHashBlockHeader
+      <*> pure (C.BlockNo slotNo)
+      <*> pure 0
+      <*> pure 1
+  events :: [StorableEvent Utxo.UtxoHandle] <- forAll $ forM blockInfos genEventWithShelleyAddressAtChainPoint <&> concat
   h <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth 1) False -- don't vacuum sqlite
   indexer <- liftIO $ raiseException $ Storable.insertMany events h
-  upperSlotNo <- maybe Hedgehog.failure pure (getSlot . maximum $ chainPoints)
-  let upperIntervalQuery = mkUtxoQueries events (Utxo.LessThanOrEqual upperSlotNo)
+  let upperIntervalQuery = mkUtxoQueries events (Utxo.LessThanOrEqual $ C.SlotNo upperBoundSlotNo)
       maxIntervalQuery =
         mkUtxoQueries
           events
@@ -456,31 +462,38 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
 propUtxoQueryByAddressAndSlotInterval :: Property
 propUtxoQueryByAddressAndSlotInterval = property $ do
   highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 10 8 15
-  chainPoints :: [C.ChainPoint] <- forAll $ genChainPoints 5 highSlotNo
+  Hedgehog.footnote $ "highSlotNo: " <> show highSlotNo
+  upperBoundSlotNo <- forAll $ Gen.word64 (Range.linear 5 highSlotNo)
+  Hedgehog.footnote $ "upperBoundSlotNo: " <> show upperBoundSlotNo
+  blockInfos <- forAll $ forM [1 .. upperBoundSlotNo] $ \slotNo -> do
+    BlockInfo (C.SlotNo slotNo)
+      <$> Gen.genHashBlockHeader
+      <*> pure (C.BlockNo slotNo)
+      <*> pure 0
+      <*> pure 1
   forM_
-    chainPoints
-    ( \cp -> do
+    blockInfos
+    ( \blockInfo -> do
         events :: [StorableEvent Utxo.UtxoHandle] <-
-          forAll $ genEventWithShelleyAddressAtChainPoint cp
+          forAll $ genEventWithShelleyAddressAtChainPoint blockInfo
         indexer <-
           liftIO $
             raiseException $
               Utxo.open ":memory:" (Utxo.Depth 1) False
                 >>= Storable.insertMany events
-        let
-        upperBoundSlotNo@(C.SlotNo upperBoundSlotNoWord) <-
-          maybe Hedgehog.failure pure $ getSlot cp
 
-        upperBoundInterval <- Hedgehog.evalEither (Utxo.interval Nothing upperBoundSlotNo)
+        upperBoundInterval <- Hedgehog.evalEither (Utxo.interval Nothing (C.SlotNo upperBoundSlotNo))
         let upperBoundIntervalQuery :: [StorableQuery Utxo.UtxoHandle]
             upperBoundIntervalQuery = mkUtxoQueries events upperBoundInterval
 
         -- pick a random slotNo less than highPoint
+        let C.SlotNo maxLowerBoundSlotNo = Utxo._blockInfoSlotNo blockInfo
         lowerBoundSlotNo <-
-          fmap C.SlotNo $ forAll $ Gen.word64 $ Range.linear 0 upperBoundSlotNoWord
+          fmap C.SlotNo $ forAll $ Gen.word64 $ Range.linear 0 maxLowerBoundSlotNo
 
+        -- set queryInterval for the open interval [lowerBoundSlotno, upperBoundSlotNo]
         slotnoIntervalOpen <-
-          Hedgehog.evalEither (Utxo.interval (Just lowerBoundSlotNo) upperBoundSlotNo)
+          Hedgehog.evalEither (Utxo.interval (Just lowerBoundSlotNo) (C.SlotNo upperBoundSlotNo))
 
         -- we're tesing for all addresses in all slotNo
         maxInterval <-
@@ -497,26 +510,20 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
               _other -> []
 
         maxIntervalResult <-
-          liftIO
-            . raiseException
-            . traverse (Storable.query indexer)
-            $ maxIntervalQuery
+          liftIO $ raiseException $ traverse (Storable.query indexer) maxIntervalQuery
 
         upperBoundIntervalResult <- liftIO . raiseException . traverse (Storable.query indexer) $ upperBoundIntervalQuery
 
         openIntervalResult <-
-          liftIO
-            . raiseException
-            . traverse (Storable.query indexer)
-            $ openIntervalQuery
+          liftIO $ raiseException $ traverse (Storable.query indexer) openIntervalQuery
 
         let rows :: [Utxo.UtxoRow] = concatMap filterResult openIntervalResult
-            cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . Utxo.urCreationPoint . Utxo.cpSlotNo
+            cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . Utxo.urCreationSlotNo
             (retrievedLowSlotNo, retrievedHighSlotNo) = (head cps, last cps)
 
         -- Show we did not retrieve any slotNo before the queryInterval [low,*]
         Hedgehog.assert (retrievedLowSlotNo >= lowerBoundSlotNo)
-        Hedgehog.assert (retrievedHighSlotNo <= upperBoundSlotNo)
+        Hedgehog.assert (retrievedHighSlotNo <= C.SlotNo upperBoundSlotNo)
 
         maxIntervalResult === upperBoundIntervalResult
         maxIntervalResult === openIntervalResult
@@ -549,8 +556,8 @@ propComputeEventsAtAddress = property $ do
 We are testing that we can supress saving Utxo inLineScript and inLineScriptHash
 using the UtxoIndexerConfig data type.
 -}
-supressSavingInlineScriptAndInlineScriptHash :: Property
-supressSavingInlineScriptAndInlineScriptHash = property $ do
+propSupressSavingInlineScriptAndInlineScriptHash :: Property
+propSupressSavingInlineScriptAndInlineScriptHash = property $ do
   utxoEventsWithTxs <- forAll UtxoGen.genUtxoEventsWithTxs
   forM_ utxoEventsWithTxs $ \(expectedUtxoEvent, block) -> do
     let txs = mockBlockTxs block
@@ -566,9 +573,17 @@ supressSavingInlineScriptAndInlineScriptHash = property $ do
 
         withSaveScriptRef, withNoSaveScriptRef :: Set.Set Utxo.Utxo
         withSaveScriptRef =
-          Utxo.ueUtxos $ Utxo.getUtxoEvents saveRefUtxoIndexerConfig txs (Utxo.ueChainPoint expectedUtxoEvent) (Utxo.ueBlockNo expectedUtxoEvent)
+          Utxo.ueUtxos $
+            Utxo.getUtxoEvents
+              saveRefUtxoIndexerConfig
+              txs
+              (Utxo.ueBlockInfo expectedUtxoEvent)
         withNoSaveScriptRef =
-          Utxo.ueUtxos $ Utxo.getUtxoEvents noSaveRefUtxoIndexerConfig txs (Utxo.ueChainPoint expectedUtxoEvent) (Utxo.ueBlockNo expectedUtxoEvent)
+          Utxo.ueUtxos $
+            Utxo.getUtxoEvents
+              noSaveRefUtxoIndexerConfig
+              txs
+              (Utxo.ueBlockInfo expectedUtxoEvent)
 
     -- there should be some inlineScripts
     Set.filter (\u -> isJust . Utxo._inlineScript $ u) withSaveScriptRef /== Set.empty
@@ -599,7 +614,10 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
             , ucEnableUtxoTxOutRef = True
             }
         actualUtxoEvents =
-          Utxo.getUtxoEvents utxoIndexerConfig txs (Utxo.ueChainPoint expectedUtxoEvent) (Utxo.ueBlockNo expectedUtxoEvent)
+          Utxo.getUtxoEvents
+            utxoIndexerConfig
+            txs
+            (Utxo.ueBlockInfo expectedUtxoEvent)
         filteredExpectedUtxoEvent =
           expectedUtxoEvent
             { Utxo.ueUtxos =
@@ -615,7 +633,8 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
 mkTargetAddressFromTxs
   :: [C.Tx C.BabbageEra]
   -> Maybe TargetAddresses
-mkTargetAddressFromTxs = foldMap (\(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts)
+mkTargetAddressFromTxs =
+  foldMap (\(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts)
 
 mkTargetAddressFromTxOuts
   :: [C.TxOut C.CtxTx C.BabbageEra]
@@ -666,16 +685,17 @@ propGetUtxoEventFromBlock = property $ do
   utxoEventsWithTxs <- forAll UtxoGen.genUtxoEventsWithTxs
   forM_ utxoEventsWithTxs $ \(expectedUtxoEvent, block) -> do
     let (C.BlockHeader sno bhh bn) = mockBlockChainPoint block
-        (txs, cp) :: ([C.Tx C.BabbageEra], C.ChainPoint) = (mockBlockTxs block, C.ChainPoint sno bhh)
+        txs = mockBlockTxs block
+        bi = BlockInfo sno bhh bn 0 1
         utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
-        computedEvent = Utxo.getUtxoEvents utxoIndexerConfig txs cp bn
+        computedEvent = Utxo.getUtxoEvents utxoIndexerConfig txs bi
     length (Utxo.ueUtxos computedEvent) === length (Utxo.ueUtxos expectedUtxoEvent)
     length (Utxo.ueInputs computedEvent) === length (Utxo.ueInputs expectedUtxoEvent)
     computedEvent === expectedUtxoEvent
 
-genEventWithShelleyAddressAtChainPoint :: C.ChainPoint -> Hedgehog.Gen [Utxo.StorableEvent Utxo.UtxoHandle]
-genEventWithShelleyAddressAtChainPoint cp =
-  genShelleyEraUtxoEvents <&> fmap (\e -> e{Utxo.ueChainPoint = cp})
+genEventWithShelleyAddressAtChainPoint :: BlockInfo -> Hedgehog.Gen [Utxo.StorableEvent Utxo.UtxoHandle]
+genEventWithShelleyAddressAtChainPoint bi =
+  genShelleyEraUtxoEvents <&> fmap (\e -> e{Utxo.ueBlockInfo = bi})
 
 testLastSyncOnFreshIndexer :: Property
 testLastSyncOnFreshIndexer = property $ do
@@ -691,49 +711,29 @@ propLastChainPointOnRunningIndexer = property $ do
   indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
   result <- liftIO $ raiseException $ Storable.query indexer' LastSyncedBlockInfoQuery
   let beforeLastEvent = last $ init events
-  case Utxo.ueChainPoint beforeLastEvent of
-    C.ChainPointAtGenesis ->
-      result === LastSyncedBlockInfoResult Origin
-    C.ChainPoint slotNo bhh -> do
-      let beforeLastBlockInfo =
-            BlockInfo
-              slotNo
-              bhh
-              (Utxo.ueBlockNo beforeLastEvent)
-              0 -- TODO
-              0 -- TODO
-      result === LastSyncedBlockInfoResult (At beforeLastBlockInfo)
+  let beforeLastBlockInfo = ueBlockInfo beforeLastEvent
+  result === LastSyncedBlockInfoResult (At beforeLastBlockInfo)
 
 propLastChainPointOnRewindedIndexer :: Property
 propLastChainPointOnRewindedIndexer = property $ do
   events <- forAll UtxoGen.genUtxoEvents
   depth <- forAll $ Gen.int (Range.linear 1 $ length events)
   ix <- forAll $ Gen.int (Range.linear 0 (length events - 1))
-  let rollbackPoint = Utxo.ueChainPoint (events !! ix)
+  let eventToRollbackTo = events !! ix
+      rollbackPoint =
+        C.ChainPoint
+          (Utxo._blockInfoSlotNo $ Utxo.ueBlockInfo eventToRollbackTo)
+          (Utxo._blockInfoBlockHeaderHash $ Utxo.ueBlockInfo eventToRollbackTo)
       latestEventPostRollback = events !! (ix - 1)
       lastestBlockInfoPostRollback =
         if ix == 0
           then Origin
-          else case Utxo.ueChainPoint latestEventPostRollback of
-            C.ChainPointAtGenesis ->
-              Origin
-            C.ChainPoint slotNo bhh ->
-              At $
-                BlockInfo
-                  slotNo
-                  bhh
-                  (Utxo.ueBlockNo latestEventPostRollback)
-                  0 -- TODO
-                  0 -- TODO
+          else At $ Utxo.ueBlockInfo latestEventPostRollback
   indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
   indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
   indexer'' <- liftIO $ raiseException $ Storable.rewind rollbackPoint indexer'
   result <- liftIO $ raiseException $ Storable.query indexer'' LastSyncedBlockInfoQuery
   result === LastSyncedBlockInfoResult lastestBlockInfoPostRollback
-
-getSlot :: C.ChainPoint -> Maybe C.SlotNo
-getSlot C.ChainPointAtGenesis = Nothing
-getSlot (C.ChainPoint s _) = Just s
 
 -- | make unique queries
 mkUtxoQueries

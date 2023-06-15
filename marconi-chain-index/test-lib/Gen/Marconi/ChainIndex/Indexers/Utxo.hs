@@ -28,7 +28,7 @@ import Gen.Marconi.ChainIndex.Mockchain (
   genTxBodyContentFromTxinsWihtPhase2Validation,
  )
 import Hedgehog (Gen)
-import Marconi.ChainIndex.Indexers.Utxo (StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
+import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -68,7 +68,8 @@ genUtxoEventsWithTxs' txOutToUtxo = do
             Set.fromList $
               mapMaybe (`Map.lookup` utxoMap) $
                 Set.toList utxos
-       in UtxoEvent resolvedUtxos spentTxOuts (C.ChainPoint slotNo blockHeaderHash) blockNo
+       in -- We don't care about the timestamp or the epochNo, so we put default values.
+          UtxoEvent resolvedUtxos spentTxOuts (BlockInfo slotNo blockHeaderHash blockNo 0 1)
 
     getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
     getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =

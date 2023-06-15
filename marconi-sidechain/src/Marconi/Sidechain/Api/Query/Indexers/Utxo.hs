@@ -30,8 +30,8 @@ import Marconi.ChainIndex.Indexers.Utxo (
   datumHash,
   txIn,
   txIndexInBlock,
-  urBlockNo,
   urCreationBlockHeaderHash,
+  urCreationBlockNo,
   urCreationSlotNo,
   urSpentSlotNo,
   urSpentTxId,
@@ -167,7 +167,7 @@ withQueryAction env query =
                 AddressUtxoResult
                   (row ^. urCreationSlotNo)
                   (row ^. urCreationBlockHeaderHash)
-                  (row ^. urBlockNo)
+                  (row ^. urCreationBlockNo)
                   (row ^. urUtxo . txIndexInBlock)
                   (row ^. urUtxo . txIn)
                   (row ^. urUtxo . address)
