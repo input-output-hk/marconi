@@ -102,16 +102,19 @@ toUpdate mAssets (C.BlockInMode (C.Block (C.BlockHeader slotNo blockHeaderHash b
     x : xs -> Just $ TxMintEvent slotNo blockHeaderHash blockNo (x NE.:| xs)
     [] -> Nothing
 
+-- [MintAsset {mintAssetPolicyId = "30058ad84e430d027197122ddfa6a49c016dbb01695850cc62a0c324", mintAssetAssetName = "LUCA", mintAssetQuantity = 100000000000000, mintAssetRedeemerIdx = 0, mintAssetRedeemerData = ScriptDataConstructor 0 [
+
 -- | Extracs TxMintInfo from a Tx
 txMints :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)) -> TxIndexInBlock -> C.Tx era -> Maybe TxMintInfo
 txMints mAssets ix (C.Tx txb _) =
-  let isTargetOf m pId an =
-        mintAssetPolicyId m == pId
-          && maybe True (mintAssetAssetName m ==) an
+  let isTargetOf token pId an =
+        mintAssetPolicyId token == pId
+          && maybe True (mintAssetAssetName token ==) an
       isTarget m = case mAssets of
         Just xs -> any (uncurry (isTargetOf m)) xs
         Nothing -> True
-   in case filter isTarget $ txbMints txb of
+      assets = txbMints txb
+   in case filter isTarget assets of
         x : xs -> Just $ TxMintInfo (C.getTxId txb) ix (x NE.:| xs)
         [] -> Nothing
 

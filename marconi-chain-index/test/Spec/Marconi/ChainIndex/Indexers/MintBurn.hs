@@ -453,7 +453,7 @@ propFilterIncludeTargetAssets = H.property $ do
   let event = MintBurn.txMints (Just $ pure (Gen.commonMintingPolicyId, Just assetName)) 2 tx
   void $ H.evalMaybe event
 
--- check that the target assets filtering keep the tx that mint the targeted asset
+-- check that the target assets filtering exclude the tx with no matching asset
 propFilterExcludeNonTargetAssets :: Property
 propFilterExcludeNonTargetAssets = H.property $ do
   assetName <- forAll Gen.genAssetName

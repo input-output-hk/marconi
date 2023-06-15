@@ -264,7 +264,7 @@ commonMaybePort =
         <> Opt.metavar "HTTP-PORT"
         <> Opt.help "JSON-RPC http port number, default is port 3000."
 
-{- | Parse the addresses to index. Addresses should be ginev in Bech32 format
+{- | Parse the addresses to index. Addresses should be given in Bech32 format
  Several addresses can be given in a single string, if they are separated by a space
 -}
 commonMaybeTargetAddress :: Opt.Parser (Maybe TargetAddresses)
@@ -276,7 +276,8 @@ commonMaybeTargetAddress =
         <> Opt.metavar "BECH32-ADDRESS"
         <> Opt.help
           "Bech32 Shelley addresses to index. \
-          \ i.e \"--address-to-index address-1 --address-to-index address-2 ...\""
+          \ i.e \"--address-to-index address-1 --address-to-index address-2 ...\"\
+          \ or \"--address-to-index \"address-1 address-2\" ...\""
 
 {- | Parse target assets, both the @PolicyId@ and the @AssetName@ are expected to be in their
  RawBytesHex representation, they must be separated by a comma.
@@ -295,8 +296,9 @@ commonMaybeTargetAsset =
           Opt.long "match-asset-id"
             <> Opt.metavar "POLICY_ID[,ASSET_NAME]"
             <> Opt.help
-              "Asset to index, defined by the policy id and the asset name\
-              \ i.e \"--match-asset-id assetname-1,policy-id-1 --match-asset-id policy-id-2 ...\""
+              "Asset to index, defined by the policy id and an optional asset name\
+              \ i.e \"--match-asset-id assetname-1,policy-id-1 --match-asset-id policy-id-2 ...\"\
+              \ or \"--match-asset-id \"assetname-1,policy-id-1 policy-id-2\" ...\""
 
 -- | Asset parser, see @commonMaybeTargetAsset@ for more info.
 parseAsset :: Text -> Opt.ReadM (C.PolicyId, Maybe C.AssetName)
