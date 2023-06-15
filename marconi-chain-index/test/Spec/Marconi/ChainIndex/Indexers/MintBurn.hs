@@ -24,7 +24,6 @@ import Data.Coerce (coerce)
 import Data.Foldable (foldlM)
 import Data.Function (on)
 import Data.List qualified as List
-import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
 import Data.Ord (comparing)
@@ -401,12 +400,13 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   indexer :: MintBurn.MintBurnIndexer <- liftIO $ IO.readChan indexedTxs
   MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
     liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
-  case MintBurn.fromRows txMintRows of
-    event : _ -> case MintBurn.txMintEventTxAssets event of
-      (MintBurn.TxMintInfo _txId _txIx gottenMintEvents :| []) ->
-        equalSet (mintsToPolicyAssets $ NonEmpty.toList gottenMintEvents) (getPolicyAssets txMintValue)
-      _ -> fail "More than one mint/burn event, but we created only one!"
-    _ -> fail "No events in indexer, but we inserted one!"
+
+  let checkEvent event = case MintBurn.txMintEventTxAssets event of
+        [MintBurn.TxMintInfo _txId _txIx gottenMintEvents] ->
+          mintsToPolicyAssets (NonEmpty.toList gottenMintEvents) == getPolicyAssets txMintValue
+        _ -> False
+      retrievedEvents = MintBurn.fromRows txMintRows
+  H.assert $ any checkEvent retrievedEvents
 
 propJsonRoundtripTxMintRow :: Property
 propJsonRoundtripTxMintRow = H.property $ do
@@ -515,7 +515,6 @@ getAssetIds :: [MintBurn.TxMintEvent] -> [(C.PolicyId, C.AssetName)]
 getAssetIds =
   let extractInfo m = (MintBurn.mintAssetPolicyId m, MintBurn.mintAssetAssetName m)
    in concatMap $
-        concat
-          . NonEmpty.toList
-          . fmap (fmap extractInfo . NonEmpty.toList . MintBurn.txMintAsset)
+        concatMap
+          (fmap extractInfo . NonEmpty.toList . MintBurn.txMintAsset)
           . MintBurn.txMintEventTxAssets

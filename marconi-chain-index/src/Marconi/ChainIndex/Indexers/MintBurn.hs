@@ -54,6 +54,7 @@ import Data.Text qualified as Text
 import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
+import Debug.Trace qualified
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
@@ -81,7 +82,7 @@ data TxMintEvent = TxMintEvent
   { txMintEventSlotNo :: !C.SlotNo
   , txMintEventBlockHeaderHash :: !(C.Hash C.BlockHeader)
   , txMintEventBlockNo :: !C.BlockNo
-  , txMintEventTxAssets :: !(NE.NonEmpty TxMintInfo)
+  , txMintEventTxAssets :: ![TxMintInfo]
   }
   deriving (Show, Eq, Ord)
 
@@ -96,13 +97,10 @@ data MintAsset = MintAsset
   deriving (Show, Eq, Ord)
 
 -- | Extract the mint events from a block
-toUpdate :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)) -> C.BlockInMode C.CardanoMode -> Maybe TxMintEvent
+toUpdate :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)) -> C.BlockInMode C.CardanoMode -> TxMintEvent
 toUpdate mAssets (C.BlockInMode (C.Block (C.BlockHeader slotNo blockHeaderHash blockNo) txs) _) =
-  case mapMaybe (uncurry $ txMints mAssets) $ zip [0 ..] txs of
-    x : xs -> Just $ TxMintEvent slotNo blockHeaderHash blockNo (x NE.:| xs)
-    [] -> Nothing
-
--- [MintAsset {mintAssetPolicyId = "30058ad84e430d027197122ddfa6a49c016dbb01695850cc62a0c324", mintAssetAssetName = "LUCA", mintAssetQuantity = 100000000000000, mintAssetRedeemerIdx = 0, mintAssetRedeemerData = ScriptDataConstructor 0 [
+  let assets = mapMaybe (uncurry $ txMints mAssets) $ zip [0 ..] txs
+   in TxMintEvent slotNo blockHeaderHash blockNo assets
 
 -- | Extracs TxMintInfo from a Tx
 txMints :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)) -> TxIndexInBlock -> C.Tx era -> Maybe TxMintInfo
@@ -252,19 +250,22 @@ sqliteInit c = liftIO $ do
     \ ON minting_policy_events (txId, policyId)"
 
 sqliteInsert :: SQL.Connection -> [TxMintEvent] -> IO ()
-sqliteInsert c es = SQL.executeMany c template $ toRows =<< toList es
-  where
-    template =
-      "INSERT INTO minting_policy_events          \
-      \( slotNo, blockHeaderHash, blockNo,        \
-      \txIndexInBlock, txId, policyId, assetName, \
-      \ quantity, redeemerIx, redeemerData,       \
-      \ redeemerHash )                            \
-      \VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+sqliteInsert c es =
+  let rows = toRows =<< toList es
+      template =
+        "INSERT INTO minting_policy_events          \
+        \( slotNo, blockHeaderHash, blockNo,        \
+        \txIndexInBlock, txId, policyId, assetName, \
+        \ quantity, redeemerIx, redeemerData,       \
+        \ redeemerHash )                            \
+        \VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+   in case rows of
+        [] -> pure ()
+        xs -> Debug.Trace.traceShow xs $ SQL.executeMany c template xs
 
 toRows :: TxMintEvent -> [TxMintRow]
 toRows e = do
-  TxMintInfo txId txIx txMintAssets <- NE.toList $ txMintEventTxAssets e
+  TxMintInfo txId txIx txMintAssets <- txMintEventTxAssets e
   mintAsset <- NE.toList txMintAssets
   pure $
     TxMintRow
@@ -285,7 +286,7 @@ fromRows :: [TxMintRow] -> [TxMintEvent]
 fromRows rows = do
   rs@(r :| _) <- NE.groupBy ((==) `on` slotNo) rows -- group by SlotNo
   pure $ TxMintEvent (slotNo r) (hash r) (blockNo r) $ do
-    rs' <- NE.groupBy1 ((==) `on` assetKey) rs
+    rs' <- NE.groupBy ((==) `on` assetKey) rs
     pure $ TxMintInfo (txId r) (txIx r) (rowToMintAsset <$> rs')
   where
     assetKey row = (txId row, txIx row)
@@ -334,7 +335,7 @@ groupBySlotAndHash events =
     buildTxMintEvent (e : es) =
       Just $
         TxMintEvent (txMintEventSlotNo e) (txMintEventBlockHeaderHash e) (txMintEventBlockNo e) $
-          txMintEventTxAssets =<< (e :| es)
+          txMintEventTxAssets =<< (e : es)
 
 -- * Indexer
 
@@ -377,7 +378,7 @@ instance RI.Queryable MintBurnHandle where
     storedEvents <- queryStoredTxMintEvents sqlCon $ mkSqliteConditions query
     pure $ MintBurnResult $ do
       TxMintEvent slotNo blockHeaderHash blockNo txAssets <- storedEvents <> filteredMemoryEvents
-      TxMintInfo txId txIx mintAssets <- NE.toList txAssets
+      TxMintInfo txId txIx mintAssets <- txAssets
       MintAsset policyId assetName quantity redeemerIx redeemerData redeemerHash <- NE.toList mintAssets
       pure $
         TxMintRow

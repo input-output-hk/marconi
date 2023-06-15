@@ -20,7 +20,6 @@ import System.FilePath ((</>))
 
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
-import Control.Monad (guard)
 import Data.List.NonEmpty qualified as NonEmpty
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
@@ -215,8 +214,9 @@ scriptTxDbPath o =
 
 epochStateDbPath :: Options -> Maybe FilePath
 epochStateDbPath o = do
-  guard $ optionsDisableEpochState o
-  pure $ optionsDbPath o </> epochStateDbName
+  if optionsDisableEpochState o
+    then Nothing
+    else Just $ optionsDbPath o </> epochStateDbName
 
 mintBurnDbPath :: Options -> Maybe FilePath
 mintBurnDbPath o =

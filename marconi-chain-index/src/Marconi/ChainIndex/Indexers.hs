@@ -50,7 +50,7 @@ import Control.Exception (Exception, catch)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
-import Control.Monad (forM_, forever, void, when)
+import Control.Monad (forM_, forever, unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.Functor (($>))
@@ -422,22 +422,26 @@ mintBurnWorker_
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
   -> IO (IO b, C.ChainPoint)
-mintBurnWorker_ securityParam callback mAssets Coordinator{_barrier, _errorVar} ch dbPath = do
+mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
   indexer <- toException (MintBurn.open dbPath securityParam)
   indexerMVar <- newMVar indexer
   cp <- toException $ Storable.resumeFromStorage $ view Storable.handle indexer
   let loop = forever $ do
-        signalQSemN _barrier 1
-        failWhenFull _errorVar
+        signalQSemN (c ^. barrier) 1
+        failWhenFull (c ^. errorVar)
         event <- atomically $ readTChan ch
         case event of
-          RollForward blockInMode _ct
-            | Just event' <- MintBurn.toUpdate mAssets blockInMode -> do
-                void $ updateWith indexerMVar _errorVar $ Storable.insert $ MintBurn.MintBurnEvent event'
-                void $ readMVar indexerMVar >>= callback
-            | otherwise -> pure ()
+          RollForward blockInMode _ct -> do
+            let event' = MintBurn.toUpdate mAssets blockInMode
+            void $
+              updateWith indexerMVar (c ^. errorVar) $
+                Storable.insert $
+                  MintBurn.MintBurnEvent event'
+            unless
+              (null $ MintBurn.txMintEventTxAssets event')
+              (void $ readMVar indexerMVar >>= callback)
           RollBackward cp' _ct ->
-            void $ updateWith indexerMVar _errorVar $ Storable.rewind cp'
+            void $ updateWith indexerMVar (c ^. errorVar) $ Storable.rewind cp'
   pure (loop, cp)
 
 mintBurnWorker

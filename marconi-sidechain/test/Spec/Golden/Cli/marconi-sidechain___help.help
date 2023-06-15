@@ -29,9 +29,11 @@ Available options:
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
                            "--address-to-index address-1 --address-to-index
-                           address-2 ..."
+                           address-2 ..." or "--address-to-index "address-1
+                           address-2" ..."
   --match-asset-id POLICY_ID[,ASSET_NAME]
-                           Asset to index, defined by the policy id and the
-                           asset name i.e "--match-asset-id
+                           Asset to index, defined by the policy id and an
+                           optional asset name i.e "--match-asset-id
                            assetname-1,policy-id-1 --match-asset-id policy-id-2
-                           ..."
+                           ..." or "--match-asset-id "assetname-1,policy-id-1
+                           policy-id-2" ..."
