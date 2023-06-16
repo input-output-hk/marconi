@@ -260,7 +260,7 @@ sqliteInsert c es =
         \VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
    in case rows of
         [] -> pure ()
-        xs -> Debug.Trace.traceShow xs $ SQL.executeMany c template xs
+        xs -> SQL.executeMany c template xs
 
 toRows :: TxMintEvent -> [TxMintRow]
 toRows e = do
