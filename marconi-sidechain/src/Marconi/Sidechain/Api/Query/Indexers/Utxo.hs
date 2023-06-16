@@ -10,6 +10,7 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Slotting.Slot (WithOrigin (Origin))
 import Control.Arrow (left)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, tryReadTMVar)
@@ -28,7 +29,9 @@ import Marconi.ChainIndex.Indexers.Utxo (
   datum,
   datumHash,
   txIn,
-  urCreationBlockHash,
+  txIndexInBlock,
+  urBlockNo,
+  urCreationBlockHeaderHash,
   urCreationSlotNo,
   urSpentSlotNo,
   urSpentTxId,
@@ -86,11 +89,12 @@ currentSyncedBlock env = do
       (tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer)
   case indexer of
     Just i -> do
-      res <- runExceptT $ Storable.query i Utxo.LastSyncPoint
+      res <- runExceptT $ Storable.query i Utxo.LastSyncedBlockInfoQuery
       case res of
-        Right (Utxo.LastSyncPointResult cp) -> pure $ Right $ GetCurrentSyncedBlockResult cp
-        _other -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncPoint
-    Nothing -> pure . Right $ GetCurrentSyncedBlockResult C.ChainPointAtGenesis
+        Right (Utxo.LastSyncedBlockInfoResult blockInfoM) ->
+          pure $ Right $ GetCurrentSyncedBlockResult blockInfoM
+        _other -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
+    Nothing -> pure . Right $ GetCurrentSyncedBlockResult Origin
 
 {- | Retrieve Utxos associated with the given address
  We return an empty list if no address is not found
@@ -147,7 +151,9 @@ withQueryAction
 withQueryAction env query =
   (atomically $ tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer) >>= action
   where
-    action Nothing = pure $ Right $ GetUtxosFromAddressResult [] -- may occures at startup before marconi-chain-index gets to update the indexer
+    action Nothing =
+      -- May occur at startup before marconi-sidechain gets to update the indexer
+      pure $ Right $ GetUtxosFromAddressResult []
     action (Just indexer) = do
       res <- runExceptT $ Storable.query indexer query
       let spentInfo row =
@@ -159,13 +165,16 @@ withQueryAction env query =
             GetUtxosFromAddressResult $
               rows <&> \row ->
                 AddressUtxoResult
-                  (row ^. urCreationBlockHash)
                   (row ^. urCreationSlotNo)
+                  (row ^. urCreationBlockHeaderHash)
+                  (row ^. urBlockNo)
+                  (row ^. urUtxo . txIndexInBlock)
                   (row ^. urUtxo . txIn)
                   (row ^. urUtxo . address)
                   (row ^. urUtxo . datumHash)
                   (row ^. urUtxo . datum)
                   (spentInfo row)
+                  [] -- TODO txInputs field
         _other ->
           Left $ UnexpectedQueryResult query
 

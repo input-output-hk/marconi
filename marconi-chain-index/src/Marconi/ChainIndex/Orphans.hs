@@ -85,6 +85,12 @@ deriving newtype instance SQL.FromField C.SlotNo
 instance Pretty C.BlockNo where
   pretty (C.BlockNo bn) = "BlockNo" <+> pretty bn
 
+instance SQL.FromRow C.BlockNo where
+  fromRow = C.BlockNo <$> SQL.field
+
+instance ToRow C.BlockNo where
+  toRow (C.BlockNo bn) = [toField bn]
+
 -- * C.AddressAny
 
 instance SQL.FromField C.AddressAny where

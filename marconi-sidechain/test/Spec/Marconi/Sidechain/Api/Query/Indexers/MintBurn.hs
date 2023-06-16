@@ -19,7 +19,7 @@ import Hedgehog qualified
 import Marconi.ChainIndex.Indexers.MintBurn (MintAsset (mintAssetAssetName, mintAssetPolicyId))
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurnIndexer
-import Marconi.Sidechain.Api.Routes (AssetIdTxResult, GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult))
+import Marconi.Sidechain.Api.Routes (AssetIdTxResult, GetBurnTokenEventsResult (GetBurnTokenEventsResult))
 import Marconi.Sidechain.Api.Types (mintBurnIndexerEnvIndexer, sidechainEnvIndexers, sidechainMintBurnIndexer)
 import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
 import Network.JsonRpc.Client.Types ()
@@ -108,6 +108,6 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
 
   (Set.fromList . mapMaybe (Aeson.decode . Aeson.encode) $ fetchedUtxoRows) === Set.fromList fetchedUtxoRows
 
-fromQueryResult :: JsonRpcResponse e GetTxsBurningAssetIdResult -> [AssetIdTxResult]
-fromQueryResult (Result _ (GetTxsBurningAssetIdResult rows)) = rows
+fromQueryResult :: JsonRpcResponse e GetBurnTokenEventsResult -> [AssetIdTxResult]
+fromQueryResult (Result _ (GetBurnTokenEventsResult rows)) = rows
 fromQueryResult _otherResponses = []

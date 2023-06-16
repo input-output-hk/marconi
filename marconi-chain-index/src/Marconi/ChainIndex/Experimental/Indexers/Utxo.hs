@@ -189,7 +189,7 @@ mkSqliteIndexer conn =
                  inlineScript,
                  inlineScriptHash,
                  slotNo,
-                 blockHash
+                 blockHeaderHash
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
 
@@ -200,7 +200,7 @@ mkSqliteIndexer conn =
                 txId,
                 txIx,
                 slotNo,
-                blockHash
+                blockHeaderHash
               ) VALUES
               (?, ?, ?, ?)|]
    in Core.SQLiteIndexer
@@ -281,7 +281,7 @@ initSQLite dbPath = do
                       , inlineScript BLOB
                       , inlineScriptHash BLOB
                       , slotNo INT
-                      , blockHash BLOB)|]
+                      , blockHeaderHash BLOB)|]
 
   SQL.execute_
     c
@@ -289,7 +289,7 @@ initSQLite dbPath = do
                       ( txId TEXT NOT NULL
                       , txIx INT NOT NULL
                       , slotNo INT
-                      , blockHash BLOB)|]
+                      , blockHeaderHash BLOB)|]
   -- TODO
   -- Consider adding indices per user request through CLI or other type of configuration
   --  Well create indices on these tables once we have completed all the required quries
@@ -434,7 +434,7 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
                       u.inlineScript,
                       u.inlineScriptHash,
                       u.slotNo,
-                      u.blockHash
+                      u.blockHeaderHash
                   FROM
                       unspent_transactions u
                   LEFT JOIN spent s ON u.txId = s.txId

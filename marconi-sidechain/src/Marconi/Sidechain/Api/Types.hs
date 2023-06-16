@@ -82,7 +82,7 @@ data MintBurnIndexerEnv = MintBurnIndexerEnv
   }
 
 data QueryExceptions
-  = AddressConversionError !QueryExceptions
+  = AddressConversionError !String
   | QueryError !String
   | UnexpectedQueryResult !(StorableQuery UtxoHandle)
   deriving stock (Show)

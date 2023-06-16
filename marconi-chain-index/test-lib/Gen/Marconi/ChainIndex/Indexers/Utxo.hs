@@ -61,14 +61,14 @@ genUtxoEventsWithTxs' txOutToUtxo = do
   fmap (\block -> (getStorableEventFromBlock block, block)) <$> genMockchain
   where
     getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
-    getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
+    getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash blockNo) txs) =
       let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
           utxoMap = foldMap getUtxosFromTx $ zip txs [0 ..]
           resolvedUtxos =
             Set.fromList $
               mapMaybe (`Map.lookup` utxoMap) $
                 Set.toList utxos
-       in UtxoEvent resolvedUtxos spentTxOuts (C.ChainPoint slotNo blockHeaderHash)
+       in UtxoEvent resolvedUtxos spentTxOuts (C.ChainPoint slotNo blockHeaderHash) blockNo
 
     getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
     getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =

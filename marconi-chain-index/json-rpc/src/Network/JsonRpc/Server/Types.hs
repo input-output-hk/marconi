@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -21,18 +22,19 @@ import Data.Bifunctor (Bifunctor (bimap))
 import Data.Kind (Type)
 import Data.Map.Strict qualified as Map
 import Data.Proxy (Proxy (Proxy))
+import Data.String (IsString, fromString)
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import Network.JsonRpc.Types (
   JsonRpc,
   JsonRpcContentType,
-  JsonRpcErr (JsonRpcErr, errorData),
+  JsonRpcErr (errorData),
   JsonRpcNotification,
   JsonRpcResponse (Errors, Result),
   RawJsonRpc,
   Request (Request),
-  invalidParamsCode,
-  invalidRequestCode,
-  methodNotFoundCode,
+  mkJsonRpcInvalidParamsErr,
+  mkJsonRpcInvalidRequestErr,
+  mkJsonRpcMethodNotFoundErr,
  )
 import Servant.API (NoContent (NoContent), Post, ReqBody, (:<|>) ((:<|>)), (:>))
 import Servant.API.ContentTypes (AllCTRender (handleAcceptH))
@@ -95,8 +97,8 @@ generalizeResponse = bimap repack toJSON
   where
     repack e = e{errorData = toJSON <$> errorData e}
 
-onDecodeFail :: String -> JsonRpcErr e
-onDecodeFail msg = JsonRpcErr invalidParamsCode msg Nothing
+onDecodeFail :: IsString e => String -> JsonRpcErr e
+onDecodeFail msg = mkJsonRpcInvalidParamsErr $ Just $ fromString msg
 
 instance
   (KnownSymbol method, FromJSON p, ToJSON e, ToJSON r)
@@ -106,11 +108,11 @@ instance
   jsonRpcRouter _ _ h = Map.fromList [(methodName, h')]
     where
       methodName = symbolVal $ Proxy @method
-      onDecode = fmap generalizeResponse . h
       h' =
         fmap SomeContent
           . either (return . Left . onDecodeFail) onDecode
           . parseEither parseJSON
+      onDecode = fmap generalizeResponse . h
 
   hoistRpcRouter _ f x = f . x
 
@@ -151,6 +153,6 @@ serveJsonRpc px pxm hs (Request m v ix')
         EmptyContent -> return EmptyContent
   | otherwise = return . SomeContent $ Errors ix' missingMethod
   where
-    missingMethod = JsonRpcErr methodNotFoundCode ("Unknown method: " <> m) Nothing
+    missingMethod = mkJsonRpcMethodNotFoundErr Nothing
     hmap = jsonRpcRouter px pxm hs
-    invalidRequest = JsonRpcErr invalidRequestCode "Missing id" Nothing
+    invalidRequest = mkJsonRpcInvalidRequestErr $ Just "Missing id"
