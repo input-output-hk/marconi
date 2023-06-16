@@ -21,7 +21,7 @@ import Marconi.ChainIndex.Types (
   ucTargetAddresses,
   utxoDbName,
  )
-import Marconi.Core.Storable (State, StorableEvent)
+import Marconi.Core.Storable (State)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurn
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxo
@@ -61,13 +61,12 @@ bootstrapIndexers args env = do
       addressUtxoCallback =
         atomically
           . AddressUtxo.updateEnvState (env ^. CLI.sidechainEnvIndexers . CLI.sidechainAddressUtxoIndexer)
-      epochStateCallback :: (State EpochStateHandle, StorableEvent EpochStateHandle) -> IO ()
+  let epochStateCallback :: State EpochStateHandle -> IO ()
       epochStateCallback =
         atomically
           . EpochState.updateEnvState
             (env ^. CLI.sidechainEnvIndexers . CLI.sidechainEpochStateIndexer . CLI.epochStateIndexerEnvIndexer)
-          . fst
-      mintBurnCallback :: State MintBurnHandle -> IO ()
+  let mintBurnCallback :: State MintBurnHandle -> IO ()
       dbPath = CLI.dbDir args
       mintBurnCallback =
         atomically

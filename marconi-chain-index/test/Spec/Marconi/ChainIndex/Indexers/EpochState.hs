@@ -17,13 +17,12 @@ import Control.Concurrent qualified as STM
 import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
-import Control.Monad (forever, void, when)
+import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson ((.=))
 import Data.Aeson qualified as J
 import Data.ByteString.Lazy qualified as BL
 import Data.List qualified as List
-import Data.Map qualified as Map
 import GHC.Stack (HasCallStack)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test qualified as HE
@@ -163,14 +162,15 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
          in indexerWorker `catch` handleException :: IO ()
 
   found <- liftIO IO.newEmptyMVar
-  liftIO $ (IO.link =<<) $ IO.async $ forever $ do
-    (_, event) <- IO.readChan indexedTxs
-    case Map.lookup poolVKey (EpochState.epochStateEventSDD event) of
-      Just lovelace ->
-        when (lovelace == totalStakedLovelace) $
-          IO.putMVar found (EpochState.epochStateEventEpochNo event) -- Event found!
-      Nothing ->
-        return ()
+  -- TODO Uncomment once we support notifications.
+  -- liftIO $ (IO.link =<<) $ IO.async $ forever $ do
+  --   (_, event) <- IO.readChan indexedTxs
+  --   case Map.lookup poolVKey (EpochState.epochStateEventSDD event) of
+  --     Just lovelace ->
+  --       when (lovelace == totalStakedLovelace) $
+  --         IO.putMVar found (EpochState.epochStateEventEpochNo event) -- Event found!
+  --     Nothing ->
+  --       return ()
 
   -- This is filled when the epoch stakepool size has been indexed
   Just epochNo <- liftIO $ IO.takeMVar found

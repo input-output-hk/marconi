@@ -6,14 +6,11 @@ module Marconi.Sidechain.Api.Query.Indexers.MintBurn (
 ) where
 
 import Cardano.Api qualified as C
-
-import Control.Concurrent.STM (STM, TMVar, atomically, newEmptyTMVarIO, tryReadTMVar)
+import Control.Concurrent.STM (STM, TMVar, atomically, newEmptyTMVarIO, readTMVar)
 import Control.Lens ((^.))
-
-import Data.Word (Word64)
-
 import Control.Monad.Except (runExceptT)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Word (Word64)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle, StorableResult (MintBurnResult), TxMintRow)
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Core.Storable (State)
@@ -60,15 +57,8 @@ queryByPolicyAndAssetId
   -> Maybe C.SlotNo
   -> IO (Either QueryExceptions [AssetIdTxResult])
 queryByPolicyAndAssetId env policyId assetId slotNo = do
-  mintBurnIndexer <-
-    atomically $
-      tryReadTMVar $
-        env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
-  case mintBurnIndexer of
-    Nothing ->
-      -- May occur at startup before marconi-sidechain gets to update the indexer
-      pure $ Right []
-    Just indexer -> query indexer
+  mintBurnIndexer <- atomically $ readTMVar $ env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
+  query mintBurnIndexer
   where
     query indexer = do
       let q = MintBurn.QueryBurnByAssetId policyId assetId slotNo

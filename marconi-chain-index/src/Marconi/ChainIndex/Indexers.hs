@@ -50,7 +50,7 @@ import Control.Exception (Exception, catch)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
-import Control.Monad (forM_, forever, unless, void, when)
+import Control.Monad (forM_, forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.Functor (($>))
@@ -164,7 +164,7 @@ type Worker = SecurityParam -> Coordinator -> FilePath -> IO (Storable.StorableP
 
 utxoWorker_
   :: (Utxo.UtxoIndexer -> IO ())
-  -- ^ callback function used in the queryApi thread, needs to be non-blocking
+  -- ^ Callback function used in the queryApi thread, needs to be non-blocking
   -> Utxo.Depth
   -> UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
@@ -183,7 +183,7 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
     loop index = do
       signalQSemN _barrier 1
       failWhenFull _errorVar
-      readMVar index >>= callback -- refresh the query STM/CPS with new storage pointers/counters state
+      readMVar index >>= callback
       event <- atomically . readTChan $ ch
       case event of
         RollForward (BlockInMode block _) _ct ->
@@ -309,7 +309,7 @@ scriptTxWorker onInsert securityParam coordinator path = do
 
 epochStateWorker_
   :: FilePath
-  -> ((Storable.State EpochStateHandle, Storable.StorableEvent EpochStateHandle) -> IO ())
+  -> (Storable.State EpochStateHandle -> IO ())
   -> SecurityParam
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
@@ -317,7 +317,7 @@ epochStateWorker_
   -> IO (IO b, C.ChainPoint, MVar (Storable.State EpochStateHandle))
 epochStateWorker_
   nodeConfigPath
-  onInsert
+  callback
   securityParam
   Coordinator{_barrier, _errorVar}
   ch
@@ -334,12 +334,14 @@ epochStateWorker_
     let ledgerStateDir = takeDirectory dbPath </> "ledgerStates"
     createDirectoryIfMissing False ledgerStateDir
     indexer <- toException $ EpochState.open topLevelConfig dbPath ledgerStateDir securityParam
+
     cp <- toException $ Storable.resumeFromStorage $ view Storable.handle indexer
     indexerMVar <- newMVar indexer
 
     let loop currentLedgerState currentEpochNo = do
           signalQSemN _barrier 1
           failWhenFull _errorVar
+          void $ readMVar indexerMVar >>= callback
           chainSyncEvent <- atomically $ readTChan ch
 
           (newLedgerState, newEpochNo) <- case chainSyncEvent of
@@ -364,8 +366,8 @@ epochStateWorker_
                       chainTip
                       securityParam
                       isFirstEventOfEpoch
-              newIndexer <- updateWith indexerMVar _errorVar $ Storable.insert storableEvent
-              onInsert (newIndexer, storableEvent)
+
+              void $ updateWith indexerMVar _errorVar $ Storable.insert storableEvent
 
               -- Compute new LedgerState given block and old LedgerState
               pure (newLedgerState', newEpochNo)
@@ -403,14 +405,14 @@ epochStateWorker_
 
 epochStateWorker
   :: FilePath
-  -> ((Storable.State EpochStateHandle, Storable.StorableEvent EpochStateHandle) -> IO ())
+  -> (Storable.State EpochStateHandle -> IO ())
   -> Worker
-epochStateWorker nodeConfigPath onInsert securityParam coordinator path = do
+epochStateWorker nodeConfigPath callback securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, cp, _indexer) <-
     epochStateWorker_
       nodeConfigPath
-      onInsert
+      callback
       securityParam
       coordinator
       workerChannel
@@ -436,6 +438,7 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
   let loop = forever $ do
         signalQSemN (c ^. barrier) 1
         failWhenFull (c ^. errorVar)
+        void $ readMVar indexerMVar >>= callback
         event <- atomically $ readTChan ch
         case event of
           RollForward blockInMode _ct -> do
@@ -444,10 +447,6 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
               updateWith indexerMVar (c ^. errorVar) $
                 Storable.insert $
                   MintBurn.MintBurnEvent event'
-            -- we only send callback if an event with assets is indexed
-            unless
-              (null $ MintBurn.txMintEventTxAssets event')
-              (void $ readMVar indexerMVar >>= callback)
           RollBackward cp' _ct ->
             void $ updateWith indexerMVar (c ^. errorVar) $ Storable.rewind cp'
   pure (loop, cp)

@@ -10,10 +10,9 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Slotting.Slot (WithOrigin (Origin))
 import Control.Arrow (left)
 import Control.Concurrent.STM (atomically)
-import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, tryReadTMVar)
+import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, readTMVar)
 import Control.Lens ((^.), (^?))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
@@ -84,17 +83,12 @@ currentSyncedBlock
   -> IO (Either QueryExceptions GetCurrentSyncedBlockResult)
   -- ^ Wrong result type are unlikely but must be handled
 currentSyncedBlock env = do
-  indexer <-
-    atomically
-      (tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer)
-  case indexer of
-    Just i -> do
-      res <- runExceptT $ Storable.query i Utxo.LastSyncedBlockInfoQuery
-      case res of
-        Right (Utxo.LastSyncedBlockInfoResult blockInfoM) ->
-          pure $ Right $ GetCurrentSyncedBlockResult blockInfoM
-        _other -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
-    Nothing -> pure . Right $ GetCurrentSyncedBlockResult Origin
+  indexer <- atomically (readTMVar $ env ^. addressUtxoIndexerEnvIndexer)
+  res <- runExceptT $ Storable.query indexer Utxo.LastSyncedBlockInfoQuery
+  case res of
+    Right (Utxo.LastSyncedBlockInfoResult blockInfoM) ->
+      pure $ Right $ GetCurrentSyncedBlockResult blockInfoM
+    _other -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
 
 {- | Retrieve Utxos associated with the given address
  We return an empty list if no address is not found
@@ -149,12 +143,9 @@ withQueryAction
   -- ^ Address and slot to query
   -> IO (Either QueryExceptions GetUtxosFromAddressResult)
 withQueryAction env query =
-  (atomically $ tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer) >>= action
+  (atomically $ readTMVar $ env ^. addressUtxoIndexerEnvIndexer) >>= action
   where
-    action Nothing =
-      -- May occur at startup before marconi-sidechain gets to update the indexer
-      pure $ Right $ GetUtxosFromAddressResult []
-    action (Just indexer) = do
+    action indexer = do
       res <- runExceptT $ Storable.query indexer query
       let spentInfo row =
             -- either both parameters are Nothing or both are defined
