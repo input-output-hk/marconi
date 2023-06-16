@@ -968,9 +968,9 @@ resumeHelper :: SQL.Connection -> IO [C.ChainPoint]
 resumeHelper c =
   let limit :: Int = 216000
       helper
-        :: Int -- \^ page
+        :: Int -- page
         -> [C.ChainPoint]
-        -> IO [C.ChainPoint] -- \^ accumulated chainpoints
+        -> IO [C.ChainPoint] -- accumulated chainpoints
       helper page tally = do
         let offset = page * limit
         cps <-

@@ -6,20 +6,27 @@ import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Indexers qualified as Indexers
 import System.Directory (createDirectoryIfMissing)
 
+{- | the worker don't have a hook to notify the query part
+ (we use a monoid because some hooks return unit while other returns a list of events)
+-}
+noHook :: Monoid m => a -> IO m
+noHook = const $ pure mempty
+
 main :: IO ()
 main = do
   o <- Cli.parseOptions
   createDirectoryIfMissing True (Cli.optionsDbPath o)
   let maybeTargetAddresses = Cli.optionsTargetAddresses o
+  let maybeTargetAssets = Cli.optionsTargetAssets o
       indexers =
-        [ (Indexers.utxoWorker (\_ -> pure ()) maybeTargetAddresses, Cli.utxoDbPath o)
-        , (Indexers.addressDatumWorker (\_ -> pure []) maybeTargetAddresses, Cli.addressDatumDbPath o)
-        , (Indexers.scriptTxWorker (\_ -> pure []), Cli.scriptTxDbPath o)
-        , (Indexers.mintBurnWorker (\_ -> pure ()), Cli.mintBurnDbPath o)
+        [ (Indexers.utxoWorker noHook maybeTargetAddresses, Cli.utxoDbPath o)
+        , (Indexers.addressDatumWorker noHook maybeTargetAddresses, Cli.addressDatumDbPath o)
+        , (Indexers.scriptTxWorker noHook, Cli.scriptTxDbPath o)
+        , (Indexers.mintBurnWorker noHook maybeTargetAssets, Cli.mintBurnDbPath o)
         ]
           <> case Cli.optionsNodeConfigPath o of
             Just configPath ->
-              [(Indexers.epochStateWorker configPath (\_ -> pure ()), Cli.epochStateDbPath o)]
+              [(Indexers.epochStateWorker configPath noHook, Cli.epochStateDbPath o)]
             Nothing -> []
 
   Indexers.runIndexers

@@ -3,7 +3,6 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
   currentSyncedBlock,
   findByAddress,
   findByBech32AddressAtSlot,
-  reportQueryAddresses,
   Utxo.UtxoIndexer,
   reportBech32Addresses,
   withQueryAction,
@@ -122,9 +121,6 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
           (C.SlotNo <$> lowerBoundSlotNo)
           (C.SlotNo upperBoundSlotNo)
 
-      utxoQuery :: C.AddressAny -> Utxo.Interval C.SlotNo -> Utxo.QueryUtxoByAddress
-      utxoQuery addr = Utxo.QueryUtxoByAddress addr
-
       queryAtAddressAndSlot :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
       queryAtAddressAndSlot = findByAddress env
 
@@ -134,7 +130,7 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
         addr <-
           bimap toQueryExceptions C.toAddressAny $
             C.deserialiseFromBech32 C.AsShelleyAddress addressText
-        pure $ utxoQuery addr si
+        pure $ Utxo.QueryUtxoByAddress addr si
    in case query of
         Right q -> queryAtAddressAndSlot q
         Left e -> pure $ Left e
@@ -176,11 +172,6 @@ withQueryAction env query =
 {- | report target addresses
  Used by JSON-RPC
 -}
-reportQueryAddresses
-  :: AddressUtxoIndexerEnv
-  -> IO [C.Address C.ShelleyAddr]
-reportQueryAddresses env = pure $ maybe [] NonEmpty.toList (env ^. addressUtxoIndexerEnvTargetAddresses)
-
 reportBech32Addresses
   :: AddressUtxoIndexerEnv
   -> [Text]

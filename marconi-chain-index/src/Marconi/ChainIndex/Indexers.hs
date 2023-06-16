@@ -50,10 +50,11 @@ import Control.Exception (Exception, catch)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
-import Control.Monad (forever, void, when)
+import Control.Monad (forM_, forever, unless, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.Functor (($>))
+import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
@@ -415,32 +416,43 @@ epochStateWorker nodeConfigPath onInsert securityParam coordinator path = do
 mintBurnWorker_
   :: SecurityParam
   -> (MintBurn.MintBurnIndexer -> IO ())
+  -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  -- ^ Target assets to filter for
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
   -> IO (IO b, C.ChainPoint)
-mintBurnWorker_ securityParam callback Coordinator{_barrier, _errorVar} ch dbPath = do
+mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
   indexer <- toException (MintBurn.open dbPath securityParam)
   indexerMVar <- newMVar indexer
   cp <- toException $ Storable.resumeFromStorage $ view Storable.handle indexer
   let loop = forever $ do
-        signalQSemN _barrier 1
-        failWhenFull _errorVar
+        signalQSemN (c ^. barrier) 1
+        failWhenFull (c ^. errorVar)
         event <- atomically $ readTChan ch
         case event of
-          RollForward blockInMode _ct
-            | Just event' <- MintBurn.toUpdate blockInMode -> do
-                void $ updateWith indexerMVar _errorVar $ Storable.insert $ MintBurn.MintBurnEvent event'
-                void $ readMVar indexerMVar >>= callback
-            | otherwise -> pure ()
+          RollForward blockInMode _ct -> do
+            let event' = MintBurn.toUpdate mAssets blockInMode
+            void $
+              updateWith indexerMVar (c ^. errorVar) $
+                Storable.insert $
+                  MintBurn.MintBurnEvent event'
+            -- we only send callback if an event with assets is indexed
+            unless
+              (null $ MintBurn.txMintEventTxAssets event')
+              (void $ readMVar indexerMVar >>= callback)
           RollBackward cp' _ct ->
-            void $ updateWith indexerMVar _errorVar $ Storable.rewind cp'
+            void $ updateWith indexerMVar (c ^. errorVar) $ Storable.rewind cp'
   pure (loop, cp)
 
-mintBurnWorker :: (MintBurn.MintBurnIndexer -> IO ()) -> Worker
-mintBurnWorker callback securityParam coordinator path = do
+mintBurnWorker
+  :: (MintBurn.MintBurnIndexer -> IO ())
+  -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  -- ^ Target assets to filter for
+  -> Worker
+mintBurnWorker callback mAssets securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
-  (loop, cp) <- mintBurnWorker_ securityParam callback coordinator workerChannel path
+  (loop, cp) <- mintBurnWorker_ securityParam callback mAssets coordinator workerChannel path
   void $ forkIO loop
   return cp
 
@@ -475,11 +487,9 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
     initial = pure coordinator
 
     indexersHealthCheck :: Coordinator' a -> IO ()
-    indexersHealthCheck Coordinator{_errorVar} = do
-      err <- tryReadMVar _errorVar
-      case err of
-        Nothing -> pure ()
-        Just e -> throw e
+    indexersHealthCheck c = do
+      err <- tryReadMVar (c ^. errorVar)
+      forM_ err throw
 
     blockAfterChainPoint C.ChainPointAtGenesis _bim = True
     blockAfterChainPoint (C.ChainPoint slotNo' _) bim = f bim > slotNo'

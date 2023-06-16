@@ -10,7 +10,10 @@ module Gen.Marconi.ChainIndex.Indexers.MintBurn (
   genTxMintValueRange,
   genMintEvents,
   genTxWithMint,
+  genTxWithAsset,
   genTxMintValue,
+  genAssetName,
+  commonMintingPolicyId,
 ) where
 
 import Cardano.Api qualified as C
@@ -49,8 +52,9 @@ genIndexerWithEvents dbPath = do
   H.classify "Buffer doesn't overflow" $ not (null events) && not overflow
   H.classify "Buffer overflows" $ not (null events) && overflow
   indexer <- liftIO $ do
+    let storeEvent event = raiseException . Storable.insert (MintBurn.MintBurnEvent event)
     indexer <- raiseException $ MintBurn.open dbPath bufferSize
-    foldM (\indexer' event -> raiseException $ Storable.insert (MintBurn.MintBurnEvent event) indexer') indexer events
+    foldM (flip storeEvent) indexer events
   pure (indexer, events, (bufferSize, nTx))
 
 {- | Generate transactions which have mints inside, then extract
@@ -74,7 +78,10 @@ genMintEvents = do
   txAll <- forM txAll' $ \case
     (Right tx, slotNo) -> pure (tx, slotNo)
     (Left txBodyError, _) -> fail $ "Failed to create a transaction! This shouldn't happen, the generator should be fixed. TxBodyError: " <> show txBodyError
-  let events = mapMaybe (\(ix, (tx, slotNo)) -> MintBurn.TxMintEvent slotNo dummyBlockHeaderHash dummyBlockNo . pure <$> MintBurn.txMints ix tx) $ zip [0 ..] txAll
+  let buildEvent ix (tx, slotNo) =
+        MintBurn.TxMintEvent slotNo dummyBlockHeaderHash dummyBlockNo . pure
+          <$> MintBurn.txMints Nothing ix tx
+      events = mapMaybe (uncurry buildEvent) $ zip [0 ..] txAll
   pure (events, (fromIntegral bufferSize, nTx))
 
 genTxWithMint
@@ -122,13 +129,15 @@ genTxMintValueRange min' max' = do
   -- TODO: fix bug RewindableIndex.Storable.rewind and change range to start from 0.
   policyAssets <- replicateM n genAsset
   let (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy policyAssets
-  pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith $ Map.singleton policyId policyWitness)
+      buildInfo = C.BuildTxWith $ Map.singleton policyId policyWitness
+  pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues buildInfo
   where
     genAsset :: Gen (C.AssetName, C.Quantity)
     genAsset = (,) <$> genAssetName <*> genQuantity
-      where
-        genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
-        genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
+    genQuantity = coerce @Integer @C.Quantity <$> Gen.integral (Range.constant min' max')
+
+genAssetName :: Gen C.AssetName
+genAssetName = coerce @_ @C.AssetName <$> Gen.bytes (Range.constant 1 5)
 
 -- * Helpers
 
@@ -180,6 +189,12 @@ mkMintValue policy policyAssets = (policyId, policyWitness, mintedValues)
 commonMintingPolicy :: MintingPolicy
 commonMintingPolicy = $$(PlutusTx.compile [||\_ _ -> ()||])
 
+commonMintingPolicyId :: C.PolicyId
+commonMintingPolicyId =
+  let serialisedPolicyScript =
+        C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode commonMintingPolicy
+   in C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV1 serialisedPolicyScript :: C.PolicyId
+
 {- | Recreate an indexe, useful because the sql connection to a
  :memory: database can be reused.
 -}
@@ -198,14 +213,12 @@ equalSet :: (H.MonadTest m, Show a, Ord a) => [a] -> [a] -> m ()
 equalSet a b = Set.fromList a === Set.fromList b
 
 getPolicyAssets :: C.TxMintValue C.BuildTx C.BabbageEra -> [(C.PolicyId, C.AssetName, C.Quantity)]
-getPolicyAssets txMintValue = case txMintValue of
+getPolicyAssets = \case
   (C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith _policyIdToWitnessMap)) ->
-    mapMaybe
-      ( \(assetId, quantity) -> case assetId of
+    let extractAssetId (assetId, quantity) = case assetId of
           C.AssetId policyId assetName -> Just (policyId, assetName, quantity)
           C.AdaAssetId -> Nothing
-      )
-      $ C.valueToList mintedValues
+     in mapMaybe extractAssetId $ C.valueToList mintedValues
   _ -> []
 
 getValue :: C.TxMintValue C.BuildTx C.BabbageEra -> Maybe C.Value

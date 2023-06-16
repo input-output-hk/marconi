@@ -5,6 +5,7 @@ Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
                          [--http-port HTTP-PORT] 
                          (--mainnet | --testnet-magic NATURAL) 
                          [--max-indexing-depth | --min-indexing-depth NATURAL] 
-                         [(-a|--addresses-to-index BECH32-ADDRESS)]
+                         [(-a|--addresses-to-index BECH32-ADDRESS)] 
+                         [(--match-asset-id POLICY_ID[.ASSET_NAME])]
 
   marconi-sidechain

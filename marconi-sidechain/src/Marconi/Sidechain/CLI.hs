@@ -26,3 +26,4 @@ parserCliArgs =
     <*> Cli.pNetworkId
     <*> Cli.commonMinIndexingDepth
     <*> Cli.commonMaybeTargetAddress
+    <*> Cli.commonMaybeTargetAsset

@@ -54,7 +54,7 @@ tests rpcClientAction =
 queryMintingPolicyTest :: Property
 queryMintingPolicyTest = property $ do
   (events, _) <- forAll genMintEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing
+  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
   let callback :: MintBurn.MintBurnIndexer -> IO ()
       callback =
         atomically
@@ -75,8 +75,7 @@ queryMintingPolicyTest = property $ do
       . Set.toList
       . Set.fromList -- required to remove the potential duplicate assets
       . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
-      . concatMap NonEmpty.toList
-      . fmap MintBurn.txMintEventTxAssets
+      . foldMap MintBurn.txMintEventTxAssets
       $ events
 
   let numOfFetched = length fetchedRows
@@ -102,8 +101,7 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
           . Set.fromList
           . fmap (\mps -> (mintAssetPolicyId mps, mintAssetAssetName mps))
           . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
-          . concatMap NonEmpty.toList
-          . fmap MintBurn.txMintEventTxAssets
+          . foldMap MintBurn.txMintEventTxAssets
           $ events
   rpcResponses <- liftIO $ for qParams (queryMintBurnAction action)
   let fetchedUtxoRows = concatMap fromQueryResult rpcResponses
