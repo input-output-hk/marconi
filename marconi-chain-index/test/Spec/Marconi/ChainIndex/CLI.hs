@@ -53,7 +53,7 @@ parseAssets = property $ do
         Nothing -> C.serialiseToRawBytesHexText p
         Just x ->
           C.serialiseToRawBytesHexText p
-            <> ","
+            <> "."
             <> C.serialiseToRawBytesHexText x
       assetsText = unwords $ toString <$> assets
       parsed =
