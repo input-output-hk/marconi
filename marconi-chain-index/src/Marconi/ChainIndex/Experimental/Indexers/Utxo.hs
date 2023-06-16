@@ -485,7 +485,7 @@ instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
 getUtxoEventsFromBlock
   :: C.IsCardanoEra era
   => UtxoIndexerConfig
-  -- ^ target addresses to filter for
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> C.Block era
   -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
@@ -496,7 +496,7 @@ getUtxoEventsFromBlock utxoIndexerConfig (C.Block _ txs) =
 getUtxoEvents
   :: C.IsCardanoEra era
   => UtxoIndexerConfig
-  -- ^ target addresses to filter for
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> [C.Tx era]
   -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
@@ -548,7 +548,7 @@ getUtxosFromTxBody utxoIndexerConfig txBody@(C.TxBody txBodyContent@C.TxBodyCont
 -- | Extract Utxos from Cardano TxOut
 getUtxoFromTxOut
   :: UtxoIndexerConfig
-  -- ^ Target addresses to filter for
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> C.TxIn
   -- ^ unique id and position of this transaction
   -> C.TxOut C.CtxTx era
@@ -645,7 +645,7 @@ isAddressInTarget' targetAddresses utxo =
 balanceUtxoFromTx
   :: C.IsCardanoEra era
   => UtxoIndexerConfig
-  -- ^ target addresses to filter for
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> C.Tx era
   -> TxOutBalance
 balanceUtxoFromTx utxoIndexerConfig (C.Tx txBody _) =

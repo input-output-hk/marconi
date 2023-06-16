@@ -232,21 +232,14 @@ instance Ord Utxo where
 instance FromJSON Utxo where
   parseJSON (Object v) =
     Utxo
-      <$> v
-        .: "address"
+      <$> v .: "address"
       <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
-      <*> v
-        .: "datum"
-      <*> v
-        .: "datumHash"
-      <*> v
-        .: "value"
-      <*> v
-        .: "inlineScript"
-      <*> v
-        .: "inlineScriptHash"
-      <*> v
-        .: "txIndexInBlock"
+      <*> v .: "datum"
+      <*> v .: "datumHash"
+      <*> v .: "value"
+      <*> v .: "inlineScript"
+      <*> v .: "inlineScriptHash"
+      <*> v .: "txIndexInBlock"
   parseJSON _ = mempty
 
 instance ToJSON Utxo where
@@ -277,10 +270,8 @@ toChainPointRow cp = ChainPointRow <$> C.chainPointToSlotNo cp <*> C.chainPointT
 instance FromJSON ChainPointRow where
   parseJSON (Object v) =
     ChainPointRow
-      <$> v
-        .: "slotNo"
-      <*> v
-        .: "blockHeaderHash"
+      <$> v .: "slotNo"
+      <*> v .: "blockHeaderHash"
   parseJSON _ = mempty
 
 instance ToJSON ChainPointRow where
@@ -337,11 +328,9 @@ instance FromJSON UtxoRow where
             (Just s', Just bh', Just txId') -> Just $ SpentInfo (ChainPointRow s' bh') txId'
             _error -> fail "Inconsistent spent info"
      in UtxoRow
-          <$> v
-            .: "utxo"
+          <$> v .: "utxo"
           <*> (ChainPointRow <$> v .: "slotNo" <*> v .: "blockHeaderHash")
-          <*> v
-            .: "blockNo"
+          <*> v .: "blockNo"
           <*> parseSpentInfo
   parseJSON _ = mempty
 
@@ -1063,7 +1052,7 @@ toAddr (C.AddressInEra (C.ShelleyAddressInEra _) addr) = C.AddressShelley addr
 getUtxoEventsFromBlock
   :: C.IsCardanoEra era
   => UtxoIndexerConfig
-  -- ^ UtxoIndexer configuratio
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> C.Block era
   -> StorableEvent UtxoHandle
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
@@ -1074,7 +1063,7 @@ getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo hsh bloc
 getUtxoEvents
   :: C.IsCardanoEra era
   => UtxoIndexerConfig
-  -- ^ UtxoIndexer configuratio
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> [C.Tx era]
   -> C.ChainPoint
   -> C.BlockNo
@@ -1102,10 +1091,11 @@ getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txSc
   where
     collateral C.TxReturnCollateralNone = []
     collateral (C.TxReturnCollateral _ txout) = [txout]
+
 getUtxosFromTxBody
   :: (C.IsCardanoEra era)
   => UtxoIndexerConfig
-  -- ^ UtxoIndexer configuratio
+  -- ^ Utxo Injdexer Configuration, containing targetAddresses and showReferenceScript flag
   -> C.TxBody era
   -> TxIndexInBlock
   -> Map C.TxIn Utxo
@@ -1127,7 +1117,7 @@ getUtxosFromTxBody utxoIndexerConfig txBody@(C.TxBody txBodyContent@C.TxBodyCont
 
 getUtxoFromTxOut
   :: UtxoIndexerConfig
-  -- ^ UtxoIndexer configuration
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> C.TxIn
   -- ^ unique id and position of this transaction
   -> C.TxOut C.CtxTx era
@@ -1154,7 +1144,7 @@ getUtxoFromTxOut (UtxoIndexerConfig maybeTargetAddresses storeReferenceScript) _
     (_inlineScript, _inlineScriptHash) =
       if storeReferenceScript
         then getRefScriptAndHash refScript
-        else (Nothing, Nothing)
+        else (Nothing, Nothing) -- supress saving ReferenceScript and its hash
 
 -- | get the inlineScript and inlineScriptHash
 getRefScriptAndHash
@@ -1224,7 +1214,7 @@ isAddressInTarget' targetAddresses utxo =
 balanceUtxoFromTx
   :: C.IsCardanoEra era
   => UtxoIndexerConfig
-  -- ^ UtxoIndexer configuration
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> (C.Tx era, TxIndexInBlock)
   -> TxOutBalance
 balanceUtxoFromTx utxoIndexerConfig (C.Tx txBody _, txIndexInBlock') =

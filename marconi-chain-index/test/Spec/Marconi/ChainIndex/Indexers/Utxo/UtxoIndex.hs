@@ -38,7 +38,7 @@ import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses, UtxoIndexerConfig (UtxoIndexerConfig), ucEnableUtxoTxOutRef, ucTargetAddresses)
 import Marconi.Core.Storable qualified as Storable
 
-import Hedgehog (Gen, Property, cover, forAll, property, (===))
+import Hedgehog (Gen, Property, cover, forAll, property, (/==), (===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -77,6 +77,10 @@ tests =
         "getUtxoEvents with target addresses corresponding to all addresses in generated txs should return the same 'UtxoEvent' as if no target addresses were provided"
         "propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied "
         propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied
+    , testPropertyNamed
+        "Supress saving Utxo inLineScript and inLineScriptHash"
+        "supressSavingInlineScriptAndInlineScriptHash"
+        supressSavingInlineScriptAndInlineScriptHash
     , testPropertyNamed
         "Roundtrip save and retrieve from storage store property"
         "propSaveToAndRetrieveFromUtxoInMemoryStore"
@@ -463,33 +467,7 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
             raiseException $
               Utxo.open ":memory:" (Utxo.Depth 1) False
                 >>= Storable.insertMany events
-        let -- pick a random slotNo less than highPoint
-
-        -- set queryInterval for the open interval [lowerBoundSlotno, upperBoundSlotNo]
-
-        -- we're tesing for all addresses in all slotNo
-        -- TODO maxBound will create SQL.IntegerOverflow
-
-        -- Show we did not retrieve any slotNo before the queryInterval [low, ]
-
-        -- If the 'expectedUtxoEvent' only contain Byron addresses, then 'filteredExpectedUtxoEvent'
-        -- will have an empty set of utxos. In that scenario, the `getUtxoEvents` should not filter
-        -- anything, so we just return 'pure ()'.
-
-        -- We make sure that at least one event is stored on disk
-
-        -- We insert the events in the indexer, but for the test assertions, we discard the events in
-        -- don't vacuum sqlite
-
-        -- TODO Given current implementation, we only expect to be able to resume from events which
-        -- contain at least one UTXO. In the future, this should be changed to take into account
-
-        -- TODO
-        -- TODO
-
-        -- TODO
-        -- TODO
-
+        let
         upperBoundSlotNo@(C.SlotNo upperBoundSlotNoWord) <-
           maybe Hedgehog.failure pure $ getSlot cp
 
@@ -497,11 +475,14 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
         let upperBoundIntervalQuery :: [StorableQuery Utxo.UtxoHandle]
             upperBoundIntervalQuery = mkUtxoQueries events upperBoundInterval
 
-        lowerBoundSlotNo <- fmap C.SlotNo $ forAll $ Gen.word64 $ Range.linear 0 upperBoundSlotNoWord
+        -- pick a random slotNo less than highPoint
+        lowerBoundSlotNo <-
+          fmap C.SlotNo $ forAll $ Gen.word64 $ Range.linear 0 upperBoundSlotNoWord
 
         slotnoIntervalOpen <-
           Hedgehog.evalEither (Utxo.interval (Just lowerBoundSlotNo) upperBoundSlotNo)
 
+        -- we're tesing for all addresses in all slotNo
         maxInterval <-
           Hedgehog.evalEither (Utxo.interval (Just $ C.SlotNo minBound) (C.SlotNo 2000))
         let maxIntervalQuery :: [StorableQuery Utxo.UtxoHandle]
@@ -533,6 +514,7 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
             cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . Utxo.urCreationPoint . Utxo.cpSlotNo
             (retrievedLowSlotNo, retrievedHighSlotNo) = (head cps, last cps)
 
+        -- Show we did not retrieve any slotNo before the queryInterval [low,*]
         Hedgehog.assert (retrievedLowSlotNo >= lowerBoundSlotNo)
         Hedgehog.assert (retrievedHighSlotNo <= upperBoundSlotNo)
 
@@ -564,6 +546,39 @@ propComputeEventsAtAddress = property $ do
   computedAddresses === actualAddresses
 
 {- |
+We are testing that we can supress saving Utxo inLineScript and inLineScriptHash
+using the UtxoIndexerConfig data type.
+-}
+supressSavingInlineScriptAndInlineScriptHash :: Property
+supressSavingInlineScriptAndInlineScriptHash = property $ do
+  utxoEventsWithTxs <- forAll UtxoGen.genUtxoEventsWithTxs
+  forM_ utxoEventsWithTxs $ \(expectedUtxoEvent, block) -> do
+    let txs = mockBlockTxs block
+        expectedAddresses = mkTargetAddressFromTxs txs
+
+        saveRefUtxoIndexerConfig =
+          UtxoIndexerConfig
+            { ucTargetAddresses = expectedAddresses
+            , ucEnableUtxoTxOutRef = True
+            }
+        noSaveRefUtxoIndexerConfig =
+          saveRefUtxoIndexerConfig{ucEnableUtxoTxOutRef = False}
+
+        withSaveScriptRef, withNoSaveScriptRef :: Set.Set Utxo.Utxo
+        withSaveScriptRef =
+          Utxo.ueUtxos $ Utxo.getUtxoEvents saveRefUtxoIndexerConfig txs (Utxo.ueChainPoint expectedUtxoEvent) (Utxo.ueBlockNo expectedUtxoEvent)
+        withNoSaveScriptRef =
+          Utxo.ueUtxos $ Utxo.getUtxoEvents noSaveRefUtxoIndexerConfig txs (Utxo.ueChainPoint expectedUtxoEvent) (Utxo.ueBlockNo expectedUtxoEvent)
+
+    -- there should be some inlineScripts
+    Set.filter (\u -> isJust . Utxo._inlineScript $ u) withSaveScriptRef /== Set.empty
+    Set.filter (\u -> isJust . Utxo._inlineScriptHash $ u) withSaveScriptRef /== Set.empty
+
+    -- there should be no inlineScript or inlineScriptHash
+    Set.filter (\u -> isJust . Utxo._inlineScript $ u) withNoSaveScriptRef === Set.empty
+    Set.filter (\u -> isJust . Utxo._inlineScriptHash $ u) withNoSaveScriptRef === Set.empty
+
+{- |
   Calling 'Utxo.getUtxoEventos' with target addresses that are extracted from all tx outputs from
   the initial generated txs should return the same 'UtxoEvent's as if there was no provided target
   addresses.
@@ -578,7 +593,11 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       isJust expectedAddresses
     cover 1 "No target addresses are provided" $
       isNothing expectedAddresses
-    let utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = expectedAddresses, ucEnableUtxoTxOutRef = True}
+    let utxoIndexerConfig =
+          UtxoIndexerConfig
+            { ucTargetAddresses = expectedAddresses
+            , ucEnableUtxoTxOutRef = True
+            }
         actualUtxoEvents =
           Utxo.getUtxoEvents utxoIndexerConfig txs (Utxo.ueChainPoint expectedUtxoEvent) (Utxo.ueBlockNo expectedUtxoEvent)
         filteredExpectedUtxoEvent =
@@ -592,18 +611,17 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
     if not (null $ Utxo.ueUtxos expectedUtxoEvent) && null (Utxo.ueUtxos filteredExpectedUtxoEvent)
       then pure ()
       else filteredExpectedUtxoEvent === actualUtxoEvents
-  where
-    mkTargetAddressFromTxs
-      :: [C.Tx C.BabbageEra]
-      -> Maybe TargetAddresses
-    mkTargetAddressFromTxs txs =
-      foldMap (\(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts) txs
 
-    mkTargetAddressFromTxOuts
-      :: [C.TxOut C.CtxTx C.BabbageEra]
-      -> Maybe TargetAddresses
-    mkTargetAddressFromTxOuts txOuts =
-      nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
+mkTargetAddressFromTxs
+  :: [C.Tx C.BabbageEra]
+  -> Maybe TargetAddresses
+mkTargetAddressFromTxs = foldMap (\(C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) -> mkTargetAddressFromTxOuts txOuts)
+
+mkTargetAddressFromTxOuts
+  :: [C.TxOut C.CtxTx C.BabbageEra]
+  -> Maybe TargetAddresses
+mkTargetAddressFromTxOuts txOuts =
+  nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
 
 {- |
   The property verifies that the 'Storable.resumeFromStorage' call returns at least a point which
@@ -624,11 +642,13 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
 
   depth <- forAll $ Gen.int (Range.linear 1 $ length events - 1)
 
+  -- We insert the events in the indexer, but for the test assertions, we discard the events in
   indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
   void $ liftIO $ raiseException $ Storable.insertMany events indexer
 
   latestResumablePoint <- liftIO $ raiseException $ Storable.resume indexer
-
+  -- TODO Given current implementation, we only expect to be able to resume from events which
+  -- contain at least one UTXO. In the future, this should be changed to take into account
   Hedgehog.assert $ latestResumablePoint /= C.ChainPointAtGenesis
 
 propJsonRoundtripUtxoRow :: Property
@@ -680,8 +700,8 @@ propLastChainPointOnRunningIndexer = property $ do
               slotNo
               bhh
               (Utxo.ueBlockNo beforeLastEvent)
-              0
-              0
+              0 -- TODO
+              0 -- TODO
       result === LastSyncedBlockInfoResult (At beforeLastBlockInfo)
 
 propLastChainPointOnRewindedIndexer :: Property
@@ -703,8 +723,8 @@ propLastChainPointOnRewindedIndexer = property $ do
                   slotNo
                   bhh
                   (Utxo.ueBlockNo latestEventPostRollback)
-                  0
-                  0
+                  0 -- TODO
+                  0 -- TODO
   indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
   indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
   indexer'' <- liftIO $ raiseException $ Storable.rewind rollbackPoint indexer'

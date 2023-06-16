@@ -167,7 +167,7 @@ utxoWorker_
   -- ^ callback function used in the queryApi thread, needs to be non-blocking
   -> Utxo.Depth
   -> UtxoIndexerConfig
-  -- ^ utxo indexer configuration
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
@@ -198,7 +198,7 @@ utxoWorker
   :: (Utxo.UtxoIndexer -> IO ())
   -- ^ callback function used in the queryApi thread
   -> UtxoIndexerConfig
-  -- ^ utxo indexer configuration
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> Worker
 utxoWorker callback utxoIndexerConfig securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator

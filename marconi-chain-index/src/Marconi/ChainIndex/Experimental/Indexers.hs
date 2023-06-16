@@ -51,7 +51,9 @@ utxoWorker -- Should go in Utxo module?
   -> IO (MVar UtxoIndexer, Core.Worker (C.BlockInMode C.CardanoMode) C.ChainPoint)
 utxoWorker dbPath depth = do
   c <- Utxo.initSQLite dbPath -- TODO handle error
-  let utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
+  let utxoIndexerConfig =
+        -- TODO We forgot the TargetAddress filtering logic for now for the Experimental Indexers.Utxo module
+        UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
       extract (C.BlockInMode block _) = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
   Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c depth
 

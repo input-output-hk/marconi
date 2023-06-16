@@ -8,7 +8,7 @@ module Marconi.ChainIndex.Types (
   -- * Addresses alias used to query marconi
   TargetAddresses,
 
-  -- * Utxo indexer related configs
+  -- * Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   UtxoIndexerConfig (..),
 
   -- * Aliases for the current Cardano era
@@ -39,7 +39,7 @@ import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 
--- | Typre represents non empty list of Bech32 Shelley compatable addresses
+-- | Type represents non empty list of Bech32 Shelley compatable addresses
 type TargetAddresses = NonEmpty (C.Address C.ShelleyAddr)
 
 data UtxoIndexerConfig = UtxoIndexerConfig
