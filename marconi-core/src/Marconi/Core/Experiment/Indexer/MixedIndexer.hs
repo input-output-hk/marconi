@@ -57,7 +57,7 @@ class Flushable m indexer where
     :: Word
     -- ^ How many event do we keep
     -> indexer event
-    -> m (Container indexer (TimedEvent event), indexer event)
+    -> m (Container indexer (TimedEvent (Point event) event), indexer event)
 
 instance Applicative m => Flushable m ListIndexer where
   type Container ListIndexer = []

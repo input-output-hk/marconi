@@ -67,7 +67,7 @@ data ProcessedInput event
   = -- | A rollback happen and indexers need to go back to the given point in time
     Rollback (Point event)
   | -- | A new event has to be indexed
-    Index (TimedEvent event)
+    Index (TimedEvent (Point event) event)
 
 -- Create workers
 
@@ -123,7 +123,7 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
       unlockCoordinator = do
         Con.signalQSemN tokens 1
 
-      fresherThan :: Ord (Point event) => TimedEvent event -> Point event -> Bool
+      fresherThan :: Ord (Point event) => TimedEvent (Point event) event -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
 
       indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer -> do

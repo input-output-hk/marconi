@@ -43,25 +43,27 @@ type family Point event
 type family Result query
 
 -- | Attach an event to a point in time
-data TimedEvent event = TimedEvent
-  { _point :: Point event
+data TimedEvent point event = TimedEvent
+  { _point :: point
   , _event :: event
   }
 
-deriving stock instance (Show event, Show (Point event)) => Show (TimedEvent event)
+deriving stock instance (Show event, Show point) => Show (TimedEvent point event)
+deriving stock instance (Eq event, Eq point) => Eq (TimedEvent point event)
+deriving stock instance (Ord event, Ord point) => Ord (TimedEvent point event)
 
 {- | A functor like function for TimedEvent, which requires that both @a@ and @b@ have the same
  point instance.
 -}
-mapTimedEvent :: Point a ~ Point b => (a -> b) -> TimedEvent a -> TimedEvent b
+mapTimedEvent :: (a -> b) -> TimedEvent point a -> TimedEvent point b
 mapTimedEvent f (TimedEvent p x) = TimedEvent p $ f x
 
 -- | When was this event created
-point :: Lens' (TimedEvent event) (Point event)
+point :: Lens' (TimedEvent point event) point
 point f te = fmap (\_point -> te{_point}) $ f $ _point te
 
 -- | A lens to get the event without its time information
-event :: Lens' (TimedEvent event) event
+event :: Lens' (TimedEvent point event) event
 event f te = fmap (\_event -> te{_event}) $ f $ _event te
 
 -- | Error that can occur when you index events

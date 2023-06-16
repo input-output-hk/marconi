@@ -51,9 +51,9 @@ genUtxoEvents' txOutToUtxo = do
   Core.indexAll timedEvents Core.mkListIndexer
 
 -- | Generate ShelleyEra UtxoEvent
-genShelleyEraUtxoEvents :: Gen (Core.TimedEvent Utxo.UtxoEvent)
+genShelleyEraUtxoEvents :: Gen (Core.TimedEvent C.ChainPoint Utxo.UtxoEvent)
 genShelleyEraUtxoEvents = do
-  events :: [Core.TimedEvent Utxo.UtxoEvent] <- genUtxoEventsWithTxs <&> fmap fst
+  events :: [Core.TimedEvent C.ChainPoint Utxo.UtxoEvent] <- genUtxoEventsWithTxs <&> fmap fst
   utxoEvents' :: [Utxo.UtxoEvent] <-
     forM
       events
@@ -65,9 +65,9 @@ genShelleyEraUtxoEvents = do
       cp = foldr max C.ChainPointAtGenesis (events ^.. folded . Core.point)
   pure $ Core.TimedEvent cp (fold utxoEvents')
 
-genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.TimedEvent Utxo.UtxoEvent)
+genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.TimedEvent C.ChainPoint Utxo.UtxoEvent)
 genShelleyEraUtxoEventsAtChainPoint cp = do
-  events :: [Core.TimedEvent Utxo.UtxoEvent] <-
+  events :: [Core.TimedEvent C.ChainPoint Utxo.UtxoEvent] <-
     genUtxoEventsWithTxs <&> fmap fst
   utxoEvent' :: [Utxo.UtxoEvent] <-
     forM
@@ -78,16 +78,16 @@ genShelleyEraUtxoEventsAtChainPoint cp = do
       )
   pure $ Core.TimedEvent cp (fold utxoEvent')
 
-genUtxoEventsWithTxs :: Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
+genUtxoEventsWithTxs :: Gen [(Core.TimedEvent C.ChainPoint Utxo.UtxoEvent, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
 
 genUtxoEventsWithTxs'
   :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
-  -> Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
+  -> Gen [(Core.TimedEvent C.ChainPoint Utxo.UtxoEvent, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs' txOutToUtxo =
   fmap (\block -> (getTimedEventFromBlock block, block)) <$> genMockchain
   where
-    getTimedEventFromBlock :: MockBlock C.BabbageEra -> Core.TimedEvent Utxo.UtxoEvent
+    getTimedEventFromBlock :: MockBlock C.BabbageEra -> Core.TimedEvent C.ChainPoint Utxo.UtxoEvent
     getTimedEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
       let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
           utxoMap = foldMap getUtxosFromTx txs

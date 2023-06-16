@@ -52,7 +52,7 @@ import Marconi.Core.Experiment.Type (
 data SQLInsertPlan event = forall a.
   SQL.ToRow a =>
   SQLInsertPlan
-  { planExtractor :: TimedEvent event -> [a]
+  { planExtractor :: TimedEvent (Point event) event -> [a]
   -- ^ How to transform the event into a type that can be handle by the database
   , planInsert :: SQL.Query
   -- ^ The insert statement for the extracted data
@@ -116,7 +116,7 @@ mkSingleInsertSqliteIndexer
   => SQL.ToRow param
   => HasGenesis (Point event)
   => SQL.Connection
-  -> (TimedEvent event -> param)
+  -> (TimedEvent (Point event) event -> param)
   -- ^ extract @param@ out of a 'TimedEvent'
   -> SQL.Query
   -- ^ the insert query
@@ -137,7 +137,7 @@ runIndexQueriesStep
   :: MonadIO m
   => MonadError IndexerError m
   => SQL.Connection
-  -> [TimedEvent event]
+  -> [TimedEvent (Point event) event]
   -> [SQLInsertPlan event]
   -> m ()
 runIndexQueriesStep _ _ [] = pure ()
@@ -156,7 +156,7 @@ runIndexQueries
   :: MonadIO m
   => MonadError IndexerError m
   => SQL.Connection
-  -> [TimedEvent event]
+  -> [TimedEvent (Point event) event]
   -> [[SQLInsertPlan event]]
   -> m ()
 runIndexQueries c = traverse_ . runIndexQueriesStep c

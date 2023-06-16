@@ -40,7 +40,7 @@ type UtxoIndexer = Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.Ut
 -- | Extract the timed information from a block
 blockTimedEvent
   :: C.BlockInMode C.CardanoMode
-  -> Core.TimedEvent (C.BlockInMode C.CardanoMode)
+  -> Core.TimedEvent C.ChainPoint (C.BlockInMode C.CardanoMode)
 blockTimedEvent b@(C.BlockInMode (C.Block (C.BlockHeader slotNo hsh _) _) _) =
   Core.TimedEvent (C.ChainPoint slotNo hsh) b
 

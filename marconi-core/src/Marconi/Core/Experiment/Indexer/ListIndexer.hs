@@ -28,7 +28,7 @@ import Marconi.Core.Experiment.Type (Point, TimedEvent, point)
 
 -- | The constructor is not exposed, use 'listIndexer' instead.
 data ListIndexer event = ListIndexer
-  { _events :: [TimedEvent event]
+  { _events :: [TimedEvent (Point event) event]
   -- ^ Stored @event@s, associated with their history 'Point'
   , _latest :: Point event
   -- ^ Ease access to the latest sync point
@@ -69,7 +69,7 @@ instance Applicative m => Rollbackable m event ListIndexer where
         isIndexBeforeRollback :: ListIndexer event -> Bool
         isIndexBeforeRollback x = x ^. latest < p
 
-        isEventAfterRollback :: TimedEvent event -> Bool
+        isEventAfterRollback :: TimedEvent (Point event) event -> Bool
         isEventAfterRollback x = x ^. point > p
      in pure $
           if isIndexBeforeRollback ix
