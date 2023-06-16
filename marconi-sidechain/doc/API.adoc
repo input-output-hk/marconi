@@ -422,6 +422,9 @@ Retrieves all token burning events given an `AssetId` that have occurred before 
   A negative number means that the token was minted.
   However, we don't track mint events, so that should never happen.
 
+* If the `policyId` correspond to a simple script, the response won't contain a
+  `redeemer`. Otherwise, the response *always* contain a redeemer.
+
 ==== Rationale
 
 TBD
@@ -458,7 +461,6 @@ TBD
   },
   "required": [
     "policyId",
-    "assetName",
     "slotNo",
   ]
 }
@@ -504,7 +506,6 @@ TBD
       "slotNo",
       "blockNo",
       "txId",
-      "redeemer",
       "burnAmount"
     ]
   }
