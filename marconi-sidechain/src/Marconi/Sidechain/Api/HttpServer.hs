@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Marconi.Sidechain.Api.HttpServer where
 
@@ -38,7 +39,7 @@ import Marconi.Sidechain.Api.Types (
   sidechainEnvIndexers,
  )
 import Network.JsonRpc.Server.Types ()
-import Network.JsonRpc.Types (JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage), invalidRequestCode, invalidRequestMessage, parseErrorCode, parseErrorMessage)
+import Network.JsonRpc.Types (JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage), mkJsonRpcInvalidRequestErr, mkJsonRpcParseErr)
 import Network.Wai.Handler.Warp (runSettings)
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler, Server, serve)
@@ -186,20 +187,10 @@ toRpcErr
   :: QueryExceptions
   -> JsonRpcErr String
 toRpcErr (AddressConversionError e) =
-  JsonRpcErr
-    { errorCode = invalidRequestCode
-    , errorMessage = invalidRequestMessage
-    , errorData = Just e
-    }
+  mkJsonRpcInvalidRequestErr $ Just e
 toRpcErr (QueryError e) =
-  JsonRpcErr
-    { errorCode = parseErrorCode -- TODO Change to specific code and message
-    , errorMessage = parseErrorMessage
-    , errorData = Just e
-    }
+  -- TODO Change to specific code and message
+  mkJsonRpcParseErr $ Just e
 toRpcErr (UnexpectedQueryResult e) =
-  JsonRpcErr
-    { errorCode = parseErrorCode -- TODO Change to specific code and message
-    , errorMessage = parseErrorMessage
-    , errorData = Just $ show e
-    }
+  -- TODO Change to specific code and message
+  mkJsonRpcParseErr $ Just $ show e

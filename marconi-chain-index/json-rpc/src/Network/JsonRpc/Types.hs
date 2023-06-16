@@ -25,17 +25,12 @@ module Network.JsonRpc.Types (
   JsonRpcErr (..),
   JsonRpcResponse (..),
 
-  -- ** Standard error codes and messages
-  parseErrorCode,
-  parseErrorMessage,
-  invalidRequestCode,
-  invalidRequestMessage,
-  methodNotFoundCode,
-  methodNotFoundMessage,
-  invalidParamsCode,
-  invalidParamsMessage,
-  internalErrorCode,
-  internalErrorMessage,
+  -- ** Smart constructors for standard JSON-RPC errors
+  mkJsonRpcParseErr,
+  mkJsonRpcInvalidRequestErr,
+  mkJsonRpcMethodNotFoundErr,
+  mkJsonRpcInvalidParamsErr,
+  mkJsonRpcInternalErr,
 
   -- * Type rewriting
   JsonRpcEndpoint,
@@ -113,35 +108,20 @@ data JsonRpcErr e = JsonRpcErr
   deriving (Eq, Show)
 
 -- | JSON-RPC error codes based on [JSONRPC Spec](https://www.jsonrpc.org/specification#error_object)
-parseErrorCode :: Int
-parseErrorCode = -32700
+mkJsonRpcParseErr :: Maybe e -> JsonRpcErr e
+mkJsonRpcParseErr = JsonRpcErr (-32700) "Parse error"
 
-parseErrorMessage :: String
-parseErrorMessage = "Parse error"
+mkJsonRpcInvalidRequestErr :: Maybe e -> JsonRpcErr e
+mkJsonRpcInvalidRequestErr = JsonRpcErr (-32600) "Invalid request"
 
-invalidRequestCode :: Int
-invalidRequestCode = -32600
+mkJsonRpcMethodNotFoundErr :: Maybe e -> JsonRpcErr e
+mkJsonRpcMethodNotFoundErr = JsonRpcErr (-32601) "Method not found"
 
-invalidRequestMessage :: String
-invalidRequestMessage = "Invalid request"
+mkJsonRpcInvalidParamsErr :: Maybe e -> JsonRpcErr e
+mkJsonRpcInvalidParamsErr = JsonRpcErr (-32602) "Invalid params"
 
-methodNotFoundCode :: Int
-methodNotFoundCode = -32601
-
-methodNotFoundMessage :: String
-methodNotFoundMessage = "Method not found"
-
-invalidParamsCode :: Int
-invalidParamsCode = -32602
-
-invalidParamsMessage :: String
-invalidParamsMessage = "Invalid params"
-
-internalErrorCode :: Int
-internalErrorCode = -32603
-
-internalErrorMessage :: String
-internalErrorMessage = "Internal error"
+mkJsonRpcInternalErr :: Maybe e -> JsonRpcErr e
+mkJsonRpcInternalErr = JsonRpcErr (-32603) "Internal error"
 
 instance (FromJSON e, FromJSON r) => FromJSON (JsonRpcResponse e r) where
   parseJSON = withObject "Response" $ \obj -> do
