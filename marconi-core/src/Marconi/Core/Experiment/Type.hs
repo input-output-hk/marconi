@@ -14,7 +14,6 @@ module Marconi.Core.Experiment.Type (
   TimedEvent (TimedEvent),
   point,
   event,
-  mapTimedEvent,
 
   -- * Error types
   IndexerError (..),
@@ -51,12 +50,7 @@ data TimedEvent point event = TimedEvent
 deriving stock instance (Show event, Show point) => Show (TimedEvent point event)
 deriving stock instance (Eq event, Eq point) => Eq (TimedEvent point event)
 deriving stock instance (Ord event, Ord point) => Ord (TimedEvent point event)
-
-{- | A functor like function for TimedEvent, which requires that both @a@ and @b@ have the same
- point instance.
--}
-mapTimedEvent :: (a -> b) -> TimedEvent point a -> TimedEvent point b
-mapTimedEvent f (TimedEvent p x) = TimedEvent p $ f x
+deriving stock instance Functor (TimedEvent point)
 
 -- | When was this event created
 point :: Lens' (TimedEvent point event) point

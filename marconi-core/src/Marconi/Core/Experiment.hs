@@ -196,7 +196,6 @@ module Marconi.Core.Experiment (
   TimedEvent (TimedEvent),
   point,
   event,
-  mapTimedEvent,
 
   -- ** Core typeclasses
   HasGenesis (..),
@@ -529,7 +528,7 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
 import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
-import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, mapTimedEvent, point)
+import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, point)
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (..),
   Worker,
