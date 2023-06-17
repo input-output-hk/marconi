@@ -48,7 +48,6 @@ import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import Text.RawString.QQ (r)
 
-import Cardano.Api (AddressAny)
 import Cardano.Api qualified as C
 import Cardano.Api qualified as Core
 import Cardano.Api.Shelley qualified as C
@@ -77,12 +76,9 @@ data Utxo = Utxo
 $(makeLenses ''Utxo)
 
 instance Ord Utxo where
-  compare u1 u2 =
-    compare (u1 ^. utxoTxIn) (u2 ^. utxoTxIn)
+  compare u1 u2 = compare (u1 ^. utxoTxIn) (u2 ^. utxoTxIn)
 
-newtype Spent = Spent
-  { unSpent :: C.TxIn
-  }
+newtype Spent = Spent {unSpent :: C.TxIn}
   deriving (Show, Eq, Ord)
 
 data UtxoEvent = UtxoEvent
@@ -121,7 +117,7 @@ instance MonadIO m => Core.AppendResult m UtxoEvent QueryUtxoByAddress Core.List
         txins = foldl' (\a c -> inputsTxIns c `Set.union` a) Set.empty utxoEvents
 
         utxoEvents :: [UtxoEvent]
-        utxoEvents = ix ^. Core.events ^.. folded . Core.event
+        utxoEvents = ix ^.. Core.events . traverse . Core.event
 
         computeUnspent :: Core.Result QueryUtxoByAddress -> Core.Result QueryUtxoByAddress
         computeUnspent =
@@ -153,7 +149,7 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
         pointFilter :: Maybe C.SlotNo -> (Core.TimedEvent C.ChainPoint UtxoEvent -> Bool)
         pointFilter = maybe (const True) (\s -> isBeforeSlot s)
 
-        splitEventAtAddress :: AddressAny -> UtxoEvent -> [UtxoEvent]
+        splitEventAtAddress :: C.AddressAny -> UtxoEvent -> [UtxoEvent]
         splitEventAtAddress addr event =
           let utxosAtAddress :: Set Utxo
               utxosAtAddress = Set.filter (\u -> (u ^. utxoAddress) == addr) $ _ueUtxos event
