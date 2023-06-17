@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -51,6 +51,8 @@ deriving stock instance (Show event, Show point) => Show (TimedEvent point event
 deriving stock instance (Eq event, Eq point) => Eq (TimedEvent point event)
 deriving stock instance (Ord event, Ord point) => Ord (TimedEvent point event)
 deriving stock instance Functor (TimedEvent point)
+deriving stock instance Foldable (TimedEvent point)
+deriving stock instance Traversable (TimedEvent point)
 
 -- | When was this event created
 point :: Lens' (TimedEvent point event) point

@@ -25,6 +25,7 @@ import Control.Lens (
   folded,
   imap,
   makeLenses,
+  toListOf,
   view,
   (&),
   (.~),
@@ -162,11 +163,10 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
           :: QueryUtxoByAddress
           -> Core.TimedEvent C.ChainPoint UtxoEvent
           -> Core.TimedEvent C.ChainPoint UtxoEvent
-        queryTimedUtxoEvent (QueryUtxoByAddress (addr, maybeSno)) timedutxoevent =
+        queryTimedUtxoEvent (QueryUtxoByAddress (addr, maybeSno)) =
           fold
             . filter (pointFilter maybeSno) -- filter for query slotNo
-            . fmap (Core.TimedEvent (timedutxoevent ^. Core.point)) -- filter for address
-            $ splitEventAtAddress addr (timedutxoevent ^. Core.event)
+            . traverse (splitEventAtAddress addr) -- filter for address
      in pure
           . concatMap timedUtxosFromTimedUtxoEvent
           . fmap (queryTimedUtxoEvent q)
@@ -175,17 +175,11 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
 
 -- | Get Timed Utxo from Timed UtxoEvent
 timedUtxosFromTimedUtxoEvent :: Core.TimedEvent point UtxoEvent -> [Core.TimedEvent point Utxo]
-timedUtxosFromTimedUtxoEvent timedUtxoEvent =
-  [ Core.TimedEvent (timedUtxoEvent ^. Core.point) utxo
-  | utxo <- Set.toList (timedUtxoEvent ^. Core.event . ueUtxos)
-  ]
+timedUtxosFromTimedUtxoEvent = traverse $ toListOf $ ueUtxos . folded
 
 -- | Get Timed Spent from Timed UtxoEvent
 timedSpentsFromTimedUtxoEvent :: Core.TimedEvent point UtxoEvent -> [Core.TimedEvent point Spent]
-timedSpentsFromTimedUtxoEvent timedUtxoEvent =
-  [ Core.TimedEvent (timedUtxoEvent ^. Core.point) spent
-  | spent <- Set.toList (timedUtxoEvent ^. Core.event . ueInputs)
-  ]
+timedSpentsFromTimedUtxoEvent = traverse $ toListOf $ ueInputs . folded
 
 -- | Make a SQLiteIndexer to store indexer in SQLite
 mkSqliteIndexer
