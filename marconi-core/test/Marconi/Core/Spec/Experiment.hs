@@ -721,7 +721,7 @@ buildCacheFor
   => Ord query
   => Ord (Core.Point event)
   => query
-  -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+  -> (Core.TimedEvent (Core.Point event) event -> Core.Result query -> Core.Result query)
   -> indexer event
   -> m (Core.WithCache query indexer event)
 buildCacheFor q onForward indexer = do
@@ -736,7 +736,7 @@ withCacheRunner
   => Ord query
   => Ord (Core.Point event)
   => query
-  -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+  -> (Core.TimedEvent (Core.Point event) event -> Core.Result query -> Core.Result query)
   -> IndexerTestRunner m event wrapped
   -> IndexerTestRunner m event (Core.WithCache query wrapped)
 withCacheRunner q onForward wRunner =
