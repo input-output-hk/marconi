@@ -21,7 +21,16 @@
 
 module Marconi.ChainIndex.Experimental.Indexers.Utxo where
 
-import Control.Lens (folded, imap, makeLenses, view, (&), (.~), (^.), (^..))
+import Control.Lens (
+  folded,
+  imap,
+  makeLenses,
+  view,
+  (&),
+  (.~),
+  (^.),
+  (^..),
+ )
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Either (fromRight)
 import Data.Foldable (fold, foldl')
@@ -44,7 +53,13 @@ import Cardano.Api qualified as Core
 import Cardano.Api.Shelley qualified as C
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (SecurityParam (SecurityParam), TargetAddresses, TxOut, pattern CurrentEra)
+import Marconi.ChainIndex.Types (
+  SecurityParam (SecurityParam),
+  TargetAddresses,
+  TxOut,
+  UtxoIndexerConfig (UtxoIndexerConfig),
+  pattern CurrentEra,
+ )
 import Marconi.Core.Experiment qualified as Core
 
 data Utxo = Utxo
@@ -469,25 +484,25 @@ instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
 -- | Extract UtxoEvents from Cardano Block
 getUtxoEventsFromBlock
   :: C.IsCardanoEra era
-  => Maybe TargetAddresses
-  -- ^ target addresses to filter for
+  => UtxoIndexerConfig
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> C.Block era
   -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock maybeTargetAddresses (C.Block _ txs) =
-  getUtxoEvents maybeTargetAddresses txs
+getUtxoEventsFromBlock utxoIndexerConfig (C.Block _ txs) =
+  getUtxoEvents utxoIndexerConfig txs
 
 -- | Extract UtxoEvents from Cardano Transactions
 getUtxoEvents
   :: C.IsCardanoEra era
-  => Maybe TargetAddresses
-  -- ^ target addresses to filter for
+  => UtxoIndexerConfig
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> [C.Tx era]
   -> UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEvents maybeTargetAddresses txs =
+getUtxoEvents utxoIndexerConfig txs =
   let (TxOutBalance utxos spentTxOuts) =
-        foldMap (balanceUtxoFromTx maybeTargetAddresses) txs
+        foldMap (balanceUtxoFromTx utxoIndexerConfig) txs
 
       resolvedUtxos :: Set Utxo
       resolvedUtxos = Set.fromList $ Map.elems utxos
@@ -511,10 +526,10 @@ getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txSc
 -- | Extract Utxos from Cardano TxBody
 getUtxosFromTxBody
   :: (C.IsCardanoEra era)
-  => Maybe TargetAddresses
+  => UtxoIndexerConfig
   -> C.TxBody era
   -> Map C.TxIn Utxo
-getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) =
+getUtxosFromTxBody utxoIndexerConfig txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) =
   fromRight Map.empty (getUtxos $ getTxOutFromTxBodyContent txBodyContent)
   where
     getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
@@ -526,21 +541,21 @@ getUtxosFromTxBody maybeTargetAddresses txBody@(C.TxBody txBodyContent@C.TxBodyC
     txoutToUtxo :: Int -> TxOut -> Map C.TxIn Utxo
     txoutToUtxo ix txout =
       let txin = C.TxIn txid (C.TxIx (fromIntegral ix))
-       in case getUtxoFromTxOut maybeTargetAddresses txin txout of
+       in case getUtxoFromTxOut utxoIndexerConfig txin txout of
             Nothing -> Map.empty
             Just utxo -> Map.singleton txin utxo
 
 -- | Extract Utxos from Cardano TxOut
 getUtxoFromTxOut
-  :: Maybe TargetAddresses
-  -- ^ Target addresses to filter for
+  :: UtxoIndexerConfig
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> C.TxIn
   -- ^ unique id and position of this transaction
   -> C.TxOut C.CtxTx era
   -- ^ Cardano TxOut
   -> Maybe Utxo
   -- ^ Utxo
-getUtxoFromTxOut maybeTargetAddresses txin (C.TxOut addr val dtum refScript) =
+getUtxoFromTxOut (UtxoIndexerConfig maybeTargetAddresses storeScriptRefFlag) txin (C.TxOut addr val dtum refScript) =
   if isAddressInTarget maybeTargetAddresses addrAny
     then
       Just $
@@ -557,7 +572,10 @@ getUtxoFromTxOut maybeTargetAddresses txin (C.TxOut addr val dtum refScript) =
   where
     addrAny = toAddr addr
     (datum', datumHash') = getScriptDataAndHash dtum
-    (inlineScript', inlineScriptHash') = getRefScriptAndHash refScript
+    (inlineScript', inlineScriptHash') =
+      if storeScriptRefFlag
+        then getRefScriptAndHash refScript
+        else (Nothing, Nothing)
 
 -- | get the inlineScript and inlineScriptHash
 getRefScriptAndHash
@@ -626,14 +644,14 @@ isAddressInTarget' targetAddresses utxo =
 
 balanceUtxoFromTx
   :: C.IsCardanoEra era
-  => Maybe TargetAddresses
-  -- ^ target addresses to filter for
+  => UtxoIndexerConfig
+  -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> C.Tx era
   -> TxOutBalance
-balanceUtxoFromTx addrs (C.Tx txBody _) =
+balanceUtxoFromTx utxoIndexerConfig (C.Tx txBody _) =
   let txInputs = getInputs txBody -- adjusted txInput after phase-2 validation
       utxoRefs :: Map C.TxIn Utxo
-      utxoRefs = getUtxosFromTxBody addrs txBody
+      utxoRefs = getUtxosFromTxBody utxoIndexerConfig txBody
    in TxOutBalance utxoRefs txInputs
 
 -- A container to allow balance Utxos in the presensy of Spents

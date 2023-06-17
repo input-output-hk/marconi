@@ -24,8 +24,8 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   TargetAddresses,
+  UtxoIndexerConfig (UtxoIndexerConfig),
   addressDatumDbName,
-  datumDbName,
   epochStateDbName,
   mintBurnDbName,
   scriptTxDbName,
@@ -120,20 +120,32 @@ multiAddresses desc = NonEmpty.fromList . concat <$> some single
 -}
 data Options = Options
   { optionsSocketPath :: !String
+  -- ^ POSIX socket file to communicate with cardano node
   , optionsNetworkId :: !NetworkId
+  -- ^ cardano network id
   , optionsChainPoint :: !ChainPoint
+  -- ^ Required depth of a block before it is indexed
   , optionsMinIndexingDepth :: !IndexingDepth
+  -- ^ Required depth of a block before it is indexed
   , optionsDbPath :: !FilePath
-  -- ^ SQLite database directory path
+  -- ^ Directory path containing the SQLite database files
+  , optionsEnableUtxoTxOutRef :: !Bool
+  -- ^ enable storing txout refScript,
   , optionsDisableUtxo :: !Bool
+  -- ^ disable Utxo indexer
   , optionsDisableAddressDatum :: !Bool
-  , optionsDisableDatum :: !Bool
+  -- ^ disable AddressDatum indexer
   , optionsDisableScript :: !Bool
+  -- ^ disable Script indexer
   , optionsDisableEpochState :: !Bool
+  -- ^ disable EpochState indexer
   , optionsDisableMintBurn :: !Bool
+  -- ^ disable MintBurn indexer
   , optionsTargetAddresses :: !(Maybe TargetAddresses)
+  -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
   , optionsTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   , optionsNodeConfigPath :: !(Maybe FilePath)
+  -- ^ Path to the node config
   }
   deriving (Show)
 
@@ -199,12 +211,6 @@ addressDatumDbPath o =
   if optionsDisableAddressDatum o
     then Nothing
     else Just (optionsDbPath o </> addressDatumDbName)
-
-datumDbPath :: Options -> Maybe FilePath
-datumDbPath o =
-  if optionsDisableDatum o
-    then Nothing
-    else Just (optionsDbPath o </> datumDbName)
 
 scriptTxDbPath :: Options -> Maybe FilePath
 scriptTxDbPath o =
@@ -333,3 +339,7 @@ commonMinIndexingDepth =
                 <> Opt.value 0
             )
    in maxIndexingDepth Opt.<|> givenIndexingDepth
+
+-- | Extract UtxoIndexerConfig from CLI Options
+mkUtxoIndexerConfig :: Options -> UtxoIndexerConfig
+mkUtxoIndexerConfig o = UtxoIndexerConfig (optionsTargetAddresses o) (optionsEnableUtxoTxOutRef o)

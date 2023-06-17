@@ -20,7 +20,12 @@ import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Text qualified as Text
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Logging (logging)
-import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Types (
+  SecurityParam,
+  UtxoIndexerConfig (UtxoIndexerConfig),
+  ucEnableUtxoTxOutRef,
+  ucTargetAddresses,
+ )
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment qualified as Core
 import Prettyprinter (defaultLayoutOptions, layoutPretty)
@@ -46,7 +51,10 @@ utxoWorker -- Should go in Utxo module?
   -> IO (MVar UtxoIndexer, Core.Worker (C.BlockInMode C.CardanoMode) C.ChainPoint)
 utxoWorker dbPath depth = do
   c <- Utxo.initSQLite dbPath -- TODO handle error
-  let extract (C.BlockInMode block _) = Utxo.getUtxoEventsFromBlock Nothing block
+  let utxoIndexerConfig =
+        -- TODO We forgot the TargetAddress filtering logic for now for the Experimental Indexers.Utxo module
+        UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
+      extract (C.BlockInMode block _) = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
   Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c depth
 
 -- | Process the next event in the queue with the coordinator

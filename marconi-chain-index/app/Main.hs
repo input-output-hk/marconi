@@ -4,6 +4,7 @@ module Main where
 
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Indexers qualified as Indexers
+import Marconi.ChainIndex.Types (UtxoIndexerConfig (UtxoIndexerConfig))
 import System.Directory (createDirectoryIfMissing)
 
 {- | the worker don't have a hook to notify the query part
@@ -16,10 +17,11 @@ main :: IO ()
 main = do
   o <- Cli.parseOptions
   createDirectoryIfMissing True (Cli.optionsDbPath o)
-  let maybeTargetAddresses = Cli.optionsTargetAddresses o
-  let maybeTargetAssets = Cli.optionsTargetAssets o
+  let utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) =
+        Cli.mkUtxoIndexerConfig o
+      maybeTargetAssets = Cli.optionsTargetAssets o
       indexers =
-        [ (Indexers.utxoWorker noHook maybeTargetAddresses, Cli.utxoDbPath o)
+        [ (Indexers.utxoWorker noHook utxoIndexerConfig, Cli.utxoDbPath o)
         , (Indexers.addressDatumWorker noHook maybeTargetAddresses, Cli.addressDatumDbPath o)
         , (Indexers.scriptTxWorker noHook, Cli.scriptTxDbPath o)
         , (Indexers.mintBurnWorker noHook maybeTargetAssets, Cli.mintBurnDbPath o)

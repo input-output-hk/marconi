@@ -29,7 +29,7 @@ import Helpers (addressAnyToShelley)
 import Marconi.ChainIndex.Experimental.Indexers.Utxo ()
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (TargetAddresses)
+import Marconi.ChainIndex.Types (TargetAddresses, UtxoIndexerConfig (UtxoIndexerConfig), ucEnableUtxoTxOutRef, ucTargetAddresses)
 import Marconi.Core.Experiment qualified as Core
 
 import Hedgehog (Gen, Property, cover, forAll, property, (/==), (===))
@@ -150,10 +150,13 @@ propTxInWhenPhase2ValidationFails :: Property
 propTxInWhenPhase2ValidationFails = property $ do
   tx@(C.Tx (C.TxBody C.TxBodyContent{..}) _) <- forAll genTxWithCollateral
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo
-  let event :: Core.TimedEvent Utxo.UtxoEvent = Core.TimedEvent cp $ Utxo.getUtxoEvents Nothing [tx]
+  let utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True} -- \^ index all addresses, and store scriptRef
+      event :: Core.TimedEvent Utxo.UtxoEvent
+      event = Core.TimedEvent cp $ Utxo.getUtxoEvents utxoIndexerConfig [tx]
       computedTxins :: [C.TxIn]
       computedTxins = Set.toList $ Set.map Utxo.unSpent (event ^. Core.event . Utxo.ueInputs)
-      expectedTxins :: [C.TxIn] = fmap fst txIns
+      expectedTxins :: [C.TxIn]
+      expectedTxins = fmap fst txIns
 
   case txScriptValidity of
     -- this is the same as script is valid, see https://github.com/input-output-hk/cardano-node/pull/4569
@@ -166,7 +169,7 @@ propTxInWhenPhase2ValidationFails = property $ do
         C.TxInsCollateralNone -> Hedgehog.assert $ null computedTxins
         C.TxInsCollateral _ txinsC_ -> do
           Hedgehog.footnoteShow txReturnCollateral
-          let (Utxo.TxOutBalance _ ins) = Utxo.balanceUtxoFromTx Nothing tx
+          let (Utxo.TxOutBalance _ ins) = Utxo.balanceUtxoFromTx utxoIndexerConfig tx
           -- This property shows collateral TxIns will be processed and balanced
           -- Note: not all collateral txins may be utilized in when phase-2 validation fails
           ins === Set.fromList txinsC_
@@ -413,6 +416,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
   forM_ timedUtxoEventsWithTxs $ \(expectedTimedUtxoEvent, block) -> do
     let txs = mockBlockTxs block
         expectedAddresses = mkTargetAddressFromTxs txs
+        utxoIndexerConfig = UtxoIndexerConfig expectedAddresses True
     cover 50 "At least one address is used as a target address" $
       isJust expectedAddresses
     cover 1 "No target addresses are provided" $
@@ -421,7 +425,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
         actualTimedUtxoEvents =
           Core.TimedEvent
             (expectedTimedUtxoEvent ^. Core.point)
-            $ Utxo.getUtxoEvents expectedAddresses txs
+            $ Utxo.getUtxoEvents utxoIndexerConfig txs
     let -- (expectedTimedUtxoEvent ^. Core.event . Utxo.ueUtxos)
         filteredExpectedUtxoEvent :: Core.TimedEvent Utxo.UtxoEvent
         filteredExpectedUtxoEvent =

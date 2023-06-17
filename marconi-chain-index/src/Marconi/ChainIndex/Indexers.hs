@@ -87,6 +87,7 @@ import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   SecurityParam (SecurityParam),
   TargetAddresses,
+  UtxoIndexerConfig,
  )
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
@@ -165,13 +166,13 @@ utxoWorker_
   :: (Utxo.UtxoIndexer -> IO ())
   -- ^ callback function used in the queryApi thread, needs to be non-blocking
   -> Utxo.Depth
-  -> Maybe TargetAddresses
-  -- ^ Target addresses to filter for
+  -> UtxoIndexerConfig
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
   -> FilePath
   -> IO (IO (), C.ChainPoint)
-utxoWorker_ callback depth maybeTargetAddresses Coordinator{_barrier, _errorVar} ch path = do
+utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch path = do
   ix <- toException $ Utxo.open path depth False -- open SQLite with depth=depth and DO NOT perform SQLite vacuum
   -- TODO consider adding a CLI param to allow user to perfomr Vaccum or not.
   cp <- toException $ Storable.resumeFromStorage $ view Storable.handle ix
@@ -185,11 +186,10 @@ utxoWorker_ callback depth maybeTargetAddresses Coordinator{_barrier, _errorVar}
       readMVar index >>= callback -- refresh the query STM/CPS with new storage pointers/counters state
       event <- atomically . readTChan $ ch
       case event of
-        RollForward (BlockInMode block _) _ct -> do
-          let utxoEvents = Utxo.getUtxoEventsFromBlock maybeTargetAddresses block
-          void $ updateWith index _errorVar $ Storable.insert utxoEvents
-          loop index
-        RollBackward cp _ct -> do
+        RollForward (BlockInMode block _) _ct ->
+          let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
+           in void $ updateWith index _errorVar $ Storable.insert utxoEvents
+        RollBackward cp _ct ->
           void $ updateWith index _errorVar $ Storable.rewind cp
 
       loop index
@@ -197,12 +197,19 @@ utxoWorker_ callback depth maybeTargetAddresses Coordinator{_barrier, _errorVar}
 utxoWorker
   :: (Utxo.UtxoIndexer -> IO ())
   -- ^ callback function used in the queryApi thread
-  -> Maybe TargetAddresses
-  -- ^ Target addresses to filter for
+  -> UtxoIndexerConfig
+  -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> Worker
-utxoWorker callback maybeTargetAddresses securityParam coordinator path = do
+utxoWorker callback utxoIndexerConfig securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
-  (loop, cp) <- utxoWorker_ callback (Utxo.Depth $ fromIntegral securityParam) maybeTargetAddresses coordinator workerChannel path
+  (loop, cp) <-
+    utxoWorker_
+      callback
+      (Utxo.Depth $ fromIntegral securityParam)
+      utxoIndexerConfig
+      coordinator
+      workerChannel
+      path
   void $ forkIO loop
   return cp
 
