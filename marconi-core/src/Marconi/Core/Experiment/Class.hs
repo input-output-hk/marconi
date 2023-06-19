@@ -23,7 +23,7 @@ module Marconi.Core.Experiment.Class (
 
 import Control.Monad.Except (ExceptT, MonadError, runExceptT)
 import Data.Foldable (foldlM, foldrM)
-import Marconi.Core.Experiment.Type (Point, QueryError, Result, TimedEvent)
+import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
 
 -- IsIndex
 
@@ -38,7 +38,7 @@ class Monad m => IsIndex m event indexer where
   -- | index an event at a given point in time
   index
     :: Eq (Point event)
-    => TimedEvent (Point event) event
+    => Timed (Point event) event
     -> indexer event
     -> m (indexer event)
 
@@ -47,7 +47,7 @@ class Monad m => IsIndex m event indexer where
   -- The events must be sorted in ascending order (the most recent first)
   indexAll
     :: (Ord (Point event), Traversable f)
-    => f (TimedEvent (Point event) event)
+    => f (Timed (Point event) event)
     -> indexer event
     -> m (indexer event)
   indexAll = flip $ foldlM (flip index)
@@ -57,7 +57,7 @@ class Monad m => IsIndex m event indexer where
   -- The events must be sorted in descending order (the most recent first)
   indexAllDescending
     :: (Ord (Point event), Traversable f)
-    => f (TimedEvent (Point event) event)
+    => f (Timed (Point event) event)
     -> indexer event
     -> m (indexer event)
   indexAllDescending = flip $ foldrM index
@@ -73,7 +73,7 @@ indexEither
   :: ( IsIndex (ExceptT err m) event indexer
      , Eq (Point event)
      )
-  => TimedEvent (Point event) event
+  => Timed (Point event) event
   -> indexer event
   -> m (Either err (indexer event))
 indexEither evt = runExceptT . index evt
@@ -84,7 +84,7 @@ indexAllEither
      , Traversable f
      , Ord (Point event)
      )
-  => f (TimedEvent (Point event) event)
+  => f (Timed (Point event) event)
   -> indexer event
   -> m (Either err (indexer event))
 indexAllEither evt = runExceptT . indexAll evt
@@ -95,7 +95,7 @@ indexAllDescendingEither
      , Traversable f
      , Ord (Point event)
      )
-  => f (TimedEvent (Point event) event)
+  => f (Timed (Point event) event)
   -> indexer event
   -> m (Either err (indexer event))
 indexAllDescendingEither evt = runExceptT . indexAllDescending evt

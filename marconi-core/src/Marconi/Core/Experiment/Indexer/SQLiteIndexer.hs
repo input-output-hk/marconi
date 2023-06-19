@@ -44,7 +44,7 @@ import Marconi.Core.Experiment.Type (
   Point,
   QueryError (AheadOfLastSync),
   Result,
-  TimedEvent,
+  Timed,
   point,
  )
 
@@ -52,7 +52,7 @@ import Marconi.Core.Experiment.Type (
 data SQLInsertPlan event = forall a.
   SQL.ToRow a =>
   SQLInsertPlan
-  { planExtractor :: TimedEvent (Point event) event -> [a]
+  { planExtractor :: Timed (Point event) event -> [a]
   -- ^ How to transform the event into a type that can be handle by the database
   , planInsert :: SQL.Query
   -- ^ The insert statement for the extracted data
@@ -83,7 +83,7 @@ mkSqliteIndexer
   => SQL.FromRow (Point event)
   => SQL.Connection
   -> [[SQLInsertPlan event]]
-  -- ^ extract @param@ out of a 'TimedEvent'
+  -- ^ extract @param@ out of a 'Timed'
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
@@ -116,8 +116,8 @@ mkSingleInsertSqliteIndexer
   => SQL.ToRow param
   => HasGenesis (Point event)
   => SQL.Connection
-  -> (TimedEvent (Point event) event -> param)
-  -- ^ extract @param@ out of a 'TimedEvent'
+  -> (Timed (Point event) event -> param)
+  -- ^ extract @param@ out of a 'Timed'
   -> SQL.Query
   -- ^ the insert query
   -> SQL.Query
@@ -137,7 +137,7 @@ runIndexQueriesStep
   :: MonadIO m
   => MonadError IndexerError m
   => SQL.Connection
-  -> [TimedEvent (Point event) event]
+  -> [Timed (Point event) event]
   -> [SQLInsertPlan event]
   -> m ()
 runIndexQueriesStep _ _ [] = pure ()
@@ -156,7 +156,7 @@ runIndexQueries
   :: MonadIO m
   => MonadError IndexerError m
   => SQL.Connection
-  -> [TimedEvent (Point event) event]
+  -> [Timed (Point event) event]
   -> [[SQLInsertPlan event]]
   -> m ()
 runIndexQueries c = traverse_ . runIndexQueriesStep c

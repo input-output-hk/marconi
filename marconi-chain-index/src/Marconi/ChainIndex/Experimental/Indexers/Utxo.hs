@@ -97,7 +97,7 @@ instance Core.HasGenesis C.ChainPoint where
 newtype QueryUtxoByAddress = QueryUtxoByAddress (C.AddressAny, Maybe C.SlotNo)
   deriving (Eq, Ord, Show)
 
-type instance Core.Result QueryUtxoByAddress = [Core.TimedEvent C.ChainPoint Utxo] -- use this instead of the utxorow
+type instance Core.Result QueryUtxoByAddress = [Core.Timed C.ChainPoint Utxo] -- use this instead of the utxorow
 
 -- | Take the query results from two indexers, merge the results and re-compute Unspent
 instance MonadIO m => Core.AppendResult m UtxoEvent QueryUtxoByAddress Core.ListIndexer where
@@ -122,7 +122,7 @@ instance MonadIO m => Core.AppendResult m UtxoEvent QueryUtxoByAddress Core.List
         computeUnspent :: Core.Result QueryUtxoByAddress -> Core.Result QueryUtxoByAddress
         computeUnspent =
           filter
-            ( \(Core.TimedEvent _ utxo) ->
+            ( \(Core.Timed _ utxo) ->
                 utxo ^. utxoTxIn `notElem` txins
             )
      in do
@@ -141,12 +141,12 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
   query C.ChainPointAtGenesis _ _ = pure []
   -- TODO we're ignoring future spent query for this version
   query _ q listindexer =
-    let isBeforeSlot :: C.SlotNo -> Core.TimedEvent C.ChainPoint UtxoEvent -> Bool
+    let isBeforeSlot :: C.SlotNo -> Core.Timed C.ChainPoint UtxoEvent -> Bool
         isBeforeSlot s te' = case te' ^. Core.point of
           C.ChainPointAtGenesis -> True
           C.ChainPoint s' _ -> s' <= s
 
-        pointFilter :: Maybe C.SlotNo -> (Core.TimedEvent C.ChainPoint UtxoEvent -> Bool)
+        pointFilter :: Maybe C.SlotNo -> (Core.Timed C.ChainPoint UtxoEvent -> Bool)
         pointFilter = maybe (const True) (\s -> isBeforeSlot s)
 
         splitEventAtAddress :: C.AddressAny -> UtxoEvent -> [UtxoEvent]
@@ -157,8 +157,8 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
 
         queryTimedUtxoEvent
           :: QueryUtxoByAddress
-          -> Core.TimedEvent C.ChainPoint UtxoEvent
-          -> Core.TimedEvent C.ChainPoint UtxoEvent
+          -> Core.Timed C.ChainPoint UtxoEvent
+          -> Core.Timed C.ChainPoint UtxoEvent
         queryTimedUtxoEvent (QueryUtxoByAddress (addr, maybeSno)) =
           fold
             . filter (pointFilter maybeSno) -- filter for query slotNo
@@ -170,11 +170,11 @@ instance MonadIO m => Core.Queryable m UtxoEvent QueryUtxoByAddress Core.ListInd
           $ listindexer
 
 -- | Get Timed Utxo from Timed UtxoEvent
-timedUtxosFromTimedUtxoEvent :: Core.TimedEvent point UtxoEvent -> [Core.TimedEvent point Utxo]
+timedUtxosFromTimedUtxoEvent :: Core.Timed point UtxoEvent -> [Core.Timed point Utxo]
 timedUtxosFromTimedUtxoEvent = traverse $ toListOf $ ueUtxos . folded
 
 -- | Get Timed Spent from Timed UtxoEvent
-timedSpentsFromTimedUtxoEvent :: Core.TimedEvent point UtxoEvent -> [Core.TimedEvent point Spent]
+timedSpentsFromTimedUtxoEvent :: Core.Timed point UtxoEvent -> [Core.Timed point Spent]
 timedSpentsFromTimedUtxoEvent = traverse $ toListOf $ ueInputs . folded
 
 -- | Make a SQLiteIndexer to store indexer in SQLite
@@ -258,14 +258,14 @@ instance Semigroup UtxoEvent where
 instance Monoid UtxoEvent where
   mempty = UtxoEvent Set.empty Set.empty
 
-instance Ord point => Semigroup (Core.TimedEvent point UtxoEvent) where
+instance Ord point => Semigroup (Core.Timed point UtxoEvent) where
   te <> te' =
     let point = max (te ^. Core.point) (te' ^. Core.point)
         event = (te ^. Core.event) <> (te' ^. Core.event)
-     in Core.TimedEvent point event
+     in Core.Timed point event
 
-instance Monoid (Core.TimedEvent C.ChainPoint UtxoEvent) where
-  mempty = Core.TimedEvent Core.ChainPointAtGenesis mempty
+instance Monoid (Core.Timed C.ChainPoint UtxoEvent) where
+  mempty = Core.Timed Core.ChainPointAtGenesis mempty
 
 -- | createla SQLite tables
 initSQLite :: FilePath -> IO SQL.Connection
@@ -330,7 +330,7 @@ mkMixedIndexer' conn keep flush =
 -----------------------------------------------------------------------
 
 -- | SQL Row mapping for Utxo to unspent_transactions
-instance ToRow (Core.TimedEvent C.ChainPoint Utxo) where
+instance ToRow (Core.Timed C.ChainPoint Utxo) where
   toRow u =
     let (C.TxIn txid txix) = u ^. Core.event . utxoTxIn
         (snoField, bhhField) = case u ^. Core.point of
@@ -349,9 +349,9 @@ instance ToRow (Core.TimedEvent C.ChainPoint Utxo) where
           , bhhField
           )
 
-instance FromRow (Core.TimedEvent C.ChainPoint Utxo) where
+instance FromRow (Core.Timed C.ChainPoint Utxo) where
   fromRow =
-    flip Core.TimedEvent
+    flip Core.Timed
       <$> ( Utxo
               <$> field
               <*> (C.TxIn <$> field <*> field)
@@ -363,7 +363,7 @@ instance FromRow (Core.TimedEvent C.ChainPoint Utxo) where
           )
       <*> (C.ChainPoint <$> field <*> field)
 
-instance ToRow (Core.TimedEvent C.ChainPoint Spent) where
+instance ToRow (Core.Timed C.ChainPoint Spent) where
   toRow s =
     let (C.TxIn txid txix) = unSpent . view Core.event $ s
         (snoField, bhhField) = case s ^. Core.point of
@@ -376,9 +376,9 @@ instance ToRow (Core.TimedEvent C.ChainPoint Spent) where
           , bhhField
           )
 
-instance FromRow (Core.TimedEvent C.ChainPoint Spent) where
+instance FromRow (Core.Timed C.ChainPoint Spent) where
   fromRow =
-    flip Core.TimedEvent
+    flip Core.Timed
       <$> ( Spent
               <$> (C.TxIn <$> field <*> field)
           )

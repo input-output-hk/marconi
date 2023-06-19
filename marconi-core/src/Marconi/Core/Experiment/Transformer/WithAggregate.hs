@@ -47,7 +47,7 @@ import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError),
   Point,
   QueryError,
-  TimedEvent (TimedEvent),
+  Timed (Timed),
   event,
   point,
  )
@@ -119,7 +119,7 @@ instance
           case lastAggregateOrError of
             Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
             Right agg -> pure $ agg <> asAggregate
-    let asOutput = TimedEvent point' event'
+    let asOutput = Timed point' event'
     indexVia unwrapMap asOutput indexer
 
   indexAllDescending events indexer = case sortOn (^. point) $ toList events of
@@ -136,10 +136,10 @@ instance
             case lastAggregateOrError of
               Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
               Right agg -> pure $ agg <> asAggregate
-      let firstTimedEvent = TimedEvent (x ^. point) firstEvent
-      let toOutput' tacc te = TimedEvent (te ^. point) ((tacc ^. event) <> (event' $ te ^. event))
+      let firstTimed = Timed (x ^. point) firstEvent
+      let toOutput' tacc te = Timed (te ^. point) ((tacc ^. event) <> (event' $ te ^. event))
           asOutputs tacc es = scanl' toOutput' tacc es
-      indexAllDescendingVia unwrapMap (asOutputs firstTimedEvent xs) indexer
+      indexAllDescendingVia unwrapMap (asOutputs firstTimed xs) indexer
 
 instance
   (Point output ~ Point event, IsSync m output indexer)

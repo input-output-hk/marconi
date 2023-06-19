@@ -50,12 +50,12 @@ import Marconi.Core.Experiment.Type (
   Point,
   QueryError (AheadOfLastSync),
   Result,
-  TimedEvent,
+  Timed,
  )
 
 data CacheConfig query event = CacheConfig
   { _configCache :: Map query (Result query)
-  , _configOnForward :: TimedEvent (Point event) event -> Result query -> Result query
+  , _configOnForward :: Timed (Point event) event -> Result query -> Result query
   }
 
 configCache :: Lens' (CacheConfig query event) (Map query (Result query))
@@ -69,7 +69,7 @@ configCacheEntries f cfg =
 configOnForward
   :: Getter
       (CacheConfig query event)
-      (TimedEvent (Point event) event -> Result query -> Result query)
+      (Timed (Point event) event -> Result query -> Result query)
 configOnForward = to _configOnForward
 
 {- | Setup a cache for some requests.
@@ -98,7 +98,7 @@ deriving via
 -}
 withCache
   :: Ord query
-  => (TimedEvent (Point event) event -> Result query -> Result query)
+  => (Timed (Point event) event -> Result query -> Result query)
   -> indexer event
   -> WithCache query indexer event
 withCache _configOnForward =
@@ -139,7 +139,7 @@ instance
 onForward
   :: Getter
       (WithCache query indexer event)
-      (TimedEvent (Point event) event -> Result query -> Result query)
+      (Timed (Point event) event -> Result query -> Result query)
 onForward = cacheWrapper . wrapperConfig . configOnForward
 
 {- | Add a cache for a specific query.

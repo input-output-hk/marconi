@@ -102,7 +102,7 @@ tests =
 allqueryUtxosShouldBeUnspent :: Property
 allqueryUtxosShouldBeUnspent = property $ do
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo -- generate some non genesis chainpoints
-  timedUtxoEvent :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent <-
+  timedUtxoEvent :: Core.Timed C.ChainPoint Utxo.UtxoEvent <-
     forAll $ genShelleyEraUtxoEventsAtChainPoint cp
   conn <- liftIO $ Utxo.initSQLite ":memory:"
   let (keep, flush) = (1, 1) -- small memory to force SQL flush
@@ -111,13 +111,13 @@ allqueryUtxosShouldBeUnspent = property $ do
   mixedIndexer <-
     Core.indexEither timedUtxoEvent indexer
       >>= Hedgehog.evalEither
-  let unprocessedUtxos :: [Core.TimedEvent C.ChainPoint Utxo.Utxo]
+  let unprocessedUtxos :: [Core.Timed C.ChainPoint Utxo.Utxo]
       unprocessedUtxos = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
 
       queryUtxos :: [Utxo.QueryUtxoByAddress]
       queryUtxos = mkQuery unprocessedUtxos cp
 
-  retrievedUtxos :: [Core.TimedEvent C.ChainPoint Utxo.Utxo] <-
+  retrievedUtxos :: [Core.Timed C.ChainPoint Utxo.Utxo] <-
     liftIO $ concat . filter (not . null) <$> traverse (\q -> Core.query cp q mixedIndexer) queryUtxos
 
   let inputsFromTimedUtxoEvent :: [C.TxIn] -- get all the TxIn from quried UtxoRows
@@ -143,8 +143,8 @@ propTxInWhenPhase2ValidationFails = property $ do
   tx@(C.Tx (C.TxBody C.TxBodyContent{..}) _) <- forAll genTxWithCollateral
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo
   let utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True} -- \^ index all addresses, and store scriptRef
-      event :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent
-      event = Core.TimedEvent cp $ Utxo.getUtxoEvents utxoIndexerConfig [tx]
+      event :: Core.Timed C.ChainPoint Utxo.UtxoEvent
+      event = Core.Timed cp $ Utxo.getUtxoEvents utxoIndexerConfig [tx]
       computedTxins :: [C.TxIn]
       computedTxins = Set.toList $ Set.map Utxo.unSpent (event ^. Core.event . Utxo.ueInputs)
       expectedTxins :: [C.TxIn]
@@ -181,7 +181,7 @@ propSaveAndQueryUtxoEvents :: Property
 propSaveAndQueryUtxoEvents = property $ do
   -- we'll do many inserts, but keep the same connection to force DB flush
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo -- generate some non genesis chainpoints
-  timedUtxoEvent :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent <-
+  timedUtxoEvent :: Core.Timed C.ChainPoint Utxo.UtxoEvent <-
     forAll $ genShelleyEraUtxoEventsAtChainPoint cp
   conn <- liftIO $ Utxo.initSQLite ":memory:"
   let (keep, flush) = (1, 3) -- small memory to force SQL flush
@@ -198,12 +198,12 @@ propSaveAndQueryUtxoEvents = property $ do
     liftIO
       (SQL.query_ conn "SELECT count(1) from spent" :: IO [Integer])
 
-  let unprocessedUtxos :: [Core.TimedEvent C.ChainPoint Utxo.Utxo]
+  let unprocessedUtxos :: [Core.Timed C.ChainPoint Utxo.Utxo]
       unprocessedUtxos = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
 
       queryUtxos :: [Utxo.QueryUtxoByAddress]
       queryUtxos = mkQuery unprocessedUtxos cp
-      inMemoryEvents :: [Core.TimedEvent C.ChainPoint Utxo.UtxoEvent] =
+      inMemoryEvents :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] =
         mixedIndexer ^. Core.inMemory . Core.events
       -- in-memory events are utxoEvents. We need to convert them to Utxos for the purpose of this test
       inMemoryUtxos = length $ concatMap Utxo.timedUtxosFromTimedUtxoEvent inMemoryEvents
@@ -211,7 +211,7 @@ propSaveAndQueryUtxoEvents = property $ do
       inDbSyncPoint :: C.ChainPoint
       inDbSyncPoint = mixedIndexer ^. Core.inDatabase . Core.dbLastSync
 
-  retrievedUtxoMixed :: [Core.TimedEvent C.ChainPoint Utxo.Utxo] <-
+  retrievedUtxoMixed :: [Core.Timed C.ChainPoint Utxo.Utxo] <-
     liftIO $ concat . filter (not . null) <$> traverse (\q -> Core.query cp q mixedIndexer) queryUtxos
   -- test the mixedIndexer
   Hedgehog.assert $ -- make sure we've saved both Utxo and Spent
@@ -235,7 +235,7 @@ propSaveAndQueryUtxoEvents = property $ do
 propMixedIndexerAndListIndexerProvideTheSameQueryResult :: Property
 propMixedIndexerAndListIndexerProvideTheSameQueryResult = property $ do
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo -- generate some non genesis chainpoints
-  timedUtxoEvent :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent <-
+  timedUtxoEvent :: Core.Timed C.ChainPoint Utxo.UtxoEvent <-
     forAll $ genShelleyEraUtxoEventsAtChainPoint cp
   conn <- liftIO $ Utxo.initSQLite ":memory:"
   let (keep, flush) = (0, 0) -- small memory to force SQL flush
@@ -250,7 +250,7 @@ propMixedIndexerAndListIndexerProvideTheSameQueryResult = property $ do
   [utxosSQLCount] <-
     liftIO
       (SQL.query_ conn "SELECT count(1) from unspent_transactions" :: IO [Integer])
-  let unprocessedUtxos :: [Core.TimedEvent C.ChainPoint Utxo.Utxo]
+  let unprocessedUtxos :: [Core.Timed C.ChainPoint Utxo.Utxo]
       unprocessedUtxos = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
 
       queryUtxos :: [Utxo.QueryUtxoByAddress]
@@ -291,7 +291,7 @@ propMixedIndexerAndListIndexerProvideTheSameQueryResult = property $ do
 propListIndexerAndMixedIndexerInMemroyIndexerProvideTheSameQueryResult :: Property
 propListIndexerAndMixedIndexerInMemroyIndexerProvideTheSameQueryResult = property $ do
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo -- generate some non genesis chainpoints
-  timedUtxoEvent :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent <-
+  timedUtxoEvent :: Core.Timed C.ChainPoint Utxo.UtxoEvent <-
     forAll $ genShelleyEraUtxoEventsAtChainPoint cp
   conn <- liftIO $ Utxo.initSQLite ":memory:"
   let -- we force mixedIndexer to use in-memory indexer only
@@ -309,7 +309,7 @@ propListIndexerAndMixedIndexerInMemroyIndexerProvideTheSameQueryResult = propert
   [utxosSQLCount] <-
     liftIO
       (SQL.query_ conn "SELECT count(1) from unspent_transactions" :: IO [Integer])
-  let unprocessedUtxos :: [Core.TimedEvent C.ChainPoint Utxo.Utxo]
+  let unprocessedUtxos :: [Core.Timed C.ChainPoint Utxo.Utxo]
       unprocessedUtxos = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
 
       queryUtxos :: [Utxo.QueryUtxoByAddress]
@@ -339,11 +339,11 @@ TODO change the test name to prop.......
 propListIndexerUpdatesLastSyncPoint :: Property
 propListIndexerUpdatesLastSyncPoint = property $ do
   cp <- forAll $ genChainPoint' genBlockNo genSlotNo -- generate some non genesis chainpoints
-  timedUtxoEvent :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent <-
+  timedUtxoEvent :: Core.Timed C.ChainPoint Utxo.UtxoEvent <-
     forAll $ genShelleyEraUtxoEventsAtChainPoint cp
   listIndexer :: Core.ListIndexer Utxo.UtxoEvent <-
     Core.index timedUtxoEvent Core.mkListIndexer -- add events to in-memory listIndexer
-  let unProcessedUtxos :: [Core.TimedEvent C.ChainPoint Utxo.Utxo] -- These Utxos, are not processed yet and may have spent in them
+  let unProcessedUtxos :: [Core.Timed C.ChainPoint Utxo.Utxo] -- These Utxos, are not processed yet and may have spent in them
       unProcessedUtxos = Utxo.timedUtxosFromTimedUtxoEvent timedUtxoEvent
 
       queryUtxos :: [Utxo.QueryUtxoByAddress]
@@ -377,7 +377,7 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll :: Property
 propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
   highSlotNo <- forAll $ Gen.integral $ Range.constantFrom 7 5 20
   chainPoints :: [C.ChainPoint] <- forAll $ genChainPoints 2 highSlotNo
-  timedUtxoEvents :: [Core.TimedEvent C.ChainPoint Utxo.UtxoEvent] <-
+  timedUtxoEvents :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
     forAll $ traverse genShelleyEraUtxoEventsAtChainPoint chainPoints
   conn <- liftIO $ Utxo.initSQLite ":memory:"
   let (keep, flush) = (1, 1) -- small memory to force SQL flush
@@ -404,7 +404,7 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
 -}
 propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied :: Property
 propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied = property $ do
-  timedUtxoEventsWithTxs :: [(Core.TimedEvent C.ChainPoint Utxo.UtxoEvent, MockBlock C.BabbageEra)] <-
+  timedUtxoEventsWithTxs :: [(Core.Timed C.ChainPoint Utxo.UtxoEvent, MockBlock C.BabbageEra)] <-
     forAll genUtxoEventsWithTxs
   forM_ timedUtxoEventsWithTxs $ \(expectedTimedUtxoEvent, block) -> do
     let txs = mockBlockTxs block
@@ -414,13 +414,13 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
       isJust expectedAddresses
     cover 1 "No target addresses are provided" $
       isNothing expectedAddresses
-    let actualTimedUtxoEvents :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent
+    let actualTimedUtxoEvents :: Core.Timed C.ChainPoint Utxo.UtxoEvent
         actualTimedUtxoEvents =
-          Core.TimedEvent
+          Core.Timed
             (expectedTimedUtxoEvent ^. Core.point)
             $ Utxo.getUtxoEvents utxoIndexerConfig txs
     let -- (expectedTimedUtxoEvent ^. Core.event . Utxo.ueUtxos)
-        filteredExpectedUtxoEvent :: Core.TimedEvent C.ChainPoint Utxo.UtxoEvent
+        filteredExpectedUtxoEvent :: Core.Timed C.ChainPoint Utxo.UtxoEvent
         filteredExpectedUtxoEvent =
           expectedTimedUtxoEvent
             & Core.event . Utxo.ueUtxos
@@ -543,7 +543,7 @@ propLastChainPointOnRewindIndexer = property $ do
   fromDbSlotNosAfter === tail fromDbSlotNosBefore -- SQLite should reflect the new rwound chainpoint
 
 -- | make a unique query for every  Utxo
-mkQuery :: [Core.TimedEvent C.ChainPoint Utxo.Utxo] -> C.ChainPoint -> [Utxo.QueryUtxoByAddress]
+mkQuery :: [Core.Timed C.ChainPoint Utxo.Utxo] -> C.ChainPoint -> [Utxo.QueryUtxoByAddress]
 mkQuery timedUtxos cp =
   let addressesToQuery :: [C.AddressAny]
       addressesToQuery =

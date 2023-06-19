@@ -42,7 +42,7 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
   wrappedIndexer,
   wrapperConfig,
  )
-import Marconi.Core.Experiment.Type (Point, TimedEvent)
+import Marconi.Core.Experiment.Type (Point, Timed)
 
 -- | Define a way to flush old events out of a container
 class Flushable m indexer where
@@ -57,7 +57,7 @@ class Flushable m indexer where
     :: Word
     -- ^ How many event do we keep
     -> indexer event
-    -> m (Container indexer (TimedEvent (Point event) event), indexer event)
+    -> m (Container indexer (Timed (Point event) event), indexer event)
 
 instance Applicative m => Flushable m ListIndexer where
   type Container ListIndexer = []

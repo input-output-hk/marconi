@@ -35,7 +35,7 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
   resetVia,
   rollbackVia,
  )
-import Marconi.Core.Experiment.Type (Point, TimedEvent (TimedEvent), event, point)
+import Marconi.Core.Experiment.Type (Point, Timed (Timed), event, point)
 
 newtype TransformConfig output input = TransformConfig
   { _transformEventConfig :: input -> output
@@ -82,12 +82,12 @@ instance
   index timedEvent indexer = do
     let point' = timedEvent ^. point
         event' = indexer ^. transformEvent $ timedEvent ^. event
-        asOutput = TimedEvent point' event'
+        asOutput = Timed point' event'
     indexVia unwrapMap asOutput indexer
 
   indexAllDescending events indexer = do
     let event' = indexer ^. transformEvent
-        toOutput te = TimedEvent (te ^. point) (event' $ te ^. event)
+        toOutput te = Timed (te ^. point) (event' $ te ^. event)
         asOutputs = toOutput <$> events
     indexAllDescendingVia unwrapMap asOutputs indexer
 

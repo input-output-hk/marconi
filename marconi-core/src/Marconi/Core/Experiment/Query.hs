@@ -21,7 +21,7 @@ import Marconi.Core.Experiment.Type (
   Point,
   QueryError (AheadOfLastSync, NotStoredAnymore),
   Result,
-  TimedEvent,
+  Timed,
   event,
   point,
  )
@@ -72,7 +72,7 @@ allEvents :: EventsMatchingQuery event
 allEvents = EventsMatchingQuery (const True)
 
 -- | The result of an @EventMatchingQuery@
-type instance Result (EventsMatchingQuery event) = [TimedEvent (Point event) event]
+type instance Result (EventsMatchingQuery event) = [Timed (Point event) event]
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)
