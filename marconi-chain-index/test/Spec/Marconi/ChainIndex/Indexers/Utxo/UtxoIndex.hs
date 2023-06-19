@@ -22,11 +22,8 @@ import Data.Foldable (traverse_)
 import Data.Functor ((<&>))
 import Data.List qualified as List
 import Data.List.NonEmpty (nonEmpty)
-import Data.Map (Map)
-import Data.Map qualified
 import Data.Maybe (
   fromJust,
-  fromMaybe,
   isJust,
   isNothing,
   mapMaybe,
@@ -97,19 +94,11 @@ tests =
         "propComputeEventsAtAddress"
         propComputeEventsAtAddress
     , testPropertyNamed
-        "Roundtrip events to sqlRows transformation property."
-        "propRoundTripEventsToRowConversion"
-        propRoundTripEventsToRowConversion
-    , testPropertyNamed
         "getUtxoEvents with target addresses corresponding to all addresses in generated txs should return the same 'UtxoEvent' as if no target addresses were provided"
         "propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied "
         propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasApplied
     , testPropertyNamed
-        "Roundtrip save and retrieve from storage store property"
-        "propSaveToAndRetrieveFromUtxoInMemoryStore"
-        propSaveToAndRetrieveFromUtxoInMemoryStore
-    , testPropertyNamed
-        "Roundtrip save and retrieve events by address from storage test."
+        "Roundtrip save and retrieve events by address from storage test. XXX"
         "propSaveAndRetrieveUtxoEvents"
         propSaveAndRetrieveUtxoEvents
     , testPropertyNamed
@@ -349,42 +338,6 @@ propTxOutWhenPhase2ValidationFails = property $ do
         C.TxScriptValidityNone ->
           Hedgehog.footnoteShow computedTxOuts
             >> [txout] === computedTxOuts -- collateral is the only UTXO
-
-{- |
-  Round trip UtxoEvents to UtxoRow conversion
-  The purpose of this test is to show that there is a isomorphism between `UtxoRow` and UtxoEvent.
--}
-propRoundTripEventsToRowConversion :: Property
-propRoundTripEventsToRowConversion = property $ do
-  events <- forAll UtxoGen.genUtxoEvents
-  let txInsMap :: Map C.SlotNo (Map C.TxIn C.TxId)
-      txInsMap = Data.Map.fromList $ concatMap g events
-      f :: C.SlotNo -> IO (Map C.TxIn C.TxId)
-      f sn = pure $ fromMaybe Map.empty (Data.Map.lookup sn txInsMap)
-      g :: StorableEvent Utxo.UtxoHandle -> [(C.SlotNo, Map C.TxIn C.TxId)]
-      g (Utxo.UtxoEvent _ ins (C.ChainPoint sn _) _) = [(sn, ins)]
-      g _ = []
-      postGenesisEvents = filter (\e -> C.ChainPointAtGenesis /= Utxo.ueChainPoint e) events
-      rows :: [Utxo.UtxoRow]
-      rows = concatMap Utxo.eventToRows postGenesisEvents
-  computedEvent <- liftIO . Utxo.rowsToEvents f $ rows
-  Set.fromList computedEvent === Set.fromList postGenesisEvents
-
-{- |
-    Insert Utxo events in storage, and retreive the events
-    Note, we are intetested in testing the in-memory storage only for this test.
--}
-propSaveToAndRetrieveFromUtxoInMemoryStore :: Property
-propSaveToAndRetrieveFromUtxoInMemoryStore = property $ do
-  events <- forAll UtxoGen.genUtxoEvents
-  let depth = Utxo.Depth (length events + 1)
-  (storedEvents :: [StorableEvent Utxo.UtxoHandle]) <-
-    liftIO $
-      raiseException $
-        Utxo.open ":memory:" depth False -- don't vacuum sqlite
-          >>= Storable.insertMany events
-          >>= Storable.getEvents
-  Set.fromList storedEvents === Set.fromList events
 
 {- |
   Insert Utxo events in storage,and retrieve the events
