@@ -200,7 +200,7 @@ propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
       liftIO $
         raiseException $
           RI.query indexer $
-            QueryByAssetId policyId assetName Nothing
+            QueryByAssetId policyId (Just assetName) Nothing
     pure rows
 
   equalSet allTxMintRows combinedTxMintRows
@@ -236,7 +236,7 @@ propQueryingAssetIdsIndividuallyAtPointShouldBeSameAsQueryingAllAtPoint = H.prop
       liftIO $
         raiseException $
           RI.query indexer $
-            QueryByAssetId policyId assetName (Just slotNo)
+            QueryByAssetId policyId (Just assetName) (Just slotNo)
     pure rows
 
   equalSet allTxMintRows combinedTxMintRows
@@ -272,12 +272,12 @@ propQueryingAssetIdsAtLatestPointShouldBeSameAsAssetIdsQuery = H.property $ do
       liftIO $
         raiseException $
           RI.query indexer $
-            QueryByAssetId policyId assetName Nothing
+            QueryByAssetId policyId (Just assetName) Nothing
     (MintBurnResult txMintRowsAtSlot) <-
       liftIO $
         raiseException $
           RI.query indexer $
-            QueryByAssetId policyId assetName (Just latestSlotNo)
+            QueryByAssetId policyId (Just assetName) (Just latestSlotNo)
     equalSet allTxMintRows txMintRowsAtSlot
 
 {- | Insert some events to an indexer, then recreate it from what is
@@ -437,7 +437,10 @@ propQueryingOnlyBurn = H.property $ do
     let somePolicyId = MintBurn._txMintRowPolicyId aRow
         someAssetName = MintBurn._txMintRowAssetName aRow
     MintBurnResult (resultEventRows' :: [MintBurn.TxMintRow]) <-
-      liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryBurnByAssetId somePolicyId someAssetName Nothing
+      liftIO $
+        raiseException $
+          RI.query indexer $
+            MintBurn.QueryBurnByAssetId somePolicyId (Just someAssetName) Nothing
     let resultEvents' = MintBurn.fromRows resultEventRows'
         eventFilter row =
           MintBurn._txMintRowPolicyId row == somePolicyId
