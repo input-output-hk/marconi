@@ -18,7 +18,7 @@ import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents)
 import Hedgehog (Property, assert, forAll, property, (===))
 import Hedgehog qualified
 import Helpers (addressAnyToShelley)
-import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo, blockInfoSlotNo))
+import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo, _blockInfoSlotNo))
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxoIndexer
 import Marconi.Sidechain.Api.Routes (
@@ -132,7 +132,11 @@ propUtxoEventInsertionAndJsonRpcCurrentSlotQuery
   -> Property
 propUtxoEventInsertionAndJsonRpcCurrentSlotQuery action = property $ do
   events <- forAll genShelleyEraUtxoEvents
-  let chainPoints = Utxo.ueChainPoint <$> events
+  let chainPoints =
+        Utxo.getChainPoint
+          . Utxo.blockInfoToChainPointRow
+          . Utxo.ueBlockInfo
+          <$> events
   Hedgehog.cover 90 "Non empty events" $ not $ null events
 
   -- Now, we are storing the events in the index
@@ -140,7 +144,7 @@ propUtxoEventInsertionAndJsonRpcCurrentSlotQuery action = property $ do
 
   Result _ (GetCurrentSyncedBlockResult resp) <- liftIO $ querySyncedBlockAction action
   Hedgehog.cover 40 "Should have some significant non genesis chainpoints results" $
-    resp /= Origin && fmap blockInfoSlotNo resp > At (C.SlotNo 0)
+    resp /= Origin && fmap _blockInfoSlotNo resp > At (C.SlotNo 0)
   assert $ getBlockInfoChainPoint resp `elem` chainPoints
   where
     getBlockInfoChainPoint Origin = C.ChainPointAtGenesis
