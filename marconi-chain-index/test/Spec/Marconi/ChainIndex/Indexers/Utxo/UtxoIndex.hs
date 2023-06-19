@@ -173,13 +173,11 @@ allQueryUtxosShouldBeUnspent = property $ do
   let getResult = \case
         Utxo.UtxoResult rs -> rs
         Utxo.LastSyncedBlockInfoResult _ -> []
-      retrievedUtxoRows :: [Utxo.UtxoRow] = concatMap getResult results
-      txinsFromRetrievedUtsoRows :: [C.TxIn] -- get all the TxIn from quried UtxoRows
-        =
-        view (Utxo.urUtxo . Utxo.txIn) <$> retrievedUtxoRows
-      txInsFromGeneratedEvents :: [C.TxIn] -- get all the TxIn from quried UtxoRows
-        =
-        concatMap (\(Utxo.UtxoEvent _ ins _) -> Map.keys ins) events
+      retrievedUtxoRows :: [Utxo.UtxoResultEntry] = concatMap getResult results
+      txinsFromRetrievedUtsoRows :: [C.TxIn] = -- get all the TxIn from quried UtxoRows
+        retrievedUtxoRows ^.. folded . Utxo.utxoResultUtxo . Utxo.urUtxo . Utxo.txIn
+      txInsFromGeneratedEvents :: [C.TxIn] = -- get all the TxIn from quried UtxoRows
+        concatMap (Map.keys . Utxo.ueInputs) events
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
@@ -217,10 +215,10 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
   let getResult = \case
         Utxo.UtxoResult rs -> rs
         Utxo.LastSyncedBlockInfoResult _ -> []
-      retrievedUtxoRows :: [Utxo.UtxoRow] = concatMap getResult results
+      retrievedUtxoRows :: [Utxo.UtxoResultEntry] = concatMap getResult results
       txinsFromRetrievedUtsoRows :: [C.TxIn] -- get all the TxIn from quried UtxoRows
         =
-        view (Utxo.urUtxo . Utxo.txIn) <$> retrievedUtxoRows
+        view (Utxo.utxoResultUtxo . Utxo.urUtxo . Utxo.txIn) <$> retrievedUtxoRows
 
       getAlreadySpent :: StorableEvent Utxo.UtxoHandle -> [C.TxIn]
       getAlreadySpent (Utxo.UtxoEvent _ ins bi) =
@@ -255,7 +253,7 @@ allQueryUtxosSpentInTheFutureHaveASpentTxId = property $ do
   traverse_ (Hedgehog.assert . flip notElem txInsFromGeneratedEvents) txinsFromRetrievedUtsoRows
 
   -- Should have spent
-  traverse_ (Hedgehog.assert . futureSpentHasSpentTxId) retrievedUtxoRows
+  traverse_ (Hedgehog.assert . futureSpentHasSpentTxId . view Utxo.utxoResultUtxo) retrievedUtxoRows
 
 {- |
   The property verifies that we
@@ -388,9 +386,9 @@ propSaveAndRetrieveUtxoEvents = property $ do
   let getResult = \case
         Utxo.UtxoResult rs -> rs
         Utxo.LastSyncedBlockInfoResult _ -> []
-      rowsFromStorage :: [Utxo.UtxoRow] = concatMap getResult results
+      rowsFromStorage :: [Utxo.UtxoResultEntry] = concatMap getResult results
       fromStorageTxIns :: [C.TxIn] =
-        view (Utxo.urUtxo . Utxo.txIn) <$> rowsFromStorage
+        view (Utxo.utxoResultUtxo . Utxo.urUtxo . Utxo.txIn) <$> rowsFromStorage
       fromEventsTxIns :: [C.TxIn] =
         concatMap (\(Utxo.UtxoEvent _ ins _) -> Map.keys ins) events
 
@@ -504,7 +502,7 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
             openIntervalQuery :: [StorableQuery Utxo.UtxoHandle]
             openIntervalQuery = mkUtxoQueries events slotnoIntervalOpen
 
-            filterResult :: StorableResult Utxo.UtxoHandle -> [Utxo.UtxoRow]
+            filterResult :: StorableResult Utxo.UtxoHandle -> [Utxo.UtxoResultEntry]
             filterResult = \case
               Utxo.UtxoResult rs -> rs
               _other -> []
@@ -517,8 +515,10 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
         openIntervalResult <-
           liftIO $ raiseException $ traverse (Storable.query indexer) openIntervalQuery
 
-        let rows :: [Utxo.UtxoRow] = concatMap filterResult openIntervalResult
-            cps :: [C.SlotNo] = Set.toList . Set.fromList $ rows ^.. folded . Utxo.urCreationSlotNo
+        let rows :: [Utxo.UtxoResultEntry] = concatMap filterResult openIntervalResult
+            cps :: [C.SlotNo]
+            cps = Set.toList . Set.fromList
+                $ rows ^.. folded . Utxo.utxoResultUtxo . Utxo.urCreationSlotNo
             (retrievedLowSlotNo, retrievedHighSlotNo) = (head cps, last cps)
 
         -- Show we did not retrieve any slotNo before the queryInterval [low,*]
@@ -544,8 +544,8 @@ propComputeEventsAtAddress = property $ do
       targetAddress = head addresses
       computedAddresses =
         toListOf (folded . Utxo.address)
-          . concatMap (Set.toList . Utxo.ueUtxos)
-          . view Utxo.bufferUtxos
+          . List.nub
+          . toListOf (Utxo.bufferUtxos . folded . Utxo.utxoResultUtxo . Utxo.urUtxo)
           $ sameAddressEvents
       actualAddresses =
         toListOf (folded . Utxo.address . filtered (== targetAddress)) $

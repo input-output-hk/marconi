@@ -69,8 +69,8 @@ import Data.Map qualified as Map
 import Data.Ord (Down (Down))
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (pack)
 import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
 import Database.SQLite.Simple (
   NamedParam ((:=)),
@@ -118,6 +118,7 @@ import Marconi.Core.Storable (
   emptyState,
  )
 import Marconi.Core.Storable qualified as Storable
+import Text.Read (readMaybe)
 
 {- Note [Last synced block]
  -
@@ -168,7 +169,7 @@ interval (Just p) p' =
       wrap f x y
         | x <= y = Right $ f x y
         | otherwise =
-            Left . InvalidQueryInterval . pack $
+            Left . InvalidQueryInterval . Text.pack $
               "Invalid Interval. LowerBound, "
                 <> show x
                 <> " is not less than or equal to upperBound "
@@ -386,9 +387,14 @@ instance ToJSON UtxoRow where
       , "spentTxId" .= preview urSpentTxId ur
       ]
 
+data UtxoResultEntry = UtxoResultEntry {_utxoResultUtxo :: UtxoRow, _utxoResultTxIns :: [C.TxIn]}
+  deriving (Eq, Show, Ord)
+
+$(makeLenses ''UtxoResultEntry)
+
 data instance StorableResult UtxoHandle
   = -- | Result of a 'QueryUtxoByAddress' query
-    UtxoResult {getUtxoResult :: ![UtxoRow]}
+    UtxoResult {getUtxoResult :: ![UtxoResultEntry]}
   | -- | Result of a 'LastSyncedBlockInfoQuery'
     LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo)}
   deriving (Eq, Show, Ord)
@@ -399,6 +405,11 @@ data instance StorableEvent UtxoHandle = UtxoEvent
   , ueBlockInfo :: !BlockInfo
   }
   deriving (Eq, Ord, Show, Generic)
+
+resolveTxIns :: Utxo -> Map C.TxIn C.TxId -> [C.TxIn]
+resolveTxIns u =
+  let txid = (\(C.TxIn x _) -> x) $ u ^. txIn
+   in Map.keys . Map.filter (txid ==)
 
 -- | mappend, combine and balance Utxos
 instance Semigroup (StorableEvent UtxoHandle) where
@@ -517,6 +528,28 @@ instance FromRow UtxoRow where
           spentInfoRow <- fromRow
           spentInfo <- parseSpentInfo spentInfoRow
           pure $ UtxoRow utxo blockInfo spentInfo
+
+instance FromRow UtxoResultEntry where
+  fromRow = do
+    utxo <- fromRow
+    mTxIds <-
+      traverse
+        (either (const Nothing) pure . C.deserialiseFromRawBytesHex C.AsTxId . Text.encodeUtf8)
+        . Text.splitOn ","
+        <$> field
+    mTxIxes <- traverse (fmap C.TxIx . readMaybe . Text.unpack) . Text.splitOn "," <$> field
+    let mtxins = do
+          txIds <- mTxIds
+          txIxes <- mTxIxes
+          Just $ zipWith C.TxIn txIds txIxes
+    case mtxins of
+      Just txins -> pure $ UtxoResultEntry utxo txins
+      Nothing ->
+        fieldWith $ \field' ->
+          returnError
+            UnexpectedNull
+            field'
+            "Invalid spent values: Some fields are null, other aren't"
 
 -- | Used internally to parse SpentInfo
 data SpentInfoRow
@@ -844,7 +877,7 @@ eventToRows (UtxoEvent utxos _ bi) =
  with the in-memory events
 -}
 data UtxoByAddressBufferEvents = UtxoByAddressBufferEvents
-  { _bufferUtxos :: ![StorableEvent UtxoHandle]
+  { _bufferUtxos :: ![UtxoResultEntry]
   -- ^ Utxos at the requested address
   , _bufferSpent :: !(Set C.TxIn)
   -- ^ All the spent TxIn stored in memory that occured before the query upper bound
@@ -870,25 +903,26 @@ instance Monoid UtxoByAddressBufferEvents where
 -}
 mergeInMemoryAndSql
   :: UtxoByAddressBufferEvents
-  -> [UtxoRow]
-  -> [UtxoRow]
+  -> [UtxoResultEntry]
+  -> [UtxoResultEntry]
 mergeInMemoryAndSql bufferEvents =
   let asTxIn :: UtxoRow -> C.TxIn
       asTxIn u = u ^. urUtxo . txIn
 
-      excludeBufferSpent :: [UtxoRow] -> [UtxoRow]
-      excludeBufferSpent = filter (flip Set.notMember (bufferEvents ^. bufferSpent) . asTxIn)
+      excludeBufferSpent :: [UtxoResultEntry] -> [UtxoResultEntry]
+      excludeBufferSpent =
+        filter (flip Set.notMember (bufferEvents ^. bufferSpent) . asTxIn . view utxoResultUtxo)
 
-      updateFutureSpent :: UtxoRow -> UtxoRow
+      updateFutureSpent :: UtxoResultEntry -> UtxoResultEntry
       updateFutureSpent u =
-        let spent = Map.lookup (asTxIn u) $ bufferEvents ^. bufferFutureSpent
-         in case u ^. urSpentInfo of
+        let spent = Map.lookup (asTxIn $ u ^. utxoResultUtxo) $ bufferEvents ^. bufferFutureSpent
+         in case u ^. utxoResultUtxo . urSpentInfo of
               -- if it's already spent, no need to check if it's spent in the buffer events
               Just _ -> u
-              Nothing -> u & urSpentInfo .~ spent
+              Nothing -> u & utxoResultUtxo . urSpentInfo .~ spent
 
-      appendBufferUtxos :: [UtxoRow] -> [UtxoRow]
-      appendBufferUtxos = (<> (bufferEvents ^. bufferUtxos >>= eventToRows))
+      appendBufferUtxos :: [UtxoResultEntry] -> [UtxoResultEntry]
+      appendBufferUtxos = (<> bufferEvents ^. bufferUtxos)
    in fmap updateFutureSpent
         . excludeBufferSpent
         . appendBufferUtxos
@@ -926,6 +960,17 @@ eventsAtAddress (QueryUtxoByAddress addr snoInterval) =
             && pointFilter event
         ]
 
+      txIns :: StorableEvent UtxoHandle -> [C.TxIn]
+      txIns event = case toList $ ueUtxos event of
+        [] -> []
+        u : _ -> resolveTxIns u $ ueInputs event
+
+      asUtxoResultEntry :: StorableEvent UtxoHandle -> [UtxoResultEntry]
+      asUtxoResultEntry event = do
+        let txins = txIns event
+        row <- eventToRows event
+        pure $ UtxoResultEntry row txins
+
       generateSpentInfo :: StorableEvent UtxoHandle -> C.TxId -> SpentInfo
       generateSpentInfo event = SpentInfo (ueBlockInfo event)
 
@@ -944,7 +989,7 @@ eventsAtAddress (QueryUtxoByAddress addr snoInterval) =
       go :: StorableEvent UtxoHandle -> UtxoByAddressBufferEvents
       go event =
         UtxoByAddressBufferEvents
-          (splitEventAtAddress event)
+          (splitEventAtAddress event >>= asUtxoResultEntry)
           (getBufferSpent event)
           (getBufferFutureSpent event)
    in foldMap go
@@ -979,16 +1024,19 @@ utxoAtAddressQuery c bufferResult filters params =
                   s.blockNo,
                   s.blockTimestamp,
                   s.epochNo,
-                  s.spentTxId
+                  s.spentTxId,
+                  GROUP_CONCAT(HEX(s2.txId)),
+                  GROUP_CONCAT(s2.txIx)
                FROM
                   unspent_transactions u
-               FULL OUTER JOIN spent s ON u.txId = s.txId
+               LEFT JOIN spent s ON u.txId = s.txId
                AND u.txIx = s.txIx
+               LEFT JOIN spent s2 ON u.txId = s2.spentTxId
                WHERE |]
             <> SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters)
-            <> [r| ORDER BY
-                u.slotNo ASC |]
-    persistedUtxoRows :: [UtxoRow] <- SQL.queryNamed c builtQuery params
+            <> [r| GROUP BY s2.spentTxId
+                ORDER BY u.slotNo ASC |]
+    persistedUtxoRows <- SQL.queryNamed c builtQuery params
     pure $
       UtxoResult $
         mergeInMemoryAndSql
@@ -1023,7 +1071,7 @@ instance Queryable UtxoHandle where
              FROM unspent_transactions u
              GROUP BY u.slotNo
              ORDER BY u.slotNo DESC
-             LIMIT ?|]
+             LIMIT ? |]
      in -- We don't send the last event but the one before, to ensure that every indexers reached this point
         -- It's a hack, which should be removed once we have a proper handling of synchronization events.
         --
