@@ -19,7 +19,6 @@
      - policyId        BLOB NOT NULL
      - assetName       TEXT NOT NULL
      - quantity        INT NOT NULL
-     - redeemerIx      INT NOT NULL
      - redeemerData    BLOB NOT NULL
      - redeemerHash    BLOB NOT NULL
 -}
@@ -53,7 +52,6 @@ import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Text qualified as Text
-import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField qualified as SQL
@@ -100,7 +98,6 @@ data MintAsset = MintAsset
   { mintAssetPolicyId :: !C.PolicyId
   , mintAssetAssetName :: !C.AssetName
   , mintAssetQuantity :: !C.Quantity
-  , mintAssetIdx :: !Word64
   , mintAssetRedeemer :: !(Maybe MintAssetRedeemer)
   -- ^ Nothing if  the policyId is a simple script
   }
@@ -166,7 +163,6 @@ getPolicyData txb m = do
       (fromMaryPolicyID policyId')
       (fromMaryAssetName assetName)
       (C.Quantity quantity)
-      ix
       (toAssetRedeemer <$> redeemer)
 
 -- ** Copy-paste
@@ -191,7 +187,6 @@ data TxMintRow = TxMintRow
   , _txMintRowPolicyId :: !C.PolicyId
   , _txMintRowAssetName :: !C.AssetName
   , _txMintRowQuantity :: !C.Quantity
-  , _txMintRowAssetIdx :: !Word64
   , _txMintRowRedeemer :: !(Maybe MintAssetRedeemer)
   }
   deriving (Eq, Ord, Show, Generic)
@@ -216,11 +211,10 @@ instance SQL.FromRow TxMintRow where
     policyId' <- SQL.field
     assetName <- SQL.field
     qty <- SQL.field
-    assetIdx <- SQL.field
     redeemerData <- SQL.field
     redeemerHash <- SQL.field
     redeemer <- redeemerFromRow redeemerData redeemerHash
-    pure $ TxMintRow slotNo blockHeaderHash blockNo txIx txId policyId' assetName qty assetIdx redeemer
+    pure $ TxMintRow slotNo blockHeaderHash blockNo txIx txId policyId' assetName qty redeemer
 
 instance FromJSON MintAssetRedeemer where
   parseJSON (Object v) = do
@@ -248,7 +242,6 @@ instance FromJSON TxMintRow where
       <*> v .: "policyId"
       <*> v .: "assetName"
       <*> v .: "quantity"
-      <*> v .: "assetIdx"
       <*> pure redeemer
   parseJSON _ = mempty
 
@@ -263,7 +256,6 @@ instance SQL.ToRow TxMintRow where
       , SQL.toField $ m ^. txMintRowPolicyId
       , SQL.toField $ m ^. txMintRowAssetName
       , SQL.toField $ m ^. txMintRowQuantity
-      , SQL.toField $ m ^. txMintRowAssetIdx
       , SQL.toField $ mintAssetRedeemerData <$> m ^. txMintRowRedeemer
       , SQL.toField $ mintAssetRedeemerHash <$> m ^. txMintRowRedeemer
       ]
@@ -288,7 +280,6 @@ instance ToJSON TxMintRow where
       , "policyId" .= _txMintRowPolicyId row
       , "assetName" .= _txMintRowAssetName row
       , "quantity" .= _txMintRowQuantity row
-      , "assetIdx" .= _txMintRowAssetIdx row
       ]
         <> maybe [] mintAssetRedeemerPairs (_txMintRowRedeemer row)
 
@@ -306,7 +297,6 @@ sqliteInit c = liftIO $ do
     \   , policyId        BLOB NOT NULL \
     \   , assetName       TEXT NOT NULL \
     \   , quantity        INT NOT NULL  \
-    \   , redeemerIx      INT NOT NULL  \
     \   , redeemerData    BLOB          \
     \   , redeemerHash    BLOB)"
   SQL.execute_
@@ -322,9 +312,8 @@ sqliteInsert c es =
         "INSERT INTO minting_policy_events          \
         \( slotNo, blockHeaderHash, blockNo,        \
         \txIndexInBlock, txId, policyId, assetName, \
-        \ quantity, redeemerIx, redeemerData,       \
-        \ redeemerHash )                            \
-        \VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        \ quantity, redeemerData,  redeemerHash )   \
+        \VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
    in case rows of
         [] -> pure ()
         xs -> SQL.executeMany c template xs
@@ -343,7 +332,6 @@ toRows e = do
       (mintAssetPolicyId mintAsset)
       (mintAssetAssetName mintAsset)
       (mintAssetQuantity mintAsset)
-      (mintAssetIdx mintAsset)
       (mintAssetRedeemer mintAsset)
 
 -- | Input rows must be sorted by C.SlotNo.
@@ -366,7 +354,6 @@ fromRows rows = do
         (row ^. txMintRowPolicyId)
         (row ^. txMintRowAssetName)
         (row ^. txMintRowQuantity)
-        (row ^. txMintRowAssetIdx)
         (row ^. txMintRowRedeemer)
 
 queryStoredTxMintEvents
@@ -379,10 +366,9 @@ queryStoredTxMintEvents sqlCon (conditions, params) =
     allConditions = Text.intercalate " AND " $ fmap SQL.fromQuery conditions
     whereClause = if allConditions == "" then "" else "WHERE " <> allConditions
     query =
-      " SELECT slotNo, blockHeaderHash, blockNo, txIndexInBlock, txId, \
-      \        policyId, assetName, quantity, redeemerIx, redeemerData \
-      \      , redeemerHash                                            \
-      \ FROM minting_policy_events                                     \
+      " SELECT slotNo, blockHeaderHash, blockNo, txIndexInBlock, txId,   \
+      \        policyId, assetName, quantity, redeemerData, redeemerHash \
+      \ FROM minting_policy_events                                       \
       \   "
         <> whereClause
         <> "                                        \
@@ -443,7 +429,7 @@ instance RI.Queryable MintBurnHandle where
     pure $ MintBurnResult $ do
       TxMintEvent slotNo blockHeaderHash blockNo txAssets <- storedEvents <> filteredMemoryEvents
       TxMintInfo txId txIx mintAssets <- txAssets
-      MintAsset policyId assetName quantity redeemerIx redeemer <- NE.toList mintAssets
+      MintAsset policyId assetName quantity redeemer <- NE.toList mintAssets
       pure $
         TxMintRow
           slotNo
@@ -454,7 +440,6 @@ instance RI.Queryable MintBurnHandle where
           policyId
           assetName
           quantity
-          redeemerIx
           redeemer
     where
       filteredMemoryEvents :: [TxMintEvent]
