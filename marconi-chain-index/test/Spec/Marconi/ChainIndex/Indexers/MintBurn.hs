@@ -109,10 +109,6 @@ tests =
         "rewind"
         rewind
     , testPropertyNamed
-        "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
-        "endToEnd"
-        endToEnd
-    , testPropertyNamed
         "ToJSON/FromJSON roundtrip for TxMintRow"
         "propJsonRoundtripTxMintRow"
         propJsonRoundtripTxMintRow
@@ -128,6 +124,10 @@ tests =
         "Event extraction filters out the non-targeted assets"
         "propFilterIncludeTargetAssets"
         propFilterExcludeNonTargetAssets
+    , testPropertyNamed
+        "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
+        "endToEnd"
+        endToEnd
     ]
 
 {- | This is a sanity-check test that turns a TxBodyContent with mint
@@ -329,12 +329,12 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   socketPath <- TN.getPoolSocketPathAbs conf runtime
 
   -- This is the channel we wait on to know if the event has been indexed
-  indexedTxs <- liftIO IO.newChan
+  indexerChan <- liftIO IO.newChan
   -- Start indexer
   liftIO $ do
     coordinator <- M.initialCoordinator 1 0
     ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
-    (loop, _indexerMVar) <- M.mintBurnWorker_ 123 (IO.writeChan indexedTxs) Nothing coordinator ch (tempPath </> "db.db")
+    (loop, _indexerMVar) <- M.mintBurnWorker_ 123 (IO.writeChan indexerChan) Nothing coordinator ch (tempPath </> "db.db")
     void $ IO.async loop
     -- Receive ChainSyncEvents and pass them on to indexer's channel
     void $ IO.async $ do
@@ -395,9 +395,13 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
       keyWitnesses' = map (C.makeShelleyKeyWitness txBody) keyWitnesses
   TN.submitTx localNodeConnectInfo $ C.makeSignedTransaction keyWitnesses' txBody
 
-  -- Receive event from the indexer, compare the mint that we
-  -- submitted above with the one we got from the indexer.
-  indexer :: MintBurn.MintBurnIndexer <- liftIO $ IO.readChan indexedTxs
+  -- Receive event from the indexer, compare the mint that we submitted above with the one we got
+  -- from the indexer.
+  --
+  -- We assume the minted token will be part of 20 first events (ad-hoc number).
+  -- Ugly solution, but it will be changed once indexers support notifications which will replace
+  -- callbacks.
+  indexer :: MintBurn.MintBurnIndexer <- fmap (last . take 20) <$> liftIO $ IO.getChanContents indexerChan
   MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
     liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 
