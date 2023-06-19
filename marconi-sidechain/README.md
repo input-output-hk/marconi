@@ -165,8 +165,11 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getCurrentSyncedBlock" , "params": "",
   "id": 1,
   "jsonrpc": "2.0",
   "result": {
-      "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
-      "slotNo": 1
+    "blockHeaderHash": "ac12e3aa40cf6f0b48957e372daf44800199c7f4b7f0a359ed342662a8b830ff",
+    "blockNo": 27655,
+    "blockTimestamp": 0,
+    "epochNo": 0,
+    "slotNo": 638600
   }
 }
 ```
@@ -178,45 +181,48 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "ad
 {
   "id": 1,
   "jsonrpc": "2.0",
-  "result":
-    [
-        {
-          "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket",
-          "blockHeaderHash": "6b1c0c2ccd1fec376235c6580a667b67be92028e183dc46236eb551f1c40d621",
-          "datum": null,
-          "datumHash": null,
-          "slotNo": 86480,
-          "txId": "a00696a0c2d70c381a265a845e43c55e1d00f96b27c06defc015dc92eb206240",
-          "txIx": 0
-        }
-    ]
+  "result": [
+    {
+      "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket",
+      "blockHeaderHash": "affaf81ee993f657212d094c345ba86eed383a1ba19b5510e419390b85aa77a2",
+      "blockNo": 21655,
+      "datum": null,
+      "datumHash": null,
+      "slotNo": 518600,
+      "spentBy": null,
+      "txId": "59f68ea73b95940d443dc516702d5e5deccac2429e4d974f464cc9b26292fd9c",
+      "txIndexInBlock": 0,
+      "txInputs": [],
+      "txIx": 0
+    }
+  ]
 }
 ```
 
-#### getTxsBurningAssetId
+#### getBurnTokenEvents (PARTIALLY IMPLEMENTED)
 
 ```sh
-$ curl -d '{"jsonrpc": "2.0", "method": "getTxsBurningAssetId", "params": {"policyId": "fda1b6b487bee2e7f64ecf24d24b1224342484c0195ee1b7b943db50", "assetName": "4c6f6273746572436f756e746572"}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
+$ curl -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e2bab64ca481afc5a695b7db22fd0a7df4bf930158dfa652fb337999", "assetName": "53554d4d495441574152445344656669", "slotNo": 10680629}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
 {
   "id": 1,
   "jsonrpc": "2.0",
   "result": [
     {
       "blockHeaderHash": "834ac116737ed735805864491626aa8eadca3a9c3be86b559c65c92fd3ddd9fa",
-      "quantity": -22411,
+      "burnAmount": 22411,
       "redeemer": "80",
       "redeemerHash": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
-      "slotNo": 40965760,
+      "slotNo": 10680629,
       "txId": "cf944108d7130a8d53925ff9903a254d5133d5978b7e69e04c67d5b8776a6fb2"
     }
   ]
 }
 ```
 
-#### getStakePoolDelegationByEpoch
+#### getActiveStakePoolDelegationByEpoch
 
 ```sh
-$ curl -d '{"jsonrpc": "2.0" , "method": "getStakePoolDelegationByEpoch" , "params": 6, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
+$ curl -d '{"jsonrpc": "2.0" , "method": "getActiveStakePoolDelegationByEpoch" , "params": 6, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
 {
   "id": 1,
   "jsonrpc": "2.0",

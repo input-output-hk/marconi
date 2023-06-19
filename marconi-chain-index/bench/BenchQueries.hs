@@ -55,7 +55,7 @@ import Marconi.ChainIndex.Indexers.Utxo (
   UtxoHandle,
   UtxoIndexer,
  )
-import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth))
+import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth), UtxoIndexerConfig (UtxoIndexerConfig), ucEnableUtxoTxOutRef, ucTargetAddresses)
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
 import System.FilePath ((</>))
@@ -105,9 +105,10 @@ runIndexerSyncing
 runIndexerSyncing databaseDir nodeSocketPath indexerTVar = do
   let callbackUtxoIndexer :: UtxoIndexer -> IO ()
       callbackUtxoIndexer utxoIndexer = atomically $ writeTMVar indexerTVar utxoIndexer
-  let indexers =
+      utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
+      indexers =
         [
-          ( utxoWorker callbackUtxoIndexer Nothing
+          ( utxoWorker callbackUtxoIndexer utxoIndexerConfig
           , Just $ databaseDir </> utxoDbFileName
           )
         ]

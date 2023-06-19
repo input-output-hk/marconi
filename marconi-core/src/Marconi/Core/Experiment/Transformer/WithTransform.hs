@@ -19,7 +19,7 @@ import Control.Lens.Operators ((^.))
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
@@ -28,14 +28,14 @@ import Marconi.Core.Experiment.Class (
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   closeVia,
-  indexAllVia,
+  indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
   queryVia,
   resetVia,
   rollbackVia,
  )
-import Marconi.Core.Experiment.Type (Point, TimedEvent (TimedEvent), event, point)
+import Marconi.Core.Experiment.Type (Point, Timed (Timed), event, point)
 
 newtype TransformConfig output input = TransformConfig
   { _transformEventConfig :: input -> output
@@ -82,14 +82,14 @@ instance
   index timedEvent indexer = do
     let point' = timedEvent ^. point
         event' = indexer ^. transformEvent $ timedEvent ^. event
-        asOutput = TimedEvent point' event'
+        asOutput = Timed point' event'
     indexVia unwrapMap asOutput indexer
 
-  indexAll events indexer = do
+  indexAllDescending events indexer = do
     let event' = indexer ^. transformEvent
-        toOutput te = TimedEvent (te ^. point) (event' $ te ^. event)
+        toOutput te = Timed (te ^. point) (event' $ te ^. event)
         asOutputs = toOutput <$> events
-    indexAllVia unwrapMap asOutputs indexer
+    indexAllDescendingVia unwrapMap asOutputs indexer
 
 instance
   (Point output ~ Point event, IsSync m output indexer)

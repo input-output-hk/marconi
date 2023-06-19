@@ -20,11 +20,13 @@ import Cardano.Api qualified as C
 import Control.Concurrent.STM.TMVar (TMVar)
 import Control.Exception (Exception)
 import Control.Lens (makeLenses)
+import Data.List.NonEmpty (NonEmpty)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
 import Marconi.ChainIndex.Types as Export (IndexingDepth, TargetAddresses)
 import Marconi.Core.Storable (State, StorableQuery)
+
 import Network.Wai.Handler.Warp (Settings)
 
 -- | Type represents http port for JSON-RPC
@@ -43,6 +45,8 @@ data CliArgs = CliArgs
   -- ^ Required depth of a block before it is indexed
   , targetAddresses :: !(Maybe TargetAddresses)
   -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
+  , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
+  -- ^ a list of asset to track
   }
   deriving (Show)
 
@@ -73,12 +77,13 @@ newtype EpochStateIndexerEnv = EpochStateIndexerEnv
   { _epochStateIndexerEnvIndexer :: TMVar (State EpochStateHandle)
   }
 
-newtype MintBurnIndexerEnv = MintBurnIndexerEnv
-  { _mintBurnIndexerEnvIndexer :: TMVar (State MintBurnHandle)
+data MintBurnIndexerEnv = MintBurnIndexerEnv
+  { _mintBurnIndexerEnvTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
+  , _mintBurnIndexerEnvIndexer :: TMVar (State MintBurnHandle)
   }
 
 data QueryExceptions
-  = AddressConversionError !QueryExceptions
+  = AddressConversionError !String
   | QueryError !String
   | UnexpectedQueryResult !(StorableQuery UtxoHandle)
   deriving stock (Show)

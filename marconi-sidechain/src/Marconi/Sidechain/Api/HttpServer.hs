@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Marconi.Sidechain.Api.HttpServer where
 
@@ -20,25 +21,25 @@ import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (
   API,
+  GetBurnTokenEventsParams (assetName, beforeSlotNo, policyId),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
   GetCurrentSyncedBlockResult,
   GetEpochActiveStakePoolDelegationResult,
   GetEpochNonceResult,
-  GetTxsBurningAssetIdParams (assetName, mintBurnSlot, policyId),
-  GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult),
   GetUtxosFromAddressParams (queryAddress, queryCreatedAfterSlotNo, queryUnspentBeforeSlotNo),
   GetUtxosFromAddressResult,
   JsonRpcAPI,
   RestAPI,
  )
 import Marconi.Sidechain.Api.Types (
-  QueryExceptions,
+  QueryExceptions (AddressConversionError, QueryError, UnexpectedQueryResult),
   SidechainEnv,
   sidechainAddressUtxoIndexer,
   sidechainEnvHttpSettings,
   sidechainEnvIndexers,
  )
 import Network.JsonRpc.Server.Types ()
-import Network.JsonRpc.Types (JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage), parseErrorCode)
+import Network.JsonRpc.Types (JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage), mkJsonRpcInvalidRequestErr, mkJsonRpcParseErr)
 import Network.Wai.Handler.Warp (runSettings)
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler, Server, serve)
@@ -146,16 +147,16 @@ getAddressUtxoHandler env query =
 getMintingPolicyHashTxHandler
   :: SidechainEnv
   -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-  -> GetTxsBurningAssetIdParams
-  -> Handler (Either (JsonRpcErr String) GetTxsBurningAssetIdResult)
+  -> GetBurnTokenEventsParams
+  -> Handler (Either (JsonRpcErr String) GetBurnTokenEventsResult)
 getMintingPolicyHashTxHandler env query =
   liftIO $
-    bimap toRpcErr GetTxsBurningAssetIdResult <$> do
+    bimap toRpcErr GetBurnTokenEventsResult <$> do
       Q.Mint.findByAssetIdAtSlot
         env
         (policyId query)
         (assetName query)
-        (mintBurnSlot query)
+        (beforeSlotNo query)
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochStakePoolDelegationHandler
@@ -185,9 +186,11 @@ getEpochNonceHandler env epochNo =
 toRpcErr
   :: QueryExceptions
   -> JsonRpcErr String
-toRpcErr e =
-  JsonRpcErr
-    { errorCode = parseErrorCode
-    , errorMessage = "marconi RPC query related error!"
-    , errorData = Just . show $ e
-    }
+toRpcErr (AddressConversionError e) =
+  mkJsonRpcInvalidRequestErr $ Just e
+toRpcErr (QueryError e) =
+  -- TODO Change to specific code and message
+  mkJsonRpcParseErr $ Just e
+toRpcErr (UnexpectedQueryResult e) =
+  -- TODO Change to specific code and message
+  mkJsonRpcParseErr $ Just $ show e

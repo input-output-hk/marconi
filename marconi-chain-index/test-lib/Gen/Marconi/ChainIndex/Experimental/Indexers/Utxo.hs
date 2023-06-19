@@ -18,7 +18,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.Core.Experiment qualified as Core
 
 import Control.Lens (folded, (^..))
-import Control.Monad (foldM, forM)
+import Control.Monad (forM)
 import Data.Foldable (fold)
 import Data.Functor ((<&>))
 import Data.Map (Map)
@@ -48,49 +48,47 @@ genUtxoEvents'
   -> Gen (Core.ListIndexer Utxo.UtxoEvent)
 genUtxoEvents' txOutToUtxo = do
   timedEvents <- fmap fst <$> genUtxoEventsWithTxs' txOutToUtxo
-  foldM (flip Core.index) Core.listIndexer timedEvents
+  Core.indexAll timedEvents Core.mkListIndexer
 
 -- | Generate ShelleyEra UtxoEvent
-genShelleyEraUtxoEvents :: Gen (Core.TimedEvent Utxo.UtxoEvent)
+genShelleyEraUtxoEvents :: Gen (Core.Timed C.ChainPoint Utxo.UtxoEvent)
 genShelleyEraUtxoEvents = do
-  events :: [Core.TimedEvent Utxo.UtxoEvent] <- genUtxoEventsWithTxs <&> fmap fst
+  events :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <- genUtxoEventsWithTxs <&> fmap fst
   utxoEvents' :: [Utxo.UtxoEvent] <-
     forM
       events
-      ( \(Core.TimedEvent _ uev@(Utxo.UtxoEvent utxos _)) -> do
+      ( \(Core.Timed _ uev@(Utxo.UtxoEvent utxos _)) -> do
           utxos' <- forM (Set.toList utxos) (\u -> CGen.genAddressShelley <&> flip utxoAddressOverride u)
           pure $ uev{Utxo._ueUtxos = Set.fromList utxos'}
       )
   let cp :: C.ChainPoint
       cp = foldr max C.ChainPointAtGenesis (events ^.. folded . Core.point)
-  pure $ Core.TimedEvent cp (fold utxoEvents')
+  pure $ Core.Timed cp (fold utxoEvents')
 
--- foldM (flip Core.index) Core.listIndexer shelleyEvents
-
-genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.TimedEvent Utxo.UtxoEvent)
+genShelleyEraUtxoEventsAtChainPoint :: C.ChainPoint -> Gen (Core.Timed C.ChainPoint Utxo.UtxoEvent)
 genShelleyEraUtxoEventsAtChainPoint cp = do
-  events :: [Core.TimedEvent Utxo.UtxoEvent] <-
+  events :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
     genUtxoEventsWithTxs <&> fmap fst
   utxoEvent' :: [Utxo.UtxoEvent] <-
     forM
       events
-      ( \(Core.TimedEvent _ uev@(Utxo.UtxoEvent utxos _)) -> do
+      ( \(Core.Timed _ uev@(Utxo.UtxoEvent utxos _)) -> do
           utxos' <- forM (Set.toList utxos) (\u -> CGen.genAddressShelley <&> flip utxoAddressOverride u)
           pure $ uev{Utxo._ueUtxos = Set.fromList utxos'}
       )
-  pure $ Core.TimedEvent cp (fold utxoEvent')
+  pure $ Core.Timed cp (fold utxoEvent')
 
-genUtxoEventsWithTxs :: Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
+genUtxoEventsWithTxs :: Gen [(Core.Timed C.ChainPoint Utxo.UtxoEvent, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
 
 genUtxoEventsWithTxs'
   :: (C.TxIn -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
-  -> Gen [(Core.TimedEvent Utxo.UtxoEvent, MockBlock C.BabbageEra)]
+  -> Gen [(Core.Timed C.ChainPoint Utxo.UtxoEvent, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs' txOutToUtxo =
-  fmap (\block -> (getTimedEventFromBlock block, block)) <$> genMockchain
+  fmap (\block -> (getTimedFromBlock block, block)) <$> genMockchain
   where
-    getTimedEventFromBlock :: MockBlock C.BabbageEra -> Core.TimedEvent Utxo.UtxoEvent
-    getTimedEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
+    getTimedFromBlock :: MockBlock C.BabbageEra -> Core.Timed C.ChainPoint Utxo.UtxoEvent
+    getTimedFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
       let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
           utxoMap = foldMap getUtxosFromTx txs
           resolvedUtxos :: Set Utxo.Utxo =
@@ -99,7 +97,7 @@ genUtxoEventsWithTxs' txOutToUtxo =
                 Set.toList utxos
           cp = C.ChainPoint slotNo blockHeaderHash
           spents :: Set Utxo.Spent = Set.map Utxo.Spent spentTxOuts
-       in Core.TimedEvent cp (Utxo.UtxoEvent resolvedUtxos spents)
+       in Core.Timed cp (Utxo.UtxoEvent resolvedUtxos spents)
     getUtxosFromTx :: C.Tx C.BabbageEra -> Map C.TxIn Utxo
     getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
       let txId = C.getTxId txBody

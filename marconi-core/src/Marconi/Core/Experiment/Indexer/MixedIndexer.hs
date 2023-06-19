@@ -11,7 +11,7 @@
 module Marconi.Core.Experiment.Indexer.MixedIndexer (
   Flushable (..),
   MixedIndexer,
-  newMixedIndexer,
+  mkMixedIndexer,
   standardMixedIndexer,
   inMemory,
   inDatabase,
@@ -25,15 +25,15 @@ import Control.Lens.Operators ((&), (.~), (^.))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (
+  AppendResult (appendResult),
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
   Queryable (query),
-  ResumableResult (resumeResult),
   Rollbackable (rollback),
  )
-import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
+import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (IndexWrapper),
@@ -42,7 +42,7 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
   wrappedIndexer,
   wrapperConfig,
  )
-import Marconi.Core.Experiment.Type (Point, TimedEvent)
+import Marconi.Core.Experiment.Type (Point, Timed)
 
 -- | Define a way to flush old events out of a container
 class Flushable m indexer where
@@ -57,7 +57,7 @@ class Flushable m indexer where
     :: Word
     -- ^ How many event do we keep
     -> indexer event
-    -> m (Container indexer (TimedEvent event), indexer event)
+    -> m (Container indexer (Timed (Point event) event), indexer event)
 
 instance Applicative m => Flushable m ListIndexer where
   type Container ListIndexer = []
@@ -91,7 +91,7 @@ makeLenses 'MixedIndexerConfig
 -}
 newtype MixedIndexer store mem event = MixedIndexer {_mixedWrapper :: IndexWrapper (MixedIndexerConfig store) mem event}
 
-newMixedIndexer
+mkMixedIndexer
   :: Word
   -- ^ how many events are kept in memory after a flush
   -> Word
@@ -99,7 +99,7 @@ newMixedIndexer
   -> store event
   -> mem event
   -> MixedIndexer store mem event
-newMixedIndexer keepNb flushNb db =
+mkMixedIndexer keepNb flushNb db =
   MixedIndexer . IndexWrapper (MixedIndexerConfig keepNb flushNb db)
 
 standardMixedIndexer
@@ -114,7 +114,7 @@ standardMixedIndexer
   -> m (MixedIndexer store ListIndexer event)
 standardMixedIndexer keepNb flushNb db = do
   lSync <- lastSyncPoint db
-  pure $ newMixedIndexer keepNb flushNb db (listIndexer & latest .~ lSync)
+  pure $ mkMixedIndexer keepNb flushNb db (mkListIndexer & latest .~ lSync)
 
 makeLenses ''MixedIndexer
 
@@ -180,7 +180,7 @@ flush indexer = do
   (eventsToFlush, indexer') <-
     getCompose $
       inMemory (Compose . flushMemory keep) indexer
-  inDatabase (indexAll eventsToFlush) indexer'
+  inDatabase (indexAllDescending eventsToFlush) indexer'
 
 instance
   ( Ord (Point event)
@@ -193,7 +193,7 @@ instance
   where
   index timedEvent indexer =
     let isFull indexer' =
-          (indexer' ^. flushSize + indexer' ^. keepInMemory <)
+          (indexer' ^. flushSize + indexer' ^. keepInMemory <=)
             <$> indexer' ^. inMemory . to currentLength
 
         flushIfFull full = if full then flush else pure
@@ -213,18 +213,18 @@ instance
   where
   rollback p indexer = do
     indexer' <- inMemory (rollback p) indexer
-    if not $ null $ indexer' ^. inMemory . events
-      then pure indexer'
-      else inDatabase (rollback p) indexer'
+    if null $ indexer' ^. inMemory . events
+      then inDatabase (rollback p) indexer'
+      else pure indexer'
 
 instance
-  ( ResumableResult m event query ListIndexer
+  ( AppendResult m event query ListIndexer
   , Queryable m event query store
   )
   => Queryable m event query (MixedIndexer store ListIndexer)
   where
   query valid q indexer =
-    resumeResult
+    appendResult
       valid
       q
       (indexer ^. inMemory)

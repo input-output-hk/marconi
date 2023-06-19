@@ -5,15 +5,16 @@
 -}
 module Marconi.Core.Experiment.Class (
   IsIndex (..),
-  index',
-  indexAll',
+  indexEither,
+  indexAllEither,
+  indexAllDescendingEither,
   Rollbackable (..),
   Resetable (..),
   Queryable (..),
   query',
   queryLatest,
   queryLatest',
-  ResumableResult (..),
+  AppendResult (..),
   Closeable (..),
   IsSync (..),
   isAheadOfSync,
@@ -21,8 +22,8 @@ module Marconi.Core.Experiment.Class (
 ) where
 
 import Control.Monad.Except (ExceptT, MonadError, runExceptT)
-import Data.Foldable (foldrM)
-import Marconi.Core.Experiment.Type (Point, QueryError, Result, TimedEvent)
+import Data.Foldable (foldlM, foldrM)
+import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
 
 -- IsIndex
 
@@ -37,19 +38,29 @@ class Monad m => IsIndex m event indexer where
   -- | index an event at a given point in time
   index
     :: Eq (Point event)
-    => TimedEvent event
+    => Timed (Point event) event
     -> indexer event
     -> m (indexer event)
 
   -- | Index a bunch of event, associated to their point in time, in an indexer
   --
-  -- The events must be sorted in descending order (the most recent first)
+  -- The events must be sorted in ascending order (the most recent first)
   indexAll
     :: (Ord (Point event), Traversable f)
-    => f (TimedEvent event)
+    => f (Timed (Point event) event)
     -> indexer event
     -> m (indexer event)
-  indexAll = flip (foldrM index)
+  indexAll = flip $ foldlM (flip index)
+
+  -- | Index a bunch of event, associated to their point in time, in an indexer
+  --
+  -- The events must be sorted in descending order (the most recent first)
+  indexAllDescending
+    :: (Ord (Point event), Traversable f)
+    => f (Timed (Point event) event)
+    -> indexer event
+    -> m (indexer event)
+  indexAllDescending = flip $ foldrM index
 
   {-# MINIMAL index #-}
 
@@ -58,25 +69,36 @@ class Monad m => IsIndex m event indexer where
  It's useful when you don't want to internalise the error in the monad stack to handle it explicitly,
  it's often used when we target IO as we don't want to mess with @IOException@.
 -}
-index'
+indexEither
   :: ( IsIndex (ExceptT err m) event indexer
      , Eq (Point event)
      )
-  => TimedEvent event
+  => Timed (Point event) event
   -> indexer event
   -> m (Either err (indexer event))
-index' evt = runExceptT . index evt
+indexEither evt = runExceptT . index evt
 
 -- | Like @indexAll@, but internalise the error in the result.
-indexAll'
+indexAllEither
   :: ( IsIndex (ExceptT err m) event indexer
      , Traversable f
      , Ord (Point event)
      )
-  => f (TimedEvent event)
+  => f (Timed (Point event) event)
   -> indexer event
   -> m (Either err (indexer event))
-indexAll' evt = runExceptT . indexAll evt
+indexAllEither evt = runExceptT . indexAll evt
+
+-- | Like @indexAllDescending@, but internalise the error in the result.
+indexAllDescendingEither
+  :: ( IsIndex (ExceptT err m) event indexer
+     , Traversable f
+     , Ord (Point event)
+     )
+  => f (Timed (Point event) event)
+  -> indexer event
+  -> m (Either err (indexer event))
+indexAllDescendingEither evt = runExceptT . indexAllDescending evt
 
 -- Rollback
 
@@ -156,8 +178,8 @@ queryLatest' q indexer = do
   query' p q indexer
 
 -- | The indexer can take a result and complete it with its events
-class ResumableResult m event query indexer where
-  resumeResult
+class AppendResult m event query indexer where
+  appendResult
     :: Ord (Point event)
     => Point event
     -> query

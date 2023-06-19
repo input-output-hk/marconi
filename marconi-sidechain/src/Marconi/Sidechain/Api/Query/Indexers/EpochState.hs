@@ -6,7 +6,7 @@ module Marconi.Sidechain.Api.Query.Indexers.EpochState (
 ) where
 
 import Cardano.Api qualified as C
-import Control.Concurrent.STM.TMVar (TMVar, newEmptyTMVarIO, tryReadTMVar)
+import Control.Concurrent.STM.TMVar (TMVar, newEmptyTMVarIO, readTMVar)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM, atomically)
@@ -51,18 +51,15 @@ queryActiveSDDByEpochNo
   :: SidechainEnv
   -- ^ Query run time environment
   -> Word64
-  -- ^ Bech32 Address
+  -- ^ Epoch number
   -> IO (Either QueryExceptions GetEpochActiveStakePoolDelegationResult)
-  -- ^ Plutus address conversion error may occur
 queryActiveSDDByEpochNo env epochNo = do
   -- We must stop the indexer inserts before doing the query.
   epochStateIndexer <-
     atomically $
-      tryReadTMVar $
+      readTMVar $
         env ^. sidechainEnvIndexers . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer
-  case epochStateIndexer of
-    Nothing -> pure $ Left $ QueryError "Failed to read EpochState indexer"
-    Just indexer -> query indexer
+  query epochStateIndexer
   where
     query indexer = do
       res <-
@@ -79,18 +76,15 @@ queryNonceByEpochNo
   :: SidechainEnv
   -- ^ Query run time environment
   -> Word64
-  -- ^ Bech32 Address
+  -- ^ Epoch number
   -> IO (Either QueryExceptions GetEpochNonceResult)
-  -- ^ Plutus address conversion error may occur
 queryNonceByEpochNo env epochNo = do
   -- We must stop the indexer inserts before doing the query.
   epochStateIndexer <-
     atomically $
-      tryReadTMVar $
+      readTMVar $
         env ^. sidechainEnvIndexers . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer
-  case epochStateIndexer of
-    Nothing -> pure $ Left $ QueryError "Failed to read EpochState indexer"
-    Just indexer -> query indexer
+  query epochStateIndexer
   where
     query indexer = do
       res <-

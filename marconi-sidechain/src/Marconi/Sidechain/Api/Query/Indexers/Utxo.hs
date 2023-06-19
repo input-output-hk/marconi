@@ -3,7 +3,6 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
   currentSyncedBlock,
   findByAddress,
   findByBech32AddressAtSlot,
-  reportQueryAddresses,
   Utxo.UtxoIndexer,
   reportBech32Addresses,
   withQueryAction,
@@ -13,10 +12,7 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
 import Cardano.Api qualified as C
 import Control.Arrow (left)
 import Control.Concurrent.STM (atomically)
-import Control.Concurrent.STM.TMVar (
-  newEmptyTMVarIO,
-  tryReadTMVar,
- )
+import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, readTMVar)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
@@ -74,16 +70,12 @@ currentSyncedBlock
   -> IO (Either QueryExceptions GetCurrentSyncedBlockResult)
   -- ^ Wrong result type are unlikely but must be handled
 currentSyncedBlock env = do
-  indexer <-
-    atomically
-      (tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer)
-  case indexer of
-    Just i -> do
-      res <- runExceptT $ Storable.query i Utxo.LastSyncPoint
-      case res of
-        Right (Utxo.LastSyncPointResult cp) -> pure $ Right $ GetCurrentSyncedBlockResult cp
-        _other -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncPoint
-    Nothing -> pure . Right $ GetCurrentSyncedBlockResult C.ChainPointAtGenesis
+  indexer <- atomically (readTMVar $ env ^. addressUtxoIndexerEnvIndexer)
+  res <- runExceptT $ Storable.query indexer Utxo.LastSyncedBlockInfoQuery
+  case res of
+    Right (Utxo.LastSyncedBlockInfoResult blockInfoM) ->
+      pure $ Right $ GetCurrentSyncedBlockResult blockInfoM
+    _other -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
 
 {- | Retrieve Utxos associated with the given address
  We return an empty list if no address is not found
@@ -114,9 +106,6 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
           (C.SlotNo <$> lowerBoundSlotNo)
           (C.SlotNo upperBoundSlotNo)
 
-      utxoQuery :: C.AddressAny -> Utxo.Interval C.SlotNo -> Utxo.QueryUtxoByAddress
-      utxoQuery addr = Utxo.QueryUtxoByAddress addr
-
       queryAtAddressAndSlot :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
       queryAtAddressAndSlot = findByAddress env
 
@@ -126,7 +115,7 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
         addr <-
           bimap toQueryExceptions C.toAddressAny $
             C.deserialiseFromBech32 C.AsShelleyAddress addressText
-        pure $ utxoQuery addr si
+        pure $ Utxo.QueryUtxoByAddress addr si
    in case query of
         Right q -> queryAtAddressAndSlot q
         Left e -> pure $ Left e
@@ -141,36 +130,34 @@ withQueryAction
   -- ^ Address and slot to query
   -> IO (Either QueryExceptions GetUtxosFromAddressResult)
 withQueryAction env query =
-  (atomically $ tryReadTMVar $ env ^. addressUtxoIndexerEnvIndexer) >>= action
+  (atomically $ readTMVar $ env ^. addressUtxoIndexerEnvIndexer) >>= action
   where
-    action Nothing = pure $ Right $ GetUtxosFromAddressResult [] -- may occures at startup before marconi-chain-index gets to update the indexer
-    action (Just indexer) = do
+    action indexer = do
       res <- runExceptT $ Storable.query indexer query
-      let spentInfoResult row = SpentInfoResult (Utxo._siSlotNo row) (Utxo._siSpentTxId row)
+      let spentInfoResult row = SpentInfoResult (Utxo._blockInfoSlotNo . Utxo._siSpentBlockInfo $ row) (Utxo._siSpentTxId row)
       pure $ case res of
         Right (Utxo.UtxoResult rows) ->
           Right $
             GetUtxosFromAddressResult $
-              rows <&> \row ->
-                AddressUtxoResult
-                  (Utxo.utxoResultCreationBlockHeaderHash row)
-                  (Utxo.utxoResultCreationSlotNo row)
+              rows <&> \row -> let
+                   bi = Utxo.utxoResultBlockInfo row
+                in AddressUtxoResult
+                  (Utxo._blockInfoSlotNo bi)
+                  (Utxo._blockInfoBlockHeaderHash bi)
+                  (Utxo._blockInfoBlockNo $ Utxo.utxoResultBlockInfo row)
+                  (Utxo.utxoResultTxIndexInBlock row)
                   (Utxo.utxoResultTxIn row)
                   (Utxo.utxoResultAddress row)
                   (Utxo.utxoResultDatumHash row)
                   (Utxo.utxoResultDatum row)
                   (spentInfoResult <$> Utxo.utxoResultSpentInfo row)
+                  []
         _other ->
           Left $ UnexpectedQueryResult query
 
 {- | report target addresses
  Used by JSON-RPC
 -}
-reportQueryAddresses
-  :: AddressUtxoIndexerEnv
-  -> IO [C.Address C.ShelleyAddr]
-reportQueryAddresses env = pure $ maybe [] NonEmpty.toList (env ^. addressUtxoIndexerEnvTargetAddresses)
-
 reportBech32Addresses
   :: AddressUtxoIndexerEnv
   -> [Text]

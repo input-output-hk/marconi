@@ -5,6 +5,7 @@
 module Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo (tests) where
 
 import Cardano.Api qualified as C
+import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Concurrent.STM (atomically)
 import Control.Lens.Operators ((^.))
 import Control.Monad.IO.Class (liftIO)
@@ -17,6 +18,7 @@ import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents)
 import Hedgehog (Property, assert, forAll, property, (===))
 import Hedgehog qualified
 import Helpers (addressAnyToShelley)
+import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo, _blockInfoSlotNo))
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxoIndexer
 import Marconi.Sidechain.Api.Routes (
@@ -60,7 +62,7 @@ tests rpcClientAction =
 queryTargetAddressTest :: Property
 queryTargetAddressTest = property $ do
   events <- forAll genShelleyEraUtxoEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing
+  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
   let callback :: Utxo.UtxoIndexer -> IO ()
       callback =
         atomically
@@ -130,14 +132,20 @@ propUtxoEventInsertionAndJsonRpcCurrentSlotQuery
   -> Property
 propUtxoEventInsertionAndJsonRpcCurrentSlotQuery action = property $ do
   events <- forAll genShelleyEraUtxoEvents
-  let chainPoints = Utxo.ueChainPoint <$> events
-      getChainPointSlot C.ChainPointAtGenesis = Nothing
-      getChainPointSlot (C.ChainPoint slotNo _) = Just slotNo
+  let chainPoints =
+        Utxo.getChainPoint
+          . Utxo.blockInfoToChainPointRow
+          . Utxo.ueBlockInfo
+          <$> events
   Hedgehog.cover 90 "Non empty events" $ not $ null events
 
   -- Now, we are storing the events in the index
   liftIO $ insertUtxoEventsAction action events
 
-  Result _ (GetCurrentSyncedBlockResult resp') <- liftIO $ querySyncedBlockAction action
-  Hedgehog.cover 40 "Should have some significant non genesis chainpoints results" $ resp' /= C.ChainPointAtGenesis && getChainPointSlot resp' > Just (C.SlotNo 0)
-  assert $ resp' `elem` chainPoints
+  Result _ (GetCurrentSyncedBlockResult resp) <- liftIO $ querySyncedBlockAction action
+  Hedgehog.cover 40 "Should have some significant non genesis chainpoints results" $
+    resp /= Origin && fmap _blockInfoSlotNo resp > At (C.SlotNo 0)
+  assert $ getBlockInfoChainPoint resp `elem` chainPoints
+  where
+    getBlockInfoChainPoint Origin = C.ChainPointAtGenesis
+    getBlockInfoChainPoint (At (BlockInfo sn bhh _ _ _)) = C.ChainPoint sn bhh

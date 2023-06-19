@@ -17,7 +17,7 @@ import Control.Concurrent.STM (atomically)
 import Control.Lens.Operators ((^.))
 import Control.Monad.Except (runExceptT)
 
-import Marconi.ChainIndex.CLI (multiString)
+import Marconi.ChainIndex.CLI (multiAddresses)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.Sidechain.Api.HttpServer (bootstrap)
@@ -46,7 +46,7 @@ cliParser =
           <> metavar "PATH"
           <> help "directory path to the utxo SQLite database."
       )
-    <*> (optional . multiString)
+    <*> (optional . multiAddresses)
       ( long "addresses-to-index"
           <> help
             ( "Bech32 Shelley addresses to index."
@@ -66,7 +66,7 @@ main = do
       <> dbpath
       <> "\nnumber of addresses to index = "
       <> show (length <$> addresses)
-  env <- initializeSidechainEnv Nothing addresses
+  env <- initializeSidechainEnv Nothing addresses Nothing
   race_ (bootstrap env) (mocUtxoIndexer dbpath env)
 
 {- | moc marconi utxo indexer.

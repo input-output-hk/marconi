@@ -85,7 +85,7 @@ module Marconi.Core.Spec.Experiment (
 
   -- * Instances
   listIndexerRunner,
-  sqliteIndexerRunner,
+  mkSqliteIndexerRunner,
   mixedNoMemoryIndexerRunner,
   mixedLowMemoryIndexerRunner,
   mixedHighMemoryIndexerRunner,
@@ -238,7 +238,7 @@ process
   -> indexer event
   -> m (indexer event)
 process = \case
-  Insert ix evt -> Core.index (Core.TimedEvent ix evt)
+  Insert ix evt -> Core.index (Core.Timed ix evt)
   Rollback n -> Core.rollback n
 
 genChain
@@ -466,7 +466,7 @@ listIndexerRunner
 listIndexerRunner =
   IndexerTestRunner
     monadicExceptTIO
-    (pure Core.listIndexer)
+    (pure Core.mkListIndexer)
 
 initSQLite :: IO SQL.Connection
 initSQLite = do
@@ -481,13 +481,11 @@ initSQLite = do
 
   pure con
 
-type instance Core.InsertRecord TestEvent = [(TestPoint, TestEvent)]
-
 sqliteModelIndexer :: SQL.Connection -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer con =
-  Core.singleInsertSQLiteIndexer
+  Core.mkSingleInsertSqliteIndexer
     con
-    (\t -> pure (t ^. Core.point, t ^. Core.event))
+    (\t -> (t ^. Core.point, t ^. Core.event))
     "INSERT INTO index_model VALUES (?, ?)"
     "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
 
@@ -502,7 +500,7 @@ instance
   where
   query =
     let rowToResult (Core.EventsMatchingQuery predicate) =
-          fmap (uncurry Core.TimedEvent)
+          fmap (uncurry Core.Timed)
             . filter (predicate . snd)
      in Core.querySQLiteIndexerWith
           (\p _ -> [":point" SQL.:= p])
@@ -517,9 +515,9 @@ monadicExceptTIO =
   GenM.monadic $ Tasty.ioProperty . fmap (fromRight $ Tasty.property False) . runExceptT
 
 -- | A runner for a 'SQLiteIndexer'
-sqliteIndexerRunner
+mkSqliteIndexerRunner
   :: IndexerTestRunner (ExceptT Core.IndexerError IO) TestEvent Core.SQLiteIndexer
-sqliteIndexerRunner =
+mkSqliteIndexerRunner =
   IndexerTestRunner
     monadicExceptTIO
     (lift initSQLite >>= sqliteModelIndexer)
@@ -546,11 +544,11 @@ mixedModelLowMemoryIndexer
 mixedModelLowMemoryIndexer con = do
   dbIndexer <- sqliteModelIndexer con
   pure $
-    Core.newMixedIndexer
+    Core.mkMixedIndexer
       2
       8
       dbIndexer
-      Core.listIndexer
+      Core.mkListIndexer
 
 mixedModelHighMemoryIndexer
   :: SQL.Connection
@@ -561,11 +559,11 @@ mixedModelHighMemoryIndexer
 mixedModelHighMemoryIndexer con = do
   dbIndexer <- sqliteModelIndexer con
   pure $
-    Core.newMixedIndexer
+    Core.mkMixedIndexer
       4096
       4096
       dbIndexer
-      Core.listIndexer
+      Core.mkListIndexer
 
 -- | A runner for a 'MixedIndexer' with a small in-memory storage
 mixedNoMemoryIndexerRunner
@@ -623,7 +621,7 @@ instance
   => Core.IsIndex m event (UnderCoordinator indexer)
   where
   index = Core.indexVia underCoordinator
-  indexAll = Core.indexAllVia underCoordinator
+  indexAllDescending = Core.indexAllDescendingVia underCoordinator
 
 instance MonadIO m => Core.IsSync m event (UnderCoordinator indexer) where
   lastSyncPoint = Core.lastSyncPointVia underCoordinator
@@ -668,7 +666,7 @@ coordinatorIndexerRunner wRunner =
           Core.createWorker
             pure
             wrapped
-      UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.start [run])
+      UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.mkCoordinator [run])
 
 data ParityQuery = OddTestEvent | EvenTestEvent
   deriving (Eq, Ord, Show)
@@ -723,7 +721,7 @@ buildCacheFor
   => Ord query
   => Ord (Core.Point event)
   => query
-  -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+  -> (Core.Timed (Core.Point event) event -> Core.Result query -> Core.Result query)
   -> indexer event
   -> m (Core.WithCache query indexer event)
 buildCacheFor q onForward indexer = do
@@ -738,7 +736,7 @@ withCacheRunner
   => Ord query
   => Ord (Core.Point event)
   => query
-  -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+  -> (Core.Timed (Core.Point event) event -> Core.Result query -> Core.Result query)
   -> IndexerTestRunner m event wrapped
   -> IndexerTestRunner m event (Core.WithCache query wrapped)
 withCacheRunner q onForward wRunner =
@@ -766,7 +764,7 @@ sqlLiteCacheRunner =
   let aggregate timedEvent xs =
         let e = timedEvent ^. Core.event
          in if odd e then e : xs else xs
-   in withCacheRunner OddTestEvent aggregate sqliteIndexerRunner
+   in withCacheRunner OddTestEvent aggregate mkSqliteIndexerRunner
 
 cacheTestGroup :: Tasty.TestTree
 cacheTestGroup =
@@ -1075,9 +1073,9 @@ memorySizeUpdateTest =
 
 instance
   Applicative m
-  => Core.ResumableResult m TestEvent ParityQuery Core.ListIndexer
+  => Core.AppendResult m TestEvent ParityQuery Core.ListIndexer
   where
-  resumeResult p q indexer res = (++) <$> res <*> Core.query p q indexer
+  appendResult p q indexer res = (++) <$> res <*> Core.query p q indexer
 
 cacheUpdateProperty
   :: Gen [Item TestEvent]

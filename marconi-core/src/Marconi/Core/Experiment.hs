@@ -86,7 +86,7 @@
  Follow in order the steps for the creation of a 'ListIndexer' (the in-memory part)
  and the ones for a 'SQLiteIndexer' (the on-disk part).
 
- Once it's done, you need to implement the 'ResumableResult' for the in-memory part.
+ Once it's done, you need to implement the 'AppendResult' for the in-memory part.
  It's purpose is to take the result of an on-disk query and to update it with on-memory events.
 
  You can choose different indexers for your in-memory part or on-disk part,
@@ -100,7 +100,7 @@
         It can be a time, a slot number, a block, whatever information that tracks when
         an event happen.
 
-        2. It's already enough to index `TimedEvent` of the events you defined at step one
+        2. It's already enough to index `Timed` of the events you defined at step one
         of your indexer and to proceed to rollback.
         You can already test it, creating an indexer with `listIndexer`.
 
@@ -131,7 +131,7 @@
         And a more complex one, where several inserts are needed.
 
             In the simple case, you can use 'singleInsertSQLiteIndexr' to create your indexer.
-            It requires the definition of a @param@ type, a data representation of the TimedEvent
+            It requires the definition of a @param@ type, a data representation of the Timed
             that SQLite can process (it should have a @ToRow@ instance).
             You also need to declare a 'InsertRecord' type instance that is a list of this @param@.
 
@@ -164,7 +164,7 @@
         * 'IsSync'
         * 'IsIndex'
         * 'Rollbackable'
-        * 'ResumableResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
+        * 'AppendResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
         * 'Queryable'
         * 'Closeable' (if you plan to use it in a worker, and you probably plan to)
 
@@ -193,15 +193,16 @@ module Marconi.Core.Experiment (
   --     3. @query@ that defines what can be asked to an @indexer@.
   Point,
   Result,
-  TimedEvent (TimedEvent),
+  Timed (Timed),
   point,
   event,
 
   -- ** Core typeclasses
   HasGenesis (..),
   IsIndex (..),
-  index',
-  indexAll',
+  indexEither,
+  indexAllEither,
+  indexAllDescendingEither,
   Rollbackable (..),
   Resetable (..),
   resumeFrom,
@@ -212,7 +213,7 @@ module Marconi.Core.Experiment (
   query',
   queryLatest,
   queryLatest',
-  ResumableResult (..),
+  AppendResult (..),
 
   -- ** Errors
   IndexerError (..),
@@ -243,7 +244,7 @@ module Marconi.Core.Experiment (
   --     * the type(s) of query your indexer instance must handle
   --     * the 'Queryable' interface for these queries.
   ListIndexer,
-  listIndexer,
+  mkListIndexer,
   events,
   latest,
 
@@ -263,50 +264,20 @@ module Marconi.Core.Experiment (
   --
   -- The main difference with 'SQLiteIndexer' is
   -- that we set 'dbLastSync' thanks to the provided query
-  sqliteIndexer,
+  mkSqliteIndexer,
   -- | A smart constructor for indexer that want to map an event to a single table.
   -- We just have to set the type family of `InsertRecord event` to `[param]` and
   -- then to provide the expected parameters.
   --
-  -- It is monomorphic restriction of 'sqliteIndexer'
-  singleInsertSQLiteIndexer,
+  -- It is monomorphic restriction of 'mkSqliteIndexer'
+  mkSingleInsertSqliteIndexer,
   handle,
-  prepareInsert,
-  buildInsert,
+  SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   dbLastSync,
   rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
-  -- | When we want to store an event in a database, it may happen that you want to store it in many tables,
-  -- ending with several insert.
-  --
-  -- This leads to two major issues:
-  --     - Each query has its own parameter type, we consequently don't have a unique type for a parametrised query.
-  --     - When we perform the insert, we want to process in the same way all the queries.
-  --     - We can't know in the general case neither how many query will be needed, nor the param types.
-  --     - We want to minimise the boilerplate for a end user.
-  --
-  -- To tackle these issue, we wrap our queries in a opaque type, @IndexQuery@,
-  -- which hides the query parameters.
-  -- Internally, we only have to deal with an @[IndexQuery]@ to be able to insert an event.
-  IndexQuery (..),
-  -- | How we map an event to its sql representation
-  --
-  -- In general, it consists in breaking the event in many fields of a record,
-  -- each field corresponding to the parameters required to insert a part of the event in one table.
-  --
-  -- Usually, an insert record will be of the form:
-  --
-  -- @
-  -- data MyInsertRecord
-  --     = MyInsertRecord
-  --     { _tableA :: [ParamsForTableA]
-  --     { _tableB :: [ParamsForTableB]
-  --     -- ...
-  --     }
-  -- type InsertRecord MyEvent = MyInsertRecord
-  -- @
-  InsertRecord,
+  handleSQLErrors,
   -- | The indexer of the most recent events must be able to send a part
   -- of its events to the other indexer when they are stable.
   --
@@ -330,11 +301,11 @@ module Marconi.Core.Experiment (
   --
   -- As a consequence, if these indexers aren't empty, you probably want to
   -- modify the result of the constructor.
-  newMixedIndexer,
+  mkMixedIndexer,
   -- | A smart constructor for a /standard/ 'MixedIndexer':
   -- an on-disk indexer and a 'ListIndexer' for the in-memory part.
   --
-  -- Contrary to 'newMixedIndexer',
+  -- Contrary to 'mkMixedIndexer',
   -- this smart constructor checks the content of the on-disk indexer
   -- to set the 'lastSyncPoint' correctly.
   standardMixedIndexer,
@@ -379,7 +350,7 @@ module Marconi.Core.Experiment (
   tokens,
   channel,
   nbWorkers,
-  start,
+  mkCoordinator,
   step,
 
   -- * Common queries
@@ -463,7 +434,7 @@ module Marconi.Core.Experiment (
   rollbackVia,
   resetVia,
   indexVia,
-  indexAllVia,
+  indexAllDescendingVia,
   lastSyncPointVia,
   closeVia,
   queryVia,
@@ -473,16 +444,17 @@ module Marconi.Core.Experiment (
 import Control.Monad.Except (MonadError (catchError, throwError))
 
 import Marconi.Core.Experiment.Class (
+  AppendResult (..),
   Closeable (..),
   HasGenesis (..),
   IsIndex (..),
   IsSync (..),
   Queryable (..),
   Resetable (..),
-  ResumableResult (..),
   Rollbackable (..),
-  index',
-  indexAll',
+  indexAllDescendingEither,
+  indexAllEither,
+  indexEither,
   isAheadOfSync,
   query',
   queryLatest,
@@ -492,37 +464,35 @@ import Marconi.Core.Experiment.Coordinator (
   Coordinator,
   channel,
   lastSync,
+  mkCoordinator,
   nbWorkers,
-  start,
   step,
   threadIds,
   tokens,
   workers,
  )
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
-import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, listIndexer)
+import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
 import Marconi.Core.Experiment.Indexer.MixedIndexer (
   Flushable (..),
   HasMixedConfig (flushSize, keepInMemory),
   MixedIndexer,
   inDatabase,
   inMemory,
-  newMixedIndexer,
+  mkMixedIndexer,
   standardMixedIndexer,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
-  IndexQuery (..),
-  InsertRecord,
+  SQLInsertPlan (..),
   SQLiteIndexer (..),
-  buildInsert,
   dbLastSync,
   handle,
-  prepareInsert,
+  handleSQLErrors,
+  mkSingleInsertSqliteIndexer,
+  mkSqliteIndexer,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   rollbackSQLiteIndexerWith,
-  singleInsertSQLiteIndexer,
-  sqliteIndexer,
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
@@ -530,7 +500,7 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (..),
   IndexerTrans (..),
   closeVia,
-  indexAllVia,
+  indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
   queryLatestVia,
@@ -558,7 +528,7 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
 import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
-import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, point)
+import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, Timed (..), event, point)
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (..),
   Worker,

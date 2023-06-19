@@ -17,7 +17,7 @@ import Data.Maybe (fromMaybe)
 
 import Marconi.Core.Experiment.Class (
   HasGenesis (genesis),
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
   Rollbackable (rollback),
  )
@@ -44,7 +44,7 @@ instance
   where
   index timedEvent _ = pure $ LastPointIndexer $ timedEvent ^. point
 
-  indexAll evts _ = pure $ LastPointIndexer $ fromMaybe genesis $ maximumOf (folded . point) evts
+  indexAllDescending evts _ = pure $ LastPointIndexer $ fromMaybe genesis $ maximumOf (folded . point) evts
 
 instance Applicative m => IsSync m event LastPointIndexer where
   lastSyncPoint = pure . view lastPoint

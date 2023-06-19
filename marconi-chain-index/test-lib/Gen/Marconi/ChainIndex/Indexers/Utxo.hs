@@ -29,12 +29,7 @@ import Gen.Marconi.ChainIndex.Mockchain (
  )
 import Hedgehog (Gen)
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.Utxo (
-  StorableEvent (UtxoEvent),
-  Utxo (Utxo),
-  UtxoHandle,
-  _address,
- )
+import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -62,21 +57,21 @@ genUtxoEventsWithTxs = do
   fmap (\block -> (getStorableEventFromBlock block, block)) <$> genMockchain
   where
     getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
-    getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash _blockNo) txs) =
+    getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash blockNo) txs) =
       let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
           utxoMap = foldMap getUtxosFromTx $ zip txs [0 ..]
           resolvedUtxos =
             Set.fromList $
               mapMaybe (`Map.lookup` utxoMap) $
                 Set.toList utxos
-          cp = C.ChainPoint slotNo blockHeaderHash
 
           plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
           plutusDatums = Datum.txsPlutusDatumsMap txs
-
           filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
           filteredTxOutDatums = Datum.filteredTxOutDatums Nothing txs
-       in UtxoEvent resolvedUtxos spentTxOuts cp $ Map.union plutusDatums filteredTxOutDatums
+       in -- We don't care about the timestamp or the epochNo, so we put default values.
+          UtxoEvent resolvedUtxos spentTxOuts (BlockInfo slotNo blockHeaderHash blockNo 0 1) $
+            Map.union plutusDatums filteredTxOutDatums
 
     getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
     getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =

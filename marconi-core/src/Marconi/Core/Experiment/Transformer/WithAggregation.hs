@@ -16,7 +16,7 @@ import Control.Lens (makeLenses)
 import Control.Lens.Operators ((^.))
 import Marconi.Core.Experiment.Class (IsIndex (index))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (indexVia)
-import Marconi.Core.Experiment.Type (Point, TimedEvent (TimedEvent), event, point)
+import Marconi.Core.Experiment.Type (Point, Timed (Timed), event, point)
 
 data AggregationConfig output input = AggregationConfig
   { _transformEvent :: input -> output
@@ -39,7 +39,7 @@ instance
   index timedEvent indexer = do
     let point' = indexer ^. config . transformPoint $ timedEvent ^. point
     let asEvent =
-          TimedEvent
+          Timed
             point'
             (indexer ^. config . transformEvent $ timedEvent ^. event)
     indexVia aggregatedIndexer asEvent indexer

@@ -12,9 +12,9 @@ import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MIQ
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
 import Marconi.Sidechain.Api.Routes (
+  GetBurnTokenEventsParams (GetBurnTokenEventsParams),
+  GetBurnTokenEventsResult,
   GetCurrentSyncedBlockResult,
-  GetTxsBurningAssetIdParams (GetTxsBurningAssetIdParams),
-  GetTxsBurningAssetIdResult,
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult,
   JsonRpcAPI,
@@ -50,7 +50,7 @@ data RpcClientAction = RpcClientAction
   , insertMintBurnEventsAction :: !InsertMintBurnEventsCallback
   , queryAddressUtxosAction :: !(String -> IO (JsonRpcResponse String GetUtxosFromAddressResult))
   , querySyncedBlockAction :: !(IO (JsonRpcResponse String GetCurrentSyncedBlockResult))
-  , queryMintBurnAction :: !((PolicyId, AssetName) -> IO (JsonRpcResponse String GetTxsBurningAssetIdResult))
+  , queryMintBurnAction :: !((PolicyId, Maybe AssetName) -> IO (JsonRpcResponse String GetBurnTokenEventsResult))
   }
 
 mkRpcClientAction :: SidechainEnv -> Port -> IO RpcClientAction
@@ -65,7 +65,7 @@ mkRpcClientAction env port = do
       (mkInsertMintBurnEventsCallback env)
       (\a -> rpcUtxos $ GetUtxosFromAddressParams a Nothing maxBound)
       (rpcSyncPoint "")
-      (\(p, a) -> rpcMinting $ GetTxsBurningAssetIdParams p a Nothing)
+      (\(p, a) -> rpcMinting $ GetBurnTokenEventsParams p a Nothing Nothing)
 
 baseUrl :: Warp.Port -> BaseUrl
 baseUrl port = BaseUrl Http "localhost" port ""

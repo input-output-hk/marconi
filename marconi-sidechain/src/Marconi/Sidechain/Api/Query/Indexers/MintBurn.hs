@@ -6,13 +6,11 @@ module Marconi.Sidechain.Api.Query.Indexers.MintBurn (
 ) where
 
 import Cardano.Api qualified as C
-
-import Control.Concurrent.STM (STM, TMVar, atomically, newEmptyTMVarIO, tryReadTMVar)
+import Control.Concurrent.STM (STM, TMVar, atomically, newEmptyTMVarIO, readTMVar)
 import Control.Lens ((^.))
-
-import Data.Word (Word64)
-
 import Control.Monad.Except (runExceptT)
+import Data.List.NonEmpty (NonEmpty)
+import Data.Word (Word64)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle, StorableResult (MintBurnResult), TxMintRow)
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Core.Storable (State)
@@ -33,11 +31,12 @@ import Marconi.Sidechain.Utils (writeTMVar)
  The main issue we try to avoid here is mixing inserts and quries in SQLite to avoid locking the database
 -}
 initializeEnv
-  :: IO MintBurnIndexerEnv
+  :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  -> IO MintBurnIndexerEnv
   -- ^ returns Query runtime environment
-initializeEnv = do
+initializeEnv targets = do
   ix <- newEmptyTMVarIO
-  pure $ MintBurnIndexerEnv ix
+  pure $ MintBurnIndexerEnv targets ix
 
 updateEnvState :: TMVar (State MintBurnHandle) -> State MintBurnHandle -> STM ()
 updateEnvState = writeTMVar
@@ -45,7 +44,7 @@ updateEnvState = writeTMVar
 findByAssetIdAtSlot
   :: SidechainEnv
   -> C.PolicyId
-  -> C.AssetName
+  -> Maybe C.AssetName
   -> Maybe Word64
   -> IO (Either QueryExceptions [AssetIdTxResult])
 findByAssetIdAtSlot env policy asset slotWord =
@@ -54,17 +53,12 @@ findByAssetIdAtSlot env policy asset slotWord =
 queryByPolicyAndAssetId
   :: SidechainEnv
   -> C.PolicyId
-  -> C.AssetName
+  -> Maybe C.AssetName
   -> Maybe C.SlotNo
   -> IO (Either QueryExceptions [AssetIdTxResult])
 queryByPolicyAndAssetId env policyId assetId slotNo = do
-  mintBurnIndexer <-
-    atomically $
-      tryReadTMVar $
-        env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
-  case mintBurnIndexer of
-    Nothing -> pure $ Left $ QueryError "Failed to read MintBurn indexer"
-    Just indexer -> query indexer
+  mintBurnIndexer <- atomically $ readTMVar $ env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
+  query mintBurnIndexer
   where
     query indexer = do
       let q = MintBurn.QueryBurnByAssetId policyId assetId slotNo
@@ -76,11 +70,10 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
     toAssetIdTxResult :: TxMintRow -> AssetIdTxResult
     toAssetIdTxResult x =
       AssetIdTxResult
+        (x ^. MintBurn.txMintRowSlotNo)
         (x ^. MintBurn.txMintRowBlockHeaderHash)
         (x ^. MintBurn.txMintRowBlockNo)
-        (x ^. MintBurn.txMintRowTxIx)
-        (x ^. MintBurn.txMintRowSlotNo)
         (x ^. MintBurn.txMintRowTxId)
-        (Just $ x ^. MintBurn.txMintRowRedeemerHash)
-        (Just $ x ^. MintBurn.txMintRowRedeemerData)
+        (MintBurn.mintAssetRedeemerHash <$> x ^. MintBurn.txMintRowRedeemer)
+        (MintBurn.mintAssetRedeemerData <$> x ^. MintBurn.txMintRowRedeemer)
         (x ^. MintBurn.txMintRowQuantity)

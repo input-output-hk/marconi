@@ -25,7 +25,7 @@ import Data.Map qualified as Map
 import Marconi.Core.Experiment.Class (
   Closeable,
   HasGenesis (genesis),
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync,
   Queryable (query),
   Resetable (reset),
@@ -36,7 +36,7 @@ import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (IndexWrapper),
   IndexerTrans (Config, unwrap, wrap),
-  indexAllVia,
+  indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
   queryVia,
@@ -50,12 +50,12 @@ import Marconi.Core.Experiment.Type (
   Point,
   QueryError (AheadOfLastSync),
   Result,
-  TimedEvent,
+  Timed,
  )
 
 data CacheConfig query event = CacheConfig
   { _configCache :: Map query (Result query)
-  , _configOnForward :: TimedEvent event -> Result query -> Result query
+  , _configOnForward :: Timed (Point event) event -> Result query -> Result query
   }
 
 configCache :: Lens' (CacheConfig query event) (Map query (Result query))
@@ -69,7 +69,7 @@ configCacheEntries f cfg =
 configOnForward
   :: Getter
       (CacheConfig query event)
-      (TimedEvent event -> Result query -> Result query)
+      (Timed (Point event) event -> Result query -> Result query)
 configOnForward = to _configOnForward
 
 {- | Setup a cache for some requests.
@@ -98,7 +98,7 @@ deriving via
 -}
 withCache
   :: Ord query
-  => (TimedEvent event -> Result query -> Result query)
+  => (Timed (Point event) event -> Result query -> Result query)
   -> indexer event
   -> WithCache query indexer event
 withCache _configOnForward =
@@ -139,7 +139,7 @@ instance
 onForward
   :: Getter
       (WithCache query indexer event)
-      (TimedEvent event -> Result query -> Result query)
+      (Timed (Point event) event -> Result query -> Result query)
 onForward = cacheWrapper . wrapperConfig . configOnForward
 
 {- | Add a cache for a specific query.
@@ -184,8 +184,8 @@ instance
     indexer' <- indexVia unwrap timedEvent indexer
     pure $ indexer' & cacheEntries %~ (indexer' ^. onForward) timedEvent
 
-  indexAll evts indexer = do
-    indexer' <- indexAllVia unwrap evts indexer
+  indexAllDescending evts indexer = do
+    indexer' <- indexAllDescendingVia unwrap evts indexer
     pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
 
 rollbackCache

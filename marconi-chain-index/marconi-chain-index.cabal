@@ -56,6 +56,7 @@ library
   exposed-modules:
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Experimental.Indexers
     Marconi.ChainIndex.Experimental.Indexers.Utxo
     Marconi.ChainIndex.Extract.Datum
     Marconi.ChainIndex.Indexers
@@ -95,7 +96,7 @@ library
     , cardano-ledger-mary            ^>=1.1
     , cardano-ledger-shelley
     , cardano-protocol-tpraos        ^>=1.0
-    , cardano-slotting
+    , cardano-slotting               ^>=0.1.1.1
     , iohk-monitoring
     , ouroboros-consensus
     , ouroboros-consensus-byron
@@ -160,6 +161,23 @@ executable marconi-chain-index
   import:         lang
   hs-source-dirs: app
   main-is:        Main.hs
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-chain-index >=1.2.0
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , base       >=4.9 && <5
+    , directory
+
+executable marconi-chain-index-experimental
+  import:         lang
+  hs-source-dirs: app
+  main-is:        Experimental.hs
 
   --------------------
   -- Local components
@@ -313,6 +331,7 @@ test-suite marconi-chain-index-test
     , cardano-ledger-alonzo                                             ^>=1.1
     , cardano-ledger-core
     , cardano-ledger-shelley
+    , cardano-slotting                                                  ^>=0.1.1.1
     , cardano-testnet
     , hedgehog-extras
     , iohk-monitoring

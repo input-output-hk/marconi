@@ -25,7 +25,7 @@ import Data.List (scanl', sortOn)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAll),
+  IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
@@ -36,7 +36,7 @@ import Marconi.Core.Experiment.Query (EventAtQuery (EventAtQuery))
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   closeVia,
-  indexAllVia,
+  indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
   queryVia,
@@ -47,7 +47,7 @@ import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError),
   Point,
   QueryError,
-  TimedEvent (TimedEvent),
+  Timed (Timed),
   event,
   point,
  )
@@ -119,10 +119,10 @@ instance
           case lastAggregateOrError of
             Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
             Right agg -> pure $ agg <> asAggregate
-    let asOutput = TimedEvent point' event'
+    let asOutput = Timed point' event'
     indexVia unwrapMap asOutput indexer
 
-  indexAll events indexer = case sortOn (^. point) $ toList events of
+  indexAllDescending events indexer = case sortOn (^. point) $ toList events of
     [] -> pure indexer
     (x : xs) -> do
       lSync <- lastSyncPoint indexer
@@ -136,10 +136,10 @@ instance
             case lastAggregateOrError of
               Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
               Right agg -> pure $ agg <> asAggregate
-      let firstTimedEvent = TimedEvent (x ^. point) firstEvent
-      let toOutput' tacc te = TimedEvent (te ^. point) ((tacc ^. event) <> (event' $ te ^. event))
+      let firstTimed = Timed (x ^. point) firstEvent
+      let toOutput' tacc te = Timed (te ^. point) ((tacc ^. event) <> (event' $ te ^. event))
           asOutputs tacc es = scanl' toOutput' tacc es
-      indexAllVia unwrapMap (asOutputs firstTimedEvent xs) indexer
+      indexAllDescendingVia unwrapMap (asOutputs firstTimed xs) indexer
 
 instance
   (Point output ~ Point event, IsSync m output indexer)

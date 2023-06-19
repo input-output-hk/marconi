@@ -16,7 +16,7 @@ import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 
 main :: IO ()
 main = do
-  env <- initializeSidechainEnv Nothing Nothing
+  env <- initializeSidechainEnv Nothing Nothing Nothing
   Warp.testWithApplication (pure $ marconiApp env) $ \port -> do
     rpcClientAction <- mkRpcClientAction env port
     defaultMain $ tests rpcClientAction

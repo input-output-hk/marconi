@@ -19,7 +19,7 @@ import Hedgehog qualified
 import Marconi.ChainIndex.Indexers.MintBurn (MintAsset (mintAssetAssetName, mintAssetPolicyId))
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurnIndexer
-import Marconi.Sidechain.Api.Routes (AssetIdTxResult, GetTxsBurningAssetIdResult (GetTxsBurningAssetIdResult))
+import Marconi.Sidechain.Api.Routes (AssetIdTxResult, GetBurnTokenEventsResult (GetBurnTokenEventsResult))
 import Marconi.Sidechain.Api.Types (mintBurnIndexerEnvIndexer, sidechainEnvIndexers, sidechainMintBurnIndexer)
 import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
 import Network.JsonRpc.Client.Types ()
@@ -54,7 +54,7 @@ tests rpcClientAction =
 queryMintingPolicyTest :: Property
 queryMintingPolicyTest = property $ do
   (events, _) <- forAll genMintEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing
+  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
   let callback :: MintBurn.MintBurnIndexer -> IO ()
       callback =
         atomically
@@ -69,14 +69,13 @@ queryMintingPolicyTest = property $ do
             MintBurnIndexer.findByAssetIdAtSlot
               env
               (mintAssetPolicyId params)
-              (mintAssetAssetName params)
+              (Just $ mintAssetAssetName params)
               Nothing
         )
       . Set.toList
       . Set.fromList -- required to remove the potential duplicate assets
       . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
-      . concatMap NonEmpty.toList
-      . fmap MintBurn.txMintEventTxAssets
+      . foldMap MintBurn.txMintEventTxAssets
       $ events
 
   let numOfFetched = length fetchedRows
@@ -97,19 +96,18 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip
 propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
   (events, _) <- forAll genMintEvents
   liftIO $ insertMintBurnEventsAction action $ MintBurn.MintBurnEvent <$> events
-  let (qParams :: [(PolicyId, AssetName)]) =
+  let (qParams :: [(PolicyId, Maybe AssetName)]) =
         Set.toList
           . Set.fromList
-          . fmap (\mps -> (mintAssetPolicyId mps, mintAssetAssetName mps))
+          . fmap (\mps -> (mintAssetPolicyId mps, Just $ mintAssetAssetName mps))
           . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
-          . concatMap NonEmpty.toList
-          . fmap MintBurn.txMintEventTxAssets
+          . foldMap MintBurn.txMintEventTxAssets
           $ events
   rpcResponses <- liftIO $ for qParams (queryMintBurnAction action)
   let fetchedUtxoRows = concatMap fromQueryResult rpcResponses
 
   (Set.fromList . mapMaybe (Aeson.decode . Aeson.encode) $ fetchedUtxoRows) === Set.fromList fetchedUtxoRows
 
-fromQueryResult :: JsonRpcResponse e GetTxsBurningAssetIdResult -> [AssetIdTxResult]
-fromQueryResult (Result _ (GetTxsBurningAssetIdResult rows)) = rows
+fromQueryResult :: JsonRpcResponse e GetBurnTokenEventsResult -> [AssetIdTxResult]
+fromQueryResult (Result _ (GetBurnTokenEventsResult rows)) = rows
 fromQueryResult _otherResponses = []

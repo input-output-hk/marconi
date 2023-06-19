@@ -10,7 +10,7 @@ module Marconi.Core.Experiment.Indexer.ListIndexer (
   ListIndexer,
   events,
   latest,
-  listIndexer,
+  mkListIndexer,
 ) where
 
 import Control.Lens (makeLenses, view)
@@ -24,11 +24,11 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
   Rollbackable (rollback),
  )
-import Marconi.Core.Experiment.Type (Point, TimedEvent, point)
+import Marconi.Core.Experiment.Type (Point, Timed, point)
 
 -- | The constructor is not exposed, use 'listIndexer' instead.
 data ListIndexer event = ListIndexer
-  { _events :: [TimedEvent event]
+  { _events :: [Timed (Point event) event]
   -- ^ Stored @event@s, associated with their history 'Point'
   , _latest :: Point event
   -- ^ Ease access to the latest sync point
@@ -38,9 +38,9 @@ deriving stock instance (Show event, Show (Point event)) => Show (ListIndexer ev
 
 makeLenses ''ListIndexer
 
--- | A smart constructor for list indexer, starting at genesis with an empty list§.
-listIndexer :: HasGenesis (Point event) => ListIndexer event
-listIndexer = ListIndexer [] genesis
+-- | A smart constructor for list indexer, starting at genesis with an empty list.
+mkListIndexer :: HasGenesis (Point event) => ListIndexer event
+mkListIndexer = ListIndexer [] genesis
 
 instance Monad m => IsIndex m event ListIndexer where
   index timedEvent ix =
@@ -69,7 +69,7 @@ instance Applicative m => Rollbackable m event ListIndexer where
         isIndexBeforeRollback :: ListIndexer event -> Bool
         isIndexBeforeRollback x = x ^. latest < p
 
-        isEventAfterRollback :: TimedEvent event -> Bool
+        isEventAfterRollback :: Timed (Point event) event -> Bool
         isEventAfterRollback x = x ^. point > p
      in pure $
           if isIndexBeforeRollback ix

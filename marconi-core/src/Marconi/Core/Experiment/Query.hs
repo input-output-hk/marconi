@@ -15,9 +15,16 @@ import Control.Lens (filtered, folded, view)
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError))
-import Marconi.Core.Experiment.Class (Queryable (query), ResumableResult (resumeResult), isAheadOfSync)
+import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events)
-import Marconi.Core.Experiment.Type (QueryError (AheadOfLastSync, NotStoredAnymore), Result, TimedEvent, event, point)
+import Marconi.Core.Experiment.Type (
+  Point,
+  QueryError (AheadOfLastSync, NotStoredAnymore),
+  Result,
+  Timed,
+  event,
+  point,
+ )
 
 -- | Get the event stored by the indexer at a given point in time
 data EventAtQuery event = EventAtQuery
@@ -47,9 +54,9 @@ instance
 
 instance
   MonadError (QueryError (EventAtQuery event)) m
-  => ResumableResult m event (EventAtQuery event) ListIndexer
+  => AppendResult m event (EventAtQuery event) ListIndexer
   where
-  resumeResult p q indexer result =
+  appendResult p q indexer result =
     result `catchError` \case
       -- If we didn't find a result in the 1st indexer, try in memory
       _inDatabaseError -> query p q indexer
@@ -65,7 +72,7 @@ allEvents :: EventsMatchingQuery event
 allEvents = EventsMatchingQuery (const True)
 
 -- | The result of an @EventMatchingQuery@
-type instance Result (EventsMatchingQuery event) = [TimedEvent event]
+type instance Result (EventsMatchingQuery event) = [Timed (Point event) event]
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)
@@ -87,9 +94,9 @@ instance
 
 instance
   MonadError (QueryError (EventsMatchingQuery event)) m
-  => ResumableResult m event (EventsMatchingQuery event) ListIndexer
+  => AppendResult m event (EventsMatchingQuery event) ListIndexer
   where
-  resumeResult p q indexer result =
+  appendResult p q indexer result =
     let extractDbResult =
           result `catchError` \case
             -- If we find an incomplete result in the first indexer, complete it

@@ -4,7 +4,7 @@ module Main where
 
 import Control.Concurrent.Async (race_)
 import Marconi.Sidechain.Api.HttpServer qualified as Http
-import Marconi.Sidechain.Api.Types (CliArgs (CliArgs, httpPort, targetAddresses))
+import Marconi.Sidechain.Api.Types (CliArgs (CliArgs, httpPort, targetAddresses, targetAssets))
 import Marconi.Sidechain.Bootstrap (bootstrapIndexers, initializeSidechainEnv)
 import Marconi.Sidechain.CLI (parseCli)
 
@@ -17,8 +17,8 @@ import Marconi.Sidechain.CLI (parseCli)
 -}
 main :: IO ()
 main = do
-  cli@CliArgs{httpPort, targetAddresses} <- parseCli
-  rpcEnv <- initializeSidechainEnv httpPort targetAddresses
+  cli@CliArgs{httpPort, targetAddresses, targetAssets} <- parseCli
+  rpcEnv <- initializeSidechainEnv httpPort targetAddresses targetAssets
 
   race_
     (Http.bootstrap rpcEnv) -- Start HTTP server

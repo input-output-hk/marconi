@@ -232,7 +232,13 @@ Retrieves UTXOs of a given address until a given slot, and optionally after a gi
 
 ==== Post-conditions
 
-TBD
+* The `datumHash` result value should always be available if the `datum` result value is available.
+
+* The `slotNo` result value should be larger than provided `createdAfterSlotNo` param value.
+
+* The `slotNo` result value should be lower than the provided `unspentBeforeSlotNo` param value.
+
+* The `slotNo` result value should be larger or equal to the `blockNo` result value.
 
 ==== Rationale
 
@@ -263,8 +269,7 @@ TBD
     }
   },
   "required": [
-    "address",
-    "unspentBeforeSlotNo"
+    "address"
   ]
 }
 ```
@@ -297,7 +302,11 @@ TBD
       },
       "datum": {
         "type": "string",
-        "description": "HEX string of the CBOR encoded datum."
+        "description": "JSON encoded datum of the UTXO."
+      },
+      "datumHash": {
+        "type": "string",
+        "description": "Hash of the datum"
       },
       "txId": {
         "type": "string"
@@ -348,7 +357,6 @@ TBD
     "required": [
       "blockHeaderHash",
       "blockNo",
-      "datum",
       "slotNo",
       "txId",
       "txIx",
@@ -410,7 +418,12 @@ Retrieves all token burning events given an `AssetId` that have occurred before 
 
 ==== Post-conditions
 
-TBD
+* The `burnAmount` must *always* be a natural number.
+  A negative number means that the token was minted.
+  However, we don't track mint events, so that should never happen.
+
+* If the `policyId` correspond to a simple script, the response won't contain a
+  `redeemer`. Otherwise, the response *always* contain a redeemer.
 
 ==== Rationale
 
@@ -448,8 +461,6 @@ TBD
   },
   "required": [
     "policyId",
-    "assetName",
-    "slotNo",
   ]
 }
 ```
@@ -494,7 +505,6 @@ TBD
       "slotNo",
       "blockNo",
       "txId",
-      "redeemer",
       "burnAmount"
     ]
   }
