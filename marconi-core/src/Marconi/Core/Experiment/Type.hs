@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -11,10 +11,9 @@ module Marconi.Core.Experiment.Type (
   -- * Types and type families
   Point,
   Result,
-  TimedEvent (TimedEvent),
+  Timed (Timed),
   point,
   event,
-  mapTimedEvent,
 
   -- * Error types
   IndexerError (..),
@@ -43,25 +42,24 @@ type family Point event
 type family Result query
 
 -- | Attach an event to a point in time
-data TimedEvent event = TimedEvent
-  { _point :: Point event
+data Timed point event = Timed
+  { _point :: point
   , _event :: event
   }
 
-deriving stock instance (Show event, Show (Point event)) => Show (TimedEvent event)
-
-{- | A functor like function for TimedEvent, which requires that both @a@ and @b@ have the same
- point instance.
--}
-mapTimedEvent :: Point a ~ Point b => (a -> b) -> TimedEvent a -> TimedEvent b
-mapTimedEvent f (TimedEvent p x) = TimedEvent p $ f x
+deriving stock instance (Show event, Show point) => Show (Timed point event)
+deriving stock instance (Eq event, Eq point) => Eq (Timed point event)
+deriving stock instance (Ord event, Ord point) => Ord (Timed point event)
+deriving stock instance Functor (Timed point)
+deriving stock instance Foldable (Timed point)
+deriving stock instance Traversable (Timed point)
 
 -- | When was this event created
-point :: Lens' (TimedEvent event) (Point event)
+point :: Lens' (Timed point event) point
 point f te = fmap (\_point -> te{_point}) $ f $ _point te
 
 -- | A lens to get the event without its time information
-event :: Lens' (TimedEvent event) event
+event :: Lens' (Timed point event) event
 event f te = fmap (\_event -> te{_event}) $ f $ _event te
 
 -- | Error that can occur when you index events

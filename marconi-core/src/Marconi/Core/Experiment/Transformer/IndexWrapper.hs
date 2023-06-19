@@ -33,7 +33,7 @@ import Marconi.Core.Experiment.Class (
   Rollbackable (rollback),
   queryLatest,
  )
-import Marconi.Core.Experiment.Type (Point, QueryError, Result, TimedEvent)
+import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
 
 data IndexWrapper config indexer event = IndexWrapper
   { _wrapperConfig :: config event
@@ -66,7 +66,7 @@ instance IndexerTrans (IndexWrapper config) where
 indexVia
   :: (IsIndex m event indexer, Eq (Point event))
   => Lens' s (indexer event)
-  -> TimedEvent event
+  -> Timed (Point event) event
   -> s
   -> m s
 indexVia l = l . index
@@ -77,7 +77,7 @@ indexVia l = l . index
 indexAllDescendingVia
   :: (Ord (Point event), IsIndex m event indexer, Traversable f)
   => Lens' s (indexer event)
-  -> f (TimedEvent event)
+  -> f (Timed (Point event) event)
   -> s
   -> m s
 indexAllDescendingVia l = l . indexAllDescending

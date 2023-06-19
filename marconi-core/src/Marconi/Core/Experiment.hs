@@ -100,7 +100,7 @@
         It can be a time, a slot number, a block, whatever information that tracks when
         an event happen.
 
-        2. It's already enough to index `TimedEvent` of the events you defined at step one
+        2. It's already enough to index `Timed` of the events you defined at step one
         of your indexer and to proceed to rollback.
         You can already test it, creating an indexer with `listIndexer`.
 
@@ -131,7 +131,7 @@
         And a more complex one, where several inserts are needed.
 
             In the simple case, you can use 'singleInsertSQLiteIndexr' to create your indexer.
-            It requires the definition of a @param@ type, a data representation of the TimedEvent
+            It requires the definition of a @param@ type, a data representation of the Timed
             that SQLite can process (it should have a @ToRow@ instance).
             You also need to declare a 'InsertRecord' type instance that is a list of this @param@.
 
@@ -193,10 +193,9 @@ module Marconi.Core.Experiment (
   --     3. @query@ that defines what can be asked to an @indexer@.
   Point,
   Result,
-  TimedEvent (TimedEvent),
+  Timed (Timed),
   point,
   event,
-  mapTimedEvent,
 
   -- ** Core typeclasses
   HasGenesis (..),
@@ -529,7 +528,7 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
 import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
-import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, TimedEvent (..), event, mapTimedEvent, point)
+import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, Timed (..), event, point)
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (..),
   Worker,

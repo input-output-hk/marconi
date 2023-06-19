@@ -34,7 +34,7 @@ import Marconi.Core.Experiment.Class (
   IsSync (lastSyncPoint),
   Rollbackable (rollback),
  )
-import Marconi.Core.Experiment.Type (IndexerError, Point, TimedEvent (TimedEvent), event, point)
+import Marconi.Core.Experiment.Type (IndexerError, Point, Timed (Timed), event, point)
 
 -- Type alias for the type classes that are required to build a worker for an indexer
 type WorkerIndexer n event indexer =
@@ -67,7 +67,7 @@ data ProcessedInput event
   = -- | A rollback happen and indexers need to go back to the given point in time
     Rollback (Point event)
   | -- | A new event has to be indexed
-    Index (TimedEvent event)
+    Index (Timed (Point event) event)
 
 -- Create workers
 
@@ -106,7 +106,7 @@ mapIndex
   -> ProcessedInput event
   -> f (ProcessedInput event')
 mapIndex _ (Rollback p) = pure $ Rollback p
-mapIndex f (Index timedEvent) = Index . TimedEvent (timedEvent ^. point) <$> f (timedEvent ^. event)
+mapIndex f (Index timedEvent) = Index . Timed (timedEvent ^. point) <$> f (timedEvent ^. event)
 
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come
@@ -123,7 +123,7 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
       unlockCoordinator = do
         Con.signalQSemN tokens 1
 
-      fresherThan :: Ord (Point event) => TimedEvent event -> Point event -> Bool
+      fresherThan :: Ord (Point event) => Timed (Point event) event -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
 
       indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer -> do

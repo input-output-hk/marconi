@@ -38,11 +38,11 @@ type instance Core.Point (C.BlockInMode C.CardanoMode) = C.ChainPoint
 type UtxoIndexer = Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
 
 -- | Extract the timed information from a block
-blockTimedEvent
+blockTimed
   :: C.BlockInMode C.CardanoMode
-  -> Core.TimedEvent (C.BlockInMode C.CardanoMode)
-blockTimedEvent b@(C.BlockInMode (C.Block (C.BlockHeader slotNo hsh _) _) _) =
-  Core.TimedEvent (C.ChainPoint slotNo hsh) b
+  -> Core.Timed C.ChainPoint (C.BlockInMode C.CardanoMode)
+blockTimed b@(C.BlockInMode (C.Block (C.BlockHeader slotNo hsh _) _) _) =
+  Core.Timed (C.ChainPoint slotNo hsh) b
 
 -- | Create a worker for the utxo indexer
 utxoWorker -- Should go in Utxo module?
@@ -75,7 +75,7 @@ mkEventStream q =
   let processEvent
         :: ChainSyncEvent (C.BlockInMode C.CardanoMode)
         -> Core.ProcessedInput (C.BlockInMode C.CardanoMode)
-      processEvent (RollForward x _) = Core.Index $ blockTimedEvent x
+      processEvent (RollForward x _) = Core.Index $ blockTimed x
       processEvent (RollBackward x _) = Core.Rollback x
    in S.mapM_ $ atomically . writeTBQueue q . processEvent
 

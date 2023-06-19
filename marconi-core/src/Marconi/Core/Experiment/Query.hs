@@ -17,7 +17,14 @@ import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError))
 import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events)
-import Marconi.Core.Experiment.Type (QueryError (AheadOfLastSync, NotStoredAnymore), Result, TimedEvent, event, point)
+import Marconi.Core.Experiment.Type (
+  Point,
+  QueryError (AheadOfLastSync, NotStoredAnymore),
+  Result,
+  Timed,
+  event,
+  point,
+ )
 
 -- | Get the event stored by the indexer at a given point in time
 data EventAtQuery event = EventAtQuery
@@ -65,7 +72,7 @@ allEvents :: EventsMatchingQuery event
 allEvents = EventsMatchingQuery (const True)
 
 -- | The result of an @EventMatchingQuery@
-type instance Result (EventsMatchingQuery event) = [TimedEvent event]
+type instance Result (EventsMatchingQuery event) = [Timed (Point event) event]
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)

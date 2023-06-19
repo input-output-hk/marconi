@@ -238,7 +238,7 @@ process
   -> indexer event
   -> m (indexer event)
 process = \case
-  Insert ix evt -> Core.index (Core.TimedEvent ix evt)
+  Insert ix evt -> Core.index (Core.Timed ix evt)
   Rollback n -> Core.rollback n
 
 genChain
@@ -500,7 +500,7 @@ instance
   where
   query =
     let rowToResult (Core.EventsMatchingQuery predicate) =
-          fmap (uncurry Core.TimedEvent)
+          fmap (uncurry Core.Timed)
             . filter (predicate . snd)
      in Core.querySQLiteIndexerWith
           (\p _ -> [":point" SQL.:= p])
@@ -721,7 +721,7 @@ buildCacheFor
   => Ord query
   => Ord (Core.Point event)
   => query
-  -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+  -> (Core.Timed (Core.Point event) event -> Core.Result query -> Core.Result query)
   -> indexer event
   -> m (Core.WithCache query indexer event)
 buildCacheFor q onForward indexer = do
@@ -736,7 +736,7 @@ withCacheRunner
   => Ord query
   => Ord (Core.Point event)
   => query
-  -> (Core.TimedEvent event -> Core.Result query -> Core.Result query)
+  -> (Core.Timed (Core.Point event) event -> Core.Result query -> Core.Result query)
   -> IndexerTestRunner m event wrapped
   -> IndexerTestRunner m event (Core.WithCache query wrapped)
 withCacheRunner q onForward wRunner =
