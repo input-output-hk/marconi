@@ -47,7 +47,7 @@ updateEnvState = writeTMVar
 findByAssetIdAtSlot
   :: SidechainEnv
   -> C.PolicyId
-  -> C.AssetName
+  -> Maybe C.AssetName
   -> Maybe Word64
   -> IO (Either QueryExceptions [AssetIdTxResult])
 findByAssetIdAtSlot env policy asset slotWord =
@@ -56,7 +56,7 @@ findByAssetIdAtSlot env policy asset slotWord =
 queryByPolicyAndAssetId
   :: SidechainEnv
   -> C.PolicyId
-  -> C.AssetName
+  -> Maybe C.AssetName
   -> Maybe C.SlotNo
   -> IO (Either QueryExceptions [AssetIdTxResult])
 queryByPolicyAndAssetId env policyId assetId slotNo = do

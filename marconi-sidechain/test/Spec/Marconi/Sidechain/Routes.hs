@@ -173,7 +173,7 @@ propJSONRountripGetBurnTokenEventsParams = property $ do
     forAll $
       GetBurnTokenEventsParams
         <$> (C.PolicyId <$> CGen.genScriptHash)
-        <*> (fromString <$> Gen.string (Range.linear 1 10) Gen.alphaNum)
+        <*> (fmap fromString <$> Gen.maybe (Gen.string (Range.linear 1 10) Gen.alphaNum))
         <*> (Gen.maybe $ Gen.integral (Range.linear 1 10))
         <*> Gen.maybe CGen.genTxId
   tripping r Aeson.encode Aeson.decode

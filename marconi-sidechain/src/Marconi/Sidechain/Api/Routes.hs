@@ -232,7 +232,7 @@ instance FromJSON UtxoTxInput where
 
 data GetBurnTokenEventsParams = GetBurnTokenEventsParams
   { policyId :: !C.PolicyId
-  , assetName :: !C.AssetName
+  , assetName :: !(Maybe C.AssetName)
   , beforeSlotNo :: !(Maybe Word64)
   , afterTx :: !(Maybe C.TxId)
   }
@@ -242,7 +242,7 @@ instance FromJSON GetBurnTokenEventsParams where
   parseJSON (Object v) =
     GetBurnTokenEventsParams
       <$> (v .: "policyId")
-      <*> (v .: "assetName")
+      <*> (v .:? "assetName")
       <*> (v .:? "slotNo")
       <*> (v .:? "afterTx")
   parseJSON _ = mempty
@@ -252,7 +252,7 @@ instance ToJSON GetBurnTokenEventsParams where
     object $
       catMaybes
         [ Just ("policyId" .= policyId q)
-        , Just ("assetName" .= assetName q)
+        , ("assetName" .=) <$> assetName q
         , ("slotNo" .=) <$> beforeSlotNo q
         , ("afterTx" .=) <$> afterTx q
         ]

@@ -50,7 +50,7 @@ data RpcClientAction = RpcClientAction
   , insertMintBurnEventsAction :: !InsertMintBurnEventsCallback
   , queryAddressUtxosAction :: !(String -> IO (JsonRpcResponse String GetUtxosFromAddressResult))
   , querySyncedBlockAction :: !(IO (JsonRpcResponse String GetCurrentSyncedBlockResult))
-  , queryMintBurnAction :: !((PolicyId, AssetName) -> IO (JsonRpcResponse String GetBurnTokenEventsResult))
+  , queryMintBurnAction :: !((PolicyId, Maybe AssetName) -> IO (JsonRpcResponse String GetBurnTokenEventsResult))
   }
 
 mkRpcClientAction :: SidechainEnv -> Port -> IO RpcClientAction
