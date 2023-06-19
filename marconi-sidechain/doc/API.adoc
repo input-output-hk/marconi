@@ -461,7 +461,6 @@ TBD
   },
   "required": [
     "policyId",
-    "slotNo",
   ]
 }
 ```

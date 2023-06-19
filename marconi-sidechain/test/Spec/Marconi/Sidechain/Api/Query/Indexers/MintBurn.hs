@@ -69,7 +69,7 @@ queryMintingPolicyTest = property $ do
             MintBurnIndexer.findByAssetIdAtSlot
               env
               (mintAssetPolicyId params)
-              (mintAssetAssetName params)
+              (Just $ mintAssetAssetName params)
               Nothing
         )
       . Set.toList
@@ -96,10 +96,10 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip
 propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
   (events, _) <- forAll genMintEvents
   liftIO $ insertMintBurnEventsAction action $ MintBurn.MintBurnEvent <$> events
-  let (qParams :: [(PolicyId, AssetName)]) =
+  let (qParams :: [(PolicyId, Maybe AssetName)]) =
         Set.toList
           . Set.fromList
-          . fmap (\mps -> (mintAssetPolicyId mps, mintAssetAssetName mps))
+          . fmap (\mps -> (mintAssetPolicyId mps, Just $ mintAssetAssetName mps))
           . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
           . foldMap MintBurn.txMintEventTxAssets
           $ events

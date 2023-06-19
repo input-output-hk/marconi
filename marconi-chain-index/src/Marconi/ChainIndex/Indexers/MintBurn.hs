@@ -407,13 +407,13 @@ newtype instance RI.StorableEvent MintBurnHandle
 data instance RI.StorableQuery MintBurnHandle
   = -- | Query all transactions that minted a specific 'AssetId' until an upper bound slot in the
     -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
-    QueryByAssetId C.PolicyId C.AssetName (Maybe C.SlotNo)
+    QueryByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo)
   | -- | Query all transactions that minted 'AssetId's until an upper bound slot in the blockchain. If
     -- the upper bound slot is 'Nothing', then we return everything.
     QueryAllMintBurn (Maybe C.SlotNo)
   | -- | Query all transactions that burned a specific 'AssetId' until an upper bound slot in the
     -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
-    QueryBurnByAssetId C.PolicyId C.AssetName (Maybe C.SlotNo)
+    QueryBurnByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo)
   | -- | Query all transactions that burned 'AssetId's until an upper bound slot in the blockchain. If
     -- the upper bound slot is 'Nothing', then we return everything.
     QueryAllBurn (Maybe C.SlotNo)
@@ -456,9 +456,9 @@ instance RI.Queryable MintBurnHandle where
         Just slotNo -> [\row -> _txMintRowSlotNo row <= slotNo]
         Nothing -> []
 
-      matchesAssetId :: C.PolicyId -> C.AssetName -> TxMintRow -> Bool
+      matchesAssetId :: C.PolicyId -> Maybe C.AssetName -> TxMintRow -> Bool
       matchesAssetId policyId assetName row =
-        _txMintRowPolicyId row == policyId && _txMintRowAssetName row == assetName
+        _txMintRowPolicyId row == policyId && maybe True (_txMintRowAssetName row ==) assetName
 
       isBurn :: TxMintRow -> Bool
       isBurn row = _txMintRowQuantity row < 0
@@ -487,11 +487,11 @@ instance RI.Queryable MintBurnHandle where
             <> mkAssetIdCondition policyId assetName
             <> (["quantity < 0"], [])
 
-      mkAssetIdCondition :: C.PolicyId -> C.AssetName -> ([SQL.Query], [NamedParam])
+      mkAssetIdCondition :: C.PolicyId -> Maybe C.AssetName -> ([SQL.Query], [NamedParam])
       mkAssetIdCondition policyId assetName =
-        ( ["policyId = :policyId", "assetName = :assetName"]
-        , [":policyId" := policyId, ":assetName" := assetName]
-        )
+        unzip $
+          [("policyId = :policyId", ":policyId" := policyId)]
+            <> maybe [] (\name -> [("assetName = :assetName", ":assetName" := name)]) assetName
 
       mkUpperBoundCondition :: Maybe C.SlotNo -> ([SQL.Query], [NamedParam])
       mkUpperBoundCondition = \case
