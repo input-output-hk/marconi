@@ -48,6 +48,9 @@
 -- | Module for indexing the Utxos in the Cardano blockchain
 module Marconi.ChainIndex.Indexers.Utxo where
 
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
+import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Concurrent.Async (concurrently_)
 import Control.Exception (bracket_)
 import Control.Lens.Combinators (
@@ -73,12 +76,12 @@ import Data.Aeson (
   (.=),
  )
 import Data.Either (fromRight, rights)
-import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Foldable (foldl', toList)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Ord (Down (Down))
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -90,19 +93,11 @@ import Database.SQLite.Simple (
   ResultError (UnexpectedNull),
  )
 import Database.SQLite.Simple qualified as SQL
-import Database.SQLite.Simple.FromRow (FromRow (fromRow), field, fieldWith)
 import Database.SQLite.Simple.FromField (returnError)
+import Database.SQLite.Simple.FromRow (FromRow (fromRow), field, fieldWith)
 import Database.SQLite.Simple.ToField (ToField (toField), toField)
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
-import System.Random.MWC (
-  createSystemRandom,
-  uniformR,
- )
-import Text.RawString.QQ (r)
-import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as C
-import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
   liftSQLError,
@@ -113,8 +108,8 @@ import Marconi.ChainIndex.Types (
   TargetAddresses,
   TxIndexInBlock,
   TxOut,
-  pattern CurrentEra,
   UtxoIndexerConfig (UtxoIndexerConfig),
+  pattern CurrentEra,
  )
 import Marconi.ChainIndex.Utils (
   addressesToPredicate,
@@ -134,6 +129,11 @@ import Marconi.Core.Storable (
   emptyState,
  )
 import Marconi.Core.Storable qualified as Storable
+import System.Random.MWC (
+  createSystemRandom,
+  uniformR,
+ )
+import Text.RawString.QQ (r)
 
 {- Note [Last synced block]
  -
@@ -286,9 +286,12 @@ instance FromRow (Maybe BlockInfo) where
     maybeTimestamp <- field
     maybeEpochNo <- field
     if
-        | Just slotNo <- maybeSlotNo, Just bhh <- maybeBhh, Just blockNo <- maybeBlockNo
-        , Just timestamp <- maybeTimestamp, Just epochNo <- maybeEpochNo ->
-          pure $ Just $ BlockInfo slotNo bhh blockNo timestamp epochNo
+        | Just slotNo <- maybeSlotNo
+        , Just bhh <- maybeBhh
+        , Just blockNo <- maybeBlockNo
+        , Just timestamp <- maybeTimestamp
+        , Just epochNo <- maybeEpochNo ->
+            pure $ Just $ BlockInfo slotNo bhh blockNo timestamp epochNo
         | otherwise -> pure Nothing
 
 $(makeLenses ''BlockInfo)
@@ -719,7 +722,7 @@ instance Buffered UtxoHandle where
       bracket_
         (SQL.execute_ c "BEGIN")
         (SQL.execute_ c "COMMIT")
-        (concurrently_
+        ( concurrently_
             ( SQL.executeMany
                 c
                 [r|INSERT
@@ -949,12 +952,12 @@ instance Queryable UtxoHandle where
       filterAddSpent utxoResult = case utxoResultSpentInfo utxoResult of
         -- if it's already spent, no need to check if it's spent in the buffer events
         Just _ -> Just utxoResult
-        Nothing -> let
-          findSelfIn = Map.lookup (utxoResultTxIn utxoResult)
-          in if
-          | Just _ <- findSelfIn bufferSpent' -> Nothing
-          | Just spent <- findSelfIn bufferFutureSpent' -> Just $ utxoResult { utxoResultSpentInfo = Just spent }
-          | otherwise -> Just utxoResult
+        Nothing ->
+          let findSelfIn = Map.lookup (utxoResultTxIn utxoResult)
+           in if
+                  | Just _ <- findSelfIn bufferSpent' -> Nothing
+                  | Just spent <- findSelfIn bufferFutureSpent' -> Just $ utxoResult{utxoResultSpentInfo = Just spent}
+                  | otherwise -> Just utxoResult
 
       addressFilter = (["u.address = :address"], [":address" := addr])
       lowerBoundFilter = case lowerBound slotInterval of
@@ -962,21 +965,25 @@ instance Queryable UtxoHandle where
         Just lowerBound' -> (["u.slotNo >= :lowerBound"], [":lowerBound" := lowerBound'])
       upperBoundFilter = case upperBound slotInterval of
         Nothing -> mempty
-        Just upperBound' -> ( [ "u.slotNo <= :upperBound"
-                             , "(s.slotNo IS NULL OR s.slotNo > :upperBound)"]
-                           , [":upperBound" := upperBound'])
+        Just upperBound' ->
+          (
+            [ "u.slotNo <= :upperBound"
+            , "(s.slotNo IS NULL OR s.slotNo > :upperBound)"
+            ]
+          , [":upperBound" := upperBound']
+          )
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
       bufferEventUtxoResult :: StorableEvent UtxoHandle -> [UtxoResult]
       bufferEventUtxoResult (UtxoEvent utxoSet _ bi datumMap) = mapMaybe toMaybeUtxoResult $ Set.toList utxoSet
         where
           toMaybeUtxoResult :: Utxo -> Maybe UtxoResult
-          toMaybeUtxoResult u = let
-            findSelfIn = Map.lookup (_txIn u)
-            in if
-            | Just _ <- findSelfIn bufferSpent' -> Nothing
-            | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just $ toUtxoResult u maybeSpentInfo
-            | otherwise -> Just $ toUtxoResult u Nothing
+          toMaybeUtxoResult u =
+            let findSelfIn = Map.lookup (_txIn u)
+             in if
+                    | Just _ <- findSelfIn bufferSpent' -> Nothing
+                    | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just $ toUtxoResult u maybeSpentInfo
+                    | otherwise -> Just $ toUtxoResult u Nothing
 
           toUtxoResult :: Utxo -> Maybe SpentInfo -> UtxoResult
           toUtxoResult u maybeSpentInfo =
@@ -992,7 +999,6 @@ instance Queryable UtxoHandle where
               , utxoResultBlockInfo = bi
               , utxoResultSpentInfo = maybeSpentInfo
               }
-
   queryStorage es (UtxoHandle c _ _) LastSyncedBlockInfoQuery =
     let queryLastSlot =
           [r|SELECT u.slotNo, u.blockHeaderHash, u.blockNo, u.blockTimestamp, u.epochNo
