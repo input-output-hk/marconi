@@ -139,19 +139,19 @@ withQueryAction env query =
         Right (Utxo.UtxoResult rows) ->
           Right $
             GetUtxosFromAddressResult $
-              rows <&> \row -> let
-                   bi = Utxo.utxoResultBlockInfo row
-                in AddressUtxoResult
-                  (Utxo._blockInfoSlotNo bi)
-                  (Utxo._blockInfoBlockHeaderHash bi)
-                  (Utxo._blockInfoBlockNo $ Utxo.utxoResultBlockInfo row)
-                  (Utxo.utxoResultTxIndexInBlock row)
-                  (Utxo.utxoResultTxIn row)
-                  (Utxo.utxoResultAddress row)
-                  (Utxo.utxoResultDatumHash row)
-                  (Utxo.utxoResultDatum row)
-                  (spentInfoResult <$> Utxo.utxoResultSpentInfo row)
-                  []
+              rows <&> \row ->
+                let bi = Utxo.utxoResultBlockInfo row
+                 in AddressUtxoResult
+                      (Utxo._blockInfoSlotNo bi)
+                      (Utxo._blockInfoBlockHeaderHash bi)
+                      (Utxo._blockInfoBlockNo $ Utxo.utxoResultBlockInfo row)
+                      (Utxo.utxoResultTxIndexInBlock row)
+                      (Utxo.utxoResultTxIn row)
+                      (Utxo.utxoResultAddress row)
+                      (Utxo.utxoResultDatumHash row)
+                      (Utxo.utxoResultDatum row)
+                      (spentInfoResult <$> Utxo.utxoResultSpentInfo row)
+                      []
         _other ->
           Left $ UnexpectedQueryResult query
 
