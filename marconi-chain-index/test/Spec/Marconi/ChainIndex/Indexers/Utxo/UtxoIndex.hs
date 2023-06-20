@@ -342,7 +342,9 @@ propSaveAndRetrieveUtxoEvents = property $ do
       raiseException $
         Utxo.open ":memory:" (Utxo.Depth depth) False
           >>= Storable.insertMany events
-  let qs = mkUtxoQueries events (Utxo.LessThanOrEqual $ C.SlotNo 20000) --  TODO maxBound use this when PLT-5937 is implmented. See TODO below.
+  let
+    upperBound = C.SlotNo 20000
+    qs = mkUtxoQueries events (Utxo.LessThanOrEqual upperBound) --  TODO maxBound use this when PLT-5937 is implmented. See TODO below.
   results <-
     liftIO
       . raiseException
@@ -354,13 +356,16 @@ propSaveAndRetrieveUtxoEvents = property $ do
       resultsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
       fromStorageTxIns :: Set.Set C.TxIn =
         Set.fromList $ map Utxo.utxoResultTxIn resultsFromStorage
-      fromEventsTxIns :: Set.Set C.TxIn =
-        Set.fromList $ map Utxo._txIn $ concatMap (\(Utxo.UtxoEvent utxoSet _ _ _) -> Set.toList utxoSet) events
+
+      maybeSpentThusFar (Utxo.UtxoEvent _ ins bi _) = if Utxo._blockInfoSlotNo bi <= upperBound
+        then Just $ Map.keysSet ins
+        else Nothing
+      spentThusFar :: Set.Set C.TxIn = mconcat $ mapMaybe maybeSpentThusFar events
 
   -- A property of the generator is that there is at least one unspent transaction
   Hedgehog.assert (not . null $ resultsFromStorage)
   -- The result set should only contain `unspent` utxos
-  fromStorageTxIns === fromEventsTxIns
+  Hedgehog.assert $ all (`Set.notMember` spentThusFar) fromStorageTxIns
 
 ---------------------------------------------------------------------
 -- TODO --

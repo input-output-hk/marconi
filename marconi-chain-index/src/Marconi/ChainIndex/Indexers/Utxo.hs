@@ -20,23 +20,17 @@
 -- + table: unspent_transactions
 --
 -- @
--- <<<<<<< HEAD
---      |---------+------+-------+-----------+-------+------------------+--------------+------+-----------+----------------|
---      | Address | TxId | TxIx  | DatumHash | Value | InlineScriptHash | InlineScript | Slot | BlockHash | TxIndexInBlock |
---      |---------+------+-------+-----------+-------+------------------+--------------+------+-----------+----------------|
--- =======
---      |---------+------+-------+-----------+-------+-------+------------------+--------------+------+-----------------+---------|----------------|
---      | Address | TxId | TxIx  | DatumHash | Datum | Value | InlineScriptHash | InlineScript | Slot | BlockHeaderHash | BlockNo | TxIndexInBlock |
---      |---------+------+-------+-----------+-------+-------+------------------+--------------+------+-----------------+---------|----------------|
--- >>>>>>> main
+--      |---------+------+------+-----------+-------+--------------+------------------+----------------+--------+-----------------+---------+----------------+---------|
+--      | Address | TxId | TxIx | DatumHash | Value | InlineScript | InlineScriptHash | TxIndexInBlock | SlotNo | BlockHeaderHash | BlockNo | BlockTimestamp | EpochNo |
+--      |---------+------+------+-----------+-------+--------------+------------------+----------------+--------+-----------------+---------+----------------+---------|
 -- @
 --
 -- + table: spent
 --
 -- @
---      |------+------|--------+-----------------|
---      | txId | txIx | slotNo | blockHeaderHash |
---      |------+------|--------+-----------------|
+--      |------+------+--------+-----------------+---------+----------------+---------+-----------|
+--      | TxId | TxIx | SlotNo | blockHeaderHash | BlockNo | BlockTimestamp | EpochNo | SpentTxId |
+--      |------+------+--------+-----------------+---------+----------------+---------+-----------|
 -- @
 --
 -- + table: datumhash_datum
@@ -54,7 +48,6 @@
 -- | Module for indexing the Utxos in the Cardano blockchain
 module Marconi.ChainIndex.Indexers.Utxo where
 
-import Control.Applicative ((<|>))
 import Control.Concurrent.Async (concurrently_)
 import Control.Exception (bracket_)
 import Control.Lens.Combinators (
@@ -80,7 +73,7 @@ import Data.Aeson (
   (.=),
  )
 import Data.Either (fromRight, rights)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Foldable (foldl', toList)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
@@ -283,7 +276,7 @@ data BlockInfo = BlockInfo
   , _blockInfoEpochNo :: !C.EpochNo
   }
   deriving (Eq, Show, Ord, Generic)
-  deriving anyclass (FromRow)
+  deriving anyclass (FromRow, ToJSON, FromJSON)
 
 instance FromRow (Maybe BlockInfo) where
   fromRow = do
@@ -334,6 +327,7 @@ data SpentInfo = SpentInfo
   , _siSpentTxId :: C.TxId
   }
   deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 $(makeLenses ''SpentInfo)
 
@@ -358,20 +352,11 @@ data UtxoResult = UtxoResult_
   , utxoResultBlockInfo :: !BlockInfo
   , utxoResultSpentInfo :: !(Maybe SpentInfo)
   }
-  deriving (Eq, Show)
-
-instance FromJSON UtxoResult where -- todo
-  parseJSON = undefined
-
-instance ToJSON UtxoResult where -- todo
-  toJSON = undefined
+  deriving (Eq, Show, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 instance Ord UtxoResult where
   compare u u' = compare (utxoResultAddress u, utxoResultTxIn u) (utxoResultAddress u', utxoResultTxIn u')
-
--- todo remove?
--- urSpentBlockHash :: Traversal' UtxoRow (C.Hash C.BlockHeader)
--- urSpentBlockHash = urSpentInfo . _Just . _siBlockHeaderHash
 
 urCreationSlotNo :: Lens' UtxoRow C.SlotNo
 urCreationSlotNo = urBlockInfo . blockInfoSlotNo
@@ -954,37 +939,47 @@ instance Queryable UtxoHandle where
       persistedUtxoResults :: [UtxoResult] <- sqliteQuery c filters $ Just "ORDER BY u.slotNo ASC"
       return $
         UtxoResult $
-          map updateFutureSpentFromBuffer persistedUtxoResults
-            <> (bufferEvents >>= eventToResults)
+          mapMaybe filterAddSpent persistedUtxoResults
+            <> (bufferEvents >>= bufferEventUtxoResult)
     where
       UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent' =
         eventsAtAddress addr slotInterval memoryEvents
 
-      updateFutureSpentFromBuffer :: UtxoResult -> UtxoResult
-      updateFutureSpentFromBuffer u = case utxoResultSpentInfo u of
+      filterAddSpent :: UtxoResult -> Maybe UtxoResult
+      filterAddSpent utxoResult = case utxoResultSpentInfo utxoResult of
         -- if it's already spent, no need to check if it's spent in the buffer events
-        Just _ -> u
-        Nothing ->
-          u
-            { utxoResultSpentInfo =
-                let findSelfIn = Map.lookup (utxoResultTxIn u)
-                 in findSelfIn bufferFutureSpent' <|> findSelfIn bufferSpent'
-            }
+        Just _ -> Just utxoResult
+        Nothing -> let
+          findSelfIn = Map.lookup (utxoResultTxIn utxoResult)
+          in if
+          | Just _ <- findSelfIn bufferSpent' -> Nothing
+          | Just spent <- findSelfIn bufferFutureSpent' -> Just $ utxoResult { utxoResultSpentInfo = Just spent }
+          | otherwise -> Just utxoResult
 
       addressFilter = (["u.address = :address"], [":address" := addr])
       lowerBoundFilter = case lowerBound slotInterval of
         Nothing -> mempty
-        Just x -> (["u.slotNo >= :slotNoLow"], [":slotNoLow" := x])
+        Just lowerBound' -> (["u.slotNo >= :lowerBound"], [":lowerBound" := lowerBound'])
       upperBoundFilter = case upperBound slotInterval of
         Nothing -> mempty
-        Just x -> (["u.slotNo <= :slotNo"], [":slotNo" := x])
+        Just upperBound' -> ( [ "u.slotNo <= :upperBound"
+                             , "(s.slotNo IS NULL OR s.slotNo > :upperBound)"]
+                           , [":upperBound" := upperBound'])
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
-      eventToResults :: StorableEvent UtxoHandle -> [UtxoResult]
-      eventToResults (UtxoEvent utxoSet _ bi datumMap) = map toUtxoResult $ Set.toList utxoSet
+      bufferEventUtxoResult :: StorableEvent UtxoHandle -> [UtxoResult]
+      bufferEventUtxoResult (UtxoEvent utxoSet _ bi datumMap) = mapMaybe toMaybeUtxoResult $ Set.toList utxoSet
         where
-          toUtxoResult :: Utxo -> UtxoResult
-          toUtxoResult u =
+          toMaybeUtxoResult :: Utxo -> Maybe UtxoResult
+          toMaybeUtxoResult u = let
+            findSelfIn = Map.lookup (_txIn u)
+            in if
+            | Just _ <- findSelfIn bufferSpent' -> Nothing
+            | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just $ toUtxoResult u maybeSpentInfo
+            | otherwise -> Just $ toUtxoResult u Nothing
+
+          toUtxoResult :: Utxo -> Maybe SpentInfo -> UtxoResult
+          toUtxoResult u maybeSpentInfo =
             UtxoResult_
               { utxoResultAddress = _address u
               , utxoResultTxIn = _txIn u
@@ -995,9 +990,7 @@ instance Queryable UtxoHandle where
               , utxoResultInlineScriptHash = _inlineScriptHash u
               , utxoResultTxIndexInBlock = _txIndexInBlock u
               , utxoResultBlockInfo = bi
-              , utxoResultSpentInfo =
-                  let findSelfIn = Map.lookup (_txIn u)
-                   in findSelfIn bufferFutureSpent' <|> findSelfIn bufferSpent'
+              , utxoResultSpentInfo = maybeSpentInfo
               }
 
   queryStorage es (UtxoHandle c _ _) LastSyncedBlockInfoQuery =
