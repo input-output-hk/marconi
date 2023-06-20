@@ -155,8 +155,8 @@ allQueryUtxosShouldBeUnspent = property $ do
         List.nub
           . fmap
             ( Utxo.QueryUtxoByAddressWrapper
-              . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
-              . view Utxo.address
+                . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
+                . view Utxo.address
             )
           . concatMap (Set.toList . Utxo.ueUtxos)
           $ events
@@ -342,9 +342,8 @@ propSaveAndRetrieveUtxoEvents = property $ do
       raiseException $
         Utxo.open ":memory:" (Utxo.Depth depth) False
           >>= Storable.insertMany events
-  let
-    upperBound = C.SlotNo 20000
-    qs = mkUtxoQueries events (Utxo.LessThanOrEqual upperBound) --  TODO maxBound use this when PLT-5937 is implmented. See TODO below.
+  let upperBound = C.SlotNo 20000
+      qs = mkUtxoQueries events (Utxo.LessThanOrEqual upperBound) --  TODO maxBound use this when PLT-5937 is implmented. See TODO below.
   results <-
     liftIO
       . raiseException
@@ -357,9 +356,11 @@ propSaveAndRetrieveUtxoEvents = property $ do
       fromStorageTxIns :: Set.Set C.TxIn =
         Set.fromList $ map Utxo.utxoResultTxIn resultsFromStorage
 
-      maybeSpentThusFar (Utxo.UtxoEvent _ ins bi _) = if Utxo._blockInfoSlotNo bi <= upperBound
-        then Just $ Map.keysSet ins
-        else Nothing
+      maybeSpentThusFar (Utxo.UtxoEvent _ ins bi _) =
+        if Utxo._blockInfoSlotNo bi <= upperBound
+          then Just $ Map.keysSet ins
+          else Nothing
+
       spentThusFar :: Set.Set C.TxIn = mconcat $ mapMaybe maybeSpentThusFar events
 
   -- A property of the generator is that there is at least one unspent transaction
