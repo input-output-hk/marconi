@@ -167,16 +167,16 @@ optionsParser =
     <*> commonMinIndexingDepth
     <*> commonDbDir
     <*> Opt.switch
+      ( Opt.long "enable-txoutref"
+          <> Opt.help "enable txout ref storage."
+      )
+    <*> Opt.switch
       ( Opt.long "disable-utxo"
           <> Opt.help "disable utxo indexers."
       )
     <*> Opt.switch
       ( Opt.long "disable-address-datum"
           <> Opt.help "disable address->datum indexers."
-      )
-    <*> Opt.switch
-      ( Opt.long "disable-datum"
-          <> Opt.help "disable datum indexers."
       )
     <*> Opt.switch
       ( Opt.long "disable-script-tx"
