@@ -355,7 +355,6 @@ propSaveAndRetrieveUtxoEvents = property $ do
       resultsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
       fromStorageTxIns :: Set.Set C.TxIn =
         Set.fromList $ map Utxo.utxoResultTxIn resultsFromStorage
-
       maybeSpentThusFar (Utxo.UtxoEvent _ ins bi _) =
         if Utxo._blockInfoSlotNo bi <= upperBound
           then Just $ Map.keysSet ins
