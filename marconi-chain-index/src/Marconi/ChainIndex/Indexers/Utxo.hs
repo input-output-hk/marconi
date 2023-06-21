@@ -440,7 +440,7 @@ instance ToJSON UtxoRow where
 
 data instance StorableResult UtxoHandle
   = -- | Result of a 'QueryUtxoByAddress' query
-    UtxoResult {getUtxoResult :: ![UtxoResult]}
+    UtxoByAddressResult {getUtxoByAddressResult :: ![UtxoResult]}
   | -- | Result of a 'LastSyncedBlockInfoQuery'
     LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo)}
   deriving (Eq, Show, Ord)
@@ -723,41 +723,40 @@ instance Buffered UtxoHandle where
     liftSQLError CantInsertEvent $ do
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
+          datumRows = fmap (uncurry Datum.DatumRow) $ Map.toList $ foldMap ueDatum events
       bracket_
         (SQL.execute_ c "BEGIN")
         (SQL.execute_ c "COMMIT")
-        ( concurrently_
-            ( SQL.executeMany
-                c
-                [r|INSERT
-               INTO unspent_transactions (
-                 address,
-                 txId,
-                 txIx,
-                 datumHash,
-                 value,
-                 inlineScript,
-                 inlineScriptHash,
-                 txIndexInBlock,
-                 slotNo,
-                 blockHeaderHash,
-                 blockNo,
-                 blockTimestamp,
-                 epochNo
-              ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-                rows
-            )
-            ( SQL.executeMany
-                c
-                [r|INSERT
-              INTO spent (
-                txId,
-                txIx, slotNo, blockHeaderHash, blockNo, blockTimestamp, epochNo, spentTxId
-              ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?)|]
-                spents
-            )
+        ( SQL.executeMany
+            c
+            [r|INSERT
+             INTO unspent_transactions (
+               address,
+               txId,
+               txIx,
+               datumHash,
+               value,
+               inlineScript,
+               inlineScriptHash,
+               txIndexInBlock,
+               slotNo,
+               blockHeaderHash,
+               blockNo,
+               blockTimestamp,
+               epochNo
+            ) VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+            rows
+            `concurrently_` SQL.executeMany
+              c
+              [r|INSERT
+            INTO spent (
+              txId,
+              txIx, slotNo, blockHeaderHash, blockNo, blockTimestamp, epochNo, spentTxId
+            ) VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?)|]
+              spents
+            `concurrently_` Datum.insertRows c datumRows
         )
       -- We want to perform vacuum about once every 100
       when toVacuume $ do
@@ -945,7 +944,7 @@ instance Queryable UtxoHandle where
     liftSQLError CantQueryIndexer $ do
       persistedUtxoResults :: [UtxoResult] <- sqliteQuery c filters $ Just "ORDER BY u.slotNo ASC"
       bufferedUtxoResults <- concat <$> mapM bufferEventUtxoResult bufferEvents
-      return $ UtxoResult $ mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
+      return $ UtxoByAddressResult $ mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
     where
       UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent' =
         eventsAtAddress addr slotInterval memoryEvents
