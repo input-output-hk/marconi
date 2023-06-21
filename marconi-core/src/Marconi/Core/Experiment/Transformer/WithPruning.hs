@@ -262,7 +262,7 @@ instance
   )
   => Rollbackable m event (WithPruning indexer)
   where
-  rollback p indexer =
+  rollback p indexer = do
     let resetStep :: WithPruning indexer event -> WithPruning indexer event
         resetStep = do
           stepLength <- view pruneEvery
@@ -286,14 +286,14 @@ instance
         isRollbackAfterPruning = do
           p' <- pruningPoint $ indexer ^. unwrap
           pure $ maybe True (p >=) p'
-     in do
-          valid <- isRollbackAfterPruning
-          unless valid $
-            throwError RollbackBehindHistory
-          countFromPruningPoints
-            . removePruningPointsAfterRollback p
-            . resetStep
-            <$> rollbackVia unwrap p indexer
+
+    valid <- isRollbackAfterPruning
+    unless valid $
+      throwError RollbackBehindHistory
+    countFromPruningPoints
+      . removePruningPointsAfterRollback p
+      . resetStep
+      <$> rollbackVia unwrap p indexer
 
 instance
   ( Monad m

@@ -75,7 +75,7 @@ mkEventStream q =
   let processEvent
         :: ChainSyncEvent (C.BlockInMode C.CardanoMode)
         -> Core.ProcessedInput (C.BlockInMode C.CardanoMode)
-      processEvent (RollForward x _) = Core.Index $ blockTimed x
+      processEvent (RollForward x _) = Core.Index $ Just <$> blockTimed x
       processEvent (RollBackward x _) = Core.Rollback x
    in S.mapM_ $ atomically . writeTBQueue q . processEvent
 

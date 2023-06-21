@@ -27,6 +27,7 @@ import Data.Bifunctor (Bifunctor (first))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import Data.Kind (Type)
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
+import Data.Sequence qualified as Seq
 import Marconi.Core.Experiment.Class (
   AppendResult (appendResult),
   Closeable (close),
@@ -52,9 +53,6 @@ class Flushable m event indexer where
   -- | The events container used when you flush event
   type Container (indexer :: Type -> Type) :: Type -> Type
 
-  -- | Check if there isn't space left in memory
-  currentLength :: indexer event -> m Word
-
   -- | Clear the memory and return its content
   flushMemory
     :: Point event
@@ -65,10 +63,6 @@ class Flushable m event indexer where
 instance (Applicative m, Ord (Point event)) => Flushable m event ListIndexer where
   type Container ListIndexer = []
 
-  -- \| How many events are stored in the indexer
-  currentLength ix = pure $ fromIntegral $ length (ix ^. events)
-
-  -- \| Flush a given number of events from the indexer
   flushMemory p ix =
     let (freshest, oldest) = span ((> p) . view point) $ ix ^. events
      in pure (oldest, ix & events .~ freshest)
@@ -189,12 +183,12 @@ flushAt indexer =
       dequeueNextFlushPoint =
         case indexer ^. flushPoints of
           Empty -> Nothing
-          xs :|> p ->
+          recentFlushPoints :|> oldestFlushPoint ->
             let indexer' =
                   indexer
-                    & flushPoints .~ xs
+                    & flushPoints .~ recentFlushPoints
                     & currentMemorySize -~ indexer ^. flushEvery
-             in Just (p, indexer')
+             in Just (oldestFlushPoint, indexer')
    in guard reachFlushPoint *> dequeueNextFlushPoint
 
 startNewStep
@@ -248,7 +242,7 @@ instance
     indexer' <- indexVia inMemory timedEvent indexer
     let (potentialFlushPoint, indexer'') = tick (timedEvent ^. point) indexer'
     case potentialFlushPoint of
-      Nothing -> pure indexer'
+      Nothing -> pure indexer''
       Just p -> flush p indexer''
 
 instance IsSync event m mem => IsSync event m (MixedIndexer store mem) where
@@ -260,11 +254,29 @@ instance
   )
   => Rollbackable m event (MixedIndexer store ListIndexer)
   where
+  -- Rollback for the mixed indexer is a bit imprecise as we don't know how many
+  -- blocks are dropped during the rollback.
+  -- As a consequence, we consider that we have at most n block in memory,
+  -- n being the length of the in memory indexer.
   rollback p indexer = do
+    let removeFlushPointsAfterRollback p' = flushPoints %~ Seq.dropWhileL (> p')
+
     indexer' <- inMemory (rollback p) indexer
-    if null $ indexer' ^. inMemory . events
-      then inDatabase (rollback p) indexer'
-      else pure indexer'
+    let memorySize = length $ indexer' ^. inMemory . events -- todo don't rely on length
+    indexer'' <-
+      if memorySize == 0
+        then inDatabase (rollback p) indexer'
+        else pure indexer'
+
+    let updateStateBeforeNextFlush =
+          stepsBeforeNextFlush
+            .~ (indexer'' ^. keepInMemory + indexer'' ^. flushEvery) - fromIntegral memorySize
+
+    pure $
+      indexer''
+        & updateStateBeforeNextFlush
+        & removeFlushPointsAfterRollback p
+        & currentMemorySize .~ fromIntegral memorySize
 
 instance
   ( AppendResult m event query ListIndexer

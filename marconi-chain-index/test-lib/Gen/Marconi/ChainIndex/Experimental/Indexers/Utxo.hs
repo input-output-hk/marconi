@@ -48,7 +48,7 @@ genUtxoEvents'
   -> Gen (Core.ListIndexer Utxo.UtxoEvent)
 genUtxoEvents' txOutToUtxo = do
   timedEvents <- fmap fst <$> genUtxoEventsWithTxs' txOutToUtxo
-  Core.indexAll timedEvents Core.mkListIndexer
+  Core.indexAll (fmap Just <$> timedEvents) Core.mkListIndexer
 
 -- | Generate ShelleyEra UtxoEvent
 genShelleyEraUtxoEvents :: Gen (Core.Timed C.ChainPoint Utxo.UtxoEvent)
