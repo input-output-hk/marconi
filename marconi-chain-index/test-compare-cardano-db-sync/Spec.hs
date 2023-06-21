@@ -1,6 +1,8 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 {- | Run the Marconi and cardano-db-sync comparison by:
@@ -30,24 +32,32 @@
 module Main where
 
 import Control.Exception (throw)
+import Control.Lens ((^.))
 import Control.Monad (forM_)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.ByteString qualified as BS
 import Data.Coerce (coerce)
+import Data.List (intercalate, sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
+import Data.Proxy (Proxy (Proxy))
 import Data.Ratio (denominator, numerator)
+import Data.Scientific (floatingOrInteger)
+import Data.String (fromString)
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple qualified as PG
 import Database.PostgreSQL.Simple.FromField qualified as PG
+import Database.PostgreSQL.Simple.FromRow qualified as PG
 import Database.PostgreSQL.Simple.ToField qualified as PG
+import Database.SQLite.Simple qualified as SQL
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
+import Text.RawString.QQ (r)
 import Text.Read (readMaybe)
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Ledger.Shelley.API qualified as Ledger
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
@@ -55,15 +65,19 @@ import Ouroboros.Consensus.Node qualified as O
 
 import Marconi.ChainIndex.Error qualified as Marconi
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Node.Client.GenesisConfig qualified as GenesisConfig
-import Marconi.ChainIndex.Types (SecurityParam, epochStateDbName)
+import Marconi.ChainIndex.Types (SecurityParam, TxIndexInBlock, epochStateDbName, mintBurnDbName)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
 
 import Hedgehog ((===))
 import Hedgehog qualified as H
+import Hedgehog.Extras.Test.Base qualified as H
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
+
+import Cardano.Crypto.Hash qualified as Crypto
 
 main :: IO ()
 main = defaultMain tests
@@ -80,6 +94,10 @@ tests =
         "Compare all epoch stakepool sizes between Marconi and cardano-db-sync"
         "propEpochStakepoolSize"
         propEpochStakepoolSize
+    , testPropertyNamed
+        "Compare all burn events from Marconi's MintBurn indexer to cardano-db-sync"
+        "propMintBurn"
+        propMintBurn
     ]
 
 -- * Epoch nonce
@@ -186,9 +204,101 @@ openEpochStateIndexer = do
     let ledgerStateDirPath = dbDir </> "ledgerStates"
     throwIndexerError $ EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam
 
+-- * MintBurn
+
 propMintBurn :: H.Property
 propMintBurn = H.withTests 1 $ H.property $ do
-  pure ()
+  -- Open the indexer
+  (_, dbPath) <- getDbPath mintBurnDbName
+  securityParam <- getSecurityParam
+  indexer <- liftIO $ throwIndexerError $ MintBurn.open dbPath securityParam
+  let sqliteCon = MintBurn.sqlConnection $ indexer ^. Storable.handle
+
+  -- Connect to dbsync's Postgres
+  conn <- getDbSyncPgConnection
+
+  -- Get a random slot from what Marconi has indexed
+  slotNo <- getMarconiRandomSlot sqliteCon
+  -- TODO: The following is an example slot that fails the test
+  -- let slotNo = 23175533
+
+  let compareTxMintRows :: H.PropertyT IO ()
+      compareTxMintRows = do
+        marconi :: [MintBurn.TxMintRow] <- liftIO $ MintBurn.queryDbTxMintRowsAtSlot sqliteCon slotNo
+        dbsync :: [MintBurn.TxMintRow] <- liftIO $ PG.query_ conn $ dbsyncQueryTxMintRowsAtSlot slotNo
+        let msg =
+              show slotNo
+                <> "\nNumber of redeemers: "
+                <> (show $ length $ filter (isJust . MintBurn._txMintRowRedeemer) marconi)
+        liftIO $ putStrLn msg
+        H.footnote msg
+        sort marconi === sort dbsync -- TODO: this is the comparison that fails
+  let compareCounts :: H.PropertyT IO ()
+      compareCounts = do
+        [SQL.Only marconi] <-
+          liftIO
+            $ SQL.query
+              sqliteCon
+              "SELECT count(*) FROM minting_policy_events WHERE slotNo = ?"
+            $ SQL.Only slotNo
+        [PG.Only dbsync] <-
+          liftIO $
+            PG.query_ conn $
+              fromString $
+                dbsyncQueryTxMintRows ["count(*)"]
+                  <> " WHERE block.slot_no = "
+                  <> show (coerce @C.SlotNo @Word64 slotNo)
+
+        H.footnote $ show slotNo <> "\nCounts, marconi: " <> show marconi <> ", dbsync " <> show dbsync
+        (marconi :: Int) === (dbsync :: Int)
+
+  -- Compare
+  compareCounts
+  compareTxMintRows
+  where
+    getMarconiRandomSlot :: (H.MonadTest m, MonadIO m) => SQL.Connection -> m C.SlotNo
+    getMarconiRandomSlot con = do
+      SQL.Only slotNo <- H.headM =<< liftIO (SQL.query_ con "SELECT slotNo FROM minting_policy_events ORDER BY RANDOM() LIMIT 1")
+      return slotNo
+
+    dbsyncQueryTxMintRowsAtSlot :: C.SlotNo -> PG.Query
+    dbsyncQueryTxMintRowsAtSlot slotNo =
+      fromString $
+        dbsyncQueryTxMintRows fields
+          <> " WHERE block.slot_no = "
+          <> show (coerce @C.SlotNo @Word64 slotNo)
+      where
+        fields :: [String]
+        fields =
+          [ "block.slot_no"
+          , "block.hash"
+          , "block.block_no"
+          , "tx.block_index"
+          , "tx.hash"
+          , "multi_asset.policy"
+          , "multi_asset.name"
+          , "ma_tx_mint.quantity"
+          , "redeemer_join.hash"
+          , "redeemer_join.bytes"
+          ]
+
+    dbsyncQueryTxMintRows :: [String] -> String
+    dbsyncQueryTxMintRows select =
+      "SELECT "
+        <> intercalate ", " select
+        <> [r|
+                 FROM block
+                 JOIN tx          ON block.id = tx.block_id
+                 JOIN ma_tx_mint  ON tx.id = ma_tx_mint.tx_id
+                 JOIN multi_asset ON ma_tx_mint.ident = multi_asset.id
+
+            LEFT JOIN
+              ( SELECT DISTINCT redeemer.tx_id, redeemer_data.hash, redeemer_data.bytes
+                  FROM redeemer
+                  JOIN redeemer_data ON redeemer_data.id = redeemer.redeemer_data_id
+                 WHERE redeemer.purpose = 'mint'
+              ) redeemer_join ON redeemer_join.tx_id = tx.id
+          |]
 
 -- * Helpers
 
@@ -245,6 +355,9 @@ topLevelConfigFromNodeConfig nodeConfigPath = do
 
 -- * Postgres FromField & ToField instances
 
+deriving newtype instance Real C.EpochNo
+deriving newtype instance Integral C.EpochNo
+
 instance PG.FromField C.EpochNo where
   fromField f meta = fromIntegral @Integer <$> PG.fromField f meta
 
@@ -269,5 +382,85 @@ instance PG.FromField C.PoolId where
       Right a -> return a
       Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse PoolId, error: " <> show err
 
-deriving newtype instance Real C.EpochNo
-deriving newtype instance Integral C.EpochNo
+deriving newtype instance Real C.SlotNo
+deriving newtype instance Integral C.SlotNo
+instance PG.FromField C.SlotNo where
+  fromField f meta = fromIntegral @Integer <$> PG.fromField f meta
+
+deriving newtype instance Real C.BlockNo
+deriving newtype instance Integral C.BlockNo
+instance PG.FromField C.BlockNo where
+  fromField f meta = fromIntegral @Integer <$> PG.fromField f meta
+
+instance PG.FromField TxIndexInBlock where
+  fromField f meta = fromIntegral @Integer <$> PG.fromField f meta
+
+instance PG.FromField C.Quantity where
+  fromField f meta =
+    floatingOrInteger <$> PG.fromField f meta >>= \case
+      Left (d :: Double) -> PG.returnError PG.ConversionFailed f $ "Can't parse Quantity, is: " <> show d
+      Right w -> pure $ C.Quantity w
+
+instance PG.FromField C.TxId where
+  fromField f meta =
+    C.deserialiseFromRawBytes C.AsTxId <$> PG.fromField f meta >>= \case
+      Right a -> return a
+      Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse TxId, error: " <> show err
+
+instance PG.FromField C.PolicyId where
+  fromField f meta =
+    C.deserialiseFromRawBytes C.AsPolicyId <$> PG.fromField f meta >>= \case
+      Right a -> return a
+      Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse PolicyId, error: " <> show err
+
+instance PG.FromField (C.Hash C.BlockHeader) where
+  fromField f meta =
+    C.deserialiseFromRawBytes (C.proxyToAsType Proxy) <$> PG.fromField f meta >>= \case
+      Right a -> return a
+      Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse Hash BlockHeader, error: " <> show err
+
+instance PG.FromField C.AssetName where
+  fromField f meta =
+    C.deserialiseFromRawBytes (C.proxyToAsType Proxy) <$> PG.fromField f meta >>= \case
+      Right a -> return a
+      Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse AssetName, error: " <> show err
+
+instance PG.FromField C.ScriptData where
+  fromField f meta =
+    C.deserialiseFromCBOR C.AsScriptData <$> PG.fromField f meta >>= \case
+      Right a -> return a
+      Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse ScriptData, error: " <> show err
+
+instance PG.FromField (C.Hash C.ScriptData) where
+  fromField f meta =
+    C.deserialiseFromRawBytes (C.AsHash C.AsScriptData)
+      <$> PG.fromField f meta
+      >>= \case
+        Right a -> return a
+        Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse Hash ScriptData, error: " <> show err
+
+instance PG.FromRow MintBurn.TxMintRow where
+  fromRow =
+    MintBurn.TxMintRow
+      <$> PG.field @C.SlotNo
+      <*> PG.field @(C.Hash C.BlockHeader)
+      <*> PG.field @C.BlockNo
+      <*> PG.field @TxIndexInBlock
+      <*> PG.field @C.TxId
+      <*> PG.field @C.PolicyId
+      <*> PG.field @C.AssetName
+      <*> PG.field @C.Quantity
+      -- TODO: This is where we parse redeemers from dbsync postgres
+      <*> do
+        maybeRedeemerHash :: Maybe (C.Hash C.ScriptData) <- PG.field
+        maybeRedeemerData :: Maybe C.ScriptData <- PG.field
+        pure $
+          if
+              | Just redeemerData <- maybeRedeemerData
+              , Just redeemerHash <- maybeRedeemerHash ->
+                  Just $
+                    MintBurn.MintAssetRedeemer
+                      redeemerData
+                      redeemerHash
+              | otherwise ->
+                  Nothing

@@ -399,6 +399,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , cardano-api:{cardano-api, gen}  ^>=8.0
     , cardano-binary
     , cardano-crypto-class
+    , cardano-ledger-api
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-testnet
@@ -432,6 +433,8 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , optparse-applicative
     , postgresql-simple
     , prettyprinter
+    , raw-strings-qq
+    , scientific
     , serialise
     , sqlite-simple
     , stm
