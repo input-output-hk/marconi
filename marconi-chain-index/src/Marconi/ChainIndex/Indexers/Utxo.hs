@@ -81,7 +81,7 @@ import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.Ord (Down (Down))
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -944,10 +944,8 @@ instance Queryable UtxoHandle where
   queryStorage memoryEvents (UtxoHandle c _ _) (QueryUtxoByAddressWrapper (QueryUtxoByAddress addr slotInterval)) =
     liftSQLError CantQueryIndexer $ do
       persistedUtxoResults :: [UtxoResult] <- sqliteQuery c filters $ Just "ORDER BY u.slotNo ASC"
-      return $
-        UtxoResult $
-          mapMaybe filterAddSpent persistedUtxoResults
-            <> (bufferEvents >>= bufferEventUtxoResult)
+      bufferedUtxoResults <- concat <$> mapM bufferEventUtxoResult bufferEvents
+      return $ UtxoResult $ mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
     where
       UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent' =
         eventsAtAddress addr slotInterval memoryEvents
@@ -978,31 +976,36 @@ instance Queryable UtxoHandle where
           )
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
-      bufferEventUtxoResult :: StorableEvent UtxoHandle -> [UtxoResult]
-      bufferEventUtxoResult (UtxoEvent utxoSet _ bi datumMap) = mapMaybe toMaybeUtxoResult $ Set.toList utxoSet
+      bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO [UtxoResult]
+      bufferEventUtxoResult (UtxoEvent utxoSet _ bi datumMap) = catMaybes <$> mapM toMaybeUtxoResult (Set.toList utxoSet)
         where
-          toMaybeUtxoResult :: Utxo -> Maybe UtxoResult
+          toMaybeUtxoResult :: Utxo -> IO (Maybe UtxoResult)
           toMaybeUtxoResult u =
             let findSelfIn = Map.lookup (_txIn u)
              in if
-                    | Just _ <- findSelfIn bufferSpent' -> Nothing
-                    | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just $ toUtxoResult u maybeSpentInfo
-                    | otherwise -> Just $ toUtxoResult u Nothing
+                    | Just _ <- findSelfIn bufferSpent' -> return Nothing
+                    | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just <$> toUtxoResult u maybeSpentInfo
+                    | otherwise -> Just <$> toUtxoResult u Nothing
 
-          toUtxoResult :: Utxo -> Maybe SpentInfo -> UtxoResult
-          toUtxoResult u maybeSpentInfo =
-            UtxoResult_
-              { utxoResultAddress = _address u
-              , utxoResultTxIn = _txIn u
-              , utxoResultDatum = flip Map.lookup datumMap =<< _datumHash u
-              , utxoResultDatumHash = _datumHash u
-              , utxoResultValue = _value u
-              , utxoResultInlineScript = _inlineScript u
-              , utxoResultInlineScriptHash = _inlineScriptHash u
-              , utxoResultTxIndexInBlock = _txIndexInBlock u
-              , utxoResultBlockInfo = bi
-              , utxoResultSpentInfo = maybeSpentInfo
-              }
+          toUtxoResult :: Utxo -> Maybe SpentInfo -> IO UtxoResult
+          toUtxoResult u maybeSpentInfo = do
+            let maybeDatumHash = _datumHash u
+            maybeDatum <- case flip Map.lookup datumMap =<< maybeDatumHash of
+              Just datum -> return $ Just datum
+              Nothing -> maybe (pure Nothing) (fmap (fmap Datum.datumRowDatum) . Datum.findDatum c) maybeDatumHash
+            return $
+              UtxoResult_
+                { utxoResultAddress = _address u
+                , utxoResultTxIn = _txIn u
+                , utxoResultDatum = maybeDatum
+                , utxoResultDatumHash = maybeDatumHash
+                , utxoResultValue = _value u
+                , utxoResultInlineScript = _inlineScript u
+                , utxoResultInlineScriptHash = _inlineScriptHash u
+                , utxoResultTxIndexInBlock = _txIndexInBlock u
+                , utxoResultBlockInfo = bi
+                , utxoResultSpentInfo = maybeSpentInfo
+                }
   queryStorage es (UtxoHandle c _ _) LastSyncedBlockInfoQuery =
     let queryLastSlot =
           [r|SELECT u.slotNo, u.blockHeaderHash, u.blockNo, u.blockTimestamp, u.epochNo

@@ -10,6 +10,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.TxWits qualified as Ledger
 import Data.Either (rights)
+import Data.Maybe (listToMaybe)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
@@ -123,3 +124,11 @@ insertRows c =
   SQL.executeMany
     c
     "INSERT OR IGNORE INTO datumhash_datum (datum_hash, datum) VALUES (?, ?)"
+
+findDatum :: SQL.Connection -> C.Hash C.ScriptData -> IO (Maybe DatumRow)
+findDatum c hash = do
+  listToMaybe
+    <$> SQL.query
+      c
+      "SELECT datum_hash, datum FROM datumhash_datum WHERE datum_hash = ?"
+      (SQL.Only hash)

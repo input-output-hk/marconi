@@ -77,7 +77,6 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (
   catMaybes,
-  listToMaybe,
   mapMaybe,
  )
 import Data.Set (Set)
@@ -369,13 +368,8 @@ instance Queryable AddressDatumHandle where
       let unresolvedDatumHashes =
             Set.toList $ fold (Map.elems addressDatumMap) `Set.difference` Map.keysSet datumMap
       datums <- forM unresolvedDatumHashes $ \dh -> do
-        (datum :: Maybe Datum.DatumRow) <-
-          listToMaybe
-            <$> SQL.query
-              c
-              "SELECT datum_hash, datum FROM datumhash_datum WHERE datum_hash = ?"
-              (SQL.Only dh)
-        pure $ fmap (\(Datum.DatumRow _ d) -> (dh, d)) datum
+        maybeDatumRow <- Datum.findDatum c dh
+        pure $ fmap (\(Datum.DatumRow _ d) -> (dh, d)) maybeDatumRow
       let resolvedDatumHashes = Map.fromList $ catMaybes datums
 
       pure $
