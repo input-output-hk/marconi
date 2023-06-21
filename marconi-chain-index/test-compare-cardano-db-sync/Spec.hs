@@ -56,7 +56,7 @@ import Ouroboros.Consensus.Node qualified as O
 import Marconi.ChainIndex.Error qualified as Marconi
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Node.Client.GenesisConfig qualified as GenesisConfig
-import Marconi.ChainIndex.Types (epochStateDbName)
+import Marconi.ChainIndex.Types (SecurityParam, epochStateDbName)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
 
@@ -81,6 +81,8 @@ tests =
         "propEpochStakepoolSize"
         propEpochStakepoolSize
     ]
+
+-- * Epoch nonce
 
 {- | Connect to cardano-db-sync's postgres instance, get all (EpochNo,
  Nonce) tuples, query and compare all of these to the one found in
@@ -110,6 +112,18 @@ queryIndexerEpochNonce epochNo indexer = do
   case res' of
     EpochState.NonceByEpochNoResult res -> return $ EpochState.epochNonceRowNonce <$> res
     _ -> return Nothing
+
+indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
+indexerStakepoolSizes epochNo indexer = do
+  let query = EpochState.ActiveSDDByEpochNoQuery epochNo
+  result <- throwIndexerError $ Storable.query indexer query
+  case result of
+    EpochState.ActiveSDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
+    _ -> return undefined
+  where
+    toPair row = (EpochState.epochSDDRowPoolId row, EpochState.epochSDDRowLovelace row)
+
+-- * SDD
 
 {- | Connect to cardano-db-sync's postgres instance, get minimum and
  maximum epoch no from epoch_stake table, then compare random 10
@@ -162,33 +176,37 @@ dbSyncStakepoolSizes conn epochNo = do
       | 1 <- denominator n = fromIntegral $ numerator n
       | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
 
-indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
-indexerStakepoolSizes epochNo indexer = do
-  let query = EpochState.ActiveSDDByEpochNoQuery epochNo
-  result <- throwIndexerError $ Storable.query indexer query
-  case result of
-    EpochState.ActiveSDDByEpochNoResult rows -> return $ Map.fromList $ map toPair rows
-    _ -> return undefined
-  where
-    toPair row = (EpochState.epochSDDRowPoolId row, EpochState.epochSDDRowLovelace row)
-
 openEpochStateIndexer :: H.PropertyT IO (Storable.State EpochState.EpochStateHandle)
 openEpochStateIndexer = do
-  socketPath <- envOrFail "CARDANO_NODE_SOCKET_PATH"
   nodeConfigPath <- envOrFail "CARDANO_NODE_CONFIG_PATH"
+  securityParam <- getSecurityParam
+  (dbDir, dbPath) <- getDbPath epochStateDbName
+  liftIO $ do
+    topLevelConfig <- topLevelConfigFromNodeConfig nodeConfigPath
+    let ledgerStateDirPath = dbDir </> "ledgerStates"
+    throwIndexerError $ EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam
+
+propMintBurn :: H.Property
+propMintBurn = H.withTests 1 $ H.property $ do
+  pure ()
+
+-- * Helpers
+
+getDbPath :: FilePath -> H.PropertyT IO (FilePath, FilePath)
+getDbPath dbName = do
   dbDir <- envOrFail "MARCONI_DB_DIRECTORY_PATH"
+  return $ (dbDir, dbDir </> dbName)
+
+getSecurityParam :: H.PropertyT IO SecurityParam
+getSecurityParam = do
+  socketPath <- envOrFail "CARDANO_NODE_SOCKET_PATH"
   networkMagicStr <- envOrFail "NETWORK_MAGIC"
   networkMagic <- case networkMagicStr of
     "mainnet" -> return C.Mainnet
     _ -> case readMaybe networkMagicStr of
       Nothing -> fail $ "Can't parse network magic: " <> networkMagicStr
       Just word32 -> return $ C.Testnet $ C.NetworkMagic word32
-  liftIO $ do
-    securityParam <- throwIndexerError $ Utils.querySecurityParam networkMagic socketPath
-    topLevelConfig <- topLevelConfigFromNodeConfig nodeConfigPath
-    let dbPath = dbDir </> epochStateDbName
-        ledgerStateDirPath = dbDir </> "ledgerStates"
-    throwIndexerError $ EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam
+  liftIO $ throwIndexerError $ Utils.querySecurityParam networkMagic socketPath
 
 throwIndexerError :: Monad m => ExceptT Marconi.IndexerError m a -> m a
 throwIndexerError action = either throw return =<< runExceptT action
@@ -225,7 +243,7 @@ topLevelConfigFromNodeConfig nodeConfigPath = do
   genesisConfig <- either (error . show . GenesisConfig.renderGenesisConfigError) pure genesisConfigE
   return $ O.pInfoConfig (GenesisConfig.mkProtocolInfoCardano genesisConfig)
 
--- * FromField & ToField instances
+-- * Postgres FromField & ToField instances
 
 instance PG.FromField C.EpochNo where
   fromField f meta = fromIntegral @Integer <$> PG.fromField f meta
