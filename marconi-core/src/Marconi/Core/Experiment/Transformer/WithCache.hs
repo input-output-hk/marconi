@@ -55,7 +55,7 @@ import Marconi.Core.Experiment.Type (
 
 data CacheConfig query event = CacheConfig
   { _configCache :: Map query (Result query)
-  , _configOnForward :: Timed (Point event) event -> Result query -> Result query
+  , _configOnForward :: Timed (Point event) (Maybe event) -> Result query -> Result query
   }
 
 configCache :: Lens' (CacheConfig query event) (Map query (Result query))
@@ -64,12 +64,12 @@ configCache = lens _configCache (\cfg c -> cfg{_configCache = c})
 configCacheEntries :: IndexedTraversal' query (CacheConfig query event) (Result query)
 configCacheEntries f cfg =
   (\c -> cfg{_configCache = c})
-    <$> Map.traverseWithKey (indexed f) (_configCache cfg)
+    <$> Map.traverseWithKey (indexed f) (cfg ^. configCache)
 
 configOnForward
   :: Getter
       (CacheConfig query event)
-      (Timed (Point event) event -> Result query -> Result query)
+      (Timed (Point event) (Maybe event) -> Result query -> Result query)
 configOnForward = to _configOnForward
 
 {- | Setup a cache for some requests.
@@ -98,7 +98,7 @@ deriving via
 -}
 withCache
   :: Ord query
-  => (Timed (Point event) event -> Result query -> Result query)
+  => (Timed (Point event) (Maybe event) -> Result query -> Result query)
   -> indexer event
   -> WithCache query indexer event
 withCache _configOnForward =
@@ -139,7 +139,7 @@ instance
 onForward
   :: Getter
       (WithCache query indexer event)
-      (Timed (Point event) event -> Result query -> Result query)
+      (Timed (Point event) (Maybe event) -> Result query -> Result query)
 onForward = cacheWrapper . wrapperConfig . configOnForward
 
 {- | Add a cache for a specific query.

@@ -15,6 +15,7 @@ module Marconi.Core.Experiment.Transformer.IndexWrapper (
   resetVia,
   indexVia,
   indexAllDescendingVia,
+  indexAllVia,
   lastSyncPointVia,
   closeVia,
   queryVia,
@@ -31,6 +32,7 @@ import Marconi.Core.Experiment.Class (
   Queryable (query),
   Resetable (reset),
   Rollbackable (rollback),
+  indexAll,
   queryLatest,
  )
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
@@ -66,7 +68,7 @@ instance IndexerTrans (IndexWrapper config) where
 indexVia
   :: (IsIndex m event indexer, Eq (Point event))
   => Lens' s (indexer event)
-  -> Timed (Point event) event
+  -> Timed (Point event) (Maybe event)
   -> s
   -> m s
 indexVia l = l . index
@@ -77,10 +79,21 @@ indexVia l = l . index
 indexAllDescendingVia
   :: (Ord (Point event), IsIndex m event indexer, Traversable f)
   => Lens' s (indexer event)
-  -> f (Timed (Point event) event)
+  -> f (Timed (Point event) (Maybe event))
   -> s
   -> m s
 indexAllDescendingVia l = l . indexAllDescending
+
+{- | Helper to implement the @index@ functon of 'IsIndex' when we use a wrapper.
+ If you don't want to perform any other side logic, use @deriving via@ instead.
+-}
+indexAllVia
+  :: (Ord (Point event), IsIndex m event indexer, Traversable f)
+  => Lens' s (indexer event)
+  -> f (Timed (Point event) (Maybe event))
+  -> s
+  -> m s
+indexAllVia l = l . indexAll
 
 instance
   (IsIndex m event indexer)

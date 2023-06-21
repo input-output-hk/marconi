@@ -23,6 +23,7 @@ import Marconi.Core.Experiment.Class (
   IsSync (lastSyncPoint),
   Resetable (reset),
   Rollbackable (rollback),
+  indexIfJust,
  )
 import Marconi.Core.Experiment.Type (Point, Timed, point)
 
@@ -43,17 +44,13 @@ mkListIndexer :: HasGenesis (Point event) => ListIndexer event
 mkListIndexer = ListIndexer [] genesis
 
 instance Monad m => IsIndex m event ListIndexer where
-  index timedEvent ix =
-    let appendEvent :: ListIndexer event -> ListIndexer event
-        appendEvent = events %~ (timedEvent :)
+  index =
+    let appendEvent :: Timed (Point event) event -> ListIndexer event -> m (ListIndexer event)
+        appendEvent te = pure . (events %~ (te :))
 
-        updateLatest :: ListIndexer event -> ListIndexer event
-        updateLatest = latest .~ (timedEvent ^. point)
-     in do
-          pure $
-            ix
-              & appendEvent
-              & updateLatest
+        updateLatest :: Point event -> ListIndexer event -> m (ListIndexer event)
+        updateLatest p = pure . (latest .~ p)
+     in indexIfJust appendEvent updateLatest
 
 instance Applicative m => IsSync m event ListIndexer where
   lastSyncPoint = pure . view latest
@@ -74,10 +71,7 @@ instance Applicative m => Rollbackable m event ListIndexer where
      in pure $
           if isIndexBeforeRollback ix
             then ix -- if we're already before the rollback, we don't have to do anything
-            else
-              ix
-                & cleanEventsAfterRollback
-                & adjustLatestPoint
+            else adjustLatestPoint $ cleanEventsAfterRollback ix
 
 instance
   ( HasGenesis (Point event)

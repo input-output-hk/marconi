@@ -33,11 +33,13 @@ import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
 
 import Data.Foldable (Foldable (toList), traverse_)
+import Data.Maybe (catMaybes)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
   IsIndex (index, indexAllDescending),
   IsSync (lastSyncPoint),
+  indexIfJust,
  )
 import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError, InvalidIndexer),
@@ -176,16 +178,21 @@ instance
   (MonadIO m, MonadError IndexerError m)
   => IsIndex m event SQLiteIndexer
   where
-  index timedEvent indexer = do
-    runIndexQueries (indexer ^. handle) [timedEvent] (indexer ^. insertPlan)
-    pure $ indexer & dbLastSync .~ (timedEvent ^. point)
+  index =
+    let addEvent e indexer = do
+          runIndexQueries (indexer ^. handle) [e] (indexer ^. insertPlan)
+          pure indexer
+        setDbLastSync p indexer = pure $ indexer & dbLastSync .~ p
+     in indexIfJust addEvent setDbLastSync
 
   indexAllDescending evts indexer = do
     let updateLastSync = case toList evts of
           [] -> id
           (x : _xs) -> dbLastSync .~ (x ^. point)
-
-    runIndexQueries (indexer ^. handle) (toList evts) (indexer ^. insertPlan)
+    runIndexQueries
+      (indexer ^. handle)
+      (catMaybes . toList $ sequence <$> evts)
+      (indexer ^. insertPlan)
     pure $ updateLastSync indexer
 
 instance MonadIO m => IsSync m event SQLiteIndexer where
