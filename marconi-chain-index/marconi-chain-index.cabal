@@ -122,6 +122,7 @@ library
     , mwc-random
     , optparse-applicative
     , prettyprinter
+    , prometheus-client
     , serialise
     , sqlite-simple
     , stm

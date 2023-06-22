@@ -75,10 +75,12 @@ library
   build-depends:
     , aeson
     , base                  >=4.9 && <5
+    , bytestring
     , filepath
     , lens
     , mtl
     , optparse-applicative
+    , prometheus-client
     , servant
     , servant-server
     , stm                   >=2.5

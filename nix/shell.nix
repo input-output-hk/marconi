@@ -10,7 +10,18 @@ in
 {
   name = "marconi";
 
-  packages = [ cardano-cli cardano-node ];
+  packages = [
+    cardano-cli
+    cardano-node
+    inputs.mithril.packages.${pkgs.system}.mithril-client
+  ];
+
+  scripts = {
+    start-benchmark-machine = import ./scripts/start-benchmarking-machine.nix {
+      inherit inputs pkgs project;
+      enable = false;
+    };
+  };
 
   env = {
     CARDANO_CLI = "${cardano-cli}/bin/cardano-cli";

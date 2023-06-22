@@ -119,9 +119,14 @@ import Prettyprinter (
   (<+>),
  )
 import Prettyprinter.Render.Text (renderStrict)
+import Prometheus qualified as P
+import Streaming qualified as S
 import Streaming.Prelude qualified as S
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (
+  takeDirectory,
+  (</>),
+ )
 import System.Timeout (timeout)
 
 -- DatumIndexer
@@ -600,12 +605,11 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
         cliCp -> cliCp -- otherwise use what was provided on CLI.
   c <- defaultConfigStdout
   withTrace c traceName $ \trace ->
-    let io =
-          withChainSyncEventEpochNoStream
-            socketPath
-            networkId
-            [chainPoint]
-            (mkIndexerStream coordinator . chainSyncEventStreamLogging trace)
+    let stream =
+          mkIndexerStream coordinator
+            . chainSyncEventStreamLogging trace
+            . updateProcessedBlocksMetric
+        io = withChainSyncEventEpochNoStream socketPath networkId [chainPoint] stream
         handleException NoIntersectionFound =
           logError trace $
             renderStrict $
@@ -615,6 +619,27 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
                   <> "."
                   <+> "Please check the slot number and the block hash do belong to the chain"
      in finally (io `catch` handleException) (cleanExit coordinator)
+
+updateProcessedBlocksMetric
+  :: S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode, C.EpochNo, POSIXTime))) IO r
+  -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode, C.EpochNo, POSIXTime))) IO r
+updateProcessedBlocksMetric s = S.effect $ do
+  processedBlocksCounter <-
+    liftIO $
+      P.register $
+        P.counter (P.Info "processed_blocks_counter" "Number of processed blocks")
+  processedRollbacksCounter <-
+    liftIO $
+      P.register $
+        P.counter (P.Info "processed_rollbacks_counter" "Number of processed rollbacks")
+  pure $ S.chain (updateMetrics processedBlocksCounter processedRollbacksCounter) s
+  where
+    updateMetrics
+      :: P.Counter -> P.Counter -> ChainSyncEvent (BlockInMode CardanoMode, C.EpochNo, POSIXTime) -> IO ()
+    updateMetrics processedBlocksCounter _ RollForward{} =
+      P.incCounter processedBlocksCounter
+    updateMetrics _ processedRollbacksCounter RollBackward{} =
+      P.incCounter processedRollbacksCounter
 
 updateWith
   :: MVar a

@@ -12,8 +12,11 @@ import Cardano.Api ()
 import Control.Lens ((^.))
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (Bifunctor (bimap), first)
+import Data.ByteString qualified as BS
 import Data.Proxy (Proxy (Proxy))
+import Data.String (fromString)
 import Data.Text (Text, pack, unpack)
+import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
@@ -45,6 +48,7 @@ import Network.JsonRpc.Types (
   mkJsonRpcParseErr,
  )
 import Network.Wai.Handler.Warp (runSettings)
+import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler, Server, serve)
 
@@ -74,7 +78,10 @@ jsonRpcServer env =
 restApiServer
   :: SidechainEnv
   -> Server RestAPI
-restApiServer env = getTimeHandler :<|> getTargetAddressesHandler env
+restApiServer env =
+  getTimeHandler
+    :<|> getTargetAddressesHandler env
+    :<|> getMetricsHandler
 
 httpRpcServer
   :: SidechainEnv
@@ -105,6 +112,9 @@ getTargetAddressesHandler env =
   pure $
     Q.Utxo.reportBech32Addresses $
       env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer
+
+getMetricsHandler :: Handler Text
+getMetricsHandler = liftIO $ Text.decodeUtf8 . BS.toStrict <$> P.exportMetricsAsText
 
 -- | prints TargetAddresses Bech32 representation as thru JsonRpc
 getTargetAddressesQueryHandler
