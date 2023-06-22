@@ -6,8 +6,8 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
                            [(-n|--slot-no SLOT-NO)
                              (-b|--block-header-hash BLOCK-HEADER-HASH)] 
                            [--max-indexing-depth | --min-indexing-depth NATURAL]
-                           (-d|--db-dir DIR) [--disable-utxo] 
-                           [--disable-address-datum] [--disable-datum] 
+                           (-d|--db-dir DIR) [--enable-txoutref] 
+                           [--disable-utxo] [--disable-address-datum] 
                            [--disable-script-tx] 
                            [--disable-epoch-stakepool-size] [--disable-mintburn]
                            [(-a|--addresses-to-index BECH32-ADDRESS)] 
@@ -28,9 +28,9 @@ Available options:
                            Depth of an event before it is indexed
   -d,--db-dir DIR          Directory path where all SQLite databases are
                            located.
+  --enable-txoutref        enable txout ref storage.
   --disable-utxo           disable utxo indexers.
   --disable-address-datum  disable address->datum indexers.
-  --disable-datum          disable datum indexers.
   --disable-script-tx      disable script-tx indexers.
   --disable-epoch-stakepool-size
                            disable epoch stakepool size indexers.

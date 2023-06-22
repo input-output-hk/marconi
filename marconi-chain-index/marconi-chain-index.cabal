@@ -161,6 +161,7 @@ executable marconi-chain-index
   import:         lang
   hs-source-dirs: app
   main-is:        Main.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
 
   --------------------
   -- Local components
@@ -178,6 +179,7 @@ executable marconi-chain-index-experimental
   import:         lang
   hs-source-dirs: app
   main-is:        Experimental.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
 
   --------------------
   -- Local components
