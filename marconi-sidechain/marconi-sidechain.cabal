@@ -89,6 +89,7 @@ executable marconi-sidechain
   import:         lang
   hs-source-dirs: app
   main-is:        Main.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
 
   --------------------
   -- Local components
