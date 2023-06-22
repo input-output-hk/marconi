@@ -67,6 +67,7 @@ class Monad m => IsIndex m event indexer where
 
   {-# MINIMAL index #-}
 
+-- TODO Doc
 indexIfJust
   :: IsIndex m event indexer
   => (Timed (Point event) event -> indexer event -> m (indexer event))

@@ -475,7 +475,7 @@ instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
 
 {- | Extract UtxoEvents from Cardano Block
 
- Returns @Nothing@ if the block dont consume or spent any utxo
+ Returns @Nothing@ if the block doesn't consume or spend any utxo
 -}
 getUtxoEventsFromBlock
   :: C.IsCardanoEra era

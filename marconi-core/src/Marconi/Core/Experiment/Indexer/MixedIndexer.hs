@@ -6,6 +6,8 @@
     An indexer that uses an indexer for recent events (usually in-memory)
     and another one for older events (usually on-disk).
 
+    TODO ascii diagram
+
     See "Marconi.Core.Experiment" for documentation.
 -}
 module Marconi.Core.Experiment.Indexer.MixedIndexer (
@@ -67,17 +69,18 @@ instance (Applicative m, Ord (Point event)) => Flushable m event ListIndexer whe
     let (freshest, oldest) = span ((> p) . view point) $ ix ^. events
      in pure (oldest, ix & events .~ freshest)
 
+-- TODO: Separate state and config
 data MixedIndexerConfig store event = MixedIndexerConfig
   { _configKeepInMemory :: Word
   -- ^ How many events are kept in memory after a flush
   , _configFlushEvery :: Word
-  -- ^ How many Point do we wait until a flush (MUST be strictly poisitive)
+  -- ^ How many Point do we wait until a flush (MUST be strictly positive)
   , _configFlushPoints :: Seq (Point event)
   -- ^ The next coming flush points
-  , _configStepsBeforeNextFlush :: Word
-  -- ^ How many forward event before the next flush point
+  , _configStepsBeforeNextFlushPointCreation :: Word
+  -- ^ How many events before creation the next flush point
   , _configCurrentMemorySize :: Word
-  -- ^ How many events are in the inMemory buffer
+  -- ^ How many events are in the inMemory buffer (triggers a flush on _configKeepInMemory + _configFlushEvery)
   , _configInDatabase :: store event
   -- ^ In database storage, usually for data that can't be rollbacked
   }
@@ -124,8 +127,9 @@ makeLenses ''MixedIndexer
 flushPoints :: Lens' (MixedIndexer store mem event) (Seq (Point event))
 flushPoints = mixedWrapper . wrapperConfig . configFlushPoints
 
+-- TODO Rename
 stepsBeforeNextFlush :: Lens' (MixedIndexer store mem event) Word
-stepsBeforeNextFlush = mixedWrapper . wrapperConfig . configStepsBeforeNextFlush
+stepsBeforeNextFlush = mixedWrapper . wrapperConfig . configStepsBeforeNextFlushPointCreation
 
 currentMemorySize :: Lens' (MixedIndexer store mem event) Word
 currentMemorySize = mixedWrapper . wrapperConfig . configCurrentMemorySize
