@@ -241,7 +241,7 @@ instance Buffered AddressDatumHandle where
              VALUES (?, ?, ?, ?)|]
       SQL.executeMany
         c
-        [r|INSERT OR IGNORE INTO datumhash_hash
+        [r|INSERT OR IGNORE INTO datumhash_datum
              ( datum_hash
              , datum
              )
