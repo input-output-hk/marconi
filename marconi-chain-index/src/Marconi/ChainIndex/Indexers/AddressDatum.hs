@@ -77,6 +77,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (
   catMaybes,
+  listToMaybe,
   mapMaybe,
  )
 import Data.Set (Set)
@@ -186,6 +187,17 @@ instance SQL.ToRow AddressDatumHashRow where
 
 deriving anyclass instance SQL.FromRow AddressDatumHashRow
 
+data DatumRow = DatumRow
+  { datumRowDatumHash :: C.Hash C.ScriptData
+  , datumRowDatum :: C.ScriptData
+  }
+  deriving (Show, Generic)
+
+instance SQL.ToRow DatumRow where
+  toRow (DatumRow dh d) = [SQL.toField dh, SQL.toField d]
+
+deriving anyclass instance SQL.FromRow DatumRow
+
 toAddressDatumIndexEvent
   :: Maybe (C.Address C.ShelleyAddr -> Bool)
   -> [C.Tx era]
@@ -194,10 +206,10 @@ toAddressDatumIndexEvent
 toAddressDatumIndexEvent addressFilter txs = AddressDatumIndexEvent addressDatumHashMap (Map.union filteredTxOutDatums plutusDatums)
   where
     plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
-    plutusDatums = Datum.txsPlutusDatumsMap txs
+    plutusDatums = Datum.getPlutusDatumsFromTxs txs
 
     filteredAddressDatums :: [(C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))]
-    filteredAddressDatums = Datum.filteredAddressDatums addressFilter txs
+    filteredAddressDatums = Datum.getFilteredAddressDatumsFromTxs addressFilter txs
 
     filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
     filteredTxOutDatums = Map.fromList $ rights $ map snd filteredAddressDatums
@@ -227,7 +239,14 @@ instance Buffered AddressDatumHandle where
               , block_hash
               )
              VALUES (?, ?, ?, ?)|]
-      Datum.insertRows c datumRows
+      SQL.executeMany
+        c
+        [r|INSERT OR IGNORE INTO datumhash_hash
+             ( datum_hash
+             , datum
+             )
+             VALUES (?, ?)|]
+        datumRows
       SQL.execute_ c "COMMIT"
       pure h
     where
@@ -269,9 +288,9 @@ instance Buffered AddressDatumHandle where
           (SQL.Only (sn :: Integer))
       pure $ asEvents res
 
-toDatumRow :: StorableEvent AddressDatumHandle -> [Datum.DatumRow]
+toDatumRow :: StorableEvent AddressDatumHandle -> [DatumRow]
 toDatumRow (AddressDatumIndexEvent _ datumMap _) =
-  fmap (uncurry Datum.DatumRow) $ Map.toList datumMap
+  fmap (uncurry DatumRow) $ Map.toList datumMap
 
 -- | This function recomposes the in-memory format from the database records.
 asEvents
@@ -368,8 +387,8 @@ instance Queryable AddressDatumHandle where
       let unresolvedDatumHashes =
             Set.toList $ fold (Map.elems addressDatumMap) `Set.difference` Map.keysSet datumMap
       datums <- forM unresolvedDatumHashes $ \dh -> do
-        maybeDatumRow <- Datum.findDatum c dh
-        pure $ fmap (\(Datum.DatumRow _ d) -> (dh, d)) maybeDatumRow
+        maybeDatumRow <- findDatum dh
+        pure $ fmap (\(DatumRow _ d) -> (dh, d)) maybeDatumRow
       let resolvedDatumHashes = Map.fromList $ catMaybes datums
 
       pure $
@@ -396,6 +415,14 @@ instance Queryable AddressDatumHandle where
       resolveMapKeys keys m =
         -- TODO Not efficient to convert back n forth between Set
         Set.fromList $ mapMaybe (\k -> Map.lookup k m) $ Set.toList keys
+
+      findDatum :: C.Hash C.ScriptData -> IO (Maybe DatumRow)
+      findDatum hash = do
+        listToMaybe
+          <$> SQL.query
+            c
+            "SELECT datum_hash, datum FROM datumhash_datum WHERE datum_hash = ?"
+            (SQL.Only hash)
 
 instance Rewindable AddressDatumHandle where
   rewindStorage
@@ -436,7 +463,13 @@ open dbPath (AddressDatumDepth k) = do
             , slot_no INT NOT NULL
             , block_hash BLOB NOT NULL
             )|]
-  lift $ Datum.createTable c
+  lift $
+    SQL.execute_
+      c
+      [r|CREATE TABLE IF NOT EXISTS datumhash_datum
+                      ( datum_hash BLOB PRIMARY KEY
+                      , datum BLOB
+                      )|]
   lift $
     SQL.execute_
       c

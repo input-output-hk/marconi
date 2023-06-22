@@ -21,7 +21,7 @@
 --
 -- @
 --      |---------+------+------+-----------+-------+--------------+------------------+----------------+--------+-----------------+---------+----------------+---------|
---      | Address | TxId | TxIx | DatumHash | Value | InlineScript | InlineScriptHash | TxIndexInBlock | SlotNo | BlockHeaderHash | BlockNo | BlockTimestamp | EpochNo |
+--      | Address | TxId | TxIx | DatumHash | Value | InlineScript | InlineScriptHash | TxIndexInBlock | SlotNo | BlockHeaderHash | BlockNo | BlockTimestamp | EpochNo
 --      |---------+------+------+-----------+-------+--------------+------------------+----------------+--------+-----------------+---------+----------------+---------|
 -- @
 --
@@ -81,7 +81,7 @@ import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import Data.Ord (Down (Down))
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -632,6 +632,17 @@ instance FromRow UtxoResult where
             | Just a' <- a, Just b' <- b -> pure $ Just $ SpentInfo a' b'
             | otherwise -> pure Nothing
 
+data DatumRow = DatumRow
+  { datumRowDatumHash :: C.Hash C.ScriptData
+  , datumRowDatum :: C.ScriptData
+  }
+  deriving (Show, Generic)
+
+instance SQL.ToRow DatumRow where
+  toRow (DatumRow dh d) = [toField dh, toField d]
+
+deriving anyclass instance SQL.FromRow DatumRow
+
 {- | Open a connection to DB, and create resources
  The parameter ((k + 1) * 2) specifies the amount of events that are buffered.
  The larger the number, the more RAM the indexer uses. However, we get improved SQL
@@ -701,7 +712,13 @@ open dbPath (Depth k) isToVacuume = do
       [r|CREATE INDEX IF NOT EXISTS
                       unspent_transaction_address ON unspent_transactions (address)|]
 
-  lift $ Datum.createTable c
+  lift $
+    SQL.execute_
+      c
+      [r|CREATE TABLE IF NOT EXISTS datumhash_datum
+                      ( datum_hash BLOB PRIMARY KEY
+                      , datum BLOB
+                      )|]
 
   emptyState k (UtxoHandle c k isToVacuume)
 
@@ -723,7 +740,7 @@ instance Buffered UtxoHandle where
     liftSQLError CantInsertEvent $ do
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
-          datumRows = fmap (uncurry Datum.DatumRow) $ Map.toList $ foldMap ueDatum events
+          datumRows = fmap (uncurry DatumRow) $ Map.toList $ foldMap ueDatum events
       bracket_
         (SQL.execute_ c "BEGIN")
         (SQL.execute_ c "COMMIT")
@@ -756,7 +773,14 @@ instance Buffered UtxoHandle where
             ) VALUES
             (?, ?, ?, ?, ?, ?, ?, ?)|]
               spents
-            `concurrently_` Datum.insertRows c datumRows
+            `concurrently_` SQL.executeMany
+              c
+              [r|INSERT OR IGNORE INTO datumhash_datum
+                   ( datum_hash
+                   , datum
+                   )
+                   VALUES (?, ?)|]
+              datumRows
         )
       -- We want to perform vacuum about once every 100
       when toVacuume $ do
@@ -991,7 +1015,7 @@ instance Queryable UtxoHandle where
             let maybeDatumHash = _datumHash u
             maybeDatum <- case flip Map.lookup datumMap =<< maybeDatumHash of
               Just datum -> return $ Just datum
-              Nothing -> maybe (pure Nothing) (fmap (fmap Datum.datumRowDatum) . Datum.findDatum c) maybeDatumHash
+              Nothing -> maybe (pure Nothing) (fmap (fmap datumRowDatum) . findDatum) maybeDatumHash
             return $
               UtxoResult_
                 { utxoResultAddress = _address u
@@ -1005,6 +1029,13 @@ instance Queryable UtxoHandle where
                 , utxoResultBlockInfo = bi
                 , utxoResultSpentInfo = maybeSpentInfo
                 }
+          findDatum :: C.Hash C.ScriptData -> IO (Maybe DatumRow)
+          findDatum hash = do
+            listToMaybe
+              <$> SQL.query
+                c
+                "SELECT datum_hash, datum FROM datumhash_datum WHERE datum_hash = ?"
+                (SQL.Only hash)
   queryStorage es (UtxoHandle c _ _) LastSyncedBlockInfoQuery =
     let queryLastSlot =
           [r|SELECT u.slotNo, u.blockHeaderHash, u.blockNo, u.blockTimestamp, u.epochNo
@@ -1116,9 +1147,9 @@ getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs b
       resolvedUtxos :: Set Utxo
       resolvedUtxos = Set.fromList $ Map.elems utxos
       plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
-      plutusDatums = Datum.txsPlutusDatumsMap txs
+      plutusDatums = Datum.getPlutusDatumsFromTxs txs
       filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
-      filteredTxOutDatums = Map.fromList $ rights $ map snd $ Datum.filteredAddressDatums (addressesToPredicate maybeTargetAddresses) txs
+      filteredTxOutDatums = Map.fromList $ rights $ map snd $ Datum.getFilteredAddressDatumsFromTxs (addressesToPredicate maybeTargetAddresses) txs
    in UtxoEvent resolvedUtxos spentTxOuts bi $ Map.union plutusDatums filteredTxOutDatums
 
 -- | does the transaction contain a targetAddress
@@ -1184,7 +1215,7 @@ getUtxoFromTxOut (UtxoIndexerConfig maybeTargetAddresses storeReferenceScript) _
       }
   where
     _address = toAddr addr
-    (_datum, _datumHash) = case Datum.txOutDatumOrHash dtum of
+    (_datum, _datumHash) = case Datum.getTxOutDatumOrHash dtum of
       Nothing -> (Nothing, Nothing)
       Just e -> case e of
         Left hash -> (Nothing, Just hash)

@@ -68,9 +68,9 @@ genUtxoEventsWithTxs' genTxBodyContent = do
                 Set.toList utxos
 
           plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
-          plutusDatums = Datum.txsPlutusDatumsMap txs
+          plutusDatums = Datum.getPlutusDatumsFromTxs txs
           filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
-          filteredTxOutDatums = Datum.filteredTxOutDatums Nothing txs
+          filteredTxOutDatums = Datum.getFilteredTxOutDatumsFromTxs Nothing txs
        in -- We don't care about the timestamp or the epochNo, so we put default values.
           UtxoEvent resolvedUtxos spentTxOuts (BlockInfo slotNo blockHeaderHash blockNo 0 1) $
             Map.union plutusDatums filteredTxOutDatums
