@@ -51,7 +51,7 @@ import Marconi.ChainIndex.Indexers.Utxo (
   Interval (LessThanOrEqual),
   QueryUtxoByAddress (QueryUtxoByAddress),
   StorableQuery (QueryUtxoByAddressWrapper),
-  StorableResult (UtxoResult, getUtxoResult),
+  StorableResult (UtxoByAddressResult, getUtxoByAddressResult),
   UtxoHandle,
   UtxoIndexer,
  )
@@ -155,7 +155,7 @@ tests databaseDir indexerTVar = do
           . LessThanOrEqual
           $ C.SlotNo 2000000 -- maxBound will create SQL.Integer overflow, see PLT 5937
   let countRows = \case
-        UtxoResult rows -> length rows
+        UtxoByAddressResult rows -> length rows
         _other -> 0
 
   noUtxos <- fmap countRows $ raiseException fetchUtxoOfAddressWithMostUtxos
@@ -169,13 +169,13 @@ tests databaseDir indexerTVar = do
     [ bgroup
         "UTXO indexer query performance"
         [ bench "Query address with most utxos and get result size" $
-            nfIO (raiseException $ fmap (length . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+            nfIO (raiseException $ fmap (length . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
         , bench "Query address with most utxos and call 'show' on the result" $
-            nfIO (raiseException $ fmap (fmap show . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+            nfIO (raiseException $ fmap (fmap show . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
         , bench "Query address with most utxos and encode result in JSON" $
-            nfIO (raiseException $ fmap (fmap Aeson.encode . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+            nfIO (raiseException $ fmap (fmap Aeson.encode . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
         , bench "Query address with most utxos and JSON encode/decode roundtrip the result" $
-            nfIO (raiseException $ fmap (encodeDecodeRoundTrip . getUtxoResult) fetchUtxoOfAddressWithMostUtxos)
+            nfIO (raiseException $ fmap (encodeDecodeRoundTrip . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
         ]
     ]
 
