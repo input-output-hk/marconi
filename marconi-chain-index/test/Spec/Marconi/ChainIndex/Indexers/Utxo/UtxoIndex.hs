@@ -264,14 +264,16 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
 
   Hedgehog.assert $ all correctSpentInfo utxoResults
 
-{- | Generate transactions that contains only outputs with datums (hash, hash + tx body or inline).
- Then, we generate a final transaction which spends a previous transaction output as a Plutus
- script, and provides the datum as part of the witnesses.
+{- | Generate transactions that contains only outputs with resolved datums (hash + tx body or inline).
+ Then, we generate transactions that contain unresolved datums (hash only).
 
- Then, we index those transactions, and query the UTXOS for every single generated address.
+ Then, we index those transactions, and query the UTXOs for every single generated address.
 
- We verify that the set of datums in the actual response is the same as the set of datums that
- were used to generate transaction outputs in the input transactions.
+ We verify two things:
+   * that the set of datum hashes in the actual response is the same as the set of datum hashes
+   that were used to generate transaction outputs in the generated transactions.
+   * that the set of datums in the actual response is the same as the set of resolved datums that
+   were used to generate transaction outputs in the generated transactions.
 -}
 propUtxoQueryShouldRespondWithResolvedDatums :: Property
 propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
@@ -280,27 +282,29 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
   let blockInfo = BlockInfo slotNo bhh (C.BlockNo sn) 0 1
       utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
 
+  -- Generated UtxoEvents that contain only resolved datums
+  let txOutDatGen =
+        Gen.choice
+          [ fmap (\d -> Gen.TxOutDatumInTxLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
+          , fmap (\d -> Gen.TxOutDatumInlineLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
+          ]
+  addrsWithResolvedDatum <- forAll $ Gen.genAddressesWithDatum txOutDatGen
+  txs1 <- forAll $ Gen.genTxsWithAddresses addrsWithResolvedDatum
+  let utxoEventsResolvedDatums = fmap (\tx -> Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo) txs1
+
+  -- Generated UtxoEvents that contain only unresolved datums
   let txOutDatGen =
         Gen.choice
           [ fmap (\d -> Gen.TxOutDatumHashLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
-          , fmap (\d -> Gen.TxOutDatumInTxLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
-          , fmap (\d -> Gen.TxOutDatumInlineLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
           ]
-  addrsWithDatum1 <- forAll $ Gen.genAddressesWithDatum txOutDatGen
-  txs1 <- forAll $ Gen.genTxsWithAddresses addrsWithDatum1
-  let utxoEvents1 = fmap (\tx -> Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo) txs1
+  addrsWithUnresolvedDatum <- forAll $ Gen.genAddressesWithDatum txOutDatGen
+  txs1 <- forAll $ Gen.genTxsWithAddresses addrsWithUnresolvedDatum
+  let utxoEventsUnresolvedDatums = fmap (\tx -> Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo) txs1
 
-  (randomAddressFromEvents1, randomDatLocFromEvents1) <- forAll $ Gen.element addrsWithDatum1
-  randomDatumHashFromEvents1 <- Hedgehog.evalMaybe $ Gen.getDatumHashFromDatumLocation randomDatLocFromEvents1
-  randomDatumFromEvents1 <- Hedgehog.evalMaybe $ Gen.getDatumFromDatumLocation randomDatLocFromEvents1
-  let addrsWithDatum2 = [(randomAddressFromEvents1, Gen.PlutusScriptDatumLocation randomDatumHashFromEvents1 randomDatumFromEvents1)]
-  Hedgehog.annotateShow addrsWithDatum2
-  txs2 <- forAll $ Gen.genTxsWithAddresses addrsWithDatum2
-  let utxoEvents2 = fmap (\tx -> Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo) txs2
-
-  let utxoEvents = utxoEvents1 <> utxoEvents2
+  let utxoEvents = utxoEventsResolvedDatums <> utxoEventsUnresolvedDatums
   Hedgehog.annotateShow utxoEvents
 
+  -- Create the indexer by adding all of the generated UtxoEvents
   let numOfEvents = length utxoEvents
   depth <- forAll $ Gen.int (Range.linear 1 (numOfEvents + 1))
   indexer <-
@@ -308,6 +312,8 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
       raiseException $
         Utxo.open ":memory:" (Utxo.Depth depth) False
           >>= Storable.insertMany utxoEvents
+
+  -- Query all Utxos and extract actual resolved and unresolved datums.
   let qs = mkUtxoQueries utxoEvents (Utxo.LessThanOrEqual $ C.SlotNo 20000)
   results <-
     liftIO $
@@ -323,11 +329,12 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
   let expectedDatumHashes =
         Set.fromList $
           mapMaybe (Gen.getDatumHashFromDatumLocation . snd) $
-            addrsWithDatum1 <> addrsWithDatum2
+            addrsWithUnresolvedDatum <> addrsWithResolvedDatum
   let expectedDatums =
         Set.fromList $
-          mapMaybe (fmap C.getScriptData . Gen.getDatumFromDatumLocation . snd) $
-            addrsWithDatum1 <> addrsWithDatum2
+          mapMaybe
+            (fmap C.getScriptData . Gen.getDatumFromDatumLocation . snd)
+            addrsWithResolvedDatum
 
   actualDatumHashes === expectedDatumHashes
   actualDatums === expectedDatums
