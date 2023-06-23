@@ -243,6 +243,13 @@ goldenAddressUtxoResult = do
       pure
       $ C.deserialiseFromRawBytesHex C.AsTxId txIdRawBytes
 
+  let txId2RawBytes = "2f1f574c0365afd9865332eec4ff75e599d80c525afc7b7d6e38d27d0a01bf47"
+  txId2 <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex C.AsTxId txId2RawBytes
+
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
   blockHeaderHash <-
     either
@@ -268,7 +275,7 @@ goldenAddressUtxoResult = do
             Nothing
             Nothing
             Nothing
-            []
+            [UtxoTxInput $ C.TxIn txId2 (C.TxIx 1)]
         , AddressUtxoResult
             (C.SlotNo 1)
             blockHeaderHash
