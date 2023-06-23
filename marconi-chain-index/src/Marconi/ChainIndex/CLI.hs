@@ -6,7 +6,6 @@ module Marconi.ChainIndex.CLI where
 
 import Control.Applicative (optional, some)
 import Data.ByteString.Char8 qualified as C8
-import Data.Functor ((<&>))
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (fromMaybe)
@@ -61,16 +60,6 @@ chainPointParser =
         . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
         . C8.pack
 
-{- | Exit program with error
- Note, if the targetAddress parser fails, or is empty, there is nothing to do for the hotStore.
- In such case we should fail fast
--}
-fromEitherWithError :: (Show e) => Either e a -> a
-fromEitherWithError v = case v of
-  Left e ->
-    error $ "\n!!!\n Abnormal Termination with Error: " <> show e <> "\n!!!\n"
-  Right accounts -> accounts
-
 -- TODO: `pNetworkId` and `pTestnetMagic` are copied from
 -- https://github.com/input-output-hk/cardano-node/blob/988c93085022ed3e2aea5d70132b778cd3e622b9/cardano-cli/src/Cardano/CLI/Shelley/Parsers.hs#L2009-L2027
 -- Use them from there whenever they are exported.
@@ -94,20 +83,18 @@ pTestnetMagic =
  We error out if there are any invalid addresses
 -}
 multiAddresses :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser TargetAddresses
-multiAddresses desc = NonEmpty.fromList . concat <$> some single
+multiAddresses = fmap (NonEmpty.fromList . concat) . some . single
   where
-    single :: Opt.Parser [C.Address C.ShelleyAddr]
-    single = Opt.option (Opt.str <&> parseCardanoAddresses) desc
+    single :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser [C.Address C.ShelleyAddr]
+    single = Opt.option (Opt.str >>= fmap nub . traverse parseCardanoAddresses . Text.words)
 
     deserializeToCardano :: Text -> Either C.Bech32DecodeError (C.Address C.ShelleyAddr)
     deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
 
-    parseCardanoAddresses :: String -> [C.Address C.ShelleyAddr]
-    parseCardanoAddresses =
-      nub
-        . fromEitherWithError
-        . traverse (deserializeToCardano . Text.pack)
-        . words
+    parseCardanoAddresses :: Text -> Opt.ReadM (C.Address C.ShelleyAddr)
+    parseCardanoAddresses arg = case deserializeToCardano arg of
+      Left _ -> fail $ "Invalid address (not a valid Bech32 address representation): " <> show arg
+      Right addr -> pure addr
 
 {- | This executable is meant to exercise a set of indexers (for now datumhash -> datum)
      against the mainnet (meant to be used for testing).
@@ -296,7 +283,7 @@ commonMaybeTargetAsset =
   let assetPair
         :: Opt.Mod Opt.OptionFields [(C.PolicyId, Maybe C.AssetName)]
         -> Opt.Parser [(C.PolicyId, Maybe C.AssetName)]
-      assetPair = Opt.option $ Opt.str >>= traverse parseAsset . Text.words
+      assetPair = Opt.option $ Opt.str >>= fmap nub . traverse parseAsset . Text.words
    in Opt.optional $
         (fmap (NonEmpty.fromList . concat) . some . assetPair) $
           Opt.long "match-asset-id"
