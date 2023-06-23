@@ -20,7 +20,7 @@ import Gen.Marconi.ChainIndex.Experimental.Indexers.Utxo (
   genShelleyEraUtxoEventsAtChainPoint,
   genTx',
   genTxBodyContentFromTxIns,
-  genTxBodyContentFromTxinsWihtPhase2Validation,
+  genTxBodyContentFromTxInsWithPhase2Validation,
   genUtxoEventsWithTxs,
  )
 import Gen.Marconi.ChainIndex.Mockchain (MockBlock, mockBlockTxs)
@@ -575,4 +575,4 @@ genTxWithNoCollateral :: Gen (C.Tx C.BabbageEra)
 genTxWithNoCollateral = genTx' genTxBodyContentFromTxIns
 
 genTxWithCollateral :: Gen (C.Tx C.BabbageEra)
-genTxWithCollateral = genTx' genTxBodyContentFromTxinsWihtPhase2Validation
+genTxWithCollateral = genTx' genTxBodyContentFromTxInsWithPhase2Validation

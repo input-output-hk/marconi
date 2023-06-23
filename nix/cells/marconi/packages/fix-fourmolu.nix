@@ -1,5 +1,3 @@
-# TODO(std) DUP
-
 { inputs, cell }:
 
 cell.library.pkgs.writeShellApplication {

@@ -5,10 +5,9 @@ module Gen.Marconi.ChainIndex.Indexers.Utxo (
   genUtxoEvents,
   genShelleyEraUtxoEvents,
   genUtxoEventsWithTxs,
-  genTxBodyContentFromTxIns,
-  genTxBodyContentFromTxinsWihtPhase2Validation,
-  genTx,
-  genTx',
+  genUtxoEventsWithTxs',
+  Gen.genTxBodyContentFromTxIns,
+  Gen.genTxBodyContentFromTxInsWithPhase2Validation,
 ) where
 
 import Cardano.Api qualified as C
@@ -23,11 +22,10 @@ import GHC.Generics (Generic)
 import Gen.Marconi.ChainIndex.Mockchain (
   BlockHeader (BlockHeader),
   MockBlock (MockBlock),
-  genMockchain,
-  genTxBodyContentFromTxIns,
-  genTxBodyContentFromTxinsWihtPhase2Validation,
  )
+import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Hedgehog (Gen)
+import Marconi.ChainIndex.Extract.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TxIndexInBlock)
@@ -41,7 +39,7 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
    * for any spent tx output, there must be a UTXO created in a previous event
 -}
 genUtxoEvents :: Gen [StorableEvent UtxoHandle]
-genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs' convertTxOutToUtxo
+genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs
 
 {- | Generates a list of UTXO events, along with the list of transactions that generated each of
  them.
@@ -52,13 +50,13 @@ genUtxoEvents = fmap fst <$> genUtxoEventsWithTxs' convertTxOutToUtxo
    * for any spent tx output, there must be a UTXO created in a previous event
 -}
 genUtxoEventsWithTxs :: Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
-genUtxoEventsWithTxs = genUtxoEventsWithTxs' convertTxOutToUtxo
+genUtxoEventsWithTxs = genUtxoEventsWithTxs' Gen.genTxBodyContentFromTxIns
 
 genUtxoEventsWithTxs'
-  :: (C.TxId -> TxIndexInBlock -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo)
+  :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra))
   -> Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
-genUtxoEventsWithTxs' txOutToUtxo = do
-  fmap (\block -> (getStorableEventFromBlock block, block)) <$> genMockchain
+genUtxoEventsWithTxs' genTxBodyContent = do
+  fmap (\block -> (getStorableEventFromBlock block, block)) <$> Gen.genMockchainWithTxBodyGen genTxBodyContent
   where
     getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
     getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash blockNo) txs) =
@@ -68,8 +66,14 @@ genUtxoEventsWithTxs' txOutToUtxo = do
             Set.fromList $
               mapMaybe (`Map.lookup` utxoMap) $
                 Set.toList utxos
+
+          plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+          plutusDatums = Datum.getPlutusDatumsFromTxs txs
+          filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
+          filteredTxOutDatums = Datum.getFilteredTxOutDatumsFromTxs Nothing txs
        in -- We don't care about the timestamp or the epochNo, so we put default values.
-          UtxoEvent resolvedUtxos spentTxOuts (BlockInfo slotNo blockHeaderHash blockNo 0 1)
+          UtxoEvent resolvedUtxos spentTxOuts (BlockInfo slotNo blockHeaderHash blockNo 0 1) $
+            Map.union plutusDatums filteredTxOutDatums
 
     getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
     getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =
@@ -78,7 +82,7 @@ genUtxoEventsWithTxs' txOutToUtxo = do
             $ fmap
               ( \(txIx, txOut) ->
                   ( C.TxIn txId (C.TxIx txIx)
-                  , txOutToUtxo txId txIndexInBlock (C.TxIx txIx) txOut
+                  , convertTxOutToUtxo txId txIndexInBlock (C.TxIx txIx) txOut
                   )
               )
             $ zip [0 ..]
@@ -119,7 +123,7 @@ txOutBalanceFromTx (C.Tx txBody@(C.TxBody txBodyContent) _) =
 
 convertTxOutToUtxo :: C.TxId -> TxIndexInBlock -> C.TxIx -> C.TxOut C.CtxTx C.BabbageEra -> Utxo
 convertTxOutToUtxo txid txIndexInBlock txix (C.TxOut (C.AddressInEra _ addr) val txOutDatum refScript) =
-  let (scriptDataHash, scriptData) =
+  let (scriptDataHash, _scriptData) =
         case txOutDatum of
           C.TxOutDatumNone -> (Nothing, Nothing)
           C.TxOutDatumHash _ dh -> (Just dh, Nothing)
@@ -133,54 +137,18 @@ convertTxOutToUtxo txid txIndexInBlock txix (C.TxOut (C.AddressInEra _ addr) val
    in Utxo
         (C.toAddressAny addr)
         (C.TxIn txid txix)
-        (C.getScriptData <$> scriptData)
         scriptDataHash
         (C.txOutValueToValue val)
         script
         scriptHash
         txIndexInBlock
 
-{- | Override the Utxo address with ShelleyEra address
- This is used to generate ShelleyEra Utxo events
--}
-utxoAddressOverride
-  :: C.Address C.ShelleyAddr
-  -> Utxo
-  -> Utxo
-utxoAddressOverride addr utxo = utxo{_address = C.toAddressAny addr}
-
--- | Generate ShelleyEra Utxo Events
+-- | Generate Utxo events with Shelley ero addresses
 genShelleyEraUtxoEvents :: Gen [StorableEvent Utxo.UtxoHandle]
 genShelleyEraUtxoEvents = do
   events <- genUtxoEvents
-  forM
-    events
-    ( \e -> do
-        let utxos = Utxo.ueUtxos e
-        us <-
-          forM
-            (Set.toList utxos)
-            ( \u -> do
-                a <- CGen.genAddressShelley
-                pure $ utxoAddressOverride a u
-            )
-        pure e{Utxo.ueUtxos = Set.fromList us}
-    )
-
-{- | Generate Cardano TX
- This generator may be used phase2-validation test cases
--}
-genTx :: Gen (C.Tx C.BabbageEra)
-genTx = genTx' genTxBodyContentFromTxinsWihtPhase2Validation
-
-{- | Generate Cardano TX
- Given a TxBodyContent generator, generate a Cardano TX
--}
-genTx'
-  :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra))
-  -> Gen (C.Tx C.BabbageEra)
-genTx' gen = do
-  txIn <- CGen.genTxIn
-  txBodyContent <- gen [txIn]
-  txBody <- either (fail . show) pure $ C.createAndValidateTransactionBody txBodyContent
-  pure $ C.makeSignedTransaction [] txBody
+  forM events $ \event -> do
+    us <- forM (Set.toList $ Utxo.ueUtxos event) $ \utxo -> do
+      a <- CGen.genAddressShelley
+      pure $ utxo{_address = C.toAddressAny a}
+    pure event{Utxo.ueUtxos = Set.fromList us}

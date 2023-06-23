@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -7,15 +8,26 @@ module Gen.Marconi.ChainIndex.Mockchain (
   C.BlockHeader (..),
   MockBlock (..),
   genMockchain,
+  genMockchainWithTxBodyGen,
   genTxBodyContentFromTxIns,
-  genTxBodyContentFromTxinsWihtPhase2Validation,
+  genTxBodyContentFromTxInsWithPhase2Validation,
+  DatumLocation (..),
+  getDatumHashFromDatumLocation,
+  getDatumFromDatumLocation,
+  genAddressesWithDatum,
+  genTxsWithAddresses,
+  genTxBodyWithAddresses,
+  genTxBodyContentWithAddresses,
 ) where
 
 import Cardano.Api qualified as C
-import Control.Monad (foldM)
+import Cardano.Api.Shelley qualified as C
+import Control.Monad (foldM, forM)
+import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Gen.Marconi.ChainIndex.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
+import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -32,15 +44,15 @@ data MockBlock era = MockBlock
   }
   deriving (Show)
 
--- | Generate a Mochain
+-- | Generate a Mockchain
 genMockchain :: Gen (Mockchain C.BabbageEra)
-genMockchain = genMockchain' genTxBodyContentFromTxIns
+genMockchain = genMockchainWithTxBodyGen genTxBodyContentFromTxIns
 
--- | Generate a Mochain
-genMockchain'
+-- | Generate a Mockchain
+genMockchainWithTxBodyGen
   :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)) -- function that know how generate TxBodyContent
   -> Gen (Mockchain C.BabbageEra)
-genMockchain' genTxBody = do
+genMockchainWithTxBodyGen genTxBody = do
   maxSlots <- Gen.word64 (Range.linear 2 6)
   blockHeaderHash <- genHashBlockHeader
   let blockHeaders =
@@ -86,24 +98,122 @@ genTxBodyContentFromTxIns inputs = do
 {- | Generates TxBodyContent that may or may not have Collateral
  This generator is use for phase-2 validation test cases
 -}
-genTxBodyContentFromTxinsWihtPhase2Validation
+genTxBodyContentFromTxInsWithPhase2Validation
   :: [C.TxIn]
   -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
-genTxBodyContentFromTxinsWihtPhase2Validation inputs = do
-  txBodyContent <-
-    emptyTxBodyContent (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-      <$> CGen.genProtocolParameters
-  txOuts <- Gen.list (Range.linear 1 5) $ genTxOutTxContext C.BabbageEra
+genTxBodyContentFromTxInsWithPhase2Validation inputs = do
+  initialTxBodyContent <- genTxBodyContentFromTxIns inputs
   txInsCollateral <- genTxInsCollateral C.BabbageEra
   txReturnCollateral <- genTxReturnCollateral C.BabbageEra
   txScriptValidity <- genTxScriptValidity C.BabbageEra
   pure $
-    txBodyContent
-      { C.txIns = fmap (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) inputs
-      , C.txOuts = txOuts
-      , C.txInsCollateral = txInsCollateral
+    initialTxBodyContent
+      { C.txInsCollateral = txInsCollateral
       , C.txReturnCollateral = txReturnCollateral
       , C.txScriptValidity = txScriptValidity
+      }
+
+data DatumLocation
+  = NoDatumLocation
+  | TxOutDatumHashLocation (C.Hash C.ScriptData) C.HashableScriptData
+  | TxOutDatumInTxLocation (C.Hash C.ScriptData) C.HashableScriptData
+  | TxOutDatumInlineLocation (C.Hash C.ScriptData) C.HashableScriptData
+  | PlutusScriptDatumLocation (C.Hash C.ScriptData) C.HashableScriptData
+  deriving (Show)
+
+getDatumHashFromDatumLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData)
+getDatumHashFromDatumLocation NoDatumLocation = Nothing
+getDatumHashFromDatumLocation (TxOutDatumHashLocation dh _) = Just dh
+getDatumHashFromDatumLocation (TxOutDatumInTxLocation dh _) = Just dh
+getDatumHashFromDatumLocation (TxOutDatumInlineLocation dh _) = Just dh
+getDatumHashFromDatumLocation (PlutusScriptDatumLocation dh _) = Just dh
+
+getDatumFromDatumLocation :: DatumLocation -> Maybe C.HashableScriptData
+getDatumFromDatumLocation NoDatumLocation = Nothing
+getDatumFromDatumLocation (TxOutDatumHashLocation _ d) = Just d
+getDatumFromDatumLocation (TxOutDatumInTxLocation _ d) = Just d
+getDatumFromDatumLocation (TxOutDatumInlineLocation _ d) = Just d
+getDatumFromDatumLocation (PlutusScriptDatumLocation _ d) = Just d
+
+genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.AddressInEra C.BabbageEra, DatumLocation)]
+genAddressesWithDatum genDatumLocation = do
+  addresses <- Gen.list (Range.linear 1 3) $ CGen.genAddressInEra C.BabbageEra
+  -- We do 'addresses ++ addresses' to generate duplicate addresses so that we can test that we
+  -- correctly index different datums for the same address.
+  forM (addresses ++ addresses) $ \addr -> do
+    datLocation <- genDatumLocation
+    pure (addr, datLocation)
+
+genTxsWithAddresses :: [(C.AddressInEra C.BabbageEra, DatumLocation)] -> Gen [C.Tx C.BabbageEra]
+genTxsWithAddresses addrsWithDatum =
+  Gen.list (Range.linear 1 3) $
+    C.makeSignedTransaction [] <$> genTxBodyWithAddresses addrsWithDatum
+
+genTxBodyWithAddresses :: [(C.AddressInEra C.BabbageEra, DatumLocation)] -> Gen (C.TxBody C.BabbageEra)
+genTxBodyWithAddresses addresses = do
+  res <- C.createAndValidateTransactionBody <$> genTxBodyContentWithAddresses addresses
+  case res of
+    Left err -> fail (C.displayError err)
+    Right txBody -> pure txBody
+
+genTxBodyContentWithAddresses
+  :: [(C.AddressInEra C.BabbageEra, DatumLocation)]
+  -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
+genTxBodyContentWithAddresses addressesDatumLocation = do
+  exUnits <- CGen.genExecutionUnits
+  scriptTxIns <- fmap catMaybes <$> forM addressesDatumLocation $
+    \case
+      (_, PlutusScriptDatumLocation _ d) -> do
+        txIn <- CGen.genTxIn
+        let witness =
+              C.ScriptWitness C.ScriptWitnessForSpending $
+                C.PlutusScriptWitness
+                  C.PlutusScriptV1InBabbage
+                  C.PlutusScriptV1
+                  (C.PScript $ C.examplePlutusScriptAlwaysSucceeds C.WitCtxTxIn)
+                  (C.ScriptDatumForTxIn d)
+                  d
+                  exUnits
+        pure $ Just (txIn, C.BuildTxWith witness)
+      (_, _) -> pure Nothing
+
+  txOuts <- forM addressesDatumLocation $
+    \case
+      (addr, NoDatumLocation) -> do
+        let txOutGen =
+              C.TxOut addr
+                <$> CGen.genTxOutValue C.BabbageEra
+                <*> pure C.TxOutDatumNone
+                <*> pure C.ReferenceScriptNone
+        Gen.list (Range.linear 1 2) txOutGen
+      (addr, TxOutDatumHashLocation hd _) -> do
+        let txOutGen =
+              C.TxOut addr
+                <$> CGen.genTxOutValue C.BabbageEra
+                <*> pure (C.TxOutDatumHash C.ScriptDataInBabbageEra hd)
+                <*> pure C.ReferenceScriptNone
+        Gen.list (Range.linear 1 2) txOutGen
+      (addr, TxOutDatumInTxLocation _ d) -> do
+        let txOutGen =
+              C.TxOut addr
+                <$> CGen.genTxOutValue C.BabbageEra
+                <*> pure (C.TxOutDatumInTx C.ScriptDataInBabbageEra d)
+                <*> pure C.ReferenceScriptNone
+        Gen.list (Range.linear 1 2) txOutGen
+      (addr, TxOutDatumInlineLocation _ d) -> do
+        let txOutGen =
+              C.TxOut addr
+                <$> CGen.genTxOutValue C.BabbageEra
+                <*> pure (C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra d)
+                <*> pure C.ReferenceScriptNone
+        Gen.list (Range.linear 1 2) txOutGen
+      (_, _) -> pure []
+
+  txBody <- Gen.genTxBodyContentForPlutusScripts
+  pure $
+    txBody
+      { C.txIns = C.txIns txBody <> scriptTxIns
+      , C.txOuts = concat txOuts
       }
 
 -------------------------------------------------------------------------------------

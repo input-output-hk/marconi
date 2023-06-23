@@ -43,16 +43,30 @@ import Control.Concurrent (
   tryPutMVar,
   tryReadMVar,
  )
-import Control.Concurrent.QSemN (QSemN, newQSemN, signalQSemN, waitQSemN)
+import Control.Concurrent.QSemN (
+  QSemN,
+  newQSemN,
+  signalQSemN,
+  waitQSemN,
+ )
 import Control.Concurrent.STM (atomically)
-import Control.Concurrent.STM.TChan (TChan, dupTChan, newBroadcastTChanIO, readTChan, writeTChan)
+import Control.Concurrent.STM.TChan (
+  TChan,
+  dupTChan,
+  newBroadcastTChanIO,
+  readTChan,
+  writeTChan,
+ )
 import Control.Exception (Exception, catch)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
 import Control.Monad (forM_, forever, void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Control.Monad.Trans.Except (
+  ExceptT,
+  runExceptT,
+ )
 import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
@@ -94,11 +108,19 @@ import Marconi.Core.Storable qualified as Storable
 import Ouroboros.Consensus.Ledger.Abstract qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Ouroboros.Consensus.Node qualified as O
-import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, (<+>))
+import Prettyprinter (
+  defaultLayoutOptions,
+  layoutPretty,
+  pretty,
+  (<+>),
+ )
 import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (
+  takeDirectory,
+  (</>),
+ )
 
 -- DatumIndexer
 
@@ -253,12 +275,8 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
       case event of
         RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _) _ -> do
           -- TODO Redo. Inefficient filtering
-          let addressFilter =
-                fmap
-                  (flip elem)
-                  targetAddresses
-              addressDatumIndexEvent =
-                AddressDatum.toAddressDatumIndexEvent addressFilter txs (C.ChainPoint slotNo bh)
+          let addressDatumIndexEvent =
+                AddressDatum.toAddressDatumIndexEvent (Utils.addressesToPredicate targetAddresses) txs (C.ChainPoint slotNo bh)
           void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
           void $ onInsert addressDatumIndexEvent
           innerLoop index

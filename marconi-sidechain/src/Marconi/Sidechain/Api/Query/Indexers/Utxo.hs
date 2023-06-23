@@ -13,7 +13,7 @@ import Cardano.Api qualified as C
 import Control.Arrow (left)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, readTMVar)
-import Control.Lens ((^.), (^?))
+import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
 import Data.Bifunctor (Bifunctor (bimap))
@@ -23,19 +23,6 @@ import Data.Text (Text, unpack)
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Error (IndexerError)
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
-import Marconi.ChainIndex.Indexers.Utxo (
-  address,
-  datum,
-  datumHash,
-  txIn,
-  txIndexInBlock,
-  urCreationBlockHeaderHash,
-  urCreationBlockNo,
-  urCreationSlotNo,
-  urSpentSlotNo,
-  urSpentTxId,
-  urUtxo,
- )
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.Core.Storable qualified as Storable
@@ -147,25 +134,24 @@ withQueryAction env query =
   where
     action indexer = do
       res <- runExceptT $ Storable.query indexer query
-      let spentInfo row =
-            -- either both parameters are Nothing or both are defined
-            SpentInfoResult <$> row ^? urSpentSlotNo <*> row ^? urSpentTxId
+      let spentInfoResult row = SpentInfoResult (Utxo._blockInfoSlotNo . Utxo._siSpentBlockInfo $ row) (Utxo._siSpentTxId row)
       pure $ case res of
-        Right (Utxo.UtxoResult rows) ->
+        Right (Utxo.UtxoByAddressResult rows) ->
           Right $
             GetUtxosFromAddressResult $
               rows <&> \row ->
-                AddressUtxoResult
-                  (row ^. urCreationSlotNo)
-                  (row ^. urCreationBlockHeaderHash)
-                  (row ^. urCreationBlockNo)
-                  (row ^. urUtxo . txIndexInBlock)
-                  (row ^. urUtxo . txIn)
-                  (row ^. urUtxo . address)
-                  (row ^. urUtxo . datumHash)
-                  (row ^. urUtxo . datum)
-                  (spentInfo row)
-                  [] -- TODO txInputs field
+                let bi = Utxo.utxoResultBlockInfo row
+                 in AddressUtxoResult
+                      (Utxo._blockInfoSlotNo bi)
+                      (Utxo._blockInfoBlockHeaderHash bi)
+                      (Utxo._blockInfoBlockNo $ Utxo.utxoResultBlockInfo row)
+                      (Utxo.utxoResultTxIndexInBlock row)
+                      (Utxo.utxoResultTxIn row)
+                      (Utxo.utxoResultAddress row)
+                      (Utxo.utxoResultDatumHash row)
+                      (Utxo.utxoResultDatum row)
+                      (spentInfoResult <$> Utxo.utxoResultSpentInfo row)
+                      []
         _other ->
           Left $ UnexpectedQueryResult query
 
