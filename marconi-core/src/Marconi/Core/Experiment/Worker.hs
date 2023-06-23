@@ -34,7 +34,7 @@ import Marconi.Core.Experiment.Class (
   IsSync (lastSyncPoint),
   Rollbackable (rollback),
  )
-import Marconi.Core.Experiment.Type (IndexerError, Point, Timed (Timed), event, point)
+import Marconi.Core.Experiment.Type (IndexerError, Point, Timed, point)
 
 -- Type alias for the type classes that are required to build a worker for an indexer
 type WorkerIndexer n event indexer =
@@ -51,7 +51,7 @@ data WorkerM m input point = forall indexer event n.
   Worker
   { workerState :: MVar (indexer event)
   -- ^ the indexer controlled by this worker
-  , transformInput :: input -> m event
+  , transformInput :: input -> m (Maybe event)
   -- ^ used by the worker to check whether an input is a rollback or an event
   , hoistError :: forall a. n a -> ExceptT IndexerError m a
   -- ^ used by the worker to check whether an input is a rollback or an event
@@ -67,7 +67,7 @@ data ProcessedInput event
   = -- | A rollback happen and indexers need to go back to the given point in time
     Rollback (Point event)
   | -- | A new event has to be indexed
-    Index (Timed (Point event) event)
+    Index (Timed (Point event) (Maybe event))
 
 -- Create workers
 
@@ -75,7 +75,7 @@ data ProcessedInput event
 createWorker'
   :: (MonadIO m, WorkerIndexer n event indexer)
   => (forall a. n a -> ExceptT IndexerError m a)
-  -> (input -> m event)
+  -> (input -> m (Maybe event))
   -> indexer event
   -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorker' hoist getEvent ix = do
@@ -86,7 +86,7 @@ createWorker' hoist getEvent ix = do
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
   :: (MonadIO m, WorkerIndexer m event indexer)
-  => (input -> m event)
+  => (input -> m (Maybe event))
   -> indexer event
   -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorkerPure = createWorker' lift
@@ -94,7 +94,7 @@ createWorkerPure = createWorker' lift
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
   :: (MonadIO m, WorkerIndexer (ExceptT IndexerError m) event indexer)
-  => (input -> m event)
+  => (input -> m (Maybe event))
   -> indexer event
   -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorker = createWorker' id
@@ -102,11 +102,14 @@ createWorker = createWorker' id
 mapIndex
   :: Applicative f
   => Point event ~ Point event'
-  => (event -> f event')
+  => (event -> f (Maybe event'))
   -> ProcessedInput event
   -> f (ProcessedInput event')
 mapIndex _ (Rollback p) = pure $ Rollback p
-mapIndex f (Index timedEvent) = Index . Timed (timedEvent ^. point) <$> f (timedEvent ^. event)
+mapIndex f (Index timedEvent) =
+  let mapEvent Nothing = pure Nothing
+      mapEvent (Just e) = f e
+   in Index <$> traverse mapEvent timedEvent
 
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come
@@ -123,7 +126,7 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
       unlockCoordinator = do
         Con.signalQSemN tokens 1
 
-      fresherThan :: Ord (Point event) => Timed (Point event) event -> Point event -> Bool
+      fresherThan :: Ord (Point event) => Timed (Point event) (Maybe event) -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
 
       indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer -> do

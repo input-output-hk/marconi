@@ -312,7 +312,7 @@ module Marconi.Core.Experiment (
   inMemory,
   inDatabase,
   -- | A type class that give access to the configuration of a 'MixedIndexer'
-  HasMixedConfig (flushSize, keepInMemory),
+  HasMixedConfig (flushEvery, keepInMemory),
 
   -- ** LastPointIndexer
   LastPointIndexer,
@@ -475,7 +475,7 @@ import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastP
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
 import Marconi.Core.Experiment.Indexer.MixedIndexer (
   Flushable (..),
-  HasMixedConfig (flushSize, keepInMemory),
+  HasMixedConfig (flushEvery, keepInMemory),
   MixedIndexer,
   inDatabase,
   inMemory,

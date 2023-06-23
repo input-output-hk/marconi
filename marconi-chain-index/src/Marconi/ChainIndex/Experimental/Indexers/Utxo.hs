@@ -473,16 +473,22 @@ instance MonadIO m => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
 -- copy paste from Marconi.ChainIndex.Indexers.Utxo
 -----------------------------------------------------------------------
 
--- | Extract UtxoEvents from Cardano Block
+{- | Extract UtxoEvents from Cardano Block
+
+ Returns @Nothing@ if the block doesn't consume or spend any utxo
+-}
 getUtxoEventsFromBlock
   :: C.IsCardanoEra era
   => UtxoIndexerConfig
   -- ^ utxoIndexerConfig, containing targetAddresses and showReferenceScript flag
   -> C.Block era
-  -> UtxoEvent
+  -> Maybe UtxoEvent
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
 getUtxoEventsFromBlock utxoIndexerConfig (C.Block _ txs) =
-  getUtxoEvents utxoIndexerConfig txs
+  let event = getUtxoEvents utxoIndexerConfig txs
+   in if null (event ^. ueUtxos) && null (event ^. ueInputs)
+        then Nothing
+        else pure event
 
 -- | Extract UtxoEvents from Cardano Transactions
 getUtxoEvents

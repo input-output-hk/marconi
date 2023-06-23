@@ -38,7 +38,7 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
 import Marconi.Core.Experiment.Type (Point, Timed (Timed), event, point)
 
 newtype TransformConfig output input = TransformConfig
-  { _transformEventConfig :: input -> output
+  { _transformEventConfig :: input -> Maybe output
   }
 
 makeLenses ''TransformConfig
@@ -53,7 +53,7 @@ makeLenses ''WithTransform
 
 -- | A smart constructor for 'WithTransform'
 withTransform
-  :: (input -> output)
+  :: (input -> Maybe output)
   -> indexer output
   -> WithTransform indexer output input
 withTransform f _transformedIndexer =
@@ -63,7 +63,7 @@ withTransform f _transformedIndexer =
     }
 
 class HasTransformConfig input output indexer where
-  transformEvent :: Lens' (indexer input) (input -> output)
+  transformEvent :: Lens' (indexer input) (input -> Maybe output)
 
 instance HasTransformConfig input output (WithTransform indexer output) where
   transformEvent = config . transformEventConfig
@@ -81,13 +81,12 @@ instance
   where
   index timedEvent indexer = do
     let point' = timedEvent ^. point
-        event' = indexer ^. transformEvent $ timedEvent ^. event
+        event' = indexer ^. transformEvent =<< timedEvent ^. event
         asOutput = Timed point' event'
     indexVia unwrapMap asOutput indexer
 
   indexAllDescending events indexer = do
-    let event' = indexer ^. transformEvent
-        toOutput te = Timed (te ^. point) (event' $ te ^. event)
+    let toOutput te = Timed (te ^. point) (indexer ^. transformEvent =<< te ^. event)
         asOutputs = toOutput <$> events
     indexAllDescendingVia unwrapMap asOutputs indexer
 

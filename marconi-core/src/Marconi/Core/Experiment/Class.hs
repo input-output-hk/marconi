@@ -5,6 +5,7 @@
 -}
 module Marconi.Core.Experiment.Class (
   IsIndex (..),
+  indexIfJust,
   indexEither,
   indexAllEither,
   indexAllDescendingEither,
@@ -21,9 +22,11 @@ module Marconi.Core.Experiment.Class (
   HasGenesis (..),
 ) where
 
+import Control.Lens ((^.))
+import Control.Monad ((<=<))
 import Control.Monad.Except (ExceptT, MonadError, runExceptT)
 import Data.Foldable (foldlM, foldrM)
-import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
+import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed, point)
 
 -- IsIndex
 
@@ -38,7 +41,7 @@ class Monad m => IsIndex m event indexer where
   -- | index an event at a given point in time
   index
     :: Eq (Point event)
-    => Timed (Point event) event
+    => Timed (Point event) (Maybe event)
     -> indexer event
     -> m (indexer event)
 
@@ -47,7 +50,7 @@ class Monad m => IsIndex m event indexer where
   -- The events must be sorted in ascending order (the most recent first)
   indexAll
     :: (Ord (Point event), Traversable f)
-    => f (Timed (Point event) event)
+    => f (Timed (Point event) (Maybe event))
     -> indexer event
     -> m (indexer event)
   indexAll = flip $ foldlM (flip index)
@@ -57,12 +60,29 @@ class Monad m => IsIndex m event indexer where
   -- The events must be sorted in descending order (the most recent first)
   indexAllDescending
     :: (Ord (Point event), Traversable f)
-    => f (Timed (Point event) event)
+    => f (Timed (Point event) (Maybe event))
     -> indexer event
     -> m (indexer event)
   indexAllDescending = flip $ foldrM index
 
   {-# MINIMAL index #-}
+
+{- | If the event is @Nothing@, just updat the last sync event.
+ Otherwise, store the event and update the last sync event.
+-}
+indexIfJust
+  :: IsIndex m event indexer
+  => (Timed (Point event) event -> indexer event -> m (indexer event))
+  -- ^ the function that adds the event
+  -> (Point event -> indexer event -> m (indexer event))
+  -- ^ the function that update the last point, called in any case
+  -> Timed (Point event) (Maybe event)
+  -> indexer event
+  -> m (indexer event)
+indexIfJust appendEvent updateLatest timedEvent =
+  case sequence timedEvent of
+    Nothing -> updateLatest (timedEvent ^. point)
+    Just e -> updateLatest (timedEvent ^. point) <=< appendEvent e
 
 {- | Like @index@, but internalise its error in the result.
 
@@ -73,7 +93,7 @@ indexEither
   :: ( IsIndex (ExceptT err m) event indexer
      , Eq (Point event)
      )
-  => Timed (Point event) event
+  => Timed (Point event) (Maybe event)
   -> indexer event
   -> m (Either err (indexer event))
 indexEither evt = runExceptT . index evt
@@ -84,7 +104,7 @@ indexAllEither
      , Traversable f
      , Ord (Point event)
      )
-  => f (Timed (Point event) event)
+  => f (Timed (Point event) (Maybe event))
   -> indexer event
   -> m (Either err (indexer event))
 indexAllEither evt = runExceptT . indexAll evt
@@ -95,7 +115,7 @@ indexAllDescendingEither
      , Traversable f
      , Ord (Point event)
      )
-  => f (Timed (Point event) event)
+  => f (Timed (Point event) (Maybe event))
   -> indexer event
   -> m (Either err (indexer event))
 indexAllDescendingEither evt = runExceptT . indexAllDescending evt

@@ -45,7 +45,7 @@ import Marconi.Core.Experiment.Type (Point, Timed, point)
 data DelayConfig event = DelayConfig
   { _configDelayCapacity :: Word
   , _configDelayLength :: Word
-  , _configDelayBuffer :: Seq (Timed (Point event) event)
+  , _configDelayBuffer :: Seq (Timed (Point event) (Maybe event))
   }
 
 makeLenses 'DelayConfig
@@ -117,7 +117,7 @@ instance
   where
   delayCapacity = unwrapMap . delayCapacity
 
-delayBuffer :: Lens' (WithDelay indexer event) (Seq (Timed (Point event) event))
+delayBuffer :: Lens' (WithDelay indexer event) (Seq (Timed (Point event) (Maybe event)))
 delayBuffer = delayWrapper . wrapperConfig . configDelayBuffer
 
 delayLength :: Lens' (WithDelay indexer event) Word

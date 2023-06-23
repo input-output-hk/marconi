@@ -67,7 +67,6 @@ library
     Marconi.Core.Experiment.Transformer.Class
     Marconi.Core.Experiment.Transformer.IndexWrapper
     Marconi.Core.Experiment.Transformer.WithAggregate
-    Marconi.Core.Experiment.Transformer.WithAggregation
     Marconi.Core.Experiment.Transformer.WithCache
     Marconi.Core.Experiment.Transformer.WithDelay
     Marconi.Core.Experiment.Transformer.WithPruning

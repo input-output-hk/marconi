@@ -34,7 +34,7 @@ data EventAtQuery event = EventAtQuery
  The error cases are handled by the query interface.
  in time
 -}
-type instance Result (EventAtQuery event) = event
+type instance Result (EventAtQuery event) = Maybe event
 
 instance
   MonadError (QueryError (EventAtQuery event)) m
@@ -46,11 +46,7 @@ instance
     when aHeadOfSync $
       throwError $
         AheadOfLastSync Nothing
-    maybe
-      -- If we can't find the point and if it's in the past, we probably pruned it
-      (throwError NotStoredAnymore)
-      pure
-      $ ix ^? events . folded . filtered (`isAtPoint` p) . event
+    pure $ ix ^? events . folded . filtered (`isAtPoint` p) . event
 
 instance
   MonadError (QueryError (EventAtQuery event)) m

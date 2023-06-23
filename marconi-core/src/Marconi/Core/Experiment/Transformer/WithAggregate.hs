@@ -47,7 +47,6 @@ import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError),
   Point,
   QueryError,
-  Timed (Timed),
   event,
   point,
  )
@@ -108,8 +107,7 @@ instance
   => IsIndex m input (WithAggregate indexer output)
   where
   index timedEvent indexer = do
-    let asAggregate = indexer ^. toAggregate $ timedEvent ^. event
-    let point' = timedEvent ^. point
+    let asAggregate = fmap (indexer ^. toAggregate) <$> timedEvent
     lSync <- lastSyncPoint indexer
     event' <-
       if lSync == genesis
@@ -118,16 +116,15 @@ instance
           lastAggregateOrError <- query' lSync EventAtQuery indexer
           case lastAggregateOrError of
             Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
-            Right agg -> pure $ agg <> asAggregate
-    let asOutput = Timed point' event'
-    indexVia unwrapMap asOutput indexer
+            Right agg -> pure $ (agg <>) <$> asAggregate
+    indexVia unwrapMap event' indexer
 
   indexAllDescending events indexer = case sortOn (^. point) $ toList events of
     [] -> pure indexer
     (x : xs) -> do
       lSync <- lastSyncPoint indexer
       let event' = indexer ^. toAggregate
-          asAggregate :: output = indexer ^. toAggregate $ x ^. event
+          asAggregate = fmap (indexer ^. toAggregate) <$> x
       firstEvent <-
         if lSync == genesis
           then pure asAggregate
@@ -135,11 +132,10 @@ instance
             lastAggregateOrError <- query' lSync EventAtQuery indexer
             case lastAggregateOrError of
               Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
-              Right agg -> pure $ agg <> asAggregate
-      let firstTimed = Timed (x ^. point) firstEvent
-      let toOutput' tacc te = Timed (te ^. point) ((tacc ^. event) <> (event' $ te ^. event))
-          asOutputs tacc es = scanl' toOutput' tacc es
-      indexAllDescendingVia unwrapMap (asOutputs firstTimed xs) indexer
+              Right agg -> pure $ (agg <>) <$> asAggregate
+      let toOutput' tacc te = (tacc ^. event <>) . fmap event' <$> te
+          asOutputs = scanl' toOutput'
+      indexAllDescendingVia unwrapMap (asOutputs firstEvent xs) indexer
 
 instance
   (Point output ~ Point event, IsSync m output indexer)
