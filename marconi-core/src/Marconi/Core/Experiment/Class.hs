@@ -67,7 +67,9 @@ class Monad m => IsIndex m event indexer where
 
   {-# MINIMAL index #-}
 
--- TODO Doc
+{- | If the event is @Nothing@, just updat the last sync event.
+ Otherwise, store the event and update the last sync event.
+-}
 indexIfJust
   :: IsIndex m event indexer
   => (Timed (Point event) event -> indexer event -> m (indexer event))

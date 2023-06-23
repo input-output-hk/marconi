@@ -6,7 +6,10 @@
     An indexer that uses an indexer for recent events (usually in-memory)
     and another one for older events (usually on-disk).
 
-    TODO ascii diagram
+    This indexer maintains a queue of flush points.
+    Once we received enough blocks (@keepInMemory@ + @flushEvery@ events),
+    we dequeue the oldest flush point and send all the in memory events that
+    are older or equal to this flush point on disk.
 
     See "Marconi.Core.Experiment" for documentation.
 -}
@@ -69,23 +72,36 @@ instance (Applicative m, Ord (Point event)) => Flushable m event ListIndexer whe
     let (freshest, oldest) = span ((> p) . view point) $ ix ^. events
      in pure (oldest, ix & events .~ freshest)
 
--- TODO: Separate state and config
-data MixedIndexerConfig store event = MixedIndexerConfig
-  { _configKeepInMemory :: Word
-  -- ^ How many events are kept in memory after a flush
-  , _configFlushEvery :: Word
-  -- ^ How many Point do we wait until a flush (MUST be strictly positive)
-  , _configFlushPoints :: Seq (Point event)
+-- | Internal state of the mixed indexer
+data MixedIndexerState store event = MixedIndexerState
+  { _configFlushPoints :: Seq (Point event)
   -- ^ The next coming flush points
   , _configStepsBeforeNextFlushPointCreation :: Word
   -- ^ How many events before creation the next flush point
   , _configCurrentMemorySize :: Word
-  -- ^ How many events are in the inMemory buffer (triggers a flush on _configKeepInMemory + _configFlushEvery)
+  -- ^ How many events are in the inMemory buffer
+  -- (used to triggers a flush on _configKeepInMemory + _configFlushEvery)
   , _configInDatabase :: store event
   -- ^ In database storage, usually for data that can't be rollbacked
   }
 
-makeLenses 'MixedIndexerConfig
+-- | Exposed properties of the mixed indexer
+data MixedIndexerConfig = MixedIndexerConfig
+  { _configKeepInMemory :: Word
+  -- ^ How many events are kept in memory after a flush
+  , _configFlushEvery :: Word
+  -- ^ How many Point do we wait until a flush (MUST be strictly positive)
+  }
+
+-- | The aggregation of all the @MixedIndexer@ propeties
+data MixedIndexerProperties store event = MixedIndexerProperties
+  { _stateProperties :: MixedIndexerState store event
+  , _configProperties :: MixedIndexerConfig
+  }
+
+makeLenses ''MixedIndexerState
+makeLenses ''MixedIndexerConfig
+makeLenses ''MixedIndexerProperties
 
 {- | An indexer that keepAtLeast '_configKeepInMemory' events in memory
  and put the older one on disk by group of '_configFlushSize' events.
@@ -95,7 +111,9 @@ makeLenses 'MixedIndexerConfig
  @mem@ the indexer that handles old events, when we need to remove stuff from memory
  @store@ the indexer that handle the most recent events
 -}
-newtype MixedIndexer store mem event = MixedIndexer {_mixedWrapper :: IndexWrapper (MixedIndexerConfig store) mem event}
+newtype MixedIndexer store mem event = MixedIndexer
+  { _mixedWrapper :: IndexWrapper (MixedIndexerProperties store) mem event
+  }
 
 mkMixedIndexer
   :: Word
@@ -106,7 +124,11 @@ mkMixedIndexer
   -> mem event
   -> MixedIndexer store mem event
 mkMixedIndexer keepNb flushNb db =
-  MixedIndexer . IndexWrapper (MixedIndexerConfig keepNb flushNb mempty flushNb 0 db)
+  let properties =
+        MixedIndexerProperties
+          (MixedIndexerState mempty flushNb 0 db)
+          (MixedIndexerConfig keepNb flushNb)
+   in MixedIndexer . IndexWrapper properties
 
 standardMixedIndexer
   :: IsSync m event store
@@ -124,15 +146,18 @@ standardMixedIndexer keepNb flushNb db = do
 
 makeLenses ''MixedIndexer
 
+-- | The a lens to access the queue of flush points for the indexer
 flushPoints :: Lens' (MixedIndexer store mem event) (Seq (Point event))
-flushPoints = mixedWrapper . wrapperConfig . configFlushPoints
+flushPoints = mixedWrapper . wrapperConfig . stateProperties . configFlushPoints
 
--- TODO Rename
-stepsBeforeNextFlush :: Lens' (MixedIndexer store mem event) Word
-stepsBeforeNextFlush = mixedWrapper . wrapperConfig . configStepsBeforeNextFlushPointCreation
+-- | A counter to decide when a point must be added to the queue
+stepsBeforeNextFlushPointCreation :: Lens' (MixedIndexer store mem event) Word
+stepsBeforeNextFlushPointCreation =
+  mixedWrapper . wrapperConfig . stateProperties . configStepsBeforeNextFlushPointCreation
 
+-- | A counter to decide when we must send data on memory.
 currentMemorySize :: Lens' (MixedIndexer store mem event) Word
-currentMemorySize = mixedWrapper . wrapperConfig . configCurrentMemorySize
+currentMemorySize = mixedWrapper . wrapperConfig . stateProperties . configCurrentMemorySize
 
 class HasMixedConfig indexer where
   flushEvery :: Lens' (indexer event) Word
@@ -147,8 +172,8 @@ keepInMemoryVia l = l . keepInMemory
 -- Overlapping because we prefer this instance to any other instance
 -- as it access the immediate config
 instance {-# OVERLAPPING #-} HasMixedConfig (MixedIndexer store mem) where
-  flushEvery = mixedWrapper . wrapperConfig . configFlushEvery
-  keepInMemory = mixedWrapper . wrapperConfig . configKeepInMemory
+  flushEvery = mixedWrapper . wrapperConfig . configProperties . configFlushEvery
+  keepInMemory = mixedWrapper . wrapperConfig . configProperties . configKeepInMemory
 
 -- Overlappable so that we always configure
 -- the outmost instance in case of an overlap
@@ -170,16 +195,19 @@ instance
   flushEvery = flushEveryVia unwrapMap
   keepInMemory = keepInMemoryVia unwrapMap
 
+-- | access to the in memory part of the indexer
 inMemory :: Lens' (MixedIndexer store mem event) (mem event)
 inMemory = mixedWrapper . wrappedIndexer
 
+-- | access to the on disk part of the indexer
 inDatabase :: Lens' (MixedIndexer store mem event) (store event)
-inDatabase = mixedWrapper . wrapperConfig . configInDatabase
+inDatabase = mixedWrapper . wrapperConfig . stateProperties . configInDatabase
 
-flushAt
+-- | Decide whether or not we should flush at this step
+checkFlush
   :: MixedIndexer store mem event
   -> Maybe (Point event, MixedIndexer store mem event)
-flushAt indexer =
+checkFlush indexer =
   let nextFlushDepth = indexer ^. keepInMemory + indexer ^. flushEvery
 
       reachFlushPoint = indexer ^. currentMemorySize >= nextFlushDepth
@@ -195,29 +223,33 @@ flushAt indexer =
              in Just (oldestFlushPoint, indexer')
    in guard reachFlushPoint *> dequeueNextFlushPoint
 
-startNewStep
+-- | Add the current point to the flush points and reset the counter
+createFlushPoint
   :: Point event
   -> MixedIndexer store mem event
   -> MixedIndexer store mem event
-startNewStep p indexer =
-  indexer
-    & flushPoints %~ (p <|)
-    & stepsBeforeNextFlush .~ (indexer ^. flushEvery)
+createFlushPoint p indexer =
+  let queueFlushPoint = flushPoints %~ (p <|)
+      resetNextFlushPointCounter = stepsBeforeNextFlushPointCreation .~ (indexer ^. flushEvery)
+   in indexer
+        & queueFlushPoint
+        & resetNextFlushPointCounter
 
+-- | Adjust counter and decide whether a flush should happent or not
 tick
   :: Point event
   -> MixedIndexer store mem event
   -> (Maybe (Point event), MixedIndexer store mem event)
 tick p indexer =
-  let countEvent = (currentMemorySize +~ 1) . (stepsBeforeNextFlush -~ 1)
+  let countEvent = (currentMemorySize +~ 1) . (stepsBeforeNextFlushPointCreation -~ 1)
 
       adjustStep ix =
-        if ix ^. stepsBeforeNextFlush == 0
-          then startNewStep p ix
+        if ix ^. stepsBeforeNextFlushPointCreation == 0
+          then createFlushPoint p ix
           else ix
 
       indexer' = adjustStep $ countEvent indexer
-   in maybe (Nothing, indexer') (first Just) $ flushAt indexer'
+   in maybe (Nothing, indexer') (first Just) $ checkFlush indexer'
 
 -- | Flush all the in-memory events to the database, keeping track of the latest index
 flush
@@ -273,7 +305,7 @@ instance
         else pure indexer'
 
     let updateStateBeforeNextFlush =
-          stepsBeforeNextFlush
+          stepsBeforeNextFlushPointCreation
             .~ (indexer'' ^. keepInMemory + indexer'' ^. flushEvery) - fromIntegral memorySize
 
     pure $
