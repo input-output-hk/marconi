@@ -31,6 +31,7 @@ import Marconi.Sidechain.Api.Routes (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   SpentInfoResult (SpentInfoResult),
+  UtxoTxInput (UtxoTxInput),
  )
 import Marconi.Sidechain.Api.Types (
   AddressUtxoIndexerEnv (AddressUtxoIndexerEnv),
@@ -151,7 +152,7 @@ withQueryAction env query =
                       (Utxo.utxoResultDatumHash row)
                       (Utxo.utxoResultDatum row)
                       (spentInfoResult <$> Utxo.utxoResultSpentInfo row)
-                      []
+                      (UtxoTxInput <$> Utxo.utxoResultTxIns row)
         _other ->
           Left $ UnexpectedQueryResult query
 

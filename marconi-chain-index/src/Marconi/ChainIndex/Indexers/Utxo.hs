@@ -81,12 +81,12 @@ import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Ord (Down (Down))
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.Text (pack)
 import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
 import Database.SQLite.Simple (
   NamedParam ((:=)),
@@ -138,6 +138,7 @@ import System.Random.MWC (
   uniformR,
  )
 import Text.RawString.QQ (r)
+import Text.Read (readMaybe)
 
 {- Note [Last synced block]
  -
@@ -188,7 +189,7 @@ interval (Just p) p' =
       wrap f x y
         | x <= y = Right $ f x y
         | otherwise =
-            Left . InvalidQueryInterval . pack $
+            Left . InvalidQueryInterval . Text.pack $
               "Invalid Interval. LowerBound, "
                 <> show x
                 <> " is not less than or equal to upperBound "
@@ -347,7 +348,7 @@ data UtxoRow = UtxoRow
 
 $(makeLenses ''UtxoRow)
 
-data UtxoResult = UtxoResult_
+data UtxoResult = UtxoResult
   { utxoResultAddress :: !C.AddressAny
   , utxoResultTxIn :: !C.TxIn
   , utxoResultDatum :: !(Maybe C.ScriptData) -- datumhash_datum
@@ -358,6 +359,7 @@ data UtxoResult = UtxoResult_
   , utxoResultTxIndexInBlock :: !TxIndexInBlock
   , utxoResultBlockInfo :: !BlockInfo
   , utxoResultSpentInfo :: !(Maybe SpentInfo)
+  , utxoResultTxIns :: [C.TxIn]
   }
   deriving (Eq, Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
@@ -615,22 +617,40 @@ instance ToRow Spent where
 
 instance FromRow UtxoResult where
   fromRow =
-    UtxoResult_
-      <$> field
-      <*> fromRow
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> field
-      <*> fromRow
-      <*> do
-        a <- fromRow
-        b <- field
-        if
-            | Just a' <- a, Just b' <- b -> pure $ Just $ SpentInfo a' b'
-            | otherwise -> pure Nothing
+    let decodeTxId =
+          either (const Nothing) pure . C.deserialiseFromRawBytesHex C.AsTxId . Text.encodeUtf8
+        txIdsFromField = traverse decodeTxId . Text.splitOn "," <$> field
+        decodeTxIx = fmap C.TxIx . readMaybe . Text.unpack
+        txIxesFromField = traverse decodeTxIx . Text.splitOn "," <$> field
+        txInsFromRow = do
+          mTxIds <- txIdsFromField
+          mTxIxes <- txIxesFromField
+          let mtxins = zipWith C.TxIn <$> mTxIds <*> mTxIxes
+          case mtxins of
+            Just txins -> pure txins
+            Nothing ->
+              fieldWith $ \field' ->
+                returnError
+                  UnexpectedNull
+                  field'
+                  "Invalid spent values: Some fields are null, other aren't"
+     in do UtxoResult
+          <$> field
+          <*> fromRow
+          <*> field
+          <*> field
+          <*> field
+          <*> field
+          <*> field
+          <*> field
+          <*> fromRow
+          <*> do
+            a <- fromRow
+            b <- field
+            if
+                | Just a' <- a, Just b' <- b -> pure $ Just $ SpentInfo a' b'
+                | otherwise -> pure Nothing
+          <*> txInsFromRow
 
 data DatumRow = DatumRow
   { datumRowDatumHash :: C.Hash C.ScriptData
@@ -665,60 +685,48 @@ open dbPath (Depth k) isToVacuume = do
     SQL.execute_
       c
       [r|CREATE TABLE IF NOT EXISTS unspent_transactions
-                      ( address TEXT NOT NULL
-                      , txId TEXT NOT NULL
-                      , txIx INT NOT NULL
-                      , datumHash BLOB
-                      , value BLOB
-                      , inlineScript BLOB
-                      , inlineScriptHash BLOB
-                      , txIndexInBlock INT NOT NULL
-                      , slotNo INT NOT NULL
-                      , blockHeaderHash BLOB NOT NULL
-                      , blockNo INT NOT NULL
-                      , blockTimestamp INT NOT NULL
-                      , epochNo INT NOT NULL
-                      )|]
+                    ( address TEXT NOT NULL
+                    , txId TEXT NOT NULL
+                    , txIx INT NOT NULL
+                    , datumHash BLOB
+                    , value BLOB
+                    , inlineScript BLOB
+                    , inlineScriptHash BLOB
+                    , txIndexInBlock INT NOT NULL
+                    , slotNo INT NOT NULL
+                    , blockHeaderHash BLOB NOT NULL
+                    , blockNo INT NOT NULL
+                    , blockTimestamp INT NOT NULL
+                    , epochNo INT NOT NULL
+                    )|]
 
   lift $
     SQL.execute_
       c
       [r|CREATE TABLE IF NOT EXISTS spent
-                      ( txId TEXT NOT NULL
-                      , txIx INT NOT NULL
-                      , slotNo INT NOT NULL
-                      , blockHeaderHash BLOB NOT NULL
-                      , blockNo INT NOT NULL
-                      , blockTimestamp INT NOT NULL
-                      , epochNo INT NOT NULL
-                      , spentTxId TEXT NOT NULL
-                      )|]
+                    ( txId TEXT NOT NULL
+                    , txIx INT NOT NULL
+                    , slotNo INT NOT NULL
+                    , blockHeaderHash BLOB NOT NULL
+                    , blockNo INT NOT NULL
+                    , blockTimestamp INT NOT NULL
+                    , epochNo INT NOT NULL
+                    , spentTxId TEXT NOT NULL
+                    )|]
 
   lift $
     SQL.execute_
       c
-      [r|CREATE INDEX IF NOT EXISTS
-                      spent_slotNo ON spent (slotNo)|]
+      [r|CREATE TABLE IF NOT EXISTS datumhash_datum ( datum_hash BLOB PRIMARY KEY , datum BLOB)|]
+
+  lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS spent_slotNo ON spent (slotNo)|]
+
+  lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS spent_txId ON spent (txId, txIx)|]
 
   lift $
     SQL.execute_
       c
-      [r|CREATE INDEX IF NOT EXISTS
-                      spent_txId ON spent (txId, txIx)|]
-
-  lift $
-    SQL.execute_
-      c
-      [r|CREATE INDEX IF NOT EXISTS
-                      unspent_transaction_address ON unspent_transactions (address)|]
-
-  lift $
-    SQL.execute_
-      c
-      [r|CREATE TABLE IF NOT EXISTS datumhash_datum
-                      ( datum_hash BLOB PRIMARY KEY
-                      , datum BLOB
-                      )|]
+      [r|CREATE INDEX IF NOT EXISTS unspent_transaction_address ON unspent_transactions (address)|]
 
   emptyState k (UtxoHandle c k isToVacuume)
 
@@ -806,10 +814,15 @@ instance Buffered UtxoHandle where
   getStoredEvents :: UtxoHandle -> StorableMonad UtxoHandle [StorableEvent UtxoHandle]
   getStoredEvents (UtxoHandle{}) = error "!!! This Buffered class method will be removed"
 
-sqliteQuery :: FromRow r => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
-sqliteQuery c (filters, params) maybeMore = SQL.queryNamed c query params
+sqliteUtxoByAddressQuery
+  :: FromRow r => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
+sqliteUtxoByAddressQuery c (filters, params) order = SQL.queryNamed c query params
   where
-    conditions = SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters)
+    wherePart =
+      if null filters
+        then ""
+        else "WHERE " <> SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters)
+    orderPart = maybe "" (" " <>) order
     query =
       [r|SELECT
               u.address,
@@ -821,8 +834,8 @@ sqliteQuery c (filters, params) maybeMore = SQL.queryNamed c query params
               u.inlineScript,
               u.inlineScriptHash,
               u.txIndexInBlock,
-              u.slotNo,
 
+              u.slotNo,
               u.blockHeaderHash,
               u.blockNo,
               u.blockTimestamp,
@@ -833,19 +846,19 @@ sqliteQuery c (filters, params) maybeMore = SQL.queryNamed c query params
               s.blockNo,
               s.blockTimestamp,
               s.epochNo,
-              s.spentTxId
-           FROM
-              unspent_transactions u
-      LEFT JOIN
-              spent s ON u.txId = s.txId AND u.txIx = s.txIx
-      LEFT JOIN
-              datumhash_datum d ON u.datumHash = d.datum_hash
+              s.spentTxId,
+
+              GROUP_CONCAT(HEX(s2.txId)),
+              GROUP_CONCAT(s2.txIx)
+
+      FROM unspent_transactions u
+      LEFT JOIN spent s           ON u.txId = s.txId AND u.txIx = s.txIx
+      LEFT JOIN spent s2          ON u.txId = s2.spentTxId
+      LEFT JOIN datumhash_datum d ON u.datumHash = d.datum_hash
            |]
-        <> if conditions /= ""
-          then "WHERE " <> conditions
-          else
-            " "
-              <> fromMaybe "" maybeMore
+        <> wherePart
+        <> " GROUP BY u.txId, u.txIx"
+        <> orderPart
 
 {- | Retrieve TxIns at a slotNo
  This function is used to reconstruct the original UtxoEvent
@@ -966,9 +979,9 @@ instance Queryable UtxoHandle where
     -> StorableMonad UtxoHandle (StorableResult UtxoHandle)
   queryStorage memoryEvents (UtxoHandle c _ _) (QueryUtxoByAddressWrapper (QueryUtxoByAddress addr slotInterval)) =
     liftSQLError CantQueryIndexer $ do
-      persistedUtxoResults :: [UtxoResult] <- sqliteQuery c filters $ Just "ORDER BY u.slotNo ASC"
+      persistedUtxoResults <- sqliteUtxoByAddressQuery c filters $ Just "ORDER BY u.slotNo ASC"
       bufferedUtxoResults <- concat <$> mapM bufferEventUtxoResult bufferEvents
-      return $ UtxoByAddressResult $ mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
+      pure $ UtxoByAddressResult $ mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
     where
       UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent' =
         eventsAtAddress addr slotInterval memoryEvents
@@ -1000,24 +1013,35 @@ instance Queryable UtxoHandle where
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
       bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO [UtxoResult]
-      bufferEventUtxoResult (UtxoEvent utxoSet _ bi datumMap) = catMaybes <$> mapM toMaybeUtxoResult (Set.toList utxoSet)
+      bufferEventUtxoResult (UtxoEvent utxoSet spents bi datumMap) =
+        catMaybes <$> traverse updateSpent (Set.toList utxoSet)
         where
-          toMaybeUtxoResult :: Utxo -> IO (Maybe UtxoResult)
-          toMaybeUtxoResult u =
-            let findSelfIn = Map.lookup (_txIn u)
+          updateSpent :: Utxo -> IO (Maybe UtxoResult)
+          updateSpent u =
+            let findSelfIn = Map.lookup (u ^. txIn)
              in if
-                    | Just _ <- findSelfIn bufferSpent' -> return Nothing
+                    | Just _ <- findSelfIn bufferSpent' -> pure Nothing
                     | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just <$> toUtxoResult u maybeSpentInfo
                     | otherwise -> Just <$> toUtxoResult u Nothing
+
+          resolveTxIns :: Utxo -> Map C.TxIn C.TxId -> [C.TxIn]
+          resolveTxIns u =
+            let txid = (\(C.TxIn x _) -> x) $ u ^. txIn
+             in Map.keys . Map.filter (txid ==)
+
+          txIns :: [C.TxIn]
+          txIns = case toList utxoSet of
+            [] -> []
+            u : _ -> resolveTxIns u spents
 
           toUtxoResult :: Utxo -> Maybe SpentInfo -> IO UtxoResult
           toUtxoResult u maybeSpentInfo = do
             let maybeDatumHash = _datumHash u
             maybeDatum <- case flip Map.lookup datumMap =<< maybeDatumHash of
-              Just datum -> return $ Just datum
+              Just datum -> pure $ Just datum
               Nothing -> maybe (pure Nothing) (fmap (fmap datumRowDatum) . findDatum) maybeDatumHash
-            return $
-              UtxoResult_
+            pure $
+              UtxoResult
                 { utxoResultAddress = _address u
                 , utxoResultTxIn = _txIn u
                 , utxoResultDatum = maybeDatum
@@ -1028,6 +1052,7 @@ instance Queryable UtxoHandle where
                 , utxoResultTxIndexInBlock = _txIndexInBlock u
                 , utxoResultBlockInfo = bi
                 , utxoResultSpentInfo = maybeSpentInfo
+                , utxoResultTxIns = txIns
                 }
           findDatum :: C.Hash C.ScriptData -> IO (Maybe DatumRow)
           findDatum hash = do
