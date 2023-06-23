@@ -192,7 +192,7 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
   Hedgehog.footnote "Regression test must return at least one Utxo. Utxo's may not have any Spent in the Orig. event"
   Hedgehog.assert $ all (`notElem` txInsFromGeneratedEvents) txInsFromRetrievedUtxoRows
 
--- | TODO
+-- | We retrieve all the utxos, and verify that their spent correspond to an existing utxo
 propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs :: Property
 propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs = property $ do
   events <- forAll genShelleyEraUtxoEvents -- we need to use shelley era addresses only to allow for point (4)
