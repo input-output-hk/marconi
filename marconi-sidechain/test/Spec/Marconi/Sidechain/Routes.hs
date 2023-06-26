@@ -155,6 +155,7 @@ propJSONRountripGetUtxosFromAddressResult = property $ do
       <*> CGen.genTxIn
       <*> pure (fmap C.hashScriptDataBytes hsd)
       <*> pure (fmap C.getScriptData hsd)
+      <*> CGen.genValue CGen.genAssetId (CGen.genQuantity (Range.linear 0 5))
       <*> Gen.maybe genSpentInfo
       <*> Gen.list (Range.linear 0 10) (UtxoTxInput <$> CGen.genTxIn)
 
@@ -275,6 +276,7 @@ goldenAddressUtxoResult = do
             (C.TxIn txId (C.TxIx 0))
             Nothing
             Nothing
+            (C.valueFromList [(C.AdaAssetId, 10)])
             Nothing
             [UtxoTxInput $ C.TxIn txId2 (C.TxIx 1)]
         , AddressUtxoResult
@@ -285,6 +287,7 @@ goldenAddressUtxoResult = do
             (C.TxIn txId (C.TxIx 0))
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
             (Just datum)
+            (C.valueFromList [(C.AdaAssetId, 1)])
             (Just $ SpentInfoResult (C.SlotNo 12) spentTxId)
             [UtxoTxInput $ C.TxIn txId (C.TxIx 0)]
         ]

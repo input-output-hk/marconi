@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 
 -- | Defines REST and JSON-RPC routes
@@ -9,13 +10,25 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.BaseTypes qualified as Ledger
 import Cardano.Slotting.Slot (WithOrigin (At, Origin), withOriginFromMaybe)
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.:?), (.=))
-import Data.Aeson.Types (withObject)
+import Control.Monad (join)
+import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), (.:), (.:?), (.=))
+import Data.Aeson qualified as Aeson
+import Data.Aeson.Key qualified as Aeson
+import Data.Aeson.KeyMap qualified as Aeson
+import Data.Aeson.Types qualified as Aeson
+import Data.Bifunctor (Bifunctor (first))
+import Data.Function (on)
+import Data.List qualified as List
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
+import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
@@ -110,18 +123,19 @@ instance ToJSON GetCurrentSyncedBlockResult where
             , "epochNo" .= en
             ]
           Origin -> []
-     in object chainPointObj
+     in Aeson.object chainPointObj
 
 instance FromJSON GetCurrentSyncedBlockResult where
-  parseJSON (Object v) = do
-    slotNoM <- v .:? "slotNo"
-    bhhM <- v .:? "blockHeaderHash"
-    bnM <- v .:? "blockNo"
-    blockTimestampM <- v .:? "blockTimestamp"
-    epochNoM <- v .:? "epochNo"
-    let blockInfoM = withOriginFromMaybe $ BlockInfo <$> slotNoM <*> bhhM <*> bnM <*> blockTimestampM <*> epochNoM
-    pure $ GetCurrentSyncedBlockResult blockInfoM
-  parseJSON _ = mempty
+  parseJSON =
+    let parseBlock v = do
+          slotNoM <- v .:? "slotNo"
+          bhhM <- v .:? "blockHeaderHash"
+          bnM <- v .:? "blockNo"
+          blockTimestampM <- v .:? "blockTimestamp"
+          epochNoM <- v .:? "epochNo"
+          let blockInfoM = withOriginFromMaybe $ BlockInfo <$> slotNoM <*> bhhM <*> bnM <*> blockTimestampM <*> epochNoM
+          pure $ GetCurrentSyncedBlockResult blockInfoM
+     in Aeson.withObject "BlockResult" parseBlock
 
 data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   { queryAddress :: !String
@@ -134,16 +148,17 @@ data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   deriving (Show, Eq)
 
 instance FromJSON GetUtxosFromAddressParams where
-  parseJSON (Object v) =
-    GetUtxosFromAddressParams
-      <$> (v .: "address")
-      <*> (v .:? "createdAfterSlotNo")
-      <*> (v .: "unspentBeforeSlotNo")
-  parseJSON _ = mempty
+  parseJSON =
+    let parseParams v =
+          GetUtxosFromAddressParams
+            <$> (v .: "address")
+            <*> (v .:? "createdAfterSlotNo")
+            <*> (v .: "unspentBeforeSlotNo")
+     in Aeson.withObject "GetUtxosFromAddressParams" parseParams
 
 instance ToJSON GetUtxosFromAddressParams where
   toJSON q =
-    object $
+    Aeson.object $
       catMaybes
         [ Just ("address" .= queryAddress q)
         , ("createdAfterSlotNo" .=) <$> queryCreatedAfterSlotNo q
@@ -152,7 +167,7 @@ instance ToJSON GetUtxosFromAddressParams where
 
 newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult
   {unAddressUtxosResult :: [AddressUtxoResult]}
-  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+  deriving (Eq, Show, Generic, ToJSON, FromJSON)
 
 data SpentInfoResult
   = SpentInfoResult
@@ -161,29 +176,87 @@ data SpentInfoResult
   deriving (Eq, Ord, Show, Generic)
 
 instance ToJSON SpentInfoResult where
-  toJSON (SpentInfoResult sn txid) = object ["slotNo" .= sn, "txId" .= txid]
+  toJSON (SpentInfoResult sn txid) = Aeson.object ["slotNo" .= sn, "txId" .= txid]
 
 instance FromJSON SpentInfoResult where
-  parseJSON (Object v) = SpentInfoResult <$> v .: "slotNo" <*> v .: "txId"
-  parseJSON _ = mempty
+  parseJSON =
+    let parseSpent v = SpentInfoResult <$> v .: "slotNo" <*> v .: "txId"
+     in Aeson.withObject "SpentInfoResult" parseSpent
 
-data AddressUtxoResult
-  = AddressUtxoResult
-      !C.SlotNo
-      !(C.Hash C.BlockHeader)
-      !C.BlockNo
-      !TxIndexInBlock
-      !C.TxIn
-      !(Maybe (C.Hash C.ScriptData))
-      !(Maybe C.ScriptData)
-      !(Maybe SpentInfoResult)
-      ![UtxoTxInput] -- List of inputs that were used in the transaction that created this UTxO.
-  deriving (Eq, Ord, Show, Generic)
+-- | Wrapper around Cardano.Api,Value to provide a custom JSON serialisation/deserialisation
+newtype SidechainValue = SidechainValue {getSidechainValue :: C.Value}
+  deriving (Eq, Show, Generic)
+
+instance ToJSON SidechainValue where
+  toJSON =
+    let nameValueToEntry (assetNameHex, qty) = assetNameHex .= qty
+        policyValueToEntry xs@((policyIdHex, _) :| _) =
+          policyIdHex .= Aeson.object (NonEmpty.toList $ nameValueToEntry . snd <$> xs)
+        assetToKeys C.AdaAssetId = ("", "")
+        assetToKeys (C.AssetId pid assetName') =
+          let pidHex = Aeson.fromString $ Text.unpack $ C.serialiseToRawBytesHexText pid
+              assetNameHex = Aeson.fromString $ Text.unpack $ C.serialiseToRawBytesHexText assetName'
+           in (pidHex, assetNameHex)
+     in Aeson.object
+          . fmap policyValueToEntry
+          . NonEmpty.groupBy ((==) `on` fst)
+          . fmap (\((pId, an), qty) -> (pId, (an, qty)))
+          . List.sortOn fst
+          . fmap (first assetToKeys)
+          . C.valueToList
+          . getSidechainValue
+
+instance FromJSON SidechainValue where
+  parseJSON =
+    let parsePolicyId pIdHex = do
+          either (const $ fail "Invalid policyId") pure $
+            C.deserialiseFromRawBytesHex C.AsPolicyId (Text.encodeUtf8 pIdHex)
+        parseAssetName assetNameHex = do
+          either (const $ fail "Invalid assetName") pure $
+            C.deserialiseFromRawBytesHex C.AsAssetName (Text.encodeUtf8 assetNameHex)
+
+        parseAdaAsset :: Aeson.KeyMap Aeson.Value -> Aeson.Parser C.Quantity
+        parseAdaAsset v
+          | [("", q)] <- Aeson.toList v = parseJSON q
+          | otherwise = fail "ambiguous Ada asset value"
+
+        parseAssetItem :: Aeson.Key -> Aeson.Value -> Aeson.Parser (C.AssetName, C.Quantity)
+        parseAssetItem k v = (,) <$> parseAssetName (Aeson.toText k) <*> parseJSON v
+
+        parseAssetItems :: Aeson.KeyMap Aeson.Value -> Aeson.Parser [(C.AssetName, C.Quantity)]
+        parseAssetItems = traverse (uncurry parseAssetItem) . Aeson.toList
+
+        parseValueItem :: (Text, Aeson.Value) -> Aeson.Parser [(C.AssetId, C.Quantity)]
+        parseValueItem ("", o) = pure . (C.AdaAssetId,) <$> Aeson.withObject "AdaAsset" parseAdaAsset o
+        parseValueItem (k, o) = do
+          policyId' <- parsePolicyId k
+          namesAndQuantities <- Aeson.withObject "AdaAsset" parseAssetItems o
+          pure $ first (C.AssetId policyId') <$> namesAndQuantities
+
+        fromJSONSideChainValue :: Aeson.KeyMap Aeson.Value -> Aeson.Parser SidechainValue
+        fromJSONSideChainValue v =
+          SidechainValue . C.valueFromList . join
+            <$> traverse parseValueItem (first Aeson.toText <$> Aeson.toList v)
+     in Aeson.withObject "Value" fromJSONSideChainValue
+
+data AddressUtxoResult = AddressUtxoResult
+  { utxoResultSlotNo :: !C.SlotNo
+  , utxoResultBlockHeader :: !(C.Hash C.BlockHeader)
+  , utxoResultBlockNo :: !C.BlockNo
+  , utxoResultTxIndex :: !TxIndexInBlock
+  , utxoResultTxIn :: !C.TxIn
+  , utxoResultDatumHash :: !(Maybe (C.Hash C.ScriptData))
+  , utxoResultDatum :: !(Maybe C.ScriptData)
+  , utxoResultValue :: !C.Value
+  , utxoResultSpentInfo :: !(Maybe SpentInfoResult)
+  , utxoResultInputs :: ![UtxoTxInput] -- List of inputs that were used in the transaction that created this UTxO.
+  }
+  deriving (Eq, Show, Generic)
 
 instance ToJSON AddressUtxoResult where
-  toJSON (AddressUtxoResult slotNo bhh bn txIndexInBlock txIn dath dat spentBy txInputs) =
+  toJSON (AddressUtxoResult slotNo bhh bn txIndexInBlock txIn dath dat value spentBy txInputs) =
     let C.TxIn txId txIx = txIn
-     in object
+     in Aeson.object
           [ "slotNo" .= slotNo
           , "blockHeaderHash" .= bhh
           , "blockNo" .= bn
@@ -192,42 +265,43 @@ instance ToJSON AddressUtxoResult where
           , "txIx" .= txIx
           , "datumHash" .= dath
           , "datum" .= dat
+          , "value" .= SidechainValue value
           , "spentBy" .= spentBy
           , "txInputs" .= txInputs
           ]
 
 instance FromJSON AddressUtxoResult where
-  parseJSON (Object v) = do
-    AddressUtxoResult
-      <$> v .: "slotNo"
-      <*> v .: "blockHeaderHash"
-      <*> v .: "blockNo"
-      <*> v .: "txIndexInBlock"
-      <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
-      <*> v .: "datumHash"
-      <*> v .: "datum"
-      <*> v .: "spentBy"
-      <*> v .: "txInputs"
-  parseJSON _ = mempty
+  parseJSON =
+    let parseAddressUtxoResult v = do
+          AddressUtxoResult
+            <$> v .: "slotNo"
+            <*> v .: "blockHeaderHash"
+            <*> v .: "blockNo"
+            <*> v .: "txIndexInBlock"
+            <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
+            <*> v .: "datumHash"
+            <*> v .: "datum"
+            <*> (getSidechainValue <$> v .: "value")
+            <*> v .: "spentBy"
+            <*> v .: "txInputs"
+     in Aeson.withObject "AddressUtxoResult" parseAddressUtxoResult
 
 newtype UtxoTxInput = UtxoTxInput C.TxIn
   deriving (Eq, Ord, Show, Generic)
 
 instance ToJSON UtxoTxInput where
   toJSON (UtxoTxInput (C.TxIn txId txIx)) =
-    object
+    Aeson.object
       [ "txId" .= txId
       , "txIx" .= txIx
       ]
 
 instance FromJSON UtxoTxInput where
-  parseJSON (Object v) = do
-    txIn <-
-      C.TxIn
-        <$> v .: "txId"
-        <*> v .: "txIx"
-    pure $ UtxoTxInput txIn
-  parseJSON _ = mempty
+  parseJSON =
+    let parseUtxoTxInput v = do
+          txIn <- C.TxIn <$> v .: "txId" <*> v .: "txIx"
+          pure $ UtxoTxInput txIn
+     in Aeson.withObject "UtxoTxInput" parseUtxoTxInput
 
 data GetBurnTokenEventsParams = GetBurnTokenEventsParams
   { policyId :: !C.PolicyId
@@ -238,17 +312,18 @@ data GetBurnTokenEventsParams = GetBurnTokenEventsParams
   deriving (Eq, Show)
 
 instance FromJSON GetBurnTokenEventsParams where
-  parseJSON (Object v) =
-    GetBurnTokenEventsParams
-      <$> (v .: "policyId")
-      <*> (v .:? "assetName")
-      <*> (v .:? "slotNo")
-      <*> (v .:? "afterTx")
-  parseJSON _ = mempty
+  parseJSON =
+    let parseParams v =
+          GetBurnTokenEventsParams
+            <$> (v .: "policyId")
+            <*> (v .:? "assetName")
+            <*> (v .:? "slotNo")
+            <*> (v .:? "afterTx")
+     in Aeson.withObject "GetBurnTokenEventsParams" parseParams
 
 instance ToJSON GetBurnTokenEventsParams where
   toJSON q =
-    object $
+    Aeson.object $
       catMaybes
         [ Just ("policyId" .= policyId q)
         , ("assetName" .=) <$> assetName q
@@ -275,7 +350,7 @@ data AssetIdTxResult
 
 instance ToJSON AssetIdTxResult where
   toJSON (AssetIdTxResult slotNo bhh bn txId redh red an qty) =
-    object
+    Aeson.object
       [ "slotNo" .= slotNo
       , "blockHeaderHash" .= bhh
       , "blockNo" .= bn
@@ -287,17 +362,18 @@ instance ToJSON AssetIdTxResult where
       ]
 
 instance FromJSON AssetIdTxResult where
-  parseJSON (Object v) = do
-    AssetIdTxResult
-      <$> v .: "slotNo"
-      <*> v .: "blockHeaderHash"
-      <*> v .: "blockNo"
-      <*> v .: "txId"
-      <*> v .: "redeemerHash"
-      <*> v .: "redeemer"
-      <*> v .: "assetName"
-      <*> v .: "burnAmount"
-  parseJSON _ = mempty
+  parseJSON =
+    let parseAssetIdTxResult v =
+          AssetIdTxResult
+            <$> v .: "slotNo"
+            <*> v .: "blockHeaderHash"
+            <*> v .: "blockNo"
+            <*> v .: "txId"
+            <*> v .: "redeemerHash"
+            <*> v .: "redeemer"
+            <*> v .: "assetName"
+            <*> v .: "burnAmount"
+     in Aeson.withObject "AssetIdTxResult" parseAssetIdTxResult
 
 newtype GetEpochActiveStakePoolDelegationResult
   = GetEpochActiveStakePoolDelegationResult [ActiveSDDResult]
@@ -321,7 +397,7 @@ instance FromJSON ActiveSDDResult where
             <*> (C.SlotNo <$> v .: "slotNo")
             <*> v .: "blockHeaderHash"
             <*> (C.BlockNo <$> v .: "blockNo")
-     in withObject "ActiveSDDResult" parseResult
+     in Aeson.withObject "ActiveSDDResult" parseResult
 
 instance ToJSON ActiveSDDResult where
   toJSON
@@ -332,7 +408,7 @@ instance ToJSON ActiveSDDResult where
         blockHeaderHash
         (C.BlockNo blockNo)
       ) =
-      object
+      Aeson.object
         [ "poolId" .= poolId
         , "lovelace" .= lovelace
         , "slotNo" .= slotNo
@@ -360,7 +436,7 @@ instance FromJSON NonceResult where
             <*> (C.SlotNo <$> v .: "slotNo")
             <*> v .: "blockHeaderHash"
             <*> (C.BlockNo <$> v .: "blockNo")
-     in withObject "NonceResult" parseResult
+     in Aeson.withObject "NonceResult" parseResult
 
 instance ToJSON NonceResult where
   toJSON
@@ -373,7 +449,7 @@ instance ToJSON NonceResult where
       let nonceValue = case nonce of
             Ledger.NeutralNonce -> Nothing
             Ledger.Nonce n -> Just n
-       in object
+       in Aeson.object
             [ "nonce" .= nonceValue
             , "slotNo" .= slotNo
             , "blockHeaderHash" .= blockHeaderHash

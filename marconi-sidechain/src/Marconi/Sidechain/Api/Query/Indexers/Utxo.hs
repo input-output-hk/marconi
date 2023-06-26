@@ -150,6 +150,7 @@ withQueryAction env query =
                       (Utxo.utxoResultTxIn row)
                       (Utxo.utxoResultDatumHash row)
                       (Utxo.utxoResultDatum row)
+                      (Utxo.utxoResultValue row)
                       (spentInfoResult <$> Utxo.utxoResultSpentInfo row)
                       (UtxoTxInput <$> Utxo.utxoResultTxIns row)
         _other ->
