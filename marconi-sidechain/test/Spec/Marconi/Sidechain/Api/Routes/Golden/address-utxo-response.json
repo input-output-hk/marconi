@@ -9,7 +9,12 @@
         "spentBy": null,
         "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
         "txIndexInBlock": 0,
-        "txInputs": [],
+        "txInputs": [
+            {
+                "txId": "2f1f574c0365afd9865332eec4ff75e599d80c525afc7b7d6e38d27d0a01bf47",
+                "txIx": 1
+            }
+        ],
         "txIx": 0
     },
     {
