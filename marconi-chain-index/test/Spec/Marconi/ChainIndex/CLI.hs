@@ -19,6 +19,7 @@ import Test.Tasty.Hedgehog (testProperty)
 
 import Cardano.Api qualified as C
 import Control.Monad (join)
+import Data.List qualified as List
 import Data.List.NonEmpty (toList)
 import Hedgehog (Property, annotate, forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
@@ -61,8 +62,10 @@ parseAssets = property $ do
           (Opt.prefs mempty)
           (Opt.info CLI.commonMaybeTargetAsset mempty)
           ["--match-asset-id", assetsText]
+      expected = Just $ List.nub assets
+      result = toList <$> join (Opt.getParseResult parsed)
   annotate $ show parsed
-  (toList <$> join (Opt.getParseResult parsed)) === Just assets
+  result === expected
 
 -- | Test generate golden tests from the list of commands
 genTest :: [T.Text] -> TestTree
