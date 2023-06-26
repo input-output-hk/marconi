@@ -38,6 +38,7 @@ import Marconi.Sidechain.Api.Routes (
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   NonceResult (NonceResult),
+  SidechainValue (SidechainValue),
   SpentInfoResult (SpentInfoResult),
   UtxoTxInput (UtxoTxInput),
  )
@@ -80,6 +81,10 @@ tests =
             "GetBurnTokenEventsResult"
             "propJSONRountripGetBurnTokenEventsResult"
             propJSONRountripGetBurnTokenEventsResult
+        , testPropertyNamed
+            "SidechainValue"
+            "propJSONRountripSidechainValue"
+            propJSONRountripSidechainValue
         ]
     , testGroup
         "Golden test for query results"
@@ -213,6 +218,11 @@ propJSONRountripEpochNonceResult = property $ do
       <*> Gen.genHashBlockHeader
       <*> Gen.genBlockNo
   tripping nonce Aeson.encode Aeson.decode
+
+propJSONRountripSidechainValue :: Property
+propJSONRountripSidechainValue = property $ do
+  v <- forAll $ CGen.genValue CGen.genAssetId (CGen.genQuantity (Range.linear 1 100))
+  tripping (SidechainValue v) Aeson.encode Aeson.decode
 
 goldenCurrentChainPointGenesisResult :: IO ByteString
 goldenCurrentChainPointGenesisResult = do
