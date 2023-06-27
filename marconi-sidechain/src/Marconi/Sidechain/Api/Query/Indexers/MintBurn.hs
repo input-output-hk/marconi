@@ -76,4 +76,5 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
         (x ^. MintBurn.txMintRowTxId)
         (MintBurn.mintAssetRedeemerHash <$> x ^. MintBurn.txMintRowRedeemer)
         (MintBurn.mintAssetRedeemerData <$> x ^. MintBurn.txMintRowRedeemer)
-        (x ^. MintBurn.txMintRowQuantity)
+        (x ^. MintBurn.txMintRowAssetName)
+        (negate $ x ^. MintBurn.txMintRowQuantity)

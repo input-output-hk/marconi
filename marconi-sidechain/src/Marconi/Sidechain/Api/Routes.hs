@@ -6,13 +6,15 @@
 module Marconi.Sidechain.Api.Routes where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.BaseTypes qualified as Ledger
 import Cardano.Slotting.Slot (WithOrigin (At, Origin), withOriginFromMaybe)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.:?), (.=))
+import Data.Aeson.Types (withObject)
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
@@ -172,7 +174,6 @@ data AddressUtxoResult
       !C.BlockNo
       !TxIndexInBlock
       !C.TxIn
-      !C.AddressAny
       !(Maybe (C.Hash C.ScriptData))
       !(Maybe C.ScriptData)
       !(Maybe SpentInfoResult)
@@ -180,7 +181,7 @@ data AddressUtxoResult
   deriving (Eq, Ord, Show, Generic)
 
 instance ToJSON AddressUtxoResult where
-  toJSON (AddressUtxoResult slotNo bhh bn txIndexInBlock txIn addr dath dat spentBy txInputs) =
+  toJSON (AddressUtxoResult slotNo bhh bn txIndexInBlock txIn dath dat spentBy txInputs) =
     let C.TxIn txId txIx = txIn
      in object
           [ "slotNo" .= slotNo
@@ -189,7 +190,6 @@ instance ToJSON AddressUtxoResult where
           , "txIndexInBlock" .= txIndexInBlock
           , "txId" .= txId
           , "txIx" .= txIx
-          , "address" .= addr
           , "datumHash" .= dath
           , "datum" .= dat
           , "spentBy" .= spentBy
@@ -204,7 +204,6 @@ instance FromJSON AddressUtxoResult where
       <*> v .: "blockNo"
       <*> v .: "txIndexInBlock"
       <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
-      <*> v .: "address"
       <*> v .: "datumHash"
       <*> v .: "datum"
       <*> v .: "spentBy"
@@ -262,18 +261,20 @@ newtype GetBurnTokenEventsResult
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
 data AssetIdTxResult
-  = AssetIdTxResult
+  = -- | Burn amount only, so this is always a positive number
+    AssetIdTxResult
       !C.SlotNo
       !(C.Hash C.BlockHeader)
       !C.BlockNo
       !C.TxId
       !(Maybe (C.Hash C.ScriptData))
       !(Maybe C.ScriptData)
+      !C.AssetName
       !C.Quantity
   deriving (Eq, Ord, Show, Generic)
 
 instance ToJSON AssetIdTxResult where
-  toJSON (AssetIdTxResult slotNo bhh bn txId redh red qty) =
+  toJSON (AssetIdTxResult slotNo bhh bn txId redh red an qty) =
     object
       [ "slotNo" .= slotNo
       , "blockHeaderHash" .= bhh
@@ -281,6 +282,7 @@ instance ToJSON AssetIdTxResult where
       , "txId" .= txId
       , "redeemerHash" .= redh
       , "redeemer" .= red
+      , "assetName" .= an
       , "burnAmount" .= qty
       ]
 
@@ -293,17 +295,87 @@ instance FromJSON AssetIdTxResult where
       <*> v .: "txId"
       <*> v .: "redeemerHash"
       <*> v .: "redeemer"
+      <*> v .: "assetName"
       <*> v .: "burnAmount"
   parseJSON _ = mempty
 
-newtype GetEpochStakePoolDelegationResult
-  = GetEpochStakePoolDelegationResult [EpochState.EpochSDDRow]
+newtype GetEpochActiveStakePoolDelegationResult
+  = GetEpochActiveStakePoolDelegationResult [ActiveSDDResult]
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
-newtype GetEpochActiveStakePoolDelegationResult
-  = GetEpochActiveStakePoolDelegationResult [EpochState.EpochSDDRow]
-  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+data ActiveSDDResult
+  = ActiveSDDResult
+      !C.PoolId
+      !C.Lovelace
+      !C.SlotNo
+      !(C.Hash C.BlockHeader)
+      !C.BlockNo
+  deriving (Eq, Ord, Show)
+
+instance FromJSON ActiveSDDResult where
+  parseJSON =
+    let parseResult v = do
+          ActiveSDDResult
+            <$> v .: "poolId"
+            <*> v .: "lovelace"
+            <*> (C.SlotNo <$> v .: "slotNo")
+            <*> v .: "blockHeaderHash"
+            <*> (C.BlockNo <$> v .: "blockNo")
+     in withObject "ActiveSDDResult" parseResult
+
+instance ToJSON ActiveSDDResult where
+  toJSON
+    ( ActiveSDDResult
+        poolId
+        lovelace
+        (C.SlotNo slotNo)
+        blockHeaderHash
+        (C.BlockNo blockNo)
+      ) =
+      object
+        [ "poolId" .= poolId
+        , "lovelace" .= lovelace
+        , "slotNo" .= slotNo
+        , "blockHeaderHash" .= blockHeaderHash
+        , "blockNo" .= blockNo
+        ]
 
 newtype GetEpochNonceResult
-  = GetEpochNonceResult (Maybe EpochState.EpochNonceRow)
+  = GetEpochNonceResult (Maybe NonceResult)
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+
+data NonceResult
+  = NonceResult
+      !Ledger.Nonce
+      !C.SlotNo
+      !(C.Hash C.BlockHeader)
+      !C.BlockNo
+  deriving (Eq, Ord, Show)
+
+instance FromJSON NonceResult where
+  parseJSON =
+    let parseResult v = do
+          NonceResult
+            <$> (Ledger.Nonce <$> v .: "nonce")
+            <*> (C.SlotNo <$> v .: "slotNo")
+            <*> v .: "blockHeaderHash"
+            <*> (C.BlockNo <$> v .: "blockNo")
+     in withObject "NonceResult" parseResult
+
+instance ToJSON NonceResult where
+  toJSON
+    ( NonceResult
+        nonce
+        (C.SlotNo slotNo)
+        blockHeaderHash
+        (C.BlockNo blockNo)
+      ) =
+      let nonceValue = case nonce of
+            Ledger.NeutralNonce -> Nothing
+            Ledger.Nonce n -> Just n
+       in object
+            [ "nonce" .= nonceValue
+            , "slotNo" .= slotNo
+            , "blockHeaderHash" .= blockHeaderHash
+            , "blockNo" .= blockNo
+            ]

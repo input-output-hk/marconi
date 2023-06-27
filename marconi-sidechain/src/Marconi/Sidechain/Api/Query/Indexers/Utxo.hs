@@ -148,7 +148,6 @@ withQueryAction env query =
                       (Utxo._blockInfoBlockNo $ Utxo.utxoResultBlockInfo row)
                       (Utxo.utxoResultTxIndexInBlock row)
                       (Utxo.utxoResultTxIn row)
-                      (Utxo.utxoResultAddress row)
                       (Utxo.utxoResultDatumHash row)
                       (Utxo.utxoResultDatum row)
                       (spentInfoResult <$> Utxo.utxoResultSpentInfo row)

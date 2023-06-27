@@ -10,17 +10,21 @@ import Control.Concurrent.STM.TMVar (TMVar, newEmptyTMVarIO, readTMVar)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM, atomically)
+import Data.Functor ((<&>))
 import Data.Word (Word64)
 import Marconi.ChainIndex.Indexers.EpochState (
   EpochStateHandle,
   StorableQuery (ActiveSDDByEpochNoQuery, NonceByEpochNoQuery),
   StorableResult (ActiveSDDByEpochNoResult, NonceByEpochNoResult),
  )
+import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (
+  ActiveSDDResult (ActiveSDDResult),
   GetEpochActiveStakePoolDelegationResult (GetEpochActiveStakePoolDelegationResult),
   GetEpochNonceResult (GetEpochNonceResult),
+  NonceResult (NonceResult),
  )
 import Marconi.Sidechain.Api.Types (
   EpochStateIndexerEnv (EpochStateIndexerEnv),
@@ -66,7 +70,17 @@ queryActiveSDDByEpochNo env epochNo = do
         runExceptT $
           Storable.query indexer (ActiveSDDByEpochNoQuery $ C.EpochNo epochNo)
       case res of
-        Right (ActiveSDDByEpochNoResult epochSddRows) -> pure $ Right $ GetEpochActiveStakePoolDelegationResult epochSddRows
+        Right (ActiveSDDByEpochNoResult rows) ->
+          pure $
+            Right $
+              GetEpochActiveStakePoolDelegationResult $
+                rows <&> \row ->
+                  ActiveSDDResult
+                    (EpochState.epochSDDRowPoolId row)
+                    (EpochState.epochSDDRowLovelace row)
+                    (EpochState.epochSDDRowSlotNo row)
+                    (EpochState.epochSDDRowBlockHeaderHash row)
+                    (EpochState.epochSDDRowBlockNo row)
         _other -> pure $ Left $ QueryError "Query failed"
 
 {- | Retrieve the nonce associated at the given 'EpochNo'
@@ -91,5 +105,17 @@ queryNonceByEpochNo env epochNo = do
         runExceptT $
           Storable.query indexer (NonceByEpochNoQuery $ C.EpochNo epochNo)
       case res of
-        Right (NonceByEpochNoResult epochNonceRows) -> pure $ Right $ GetEpochNonceResult epochNonceRows
+        Right (NonceByEpochNoResult rowM) ->
+          case rowM of
+            Nothing -> pure $ Right $ GetEpochNonceResult Nothing
+            Just row ->
+              pure $
+                Right $
+                  GetEpochNonceResult $
+                    Just $
+                      NonceResult
+                        (EpochState.epochNonceRowNonce row)
+                        (EpochState.epochNonceRowSlotNo row)
+                        (EpochState.epochNonceRowBlockHeaderHash row)
+                        (EpochState.epochNonceRowBlockNo row)
         _other -> pure $ Left $ QueryError "Query failed"

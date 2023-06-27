@@ -42,15 +42,15 @@ tests rpcClientAction =
         "queryMintingPolicyTest"
         queryMintingPolicyTest
     , testGroup
-        "marconi-sidechain-utxo JSON-RPC test-group"
+        "marconi-sidechain-mint-burn JSON-RPC test-group"
         [ testPropertyNamed
-            "Stores UtxoEvents and retrieve them through the RPC server using an RPC client"
-            "propUtxoEventInsertionAndJsonRpcQueryRoundTrip"
+            "Stores MintBurnEvents and retrieve them through the RPC server using an RPC client"
+            "propMintBurnEventInsertionAndJsonRpcQueryRoundTrip"
             (propMintBurnEventInsertionAndJsonRpcQueryRoundTrip rpcClientAction)
         ]
     ]
 
--- | generate some Utxo events, store and fetch the Utxos, then make sure JSON conversion is idempotent
+-- | generate some MintBurn events, store and fetch the AssetTxResults, then make sure JSON conversion is idempotent
 queryMintingPolicyTest :: Property
 queryMintingPolicyTest = property $ do
   (events, _) <- forAll genMintEvents
@@ -79,13 +79,13 @@ queryMintingPolicyTest = property $ do
       $ events
 
   let numOfFetched = length fetchedRows
-  Hedgehog.classify "Retrieved Utxos are greater than or Equal to 5" $ numOfFetched >= 5
-  Hedgehog.classify "Retrieved Utxos are greater than 1" $ numOfFetched > 1
+  Hedgehog.classify "Retrieved MintBurnEvents are greater than or Equal to 5" $ numOfFetched >= 5
+  Hedgehog.classify "Retrieved MintBurnEvents are greater than 1" $ numOfFetched > 1
 
   (Set.fromList . mapMaybe (Aeson.decode . Aeson.encode) $ fetchedRows) === Set.fromList fetchedRows
 
-{- | Test roundtrip Utxos thruough JSON-RPC http server.
- We compare a represenation of the generated UtxoEvents
+{- | Test roundtrip MintBurnEvents thruough JSON-RPC http server.
+ We compare a represenation of the generated MintBurnEvents
  with those fetched from the JSON-RPC  server. The purpose of this is:
    + RPC server routes the request to the correct handler
    + Events are serialized/deserialized thru the RPC layer and it various wrappers correctly
@@ -97,16 +97,15 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
   (events, _) <- forAll genMintEvents
   liftIO $ insertMintBurnEventsAction action $ MintBurn.MintBurnEvent <$> events
   let (qParams :: [(PolicyId, Maybe AssetName)]) =
-        Set.toList
-          . Set.fromList
-          . fmap (\mps -> (mintAssetPolicyId mps, Just $ mintAssetAssetName mps))
-          . concatMap (NonEmpty.toList . MintBurn.txMintAsset)
-          . foldMap MintBurn.txMintEventTxAssets
-          $ events
+        Set.toList $
+          Set.fromList $
+            fmap (\mps -> (mintAssetPolicyId mps, Just $ mintAssetAssetName mps)) $
+              concatMap (NonEmpty.toList . MintBurn.txMintAsset) $
+                foldMap MintBurn.txMintEventTxAssets events
   rpcResponses <- liftIO $ for qParams (queryMintBurnAction action)
-  let fetchedUtxoRows = concatMap fromQueryResult rpcResponses
+  let fetchedBurnEventRows = concatMap fromQueryResult rpcResponses
 
-  (Set.fromList . mapMaybe (Aeson.decode . Aeson.encode) $ fetchedUtxoRows) === Set.fromList fetchedUtxoRows
+  (Set.fromList $ mapMaybe (Aeson.decode . Aeson.encode) fetchedBurnEventRows) === Set.fromList fetchedBurnEventRows
 
 fromQueryResult :: JsonRpcResponse e GetBurnTokenEventsResult -> [AssetIdTxResult]
 fromQueryResult (Result _ (GetBurnTokenEventsResult rows)) = rows
