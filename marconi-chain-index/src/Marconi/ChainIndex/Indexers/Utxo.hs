@@ -619,21 +619,29 @@ instance FromRow UtxoResult where
   fromRow =
     let decodeTxId =
           either (const Nothing) pure . C.deserialiseFromRawBytesHex C.AsTxId . Text.encodeUtf8
-        txIdsFromField = traverse decodeTxId . Text.splitOn "," <$> field
+        txIdsFromField = do
+          concatenatedTxIds <- field
+          case concatenatedTxIds of
+            Nothing -> pure []
+            Just xs ->
+              case traverse decodeTxId $ Text.splitOn "," xs of
+                Nothing -> fieldWith $ \field' ->
+                  returnError SQL.ConversionFailed field' "Can't decode the spent txIds sequence"
+                Just xs' -> pure xs'
         decodeTxIx = fmap C.TxIx . readMaybe . Text.unpack
-        txIxesFromField = traverse decodeTxIx . Text.splitOn "," <$> field
+        txIxesFromField = do
+          concatenatedTxIxs <- field
+          case concatenatedTxIxs of
+            Nothing -> pure []
+            Just xs ->
+              case traverse decodeTxIx $ Text.splitOn "," xs of
+                Nothing -> fieldWith $ \field' ->
+                  returnError SQL.ConversionFailed field' "Can't decode the spent txIxs sequence"
+                Just xs' -> pure xs'
         txInsFromRow = do
-          mTxIds <- txIdsFromField
-          mTxIxes <- txIxesFromField
-          let mtxins = zipWith C.TxIn <$> mTxIds <*> mTxIxes
-          case mtxins of
-            Just txins -> pure txins
-            Nothing ->
-              fieldWith $ \field' ->
-                returnError
-                  UnexpectedNull
-                  field'
-                  "Invalid spent values: Some fields are null, other aren't"
+          txIds <- txIdsFromField
+          txIxes <- txIxesFromField
+          pure $ zipWith C.TxIn txIds txIxes
      in do UtxoResult
           <$> field
           <*> fromRow
@@ -647,9 +655,10 @@ instance FromRow UtxoResult where
           <*> do
             a <- fromRow
             b <- field
-            if
-                | Just a' <- a, Just b' <- b -> pure $ Just $ SpentInfo a' b'
-                | otherwise -> pure Nothing
+            pure $ do
+              spentBlockInfo <- a
+              spentTxId <- b
+              pure $ SpentInfo spentBlockInfo spentTxId
           <*> txInsFromRow
 
 data DatumRow = DatumRow
@@ -1005,8 +1014,10 @@ instance Queryable UtxoHandle where
         Nothing -> mempty
         Just upperBound' ->
           (
-            [ "u.slotNo <= :upperBound"
-            , "(s.slotNo IS NULL OR s.slotNo > :upperBound)"
+            [ -- created before the upperBound
+              "u.slotNo <= :upperBound"
+            , -- unspent or spent after the upper bound
+              "(s.slotNo IS NULL OR s.slotNo > :upperBound)"
             ]
           , [":upperBound" := upperBound']
           )
@@ -1080,7 +1091,7 @@ instance Queryable UtxoHandle where
                 _ : p : _xs -> At $ ueBlockInfo p
                 _other -> Origin
           -- 1 element in memory
-          (_ : _) -> liftSQLError CantQueryIndexer $ do
+          [_] -> liftSQLError CantQueryIndexer $ do
             persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Word64))
             pure $
               LastSyncedBlockInfoResult $
