@@ -169,7 +169,7 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
                 . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
                 . view Utxo.address
             )
-          . concatMap (Set.toList . Utxo.ueUtxos)
+          . concatMap Utxo.ueUtxos
           $ events
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries
   let getResult = \case
@@ -211,7 +211,7 @@ propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs = property $ do
       addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
       addressQueries =
         fmap queryUtxoByAddress $
-          foldMap (Set.toList . Set.map (view Utxo.address) . Utxo.ueUtxos) events
+          foldMap (fmap (view Utxo.address) . Utxo.ueUtxos) events
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs >>= Utxo.utxoResultTxIns
@@ -238,7 +238,7 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
   let allAddresses =
         List.nub
           . fmap (view Utxo.address)
-          . concatMap (Set.toList . Utxo.ueUtxos)
+          . concatMap Utxo.ueUtxos
           $ events
       -- We want to query for all addresses
       addressQueries :: C.SlotNo -> [StorableQuery Utxo.UtxoHandle]
@@ -631,13 +631,13 @@ propComputeEventsAtAddress :: Property
 propComputeEventsAtAddress = Hedgehog.property $ do
   event <- head <$> Hedgehog.forAll UtxoGen.genUtxoEvents
   let addresses :: [C.AddressAny]
-      addresses = map (view Utxo.address) $ Set.toList $ Utxo.ueUtxos event
+      addresses = map (view Utxo.address) $ Utxo.ueUtxos event
       sameAddressEvents :: Utxo.UtxoByAddressBufferEvents
       sameAddressEvents = Utxo.eventsAtAddress (head addresses) (Utxo.LessThanOrEqual $ C.SlotNo maxBound) [event]
       targetAddress = head addresses
       computedAddresses =
         toListOf (folded . Utxo.address) $
-          concatMap (Set.toList . Utxo.ueUtxos) $
+          concatMap Utxo.ueUtxos $
             view Utxo.bufferUtxos sameAddressEvents
       actualAddresses =
         toListOf (folded . Utxo.address . filtered (== targetAddress)) $
@@ -663,7 +663,7 @@ propSupressSavingInlineScriptAndInlineScriptHash = property $ do
         noSaveRefUtxoIndexerConfig =
           saveRefUtxoIndexerConfig{ucEnableUtxoTxOutRef = False}
 
-        withSaveScriptRef, withNoSaveScriptRef :: Set.Set Utxo.Utxo
+        withSaveScriptRef, withNoSaveScriptRef :: [Utxo.Utxo]
         withSaveScriptRef =
           Utxo.ueUtxos $
             Utxo.getUtxoEvents
@@ -680,12 +680,12 @@ propSupressSavingInlineScriptAndInlineScriptHash = property $ do
     -- There should be some inlineScripts
     Hedgehog.annotateShow withSaveScriptRef
     Hedgehog.annotateShow withNoSaveScriptRef
-    Set.filter (\u -> isJust . Utxo._inlineScript $ u) withSaveScriptRef /== Set.empty
-    Set.filter (\u -> isJust . Utxo._inlineScriptHash $ u) withSaveScriptRef /== Set.empty
+    filter (isJust . Utxo._inlineScript) withSaveScriptRef /== mempty
+    filter (isJust . Utxo._inlineScriptHash) withSaveScriptRef /== mempty
 
     -- There should be no inlineScript or inlineScriptHash
-    Set.filter (\u -> isJust . Utxo._inlineScript $ u) withNoSaveScriptRef === Set.empty
-    Set.filter (\u -> isJust . Utxo._inlineScriptHash $ u) withNoSaveScriptRef === Set.empty
+    filter (isJust . Utxo._inlineScript) withNoSaveScriptRef === mempty
+    filter (isJust . Utxo._inlineScriptHash) withNoSaveScriptRef === mempty
 
 {- |
   Calling 'Utxo.getUtxoEventos' with target addresses that are extracted from all tx outputs from
@@ -715,7 +715,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
         filteredExpectedUtxoEvent =
           expectedUtxoEvent
             { Utxo.ueUtxos =
-                Set.filter
+                filter
                   (\utxo -> isJust $ addressAnyToShelley $ utxo ^. Utxo.address)
                   (Utxo.ueUtxos expectedUtxoEvent)
             }
@@ -745,10 +745,10 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = Hedgehog.prope
   events <- Hedgehog.forAll UtxoGen.genUtxoEvents
   Hedgehog.cover 90 "All UtxoEvents have at least one utxo and one spent txout" $
     isJust $
-      List.find (\ue -> not (Set.null (ueUtxos ue)) && not (Map.null (ueInputs ue))) events
+      List.find (\ue -> not (null (ueUtxos ue)) && not (Map.null (ueInputs ue))) events
   Hedgehog.cover 90 "At least one UtxoEvent with at least one utxo" $
     isJust $
-      List.find (\ue -> not $ Set.null $ ueUtxos ue) events
+      List.find (\ue -> not $ null $ ueUtxos ue) events
   Hedgehog.cover 90 "At least one UtxoEvent with at least one spent tx out" $
     isJust $
       List.find (\ue -> not $ Map.null $ ueInputs ue) events
@@ -840,6 +840,6 @@ mkUtxoQueries events slotInterval =
       qAddresses =
         Set.toList
           . Set.fromList
-          . concatMap (\(Utxo.UtxoEvent utxoSet _ _ _) -> map Utxo._address $ Set.toList utxoSet)
+          . concatMap (\(Utxo.UtxoEvent utxoSet _ _ _) -> map Utxo._address utxoSet)
           $ events
    in fmap (Utxo.QueryUtxoByAddressWrapper . flip Utxo.QueryUtxoByAddress slotInterval) qAddresses

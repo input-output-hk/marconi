@@ -76,15 +76,13 @@ import Data.Aeson (
   (.=),
  )
 import Data.Either (fromRight, rights)
-import Data.Foldable (foldl', toList)
+import Data.Foldable (toList)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Ord (Down (Down))
-import Data.Set (Set)
-import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
@@ -448,27 +446,12 @@ data instance StorableResult UtxoHandle
   deriving (Eq, Show, Ord)
 
 data instance StorableEvent UtxoHandle = UtxoEvent
-  { ueUtxos :: !(Set Utxo)
+  { ueUtxos :: ![Utxo]
   , ueInputs :: !(Map C.TxIn C.TxId)
   , ueBlockInfo :: !BlockInfo
   , ueDatum :: !(Map (C.Hash C.ScriptData) C.ScriptData)
   }
   deriving (Eq, Ord, Show, Generic)
-
--- | mappend, combine and balance Utxos
-instance Semigroup (StorableEvent UtxoHandle) where
-  (UtxoEvent us is bi ad) <> (UtxoEvent us' is' bi' ad') =
-    let txins = Map.union is is'
-        insertUnspent :: Set Utxo -> Utxo -> Set Utxo
-        insertUnspent acc u =
-          if (u ^. txIn) `Map.notMember` txins
-            then Set.insert u acc
-            else acc
-
-        utxos =
-          foldl' insertUnspent Set.empty $
-            Set.union us us'
-     in UtxoEvent utxos txins (max bi bi') (ad <> ad')
 
 -- | The effect of a transaction (or a number of them) on the tx output map.
 data TxOutBalance = TxOutBalance
@@ -483,21 +466,10 @@ makeLenses ''TxOutBalance
 
 instance Semigroup TxOutBalance where
   bUtxoL <> bUtxoR =
-    let bUnspentKeys :: Set C.TxIn
-        bUnspentKeys =
-          Map.keysSet $
-            (bUtxoR ^. tbUnspent)
-              <> ((bUtxoL ^. tbUnspent) `Map.difference` (bUtxoR ^. tbSpent))
-        utxoMap :: Map C.TxIn Utxo
-        utxoMap = _tbUnspent bUtxoL `Map.union` _tbUnspent bUtxoR
-        bSpent =
-          bUtxoL
-            ^. tbSpent
-            <> ((bUtxoR ^. tbSpent) `Map.difference` (bUtxoL ^. tbUnspent))
-     in TxOutBalance
-          { _tbUnspent = Map.restrictKeys utxoMap bUnspentKeys
-          , _tbSpent = bSpent
-          }
+    TxOutBalance
+      { _tbUnspent = bUtxoL ^. tbUnspent <> bUtxoR ^. tbUnspent
+      , _tbSpent = bUtxoL ^. tbSpent <> bUtxoR ^. tbSpent
+      }
 
 instance Monoid TxOutBalance where
   mappend = (<>)
@@ -895,7 +867,7 @@ eventToRows (UtxoEvent utxos _ bi _) =
           , _urBlockInfo = bi
           , _urSpentInfo = Nothing
           }
-   in fmap eventToRow $ Set.toList utxos
+   in fmap eventToRow utxos
 
 {- | Used internally to gather the information required
  to update the in-database result
@@ -945,8 +917,8 @@ eventsAtAddress addr snoInterval = foldMap go
     afterUpperBound :: StorableEvent UtxoHandle -> Bool
     afterUpperBound = afterBoundCheck . _blockInfoSlotNo . ueBlockInfo
 
-    utxosAtAddress :: StorableEvent UtxoHandle -> Set Utxo
-    utxosAtAddress = Set.filter ((addr ==) . _address) . ueUtxos
+    utxosAtAddress :: StorableEvent UtxoHandle -> [Utxo]
+    utxosAtAddress = filter ((addr ==) . _address) . ueUtxos
 
     splitEventAtAddress :: StorableEvent UtxoHandle -> [StorableEvent UtxoHandle]
     splitEventAtAddress event =
@@ -1025,8 +997,8 @@ instance Queryable UtxoHandle where
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
       bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO [UtxoResult]
-      bufferEventUtxoResult (UtxoEvent utxoSet spents bi datumMap) =
-        catMaybes <$> traverse updateSpent (Set.toList utxoSet)
+      bufferEventUtxoResult (UtxoEvent utxos spents bi datumMap) =
+        catMaybes <$> traverse updateSpent utxos
         where
           updateSpent :: Utxo -> IO (Maybe UtxoResult)
           updateSpent u =
@@ -1042,7 +1014,7 @@ instance Queryable UtxoHandle where
              in Map.keys . Map.filter (txid ==)
 
           txIns :: [C.TxIn]
-          txIns = case toList utxoSet of
+          txIns = case utxos of
             [] -> []
             u : _ -> resolveTxIns u spents
 
@@ -1181,8 +1153,8 @@ getUtxoEvents
 getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs bi =
   let (TxOutBalance utxos spentTxOuts) =
         foldMap (balanceUtxoFromTx utxoIndexerConfig) $ zip txs [0 ..]
-      resolvedUtxos :: Set Utxo
-      resolvedUtxos = Set.fromList $ Map.elems utxos
+      resolvedUtxos :: [Utxo]
+      resolvedUtxos = Map.elems utxos
       plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
       plutusDatums = Datum.getPlutusDatumsFromTxs txs
       filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
