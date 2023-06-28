@@ -623,10 +623,11 @@ instance FromRow UtxoResult where
           concatenatedTxIds <- field
           case concatenatedTxIds of
             Nothing -> pure []
+            Just xs | xs == "" -> pure []
             Just xs ->
               case traverse decodeTxId $ Text.splitOn "," xs of
                 Nothing -> fieldWith $ \field' ->
-                  returnError SQL.ConversionFailed field' "Can't decode the spent txIds sequence"
+                  returnError SQL.ConversionFailed field' ("Can't decode the spent txIds sequence: " <> show xs)
                 Just xs' -> pure xs'
         decodeTxIx = fmap C.TxIx . readMaybe . Text.unpack
         txIxesFromField = do
