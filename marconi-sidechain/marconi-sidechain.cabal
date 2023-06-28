@@ -65,8 +65,9 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api       ^>=8.0
-    , cardano-slotting  ^>=0.1.1.1
+    , cardano-api          ^>=8.0
+    , cardano-ledger-core
+    , cardano-slotting     ^>=0.1.1.1
 
   ------------------------
   -- Non-IOG dependencies

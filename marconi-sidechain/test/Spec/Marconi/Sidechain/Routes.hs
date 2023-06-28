@@ -24,13 +24,10 @@ import Hedgehog (
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Marconi.ChainIndex.Indexers.EpochState (
-  EpochNonceRow (EpochNonceRow),
-  EpochSDDRow (EpochSDDRow),
- )
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Sidechain.Api.Routes (
+  ActiveSDDResult (ActiveSDDResult),
   AddressUtxoResult (AddressUtxoResult),
   AssetIdTxResult (AssetIdTxResult),
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
@@ -40,6 +37,7 @@ import Marconi.Sidechain.Api.Routes (
   GetEpochNonceResult (GetEpochNonceResult),
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
+  NonceResult (NonceResult),
   SpentInfoResult (SpentInfoResult),
   UtxoTxInput (UtxoTxInput),
  )
@@ -59,9 +57,13 @@ tests =
             "propJSONRountripCurrentSyncedBlockResult"
             propJSONRountripCurrentSyncedBlockResult
         , testPropertyNamed
-            "GetEpochActiveStakePoolDelegationResult "
+            "GetEpochActiveStakePoolDelegationResult"
             "propJSONRountripEpochStakePoolDelegationResult"
             propJSONRountripEpochStakePoolDelegationResult
+        , testPropertyNamed
+            "GetEpochNonceResult"
+            "propJSONRountripEpochNonceResult"
+            propJSONRountripEpochNonceResult
         , testPropertyNamed
             "GetUtxosFromAddressParams"
             "propJSONRountripGetUtxosFromAddressParams"
@@ -151,9 +153,6 @@ propJSONRountripGetUtxosFromAddressResult = property $ do
       <*> Gen.genBlockNo
       <*> fmap fromIntegral (Gen.word64 $ Range.linear 0 5)
       <*> CGen.genTxIn
-      <*> ( fmap (\(C.AddressInEra _ addr) -> C.toAddressAny addr) $
-              Gen.genAddressInEra C.BabbageEra
-          )
       <*> pure (fmap C.hashScriptDataBytes hsd)
       <*> pure (fmap C.getScriptData hsd)
       <*> Gen.maybe genSpentInfo
@@ -189,20 +188,30 @@ propJSONRountripGetBurnTokenEventsResult = property $ do
       <*> CGen.genTxId
       <*> pure (fmap C.hashScriptDataBytes hsd)
       <*> pure (fmap C.getScriptData hsd)
+      <*> CGen.genAssetName
       <*> Gen.genQuantity (Range.linear 0 10)
   tripping r Aeson.encode Aeson.decode
 
 propJSONRountripEpochStakePoolDelegationResult :: Property
 propJSONRountripEpochStakePoolDelegationResult = property $ do
   sdds <- fmap GetEpochActiveStakePoolDelegationResult $ forAll $ Gen.list (Range.linear 1 10) $ do
-    EpochSDDRow
-      <$> Gen.genEpochNo
-      <*> Gen.genPoolId
+    ActiveSDDResult
+      <$> Gen.genPoolId
       <*> CGen.genLovelace
       <*> Gen.genSlotNo
       <*> Gen.genHashBlockHeader
       <*> Gen.genBlockNo
   tripping sdds Aeson.encode Aeson.decode
+
+propJSONRountripEpochNonceResult :: Property
+propJSONRountripEpochNonceResult = property $ do
+  nonce <- fmap GetEpochNonceResult $ forAll $ Gen.maybe $ do
+    NonceResult
+      <$> (Ledger.Nonce . Crypto.castHash . Crypto.hashWith id <$> Gen.bytes (Range.linear 0 32))
+      <*> Gen.genSlotNo
+      <*> Gen.genHashBlockHeader
+      <*> Gen.genBlockNo
+  tripping nonce Aeson.encode Aeson.decode
 
 goldenCurrentChainPointGenesisResult :: IO ByteString
 goldenCurrentChainPointGenesisResult = do
@@ -228,13 +237,6 @@ goldenCurrentChainPointResult = do
 
 goldenAddressUtxoResult :: IO ByteString
 goldenAddressUtxoResult = do
-  let addressBech32 = "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc"
-  addr <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromBech32 (C.AsAddress C.AsShelleyAddr) addressBech32
-
   let datum = C.ScriptDataNumber 34
   let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
   txId <-
@@ -271,7 +273,6 @@ goldenAddressUtxoResult = do
             (C.BlockNo 1)
             (TxIndexInBlock 0)
             (C.TxIn txId (C.TxIx 0))
-            (C.AddressShelley addr)
             Nothing
             Nothing
             Nothing
@@ -282,7 +283,6 @@ goldenAddressUtxoResult = do
             (C.BlockNo 1)
             (TxIndexInBlock 0)
             (C.TxIn txId (C.TxIx 0))
-            (C.AddressShelley addr)
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
             (Just datum)
             (Just $ SpentInfoResult (C.SlotNo 12) spentTxId)
@@ -316,6 +316,7 @@ goldenMintingPolicyHashTxResult = do
             txId
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
             (Just redeemerData)
+            (C.AssetName "")
             (C.Quantity 10)
         ]
       result = GetBurnTokenEventsResult mints
@@ -343,10 +344,9 @@ goldenEpochStakePoolDelegationResult = do
 
   let lovelace = C.Lovelace 100000000000000
       slotNo = C.SlotNo 1382422
-      epochNo = C.EpochNo 6
       blockNo = C.BlockNo 64903
 
-  let sdds = fmap (\poolId -> EpochSDDRow epochNo poolId lovelace slotNo blockHeaderHash blockNo) poolIds
+  let sdds = fmap (\poolId -> ActiveSDDResult poolId lovelace slotNo blockHeaderHash blockNo) poolIds
       result = GetEpochActiveStakePoolDelegationResult sdds
   pure $ Aeson.encodePretty result
 
@@ -367,8 +367,7 @@ goldenEpochNonceResult = do
   let result =
         GetEpochNonceResult $
           Just $
-            EpochNonceRow
-              (C.EpochNo 4)
+            NonceResult
               nonce
               (C.SlotNo 518400)
               blockHeaderHash

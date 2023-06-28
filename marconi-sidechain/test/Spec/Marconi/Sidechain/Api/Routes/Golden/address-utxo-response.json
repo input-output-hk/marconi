@@ -1,6 +1,5 @@
 [
     {
-        "address": "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc",
         "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
         "blockNo": 1,
         "datum": null,
@@ -18,7 +17,6 @@
         "txIx": 0
     },
     {
-        "address": "addr_test1vpfwv0ezc5g8a4mkku8hhy3y3vp92t7s3ul8g778g5yegsgalc6gc",
         "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
         "blockNo": 1,
         "datum": {

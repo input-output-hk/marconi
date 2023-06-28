@@ -505,7 +505,8 @@ TBD
       "slotNo",
       "blockNo",
       "txId",
-      "burnAmount"
+      "burnAmount",
+      "redeemer"
     ]
   }
 }
