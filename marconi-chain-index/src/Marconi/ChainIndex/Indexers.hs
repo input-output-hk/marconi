@@ -88,7 +88,7 @@ import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Logging (logging)
+import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
 import Marconi.ChainIndex.Node.Client.GenesisConfig (
   NetworkConfigFile (NetworkConfigFile),
   initExtLedgerStateVar,
@@ -581,7 +581,7 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
         cliCp -> cliCp -- otherwise use what was provided on CLI.
   c <- defaultConfigStdout
   withTrace c traceName $ \trace ->
-    let io = withChainSyncEventStream socketPath networkId [chainPoint] (mkIndexerStream coordinator . logging trace)
+    let io = withChainSyncEventStream socketPath networkId [chainPoint] (mkIndexerStream coordinator . chainSyncEventStreamLogging trace)
         handleException NoIntersectionFound =
           logError trace $
             renderStrict $

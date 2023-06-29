@@ -19,7 +19,7 @@ import Control.Monad (forever)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Text qualified as Text
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Logging (logging)
+import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
 import Marconi.ChainIndex.Types (
   SecurityParam,
   UtxoIndexerConfig (UtxoIndexerConfig),
@@ -100,7 +100,7 @@ runIndexers socketPath networkId _startingPoint traceName dbDir = do
   c <- defaultConfigStdout
   concurrently_
     ( withTrace c traceName $ \trace ->
-        let io = withChainSyncEventStream socketPath networkId [Core.genesis] (mkEventStream eventQueue . logging trace)
+        let io = withChainSyncEventStream socketPath networkId [Core.genesis] (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
             handleException NoIntersectionFound =
               logError trace $
                 renderStrict $
