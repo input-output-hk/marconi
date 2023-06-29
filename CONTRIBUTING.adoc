@@ -135,22 +135,9 @@ We don't have a `hie.yaml`, the implicit cradle support in HLS seems to work fin
 [[build-with-nix]]
 === How to build the project's artifacts with Nix
 
-Haskell components are provisioned by Nix through link:https://github.com/input-output-hk/iogx#323-haskellcompilers[IOGX] via link:https://github.com/input-output-hk/haskell.nix[Haskell.nix]
+Haskell components are provisioned by Nix through link:https://github.com/input-output-hk/iogx[IOGX] via link:https://github.com/input-output-hk/haskell.nix[Haskell.nix]
 
-In general you can run `nix build .#SYSTEM.marconi.library.marconi-project.hsPkgs.PACKAGE.components.COMPONENT`,
-where `SYSTEM` is either `x86_64-linux` or `x86_64-darwin`.
-
-For example `nix build .#x86_64-linux.marconi.library.marconi-project.hsPkgs.marconi-sidechain.components.library` to build marconi-sidechain.
-
-For full documentation about the Nix code see the link:nix/README.md[Nix README].
-
-There you will find how to build all other artifacts, which are mostly related to documentation.
-
-In order to build locally *all* the artifacts required our CI system (Hydra), you can run:
-
-----
-nix build .#hydraJobs.SYSTEM.required
-----
+Once inside the `nix develop` shell, you can run the `list-nix-outputs` script to list all buildable Nix derivations. 
 
 [[develop-without-nix]]
 === How to develop without Nix
