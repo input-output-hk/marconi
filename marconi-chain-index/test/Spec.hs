@@ -8,6 +8,7 @@ import Spec.Marconi.ChainIndex.CLI qualified as CLI
 import Spec.Marconi.ChainIndex.Coordinator qualified as Coordinator
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum qualified as Indexers.AddressDatum
 import Spec.Marconi.ChainIndex.Indexers.ScriptTx qualified as Indexers.ScriptTx
+import Spec.Marconi.ChainIndex.Logging qualified as Logging
 
 -- TODO see tests below
 -- import Spec.Marconi.ChainIndex.Indexers.EpochStakepoolSize qualified as Indexers.EpochStakepoolSize
@@ -25,6 +26,7 @@ tests =
     "Marconi"
     [ Orphans.tests
     , Coordinator.tests
+    , Logging.tests
     , Indexers.Utxo.tests
     , Indexers.MintBurn.tests
     , Indexers.AddressDatum.tests

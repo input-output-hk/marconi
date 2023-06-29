@@ -312,6 +312,7 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Indexers.ScriptTx
     Spec.Marconi.ChainIndex.Indexers.Utxo
     Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex
+    Spec.Marconi.ChainIndex.Logging
     Spec.Marconi.ChainIndex.Orphans
 
   --------------------
