@@ -13,7 +13,7 @@ Marconi is a lightweight customizable solution for indexing and querying the Car
 [[Architecture]]
 == Architecture
 
-Marconi consists of a set of compomentes:
+Marconi consists of a set of components:
 
 - link:./marconi-core[marconi-core]
 - link:./marconi-chain-index[marconi-chain-indexer]
@@ -32,7 +32,7 @@ Run `nix develop` to enter the development shell and you will be presented with 
 
 === User documentation
 
-User documentations are work in progress. You may generate Haskell API documenations (haddocks) directly from the `nix shell` for each of marconi compoments:
+User documentations are work in progress. You may generate Haskell API documentation (haddocks) directly from `nix develop` for each of marconi components:
 
 ```
 cabal haddock marconi-core
