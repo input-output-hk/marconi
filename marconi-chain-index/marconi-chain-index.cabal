@@ -62,6 +62,7 @@ library
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
     Marconi.ChainIndex.Indexers.EpochState
+    Marconi.ChainIndex.Indexers.LastSync
     Marconi.ChainIndex.Indexers.MintBurn
     Marconi.ChainIndex.Indexers.ScriptTx
     Marconi.ChainIndex.Indexers.Utxo
@@ -123,7 +124,6 @@ library
     , mwc-random
     , optparse-applicative
     , prettyprinter
-    , raw-strings-qq
     , serialise
     , sqlite-simple
     , stm
@@ -285,7 +285,6 @@ benchmark marconi-chain-index-bench
     , base
     , bytestring
     , filepath
-    , raw-strings-qq
     , sqlite-simple
     , stm
     , tasty-bench

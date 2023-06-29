@@ -77,7 +77,6 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as Text
 import Data.Word (Word64)
-import Debug.Trace qualified
 import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer))
 import Marconi.ChainIndex.Indexers.AddressDatum (
   AddressDatumDepth (AddressDatumDepth),
@@ -489,7 +488,6 @@ initializeIndexers securityParam@(SecurityParam sec) indexingDepth indexers = do
   startingPoints <- mapM (\(ix, fp) -> ix securityParam coordinator fp) indexers
   -- We want to use the set of points that are common to all indexers
   -- giving priority to recent ones.
-  Debug.Trace.traceShowM startingPoints
   let oldestStartingPoint = minimum startingPoints
   pure
     ( oldestStartingPoint
@@ -510,8 +508,8 @@ mkIndexerStream'
   -> Coordinator' a
   -> S.Stream (S.Of (ChainSyncEvent a)) IO r
   -> IO ()
-mkIndexerStream' f coordinator stream =
-  finally (S.foldM_ step initial finish stream) (cleanExit coordinator)
+mkIndexerStream' f coordinator =
+  S.foldM_ step initial finish
   where
     initial = pure coordinator
 
@@ -591,7 +589,7 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
                 "No intersection found when looking for the chain point"
                   <+> pretty chainPoint <> "."
                   <+> "Please check the slot number and the block hash do belong to the chain"
-     in io `catch` handleException
+     in finally (io `catch` handleException) (cleanExit coordinator)
 
 toException :: Exception err => ExceptT err IO a -> IO a
 toException mx = do

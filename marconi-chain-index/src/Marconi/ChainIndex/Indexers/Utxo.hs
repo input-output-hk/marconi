@@ -76,13 +76,13 @@ import Data.Aeson (
   (.=),
  )
 import Data.Either (fromRight, rights)
-import Data.Foldable (toList)
+import Data.Foldable (maximumBy, toList)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
-import Data.Ord (Down (Down))
+import Data.Ord (Down (Down), comparing)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
@@ -97,6 +97,7 @@ import Database.SQLite.Simple.FromRow (
   field,
   fieldWith,
  )
+import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField), toField)
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
@@ -105,6 +106,7 @@ import Marconi.ChainIndex.Error (
   liftSQLError,
  )
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
+import Marconi.ChainIndex.Indexers.LastSync (createLastSyncTable, queryLastSyncPoint, updateLastSyncTable)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   TargetAddresses,
@@ -115,7 +117,6 @@ import Marconi.ChainIndex.Types (
  )
 import Marconi.ChainIndex.Utils (
   addressesToPredicate,
-  chainPointOrGenesis,
  )
 import Marconi.Core.Storable (
   Buffered (getStoredEvents, persistToStorage),
@@ -135,7 +136,6 @@ import System.Random.MWC (
   createSystemRandom,
   uniformR,
  )
-import Text.RawString.QQ (r)
 import Text.Read (readMaybe)
 
 {- Note [Last synced block]
@@ -666,7 +666,7 @@ open dbPath (Depth k) isToVacuume = do
   lift $
     SQL.execute_
       c
-      [r|CREATE TABLE IF NOT EXISTS unspent_transactions
+      [sql|CREATE TABLE IF NOT EXISTS unspent_transactions
                     ( address TEXT NOT NULL
                     , txId TEXT NOT NULL
                     , txIx INT NOT NULL
@@ -685,7 +685,7 @@ open dbPath (Depth k) isToVacuume = do
   lift $
     SQL.execute_
       c
-      [r|CREATE TABLE IF NOT EXISTS spent
+      [sql|CREATE TABLE IF NOT EXISTS spent
                     ( txId TEXT NOT NULL
                     , txIx INT NOT NULL
                     , slotNo INT NOT NULL
@@ -699,16 +699,18 @@ open dbPath (Depth k) isToVacuume = do
   lift $
     SQL.execute_
       c
-      [r|CREATE TABLE IF NOT EXISTS datumhash_datum ( datum_hash BLOB PRIMARY KEY , datum BLOB)|]
+      [sql|CREATE TABLE IF NOT EXISTS datumhash_datum ( datum_hash BLOB PRIMARY KEY , datum BLOB)|]
 
-  lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS spent_slotNo ON spent (slotNo)|]
+  lift $ createLastSyncTable c
 
-  lift $ SQL.execute_ c [r|CREATE INDEX IF NOT EXISTS spent_txId ON spent (txId, txIx)|]
+  lift $ SQL.execute_ c [sql|CREATE INDEX IF NOT EXISTS spent_slotNo ON spent (slotNo)|]
+
+  lift $ SQL.execute_ c [sql|CREATE INDEX IF NOT EXISTS spent_txId ON spent (txId, txIx)|]
 
   lift $
     SQL.execute_
       c
-      [r|CREATE INDEX IF NOT EXISTS unspent_transaction_address ON unspent_transactions (address)|]
+      [sql|CREATE INDEX IF NOT EXISTS unspent_transaction_address ON unspent_transactions (address)|]
 
   emptyState k (UtxoHandle c k isToVacuume)
 
@@ -726,17 +728,22 @@ instance Buffered UtxoHandle where
     => f (StorableEvent UtxoHandle) -- Events to store
     -> UtxoHandle -- Handler for storing events
     -> StorableMonad UtxoHandle UtxoHandle
+  persistToStorage events h | null events = pure h
   persistToStorage events h@(UtxoHandle c _k toVacuume) =
     liftSQLError CantInsertEvent $ do
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
           datumRows = fmap (uncurry DatumRow) $ Map.toList $ foldMap ueDatum events
+          maxChainPoint =
+            (C.ChainPoint <$> view blockInfoSlotNo <*> view blockInfoBlockHeaderHash) $
+              maximumBy (comparing $ view blockInfoSlotNo) $
+                ueBlockInfo <$> toList events
       bracket_
         (SQL.execute_ c "BEGIN")
         (SQL.execute_ c "COMMIT")
         ( SQL.executeMany
             c
-            [r|INSERT
+            [sql|INSERT
              INTO unspent_transactions (
                address,
                txId,
@@ -756,7 +763,7 @@ instance Buffered UtxoHandle where
             rows
             `concurrently_` SQL.executeMany
               c
-              [r|INSERT
+              [sql|INSERT
             INTO spent (
               txId,
               txIx, slotNo, blockHeaderHash, blockNo, blockTimestamp, epochNo, spentTxId
@@ -765,12 +772,13 @@ instance Buffered UtxoHandle where
               spents
             `concurrently_` SQL.executeMany
               c
-              [r|INSERT OR IGNORE INTO datumhash_datum
+              [sql|INSERT OR IGNORE INTO datumhash_datum
                    ( datum_hash
                    , datum
                    )
                    VALUES (?, ?)|]
               datumRows
+            `concurrently_` updateLastSyncTable c maxChainPoint
         )
       -- We want to perform vacuum about once every 100
       when toVacuume $ do
@@ -778,7 +786,7 @@ instance Buffered UtxoHandle where
         when (rndCheck == 42) $ do
           SQL.execute_
             c
-            [r|DELETE FROM
+            [sql|DELETE FROM
                             unspent_transactions
                           WHERE
                             unspent_transactions.rowid IN (
@@ -806,7 +814,7 @@ sqliteUtxoByAddressQuery c (filters, params) order = SQL.queryNamed c query para
         else "WHERE " <> SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters)
     orderPart = maybe "" (" " <>) order
     query =
-      [r|SELECT
+      [sql|SELECT
               u.address,
               u.txId,
               u.txIx,
@@ -1047,7 +1055,7 @@ instance Queryable UtxoHandle where
                 (SQL.Only hash)
   queryStorage es (UtxoHandle c _ _) LastSyncedBlockInfoQuery =
     let queryLastSlot =
-          [r|SELECT u.slotNo, u.blockHeaderHash, u.blockNo, u.blockTimestamp, u.epochNo
+          [sql|SELECT u.slotNo, u.blockHeaderHash, u.blockNo, u.blockTimestamp, u.epochNo
              FROM unspent_transactions u
              GROUP BY u.slotNo
              ORDER BY u.slotNo DESC
@@ -1082,47 +1090,21 @@ instance Queryable UtxoHandle where
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle
-  rewindStorage (C.ChainPoint sn _) h@(UtxoHandle c _ _) = liftSQLError CantRollback $ do
+  rewindStorage cp@(C.ChainPoint sn _) h@(UtxoHandle c _ _) = liftSQLError CantRollback $ do
     SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sn)
     SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sn)
+    updateLastSyncTable c cp
     pure h
   rewindStorage C.ChainPointAtGenesis h@(UtxoHandle c _ _) = liftSQLError CantRollback $ do
     SQL.execute_ c "DELETE FROM unspent_transactions"
     SQL.execute_ c "DELETE FROM spent"
+    updateLastSyncTable c C.ChainPointAtGenesis
     pure h
 
 -- For resuming we need to provide a list of points where we can resume from.
 instance Resumable UtxoHandle where
   resumeFromStorage (UtxoHandle c _ _) =
-    liftSQLError CantQueryIndexer $
-      fmap chainPointOrGenesis $
-        SQL.query_ c "SELECT slotNo, blockHeaderHash FROM unspent_transactions ORDER BY slotNo DESC LIMIT 1"
-
--- Add pagination to resume
--- Main reason for adding this is to protect against OOM
--- TODO use withAsync to spread the load. as resume, as is implemented here, could take several minutes depending on the amount of data stored.
-resumeHelper :: SQL.Connection -> IO [C.ChainPoint]
-resumeHelper c =
-  let limit :: Int = 216000
-      helper
-        :: Int -- Page
-        -> [C.ChainPoint]
-        -> IO [C.ChainPoint] -- Accumulated chainpoints
-      helper page tally = do
-        let offset = page * limit
-        cps <-
-          fmap (uncurry C.ChainPoint)
-            <$> SQL.query
-              c
-              [r|SELECT DISTINCT slotNo, blockHeaderHash
-                   FROM unspent_transactions
-                   ORDER BY slotNo DESC
-                   LIMIT ? OFFSET ? |]
-              (limit, offset)
-        case cps of
-          [] -> pure tally
-          cps' -> helper (page + 1) (tally <> cps')
-   in helper 0 []
+    liftSQLError CantQueryIndexer $ queryLastSyncPoint c
 
 -- | Convert from 'AddressInEra' of the 'CurrentEra' to 'AddressAny'.
 toAddr :: C.AddressInEra era -> C.AddressAny

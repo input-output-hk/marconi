@@ -84,14 +84,15 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
+import Database.SQLite.Simple.QQ (sql)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
+import Marconi.ChainIndex.Indexers.LastSync (createLastSyncTable, queryLastSyncPoint, updateLastSyncTable)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (
   Buffered (persistToStorage),
   HasPoint (getPoint),
@@ -106,7 +107,6 @@ import Marconi.Core.Storable (
   emptyState,
  )
 import Marconi.Core.Storable qualified as Storable
-import Text.RawString.QQ (r)
 
 {- | Define the `handler` data type, meant as a wrapper for the connection type (in this case the
  SQLite connection). In this indexer, we also add the number of events that we want to return from
@@ -228,11 +228,13 @@ instance Buffered AddressDatumHandle where
       let addressDatumHashRows = foldl' (\ea e -> ea ++ toAddressDatumHashRow e) [] es
           datumRows = foldl' (\ea e -> ea ++ toDatumRow e) [] es
           c = addressDatumHandleConnection h
+          getChainPoint (AddressDatumIndexEvent _ _ cp) = cp
+          maxChainPoint = maximum $ getChainPoint <$> toList es
       SQL.execute_ c "BEGIN"
       forM_ addressDatumHashRows $
         SQL.execute
           c
-          [r|INSERT INTO address_datums
+          [sql|INSERT INTO address_datums
               ( address
               , datum_hash
               , slot_no
@@ -241,12 +243,13 @@ instance Buffered AddressDatumHandle where
              VALUES (?, ?, ?, ?)|]
       SQL.executeMany
         c
-        [r|INSERT OR IGNORE INTO datumhash_datum
+        [sql|INSERT OR IGNORE INTO datumhash_datum
              ( datum_hash
              , datum
              )
              VALUES (?, ?)|]
         datumRows
+      updateLastSyncTable c maxChainPoint
       SQL.execute_ c "COMMIT"
       pure h
     where
@@ -265,7 +268,7 @@ instance Buffered AddressDatumHandle where
       sns :: [[Integer]] <-
         SQL.query
           c
-          [r|SELECT slot_no
+          [sql|SELECT slot_no
                FROM address_datums
                GROUP BY slot_no
                ORDER BY slot_no
@@ -279,7 +282,7 @@ instance Buffered AddressDatumHandle where
       res <-
         SQL.query
           c
-          [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
+          [sql|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
                FROM address_datums
                LEFT JOIN datumhash_datum
                ON datumhash_datum.datum_hash = address_datums.datum_hash
@@ -353,7 +356,7 @@ instance Queryable AddressDatumHandle where
     persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
       SQL.query
         c
-        [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
+        [sql|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
                    FROM address_datums
                    LEFT JOIN datumhash_datum
                    ON datumhash_datum.datum_hash = address_datums.datum_hash
@@ -369,7 +372,7 @@ instance Queryable AddressDatumHandle where
       persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
         SQL.query
           c
-          [r|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
+          [sql|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
                    FROM address_datums
                    LEFT JOIN datumhash_datum
                    ON datumhash_datum.datum_hash = address_datums.datum_hash
@@ -432,10 +435,12 @@ instance Rewindable AddressDatumHandle where
   rewindStorage C.ChainPointAtGenesis h@(AddressDatumHandle c _) =
     liftSQLError CantRollback $ do
       SQL.execute_ c "DELETE FROM address_datums"
+      updateLastSyncTable c C.ChainPointAtGenesis
       pure h
-  rewindStorage (C.ChainPoint sn _) h@(AddressDatumHandle c _) =
+  rewindStorage cp@(C.ChainPoint sn _) h@(AddressDatumHandle c _) =
     liftSQLError CantRollback $ do
       SQL.execute c "DELETE FROM address_datums WHERE slot_no > ?" (SQL.Only sn)
+      updateLastSyncTable c cp
       pure h
 
 instance Resumable AddressDatumHandle where
@@ -443,9 +448,7 @@ instance Resumable AddressDatumHandle where
     :: AddressDatumHandle
     -> StorableMonad AddressDatumHandle C.ChainPoint
   resumeFromStorage (AddressDatumHandle c _) =
-    liftSQLError CantQueryIndexer $
-      fmap chainPointOrGenesis $
-        SQL.query_ c "SELECT slot_no, block_hash FROM address_datums ORDER BY slot_no DESC LIMIT 1"
+    liftSQLError CantQueryIndexer $ queryLastSyncPoint c
 
 open
   :: FilePath
@@ -457,7 +460,7 @@ open dbPath (AddressDatumDepth k) = do
   lift $
     SQL.execute_
       c
-      [r|CREATE TABLE IF NOT EXISTS address_datums
+      [sql|CREATE TABLE IF NOT EXISTS address_datums
             ( address TEXT NOT NULL
             , datum_hash BLOB NOT NULL
             , slot_no INT NOT NULL
@@ -466,14 +469,16 @@ open dbPath (AddressDatumDepth k) = do
   lift $
     SQL.execute_
       c
-      [r|CREATE TABLE IF NOT EXISTS datumhash_datum
+      [sql|CREATE TABLE IF NOT EXISTS datumhash_datum
                       ( datum_hash BLOB PRIMARY KEY
                       , datum BLOB
                       )|]
   lift $
     SQL.execute_
       c
-      [r|CREATE INDEX IF NOT EXISTS address_datums_index
+      [sql|CREATE INDEX IF NOT EXISTS address_datums_index
            ON address_datums (address)|]
+
+  lift $ createLastSyncTable c
 
   emptyState k (AddressDatumHandle c k)

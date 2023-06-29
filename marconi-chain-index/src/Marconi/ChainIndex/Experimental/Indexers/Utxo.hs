@@ -43,10 +43,10 @@ import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
+import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
-import Text.RawString.QQ (r)
 
 import Cardano.Api qualified as C
 import Cardano.Api qualified as Core
@@ -185,7 +185,7 @@ mkSqliteIndexer
 mkSqliteIndexer conn =
   let utxoInsertQuery :: SQL.Query -- Utxo table SQL statement
       utxoInsertQuery =
-        [r|INSERT
+        [sql|INSERT
                INTO unspent_transactions (
                  address,
                  txId,
@@ -202,7 +202,7 @@ mkSqliteIndexer conn =
 
       spentInsertQuery :: SQL.Query -- Spent table SQL statements
       spentInsertQuery =
-        [r|INSERT
+        [sql|INSERT
               INTO spent (
                 txId,
                 txIx,
@@ -278,7 +278,7 @@ initSQLite dbPath = do
 
   SQL.execute_
     c
-    [r|CREATE TABLE IF NOT EXISTS unspent_transactions
+    [sql|CREATE TABLE IF NOT EXISTS unspent_transactions
                       ( address BLOB NOT NULL
                       , txId TEXT NOT NULL
                       , txIx INT NOT NULL
@@ -292,7 +292,7 @@ initSQLite dbPath = do
 
   SQL.execute_
     c
-    [r|CREATE TABLE IF NOT EXISTS spent
+    [sql|CREATE TABLE IF NOT EXISTS spent
                       ( txId TEXT NOT NULL
                       , txIx INT NOT NULL
                       , slotNo INT
@@ -431,7 +431,7 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
         -> (SQL.Connection -> m (Core.Result QueryUtxoByAddress))
       mkUtxoAddressQueryAction' filters params =
         let builtQuery =
-              [r|SELECT
+              [sql|SELECT
                       u.address,
                       u.txId,
                       u.txIx,
@@ -451,7 +451,7 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
                       AND s.txIx IS NULL
                   AND |]
                 <> SQL.Query (Text.intercalate " AND " $ SQL.fromQuery <$> filters)
-                <> [r| ORDER BY
+                <> [sql| ORDER BY
                     u.slotNo ASC |]
          in \conn -> liftIO $ SQL.queryNamed conn builtQuery params
    in uncurry mkUtxoAddressQueryAction' filterPairs
