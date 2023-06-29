@@ -85,7 +85,7 @@ queryTargetAddressTest = property $ do
       . Set.toList
       . Set.fromList -- remove the potential duplicate addresses
       . fmap Utxo._address
-      . concatMap (Set.toList . Utxo.ueUtxos)
+      . concatMap Utxo.ueUtxos
       $ events
 
   let numOfFetched = length fetchedRows
@@ -119,7 +119,7 @@ propUtxoEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
           . Set.fromList
           . fmap (unpack . C.serialiseAddress)
           . mapMaybe (addressAnyToShelley . Utxo._address)
-          . foldMap (Set.toList . Utxo.ueUtxos)
+          . foldMap Utxo.ueUtxos
           $ events
   rpcResponses <- liftIO $ for qAddresses (queryAddressUtxosAction action)
   let fetchedUtxoRows = foldMap fromQueryResult rpcResponses

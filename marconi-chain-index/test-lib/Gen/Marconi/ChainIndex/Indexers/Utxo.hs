@@ -62,10 +62,7 @@ genUtxoEventsWithTxs' genTxBodyContent = do
     getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash blockNo) txs) =
       let (TxOutBalance utxos spentTxOuts) = foldMap txOutBalanceFromTx txs
           utxoMap = foldMap getUtxosFromTx $ zip txs [0 ..]
-          resolvedUtxos =
-            Set.fromList $
-              mapMaybe (`Map.lookup` utxoMap) $
-                Set.toList utxos
+          resolvedUtxos = mapMaybe (`Map.lookup` utxoMap) $ Set.toList utxos
 
           plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
           plutusDatums = Datum.getPlutusDatumsFromTxs txs
@@ -148,7 +145,7 @@ genShelleyEraUtxoEvents :: Gen [StorableEvent Utxo.UtxoHandle]
 genShelleyEraUtxoEvents = do
   events <- genUtxoEvents
   forM events $ \event -> do
-    us <- forM (Set.toList $ Utxo.ueUtxos event) $ \utxo -> do
+    us <- forM (Utxo.ueUtxos event) $ \utxo -> do
       a <- CGen.genAddressShelley
       pure $ utxo{_address = C.toAddressAny a}
-    pure event{Utxo.ueUtxos = Set.fromList us}
+    pure event{Utxo.ueUtxos = us}
