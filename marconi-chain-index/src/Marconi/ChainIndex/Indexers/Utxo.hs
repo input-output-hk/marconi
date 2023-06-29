@@ -76,13 +76,13 @@ import Data.Aeson (
   (.=),
  )
 import Data.Either (fromRight, rights)
-import Data.Foldable (maximumBy, toList)
+import Data.Foldable (toList)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
-import Data.Ord (Down (Down), comparing)
+import Data.Ord (Down (Down))
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
@@ -106,7 +106,7 @@ import Marconi.ChainIndex.Error (
   liftSQLError,
  )
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.LastSync (createLastSyncTable, queryLastSyncPoint, updateLastSyncTable)
+import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   TargetAddresses,
@@ -734,10 +734,10 @@ instance Buffered UtxoHandle where
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
           datumRows = fmap (uncurry DatumRow) $ Map.toList $ foldMap ueDatum events
-          maxChainPoint =
-            (C.ChainPoint <$> view blockInfoSlotNo <*> view blockInfoBlockHeaderHash) $
-              maximumBy (comparing $ view blockInfoSlotNo) $
-                ueBlockInfo <$> toList events
+          chainPoints :: [C.ChainPoint] =
+            (C.ChainPoint <$> view blockInfoSlotNo <*> view blockInfoBlockHeaderHash)
+              . ueBlockInfo
+              <$> toList events
       bracket_
         (SQL.execute_ c "BEGIN")
         (SQL.execute_ c "COMMIT")
@@ -778,7 +778,7 @@ instance Buffered UtxoHandle where
                    )
                    VALUES (?, ?)|]
               datumRows
-            `concurrently_` updateLastSyncTable c maxChainPoint
+            `concurrently_` addLastSyncPoints c chainPoints
         )
       -- We want to perform vacuum about once every 100
       when toVacuume $ do
@@ -1093,12 +1093,12 @@ instance Rewindable UtxoHandle where
   rewindStorage cp@(C.ChainPoint sn _) h@(UtxoHandle c _ _) = liftSQLError CantRollback $ do
     SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sn)
     SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sn)
-    updateLastSyncTable c cp
+    rollbackLastSyncPoints c cp
     pure h
   rewindStorage C.ChainPointAtGenesis h@(UtxoHandle c _ _) = liftSQLError CantRollback $ do
     SQL.execute_ c "DELETE FROM unspent_transactions"
     SQL.execute_ c "DELETE FROM spent"
-    updateLastSyncTable c C.ChainPointAtGenesis
+    rollbackLastSyncPoints c C.ChainPointAtGenesis
     pure h
 
 -- For resuming we need to provide a list of points where we can resume from.

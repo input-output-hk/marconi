@@ -83,15 +83,15 @@ import Data.Maybe (
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Database.SQLite.Simple qualified as SQL
-import Database.SQLite.Simple.ToField qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
+import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.LastSync (createLastSyncTable, queryLastSyncPoint, updateLastSyncTable)
+import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Storable (
   Buffered (persistToStorage),
@@ -229,7 +229,7 @@ instance Buffered AddressDatumHandle where
           datumRows = foldl' (\ea e -> ea ++ toDatumRow e) [] es
           c = addressDatumHandleConnection h
           getChainPoint (AddressDatumIndexEvent _ _ cp) = cp
-          maxChainPoint = maximum $ getChainPoint <$> toList es
+          chainPoints = getChainPoint <$> toList es
       SQL.execute_ c "BEGIN"
       forM_ addressDatumHashRows $
         SQL.execute
@@ -249,7 +249,7 @@ instance Buffered AddressDatumHandle where
              )
              VALUES (?, ?)|]
         datumRows
-      updateLastSyncTable c maxChainPoint
+      addLastSyncPoints c chainPoints
       SQL.execute_ c "COMMIT"
       pure h
     where
@@ -435,12 +435,12 @@ instance Rewindable AddressDatumHandle where
   rewindStorage C.ChainPointAtGenesis h@(AddressDatumHandle c _) =
     liftSQLError CantRollback $ do
       SQL.execute_ c "DELETE FROM address_datums"
-      updateLastSyncTable c C.ChainPointAtGenesis
+      rollbackLastSyncPoints c C.ChainPointAtGenesis
       pure h
   rewindStorage cp@(C.ChainPoint sn _) h@(AddressDatumHandle c _) =
     liftSQLError CantRollback $ do
       SQL.execute c "DELETE FROM address_datums WHERE slot_no > ?" (SQL.Only sn)
-      updateLastSyncTable c cp
+      rollbackLastSyncPoints c cp
       pure h
 
 instance Resumable AddressDatumHandle where

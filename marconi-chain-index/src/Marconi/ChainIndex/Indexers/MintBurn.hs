@@ -43,7 +43,7 @@ import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object
 import Data.Aeson.Types (Pair)
 import Data.ByteString.Short qualified as Short
 import Data.Coerce (coerce)
-import Data.Foldable (maximumBy, toList)
+import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List (groupBy, sort)
 import Data.List qualified as List
@@ -51,7 +51,6 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
-import Data.Ord (comparing)
 import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
@@ -63,7 +62,7 @@ import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
-import Marconi.ChainIndex.Indexers.LastSync (createLastSyncTable, queryLastSyncPoint, updateLastSyncTable)
+import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam, TxIndexInBlock)
 import Marconi.Core.Storable (StorableMonad)
@@ -507,11 +506,11 @@ instance RI.Buffered MintBurnHandle where
     liftSQLError CantInsertEvent $
       do
         sqliteInsert sqlCon (map coerce $ toList events)
-        let maxChainPoint =
-              C.ChainPoint <$> txMintEventSlotNo <*> txMintEventBlockHeaderHash $
-                maximumBy (comparing txMintEventSlotNo) $
-                  getEvent <$> toList events
-        updateLastSyncTable sqlCon maxChainPoint
+        let chainPoints =
+              (C.ChainPoint <$> txMintEventSlotNo <*> txMintEventBlockHeaderHash)
+                . getEvent
+                <$> toList events
+        addLastSyncPoints sqlCon chainPoints
         pure h
 
   getStoredEvents (MintBurnHandle sqlCon k) =
@@ -532,7 +531,7 @@ instance RI.Resumable MintBurnHandle where
 
 instance RI.Rewindable MintBurnHandle where
   rewindStorage cp h@(MintBurnHandle sqlCon _k) =
-    liftSQLError CantRollback $ doRewind >> updateLastSyncTable sqlCon cp >> pure h
+    liftSQLError CantRollback $ doRewind >> rollbackLastSyncPoints sqlCon cp >> pure h
     where
       doRewind = case cp of
         C.ChainPoint slotNo _ ->

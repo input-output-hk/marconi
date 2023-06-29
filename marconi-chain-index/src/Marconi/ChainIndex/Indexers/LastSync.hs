@@ -4,11 +4,13 @@
 -- | SQlite helpers to manage the last sync table
 module Marconi.ChainIndex.Indexers.LastSync (
   createLastSyncTable,
-  updateLastSyncTable,
+  addLastSyncPoints,
   queryLastSyncPoint,
+  rollbackLastSyncPoints,
 ) where
 
 import Cardano.Api qualified as C
+import Data.Maybe (mapMaybe)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Marconi.ChainIndex.Orphans ()
@@ -22,24 +24,31 @@ createLastSyncTable c =
   SQL.execute_
     c
     [sql|CREATE TABLE IF NOT EXISTS lastSync
-    ( id INT PRIMARY KEY CHECK (id = 1)
+    ( slotNo INT PRIMARY KEY
     , blockHeaderHash BLOB NOT NULL
-    , slotNo INT NOT NULL
     )|]
 
 -- | update the last sync point of the indexer
-updateLastSyncTable :: SQL.Connection -> C.ChainPoint -> IO ()
-updateLastSyncTable c (C.ChainPoint slotNo blockHeader) =
-  SQL.execute
-    c
-    [sql|REPLACE INTO lastSync VALUES (1, ?, ?)|]
-    (blockHeader, slotNo)
-updateLastSyncTable c C.ChainPointAtGenesis =
-  SQL.execute_
-    c
-    [sql|DELETE FROM lastSync|]
+addLastSyncPoints :: SQL.Connection -> [C.ChainPoint] -> IO ()
+addLastSyncPoints c chainPoints = do
+  let notGenesis C.ChainPointAtGenesis = Nothing
+      notGenesis (C.ChainPoint slotNo blockHeader) = Just (slotNo, blockHeader)
+  cleanLastSync c
+  SQL.executeMany c [sql|INSERT INTO lastSync VALUES (?, ?)|] (mapMaybe notGenesis chainPoints)
 
 -- | get the last sync point of the indexer
 queryLastSyncPoint :: SQL.Connection -> IO C.ChainPoint
 queryLastSyncPoint c =
-  chainPointOrGenesis <$> SQL.query_ c "SELECT slotNo, blockHeaderHash FROM lastSync"
+  chainPointOrGenesis
+    <$> SQL.query_
+      c
+      [sql|SELECT slotNo, blockHeaderHash FROM lastSync ORDER BY slotNo DESC|]
+
+-- | Remove chainpoints that are after the rollback
+rollbackLastSyncPoints :: SQL.Connection -> C.ChainPoint -> IO ()
+rollbackLastSyncPoints c C.ChainPointAtGenesis = cleanLastSync c
+rollbackLastSyncPoints c (C.ChainPoint sno _) =
+  SQL.execute c [sql|DELETE FROM lastSync WHERE slotNo > ?|] (SQL.Only sno)
+
+cleanLastSync :: SQL.Connection -> IO ()
+cleanLastSync c = SQL.execute_ c [sql|DELETE FROM lastSync|]

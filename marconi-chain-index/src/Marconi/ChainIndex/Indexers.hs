@@ -500,7 +500,7 @@ cleanExit c = do
   putStrLn "Marconi is shutting down."
   putStrLn "Waiting for indexers to finish their work..."
 
-  void $ timeout 10_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
+  void $ timeout 180_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
   putStrLn "Done."
 
 mkIndexerStream'

@@ -8,9 +8,8 @@
 module Marconi.ChainIndex.Indexers.ScriptTx where
 
 import Data.ByteString qualified as BS
-import Data.Foldable (foldl', maximumBy, toList)
+import Data.Foldable (foldl', toList)
 import Data.Maybe (catMaybes)
-import Data.Ord (comparing)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -25,7 +24,7 @@ import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
-import Marconi.ChainIndex.Indexers.LastSync (createLastSyncTable, queryLastSyncPoint, updateLastSyncTable)
+import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
 import Marconi.Core.Storable (
@@ -196,9 +195,8 @@ instance Buffered ScriptTxHandle where
         c
         "INSERT INTO script_transactions (scriptAddress, txCbor, slotNo, blockHash) VALUES (?, ?, ?, ?)"
         rows
-      let maxChainPoint =
-            chainPoint $ maximumBy (comparing chainPoint) es
-      updateLastSyncTable c maxChainPoint
+      let chainPoints = chainPoint <$> toList es
+      addLastSyncPoints c chainPoints
       pure h
     where
       flatten :: StorableEvent ScriptTxHandle -> [ScriptTxRow]
@@ -300,11 +298,11 @@ instance Rewindable ScriptTxHandle where
     -> StorableMonad ScriptTxHandle ScriptTxHandle
   rewindStorage cp@(ChainPoint sn _) h@(ScriptTxHandle c _) = liftSQLError CantRollback $ do
     SQL.execute c "DELETE FROM script_transactions WHERE slotNo > ?" (SQL.Only sn)
-    updateLastSyncTable c cp
+    rollbackLastSyncPoints c cp
     pure h
   rewindStorage ChainPointAtGenesis h@(ScriptTxHandle c _) = liftSQLError CantRollback $ do
     SQL.execute_ c "DELETE FROM script_transactions"
-    updateLastSyncTable c C.ChainPointAtGenesis
+    rollbackLastSyncPoints c ChainPointAtGenesis
     pure h
 
 -- For resuming we need to provide a list of points where we can resume from.
