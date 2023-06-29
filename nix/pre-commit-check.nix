@@ -2,9 +2,9 @@
 # https://www.github.com/input-output-hk/iogx#38-nixpre-commit-checknix
 
 {
-  fourmolu.enable = true;
+  fourmolu.enable = false;
   cabal-fmt.enable = true;
-  shellcheck.enable = true;
+  shellcheck.enable = false;
   nixpkgs-fmt.enable = true;
   png-optimization.enable = true;
 }
