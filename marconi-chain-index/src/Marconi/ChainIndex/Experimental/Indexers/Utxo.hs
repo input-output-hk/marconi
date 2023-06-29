@@ -43,8 +43,8 @@ import Data.Set qualified as Set
 import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
-import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
+import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 
