@@ -339,8 +339,8 @@ fromRows :: [TxMintRow] -> [TxMintEvent]
 fromRows rows = do
   rs@(r :| _) <- NE.groupBy ((==) `on` slotNo) rows -- group by SlotNo
   pure $ TxMintEvent (slotNo r) (hash r) (blockNo r) $ do
-    rs' <- NE.groupBy ((==) `on` assetKey) rs
-    pure $ TxMintInfo (txId r) (txIx r) (rowToMintAsset <$> rs')
+    rs'@(r' :| _) <- NE.groupBy ((==) `on` assetKey) rs
+    pure $ TxMintInfo (txId r') (txIx r') (rowToMintAsset <$> rs')
   where
     assetKey row = (txId row, txIx row)
     txId = view txMintRowTxId
