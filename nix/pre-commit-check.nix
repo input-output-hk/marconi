@@ -3,8 +3,8 @@
 
 {
   fourmolu.enable = false;
-  cabal-fmt.enable = true;
   shellcheck.enable = false;
+  cabal-fmt.enable = true;
   png-optimization.enable = true;
   nixpkgs-fmt.enable = true;
 }
