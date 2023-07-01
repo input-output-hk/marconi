@@ -78,6 +78,7 @@ queryMintingPolicyTest = property $ do
               (mintAssetPolicyId params)
               (Just $ mintAssetAssetName params)
               Nothing
+              Nothing
         )
       . Set.toList
       . Set.fromList -- required to remove the potential duplicate assets

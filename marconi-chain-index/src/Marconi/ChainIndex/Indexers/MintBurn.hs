@@ -45,12 +45,12 @@ import Data.ByteString.Short qualified as Short
 import Data.Coerce (coerce)
 import Data.Foldable (toList)
 import Data.Function (on)
-import Data.List (groupBy, sort)
+import Data.List (find, groupBy, sort)
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NE
 import Data.Map qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
@@ -421,9 +421,9 @@ data instance RI.StorableQuery MintBurnHandle
   | -- | Query all transactions that minted 'AssetId's until an upper bound slot in the blockchain. If
     -- the upper bound slot is 'Nothing', then we return everything.
     QueryAllMintBurn (Maybe C.SlotNo)
-  | -- | Query all transactions that burned a specific 'AssetId' until an upper bound slot in the
+  | -- | Query all transactions that burned until an upper bound slot
     -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
-    QueryBurnByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo)
+    QueryBurnByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo) (Maybe C.TxId)
   | -- | Query all transactions that burned 'AssetId's until an upper bound slot in the blockchain. If
     -- the upper bound slot is 'Nothing', then we return everything.
     QueryAllBurn (Maybe C.SlotNo)
@@ -435,7 +435,8 @@ newtype instance RI.StorableResult MintBurnHandle
 
 instance RI.Queryable MintBurnHandle where
   queryStorage memoryEvents (MintBurnHandle sqlCon _k) query = liftSQLError CantQueryIndexer $ do
-    storedEvents <- queryStoredTxMintEvents sqlCon $ mkSqliteConditions query
+    sqliteCondition <- mkSqliteConditions query
+    storedEvents <- queryStoredTxMintEvents sqlCon sqliteCondition
     pure $ MintBurnResult $ do
       TxMintEvent slotNo blockHeaderHash blockNo txAssets <- storedEvents <> filteredMemoryEvents
       TxMintInfo txId txIx mintAssets <- txAssets
@@ -452,9 +453,18 @@ instance RI.Queryable MintBurnHandle where
           quantity
           redeemer
     where
+      -- filter the rows of a given predicate from in-memory events
+      filteredInMemoryRows :: (TxMintRow -> Bool) -> [TxMintRow]
+      filteredInMemoryRows f = filter f $ toRows =<< (coerce $ toList memoryEvents)
+      -- filter in-memory events for a given predicate
       filteredMemoryEvents :: [TxMintEvent]
-      filteredMemoryEvents = coerce $ fromRows $ filter rowFilter $ toRows =<< (coerce $ toList memoryEvents)
-
+      filteredMemoryEvents = coerce $ fromRows $ filteredInMemoryRows rowFilter
+      -- find txId's corresponding slotNo from in-memory events
+      findInMemorySlotNoFromTxId :: C.TxId -> Maybe C.SlotNo
+      findInMemorySlotNoFromTxId txid =
+        fmap _txMintRowSlotNo
+          . find (\r -> r ^. txMintRowTxId == txid)
+          $ toRows =<< (coerce . toList $ memoryEvents)
       -- Applies every predicate to row, when all are True, then result is True.
       rowFilter :: TxMintRow -> Bool
       rowFilter row = let filters = mkRowPredicates query in all ($ row) filters
@@ -466,9 +476,17 @@ instance RI.Queryable MintBurnHandle where
         Just slotNo -> [\row -> _txMintRowSlotNo row <= slotNo]
         Nothing -> []
 
-      matchesAssetId :: C.PolicyId -> Maybe C.AssetName -> TxMintRow -> Bool
-      matchesAssetId policyId assetName row =
-        _txMintRowPolicyId row == policyId && maybe True (_txMintRowAssetName row ==) assetName
+      matchesPolicyId :: C.PolicyId -> TxMintRow -> Bool
+      matchesPolicyId policyId row = _txMintRowPolicyId row == policyId
+
+      matchesAssetName :: Maybe C.AssetName -> TxMintRow -> Bool
+      matchesAssetName assetName row = maybe True (_txMintRowAssetName row ==) assetName
+
+      matchAfterTxId :: Maybe C.TxId -> TxMintRow -> Bool
+      matchAfterTxId txid row =
+        let maybeSlot :: Maybe C.SlotNo
+            maybeSlot = txid >>= findInMemorySlotNoFromTxId
+         in maybe True (row ^. txMintRowSlotNo >=) maybeSlot
 
       isBurn :: TxMintRow -> Bool
       isBurn row = _txMintRowQuantity row < 0
@@ -477,25 +495,55 @@ instance RI.Queryable MintBurnHandle where
       mkRowPredicates = \case
         QueryAllMintBurn maybeSlotNo -> upToSlot maybeSlotNo
         QueryAllBurn maybeSlotNo -> upToSlot maybeSlotNo <> [isBurn]
-        QueryByAssetId policyId assetName maybeSlotNo -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName]
-        QueryBurnByAssetId policyId assetName maybeSlotNo -> upToSlot maybeSlotNo <> [matchesAssetId policyId assetName, isBurn]
+        QueryByAssetId policyId assetName maybeSlotNo ->
+          upToSlot maybeSlotNo <> [matchesPolicyId policyId] <> [matchesAssetName assetName]
+        QueryBurnByAssetId policyId maybeAssetName maybeSlotNo maybeTxId ->
+          [matchesPolicyId policyId, isBurn]
+            <> [matchesAssetName maybeAssetName]
+            <> [matchAfterTxId maybeTxId]
+            <> upToSlot maybeSlotNo
 
       -- \* Filter sqlite events
 
-      mkSqliteConditions :: RI.StorableQuery MintBurnHandle -> ([SQL.Query], [NamedParam])
-      mkSqliteConditions = \case
+      mkSqliteConditions :: RI.StorableQuery MintBurnHandle -> IO ([SQL.Query], [NamedParam])
+      mkSqliteConditions h = case h of
         QueryAllMintBurn slotNo ->
-          mkUpperBoundCondition slotNo
+          pure $ mkUpperBoundCondition slotNo
         QueryByAssetId policyId assetName slotNo ->
-          mkUpperBoundCondition slotNo
-            <> mkAssetIdCondition policyId assetName
+          pure $
+            mkUpperBoundCondition slotNo
+              <> mkAssetIdCondition policyId assetName
         QueryAllBurn slotNo ->
-          mkUpperBoundCondition slotNo
-            <> (["quantity < 0"], [])
-        QueryBurnByAssetId policyId assetName slotNo ->
-          mkUpperBoundCondition slotNo
-            <> mkAssetIdCondition policyId assetName
-            <> (["quantity < 0"], [])
+          pure $
+            mkUpperBoundCondition slotNo
+              <> (["quantity < 0"], [])
+        QueryBurnByAssetId policyId assetName slotNo txId -> do
+          cond <- mkAfterTxCondtion txId
+          pure $
+            mkUpperBoundCondition slotNo
+              <> cond
+              <> mkAssetIdCondition policyId assetName
+              <> (["quantity < 0"], [])
+
+      --  filter for transaction at or after
+      mkAfterTxCondtion :: Maybe C.TxId -> IO ([SQL.Query], [NamedParam])
+      mkAfterTxCondtion maybeTxId =
+        let
+          getSlotNoFromTxId :: C.TxId -> IO (Maybe C.SlotNo)
+          getSlotNoFromTxId txid =
+            case findInMemorySlotNoFromTxId txid of
+              Nothing ->
+                listToMaybe
+                  <$> ( SQL.query sqlCon "SELECT slotNo FROM minting_policy_events WHERE txId = ?" (SQL.Only txid)
+                          :: IO [C.SlotNo]
+                      )
+              s -> pure s
+         in
+          case maybeTxId of
+            Nothing -> mempty
+            Just txId -> do
+              slotNo <- getSlotNoFromTxId txId
+              pure (["slotNo >= :slotNo"], [":slotNo" := slotNo])
 
       mkAssetIdCondition :: C.PolicyId -> Maybe C.AssetName -> ([SQL.Query], [NamedParam])
       mkAssetIdCondition policyId assetName =
@@ -503,9 +551,10 @@ instance RI.Queryable MintBurnHandle where
           [("policyId = :policyId", ":policyId" := policyId)]
             <> maybe [] (\name -> [("assetName = :assetName", ":assetName" := name)]) assetName
 
+      -- \* filter for slotNo interval
       mkUpperBoundCondition :: Maybe C.SlotNo -> ([SQL.Query], [NamedParam])
       mkUpperBoundCondition = \case
-        Nothing -> ([], [])
+        Nothing -> mempty
         Just s -> (["slotNo <= :slotNo"], [":slotNo" := s])
 
 instance RI.HasPoint (RI.StorableEvent MintBurnHandle) C.ChainPoint where

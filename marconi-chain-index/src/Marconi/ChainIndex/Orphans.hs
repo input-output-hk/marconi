@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -79,6 +80,12 @@ instance Pretty C.SlotNo where
 
 deriving newtype instance SQL.ToField C.SlotNo
 deriving newtype instance SQL.FromField C.SlotNo
+
+instance ToRow C.SlotNo where
+  toRow (C.SlotNo bn) = [toField bn]
+
+instance SQL.FromRow C.SlotNo where
+  fromRow = C.SlotNo <$> SQL.field
 
 -- * C.BlockNo
 
