@@ -34,7 +34,6 @@ let
 
   packages = {
     # Things that need plutus-tx-plugin
-    cardano-node-emulator.package.buildable = !isCross;
     cardano-streaming.package.buildable = !isCross;
     marconi-chain-index.package.buildable = !isCross;
     marconi-core.package.buildable = !isCross;

@@ -292,7 +292,7 @@ you will also need to pull in the Nix equivalent of the newer
 to learn how to update ``hackage.nix``.
 
 You can do this by running ``nix flake lock --update-input
-hackage-nix``. This assumes that you have overridden the ``hackage``
+hackage-nix``.
 
 ==== ... from the Cardano package repository
 
