@@ -710,6 +710,11 @@ open dbPath (Depth k) isToVacuume = do
   lift $
     SQL.execute_
       c
+      [sql|CREATE INDEX IF NOT EXISTS spent_tx_inputs ON spent (spentTxId)|]
+
+  lift $
+    SQL.execute_
+      c
       [sql|CREATE INDEX IF NOT EXISTS unspent_transaction_address ON unspent_transactions (address)|]
 
   emptyState k (UtxoHandle c k isToVacuume)
