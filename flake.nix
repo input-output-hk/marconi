@@ -14,7 +14,7 @@
 
   inputs = {
     nixpkgs = {
-      url = "github:NixOS/nixpkgs";
+      url = "github:NixOS/nixpkgs/365e1b3a859281cf11b94f87231adeabbdd878a2";
     };
     std = {
       url = "github:divnix/std";
@@ -25,14 +25,14 @@
       flake = false;
     };
     haskell-nix = {
-      url = "github:input-output-hk/haskell.nix";
+      url = "github:input-output-hk/haskell.nix/2159062154595d3ffc682e954189e635d1a1953f";
       inputs = {
         hackage.follows = "hackage-nix";
         nixpkgs.follows = "nixpkgs";
       };
     };
     hackage-nix = {
-      url = "github:input-output-hk/hackage.nix";
+      url = "github:input-output-hk/hackage.nix/79762108804a5fca60f2936a7901bf368f0f845a";
       flake = false;
     };
     sphinxcontrib-haddock = {
@@ -52,16 +52,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     CHaP = {
-      url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
+      url = "github:input-output-hk/cardano-haskell-packages/0018f17c65472f5e8b39883917958ef775e3c324";
       flake = false;
     };
     haskell-language-server = {
       # TODO Bump to 1.9.0.0 once marconi hits GHC 9.2
       url = "github:haskell/haskell-language-server?ref=1.8.0.0";
       flake = false;
-    };
-    plutus-core = {
-      url = "github:input-output-hk/plutus";
     };
   };
 
