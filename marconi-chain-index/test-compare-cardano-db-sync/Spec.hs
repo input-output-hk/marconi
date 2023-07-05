@@ -232,7 +232,7 @@ propMintBurn = H.withTests 1 $ H.property $ do
                 <> (show $ length $ filter (isJust . MintBurn._txMintRowRedeemer) marconi)
         liftIO $ putStrLn msg
         H.footnote msg
-        sort marconi === sort dbsync -- TODO: this is the comparison that fails
+        sort marconi === sort dbsync -- TODO: this is where the marconi and dbsync results are compared
   let compareCounts :: H.PropertyT IO ()
       compareCounts = do
         [SQL.Only marconi] <-
