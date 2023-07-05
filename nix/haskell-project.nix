@@ -1,7 +1,7 @@
 # This file is part of the IOGX template and is documented at the link below:
 # https://www.github.com/input-output-hk/iogx#33-nixhaskell-projectnix
 
-{ inputs, inputs', pkgs, meta }:
+{ inputs, inputs', meta, config, pkgs, lib }:
 
 let
 
@@ -31,7 +31,8 @@ let
       tests: False
   '';
 
-  mkPackages = { config, ... }: {
+
+  packages = {
     # Things that need plutus-tx-plugin
     cardano-node-emulator.package.buildable = !isCross;
     cardano-streaming.package.buildable = !isCross;
@@ -89,7 +90,7 @@ let
   };
 
 
-  modules = [ (args: { packages = mkPackages args; }) ];
+  modules = [{ inherit packages; }];
 
 
   project = { inherit sha256map modules cabalProjectLocal; };
