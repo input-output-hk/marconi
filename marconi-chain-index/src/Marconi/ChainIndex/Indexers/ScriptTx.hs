@@ -24,9 +24,9 @@ import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
+import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
-import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (
   Buffered (getStoredEvents, persistToStorage),
   HasPoint (getPoint),
@@ -195,6 +195,8 @@ instance Buffered ScriptTxHandle where
         c
         "INSERT INTO script_transactions (scriptAddress, txCbor, slotNo, blockHash) VALUES (?, ?, ?, ?)"
         rows
+      let chainPoints = chainPoint <$> toList es
+      addLastSyncPoints c chainPoints
       pure h
     where
       flatten :: StorableEvent ScriptTxHandle -> [ScriptTxRow]
@@ -294,20 +296,20 @@ instance Rewindable ScriptTxHandle where
     :: ChainPoint
     -> ScriptTxHandle
     -> StorableMonad ScriptTxHandle ScriptTxHandle
-  rewindStorage (ChainPoint sn _) h@(ScriptTxHandle c _) = liftSQLError CantRollback $ do
+  rewindStorage cp@(ChainPoint sn _) h@(ScriptTxHandle c _) = liftSQLError CantRollback $ do
     SQL.execute c "DELETE FROM script_transactions WHERE slotNo > ?" (SQL.Only sn)
+    rollbackLastSyncPoints c cp
     pure h
   rewindStorage ChainPointAtGenesis h@(ScriptTxHandle c _) = liftSQLError CantRollback $ do
     SQL.execute_ c "DELETE FROM script_transactions"
+    rollbackLastSyncPoints c ChainPointAtGenesis
     pure h
 
 -- For resuming we need to provide a list of points where we can resume from.
 
 instance Resumable ScriptTxHandle where
   resumeFromStorage (ScriptTxHandle c _) =
-    liftSQLError CantQueryIndexer $
-      fmap chainPointOrGenesis $
-        SQL.query_ c "SELECT slotNo, blockHash FROM script_transactions ORDER BY slotNo DESC LIMIT 1"
+    liftSQLError CantQueryIndexer $ queryLastSyncPoint c
 
 open :: FilePath -> Depth -> StorableMonad ScriptTxHandle ScriptTxIndexer
 open dbPath (Depth k) = do
@@ -320,4 +322,5 @@ open dbPath (Depth k) = do
   lift $ SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_address_slot ON script_transactions (scriptAddress, slotNo)"
   -- This index helps with group by
   lift $ SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_grp ON script_transactions (slotNo)"
+  lift $ createLastSyncTable c
   emptyState k (ScriptTxHandle c k)

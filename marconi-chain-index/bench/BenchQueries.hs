@@ -42,6 +42,7 @@ import Data.Word (Word64)
 import Database.SQLite.Simple (FromRow (fromRow), field, toRow)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
+import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
 import Database.SQLite.Simple.ToRow (ToRow)
 import GHC.Generics (Generic)
@@ -60,7 +61,6 @@ import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
 import System.FilePath ((</>))
 import Test.Tasty.Bench (bench, bgroup, defaultMain, nfIO)
-import Text.RawString.QQ (r)
 
 data FrequencyRow a = FrequencyRow
   { _frequencyRowValue :: !a
@@ -133,7 +133,7 @@ tests databaseDir indexerTVar = do
   (addressesWithMostUtxos :: [FrequencyRow C.AddressAny]) <-
     SQL.query
       c
-      [r|SELECT address, COUNT(address) as frequency
+      [sql|SELECT address, COUNT(address) as frequency
            FROM unspent_transactions u
            LEFT JOIN spent s
            ON u.txId = s.txInTxId
@@ -208,7 +208,7 @@ waitUntilSynced databaseDir nodeSocketPath = do
       sns <-
         SQL.query
           c
-          [r|SELECT slotNo
+          [sql|SELECT slotNo
                    FROM unspent_transactions
                    ORDER BY slotNo DESC
                    LIMIT 1|]

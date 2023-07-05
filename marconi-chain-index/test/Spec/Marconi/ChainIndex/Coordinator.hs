@@ -8,7 +8,7 @@ import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward))
 import Control.Concurrent (MVar, forkIO, modifyMVar_, newMVar, readMVar, signalQSemN, waitQSemN)
 import Control.Concurrent.STM (atomically, dupTChan, readTChan)
 import Control.Lens ((^.))
-import Control.Monad (void)
+import Control.Monad (forever, void)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Data.Word (Word64)
 import Gen.Marconi.ChainIndex.Types (genBlockNo, genChainPoint', genChainSyncEvents, genHashBlockHeader, genSlotNo)
@@ -84,17 +84,15 @@ storeWorker store c = do
   workerChannel <- atomically . dupTChan $ c ^. channel
   void . forkIO $ innerLoop workerChannel
   where
-    innerLoop ch = do
+    innerLoop ch = forever $ do
       signalQSemN (c ^. barrier) 1
       failWhenFull (c ^. errorVar)
       event <- atomically $ readTChan ch
       case event of
         RollForward cp _ct -> do
           modifyMVar_ store (pure . (cp :))
-          innerLoop ch
         RollBackward cp _ct -> do
           modifyMVar_ store (pure . dropWhile (> cp))
-          innerLoop ch
 
 resolve' :: [ChainSyncEvent C.ChainPoint] -> [C.ChainPoint] -> [C.ChainPoint]
 resolve' [] acc = acc

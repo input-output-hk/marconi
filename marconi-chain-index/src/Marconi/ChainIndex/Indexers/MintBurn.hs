@@ -62,9 +62,9 @@ import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
+import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam, TxIndexInBlock)
-import Marconi.ChainIndex.Utils (chainPointOrGenesis)
 import Marconi.Core.Storable (StorableMonad)
 import Marconi.Core.Storable qualified as RI
 import Ouroboros.Consensus.Shelley.Eras qualified as OEra
@@ -304,6 +304,7 @@ sqliteInit c = liftIO $ do
     " CREATE INDEX IF NOT EXISTS               \
     \    minting_policy_events__txId_policyId  \
     \ ON minting_policy_events (txId, policyId)"
+  createLastSyncTable c
 
 sqliteInsert :: SQL.Connection -> [TxMintEvent] -> IO ()
 sqliteInsert c es =
@@ -400,8 +401,7 @@ type instance RI.StorablePoint MintBurnHandle = C.ChainPoint
 
 type instance RI.StorableMonad MintBurnHandle = ExceptT IndexerError IO
 
-newtype instance RI.StorableEvent MintBurnHandle
-  = MintBurnEvent TxMintEvent
+newtype instance RI.StorableEvent MintBurnHandle = MintBurnEvent {getEvent :: TxMintEvent}
   deriving (Show)
 
 data instance RI.StorableQuery MintBurnHandle
@@ -506,6 +506,11 @@ instance RI.Buffered MintBurnHandle where
     liftSQLError CantInsertEvent $
       do
         sqliteInsert sqlCon (map coerce $ toList events)
+        let chainPoints =
+              (C.ChainPoint <$> txMintEventSlotNo <*> txMintEventBlockHeaderHash)
+                . getEvent
+                <$> toList events
+        addLastSyncPoints sqlCon chainPoints
         pure h
 
   getStoredEvents (MintBurnHandle sqlCon k) =
@@ -522,13 +527,11 @@ instance RI.Buffered MintBurnHandle where
 
 instance RI.Resumable MintBurnHandle where
   resumeFromStorage (MintBurnHandle c _) =
-    liftSQLError CantQueryIndexer $
-      fmap chainPointOrGenesis $
-        SQL.query_ c "SELECT slotNo, blockHeaderHash FROM minting_policy_events ORDER BY slotNo DESC LIMIT 1"
+    liftSQLError CantQueryIndexer $ queryLastSyncPoint c
 
 instance RI.Rewindable MintBurnHandle where
   rewindStorage cp h@(MintBurnHandle sqlCon _k) =
-    liftSQLError CantRollback $ doRewind >> pure h
+    liftSQLError CantRollback $ doRewind >> rollbackLastSyncPoints sqlCon cp >> pure h
     where
       doRewind = case cp of
         C.ChainPoint slotNo _ ->

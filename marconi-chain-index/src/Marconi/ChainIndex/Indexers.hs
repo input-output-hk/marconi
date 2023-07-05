@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -57,7 +58,7 @@ import Control.Concurrent.STM.TChan (
   readTChan,
   writeTChan,
  )
-import Control.Exception (Exception, catch)
+import Control.Exception (Exception, catch, finally)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
@@ -117,10 +118,8 @@ import Prettyprinter (
 import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath (
-  takeDirectory,
-  (</>),
- )
+import System.FilePath (takeDirectory, (</>))
+import System.Timeout (timeout)
 
 -- DatumIndexer
 
@@ -202,8 +201,7 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
   pure (loop mIndexer, cp)
   where
     loop :: MVar Utxo.UtxoIndexer -> IO ()
-    loop index = do
-      signalQSemN _barrier 1
+    loop index = forever $ do
       failWhenFull _errorVar
       readMVar index >>= callback
       event <- atomically . readTChan $ ch
@@ -213,8 +211,7 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
            in void $ updateWith index _errorVar $ Storable.insert utxoEvents
         RollBackward cp _ct ->
           void $ updateWith index _errorVar $ Storable.rewind cp
-
-      loop index
+      signalQSemN _barrier 1
 
 utxoWorker
   :: (Utxo.UtxoIndexer -> IO ())
@@ -268,8 +265,7 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
   pure (innerLoop mIndex, cp)
   where
     innerLoop :: MVar AddressDatumIndex -> IO ()
-    innerLoop index = do
-      signalQSemN _barrier 1
+    innerLoop index = forever $ do
       failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
@@ -279,10 +275,9 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
                 AddressDatum.toAddressDatumIndexEvent (Utils.addressesToPredicate targetAddresses) txs (C.ChainPoint slotNo bh)
           void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
           void $ onInsert addressDatumIndexEvent
-          innerLoop index
         RollBackward cp _ct -> do
           void $ updateWith index _errorVar $ Storable.rewind cp
-          innerLoop index
+      signalQSemN _barrier 1
 
 -- * ScriptTx indexer
 
@@ -300,8 +295,7 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
   pure (loop mIndexer, cp, mIndexer)
   where
     loop :: MVar ScriptTx.ScriptTxIndexer -> IO ()
-    loop index = do
-      signalQSemN _barrier 1
+    loop index = forever $ do
       failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
@@ -309,10 +303,9 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
           let u = ScriptTx.toUpdate txs (ChainPoint slotNo hsh)
           void $ updateWith index _errorVar $ Storable.insert u
           void $ onInsert u
-          loop index
         RollBackward cp _ct -> do
           void $ updateWith index _errorVar $ Storable.rewind cp
-          loop index
+      signalQSemN _barrier 1
 
 scriptTxWorker
   :: (Storable.StorableEvent ScriptTx.ScriptTxHandle -> IO [()])
@@ -357,7 +350,6 @@ epochStateWorker_
     indexerMVar <- newMVar indexer
 
     let loop currentLedgerState currentEpochNo = do
-          signalQSemN _barrier 1
           failWhenFull _errorVar
           void $ readMVar indexerMVar >>= callback
           chainSyncEvent <- atomically $ readTChan ch
@@ -417,6 +409,7 @@ epochStateWorker_
                   void $ tryPutMVar _errorVar err
                   pure (initialLedgerState, Nothing)
 
+          signalQSemN _barrier 1
           loop newLedgerState newEpochNo
 
     pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState), cp, indexerMVar)
@@ -454,7 +447,6 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
   indexerMVar <- newMVar indexer
   cp <- toException $ Storable.resumeFromStorage $ view Storable.handle indexer
   let loop = forever $ do
-        signalQSemN (c ^. barrier) 1
         failWhenFull (c ^. errorVar)
         void $ readMVar indexerMVar >>= callback
         event <- atomically $ readTChan ch
@@ -467,6 +459,7 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
                   MintBurn.MintBurnEvent event'
           RollBackward cp' _ct ->
             void $ updateWith indexerMVar (c ^. errorVar) $ Storable.rewind cp'
+        signalQSemN (c ^. barrier) 1
   pure (loop, cp)
 
 mintBurnWorker
@@ -501,12 +494,22 @@ initializeIndexers securityParam@(SecurityParam sec) indexingDepth indexers = do
     , coordinator
     )
 
+cleanExit :: Coordinator' a -> IO ()
+cleanExit c = do
+  putStrLn ""
+  putStrLn "Marconi is shutting down."
+  putStrLn "Waiting for indexers to finish their work..."
+
+  void $ timeout 180_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
+  putStrLn "Done."
+
 mkIndexerStream'
   :: (a -> SlotNo)
   -> Coordinator' a
   -> S.Stream (S.Of (ChainSyncEvent a)) IO r
   -> IO ()
-mkIndexerStream' f coordinator = S.foldM_ step initial finish
+mkIndexerStream' f coordinator =
+  S.foldM_ step initial finish
   where
     initial = pure coordinator
 
@@ -546,16 +549,13 @@ mkIndexerStream' f coordinator = S.foldM_ step initial finish
       Seq.Empty -> pure (c, Just e)
 
     step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
-      waitQSemN _barrier _indexerCount
       indexersHealthCheck c
       (c', mevent) <- coordinatorHandleEvent c event
       case mevent of
-        Nothing -> do
-          signalQSemN _barrier _indexerCount
-          pure c'
-        Just event' -> do
-          atomically $ writeTChan _channel event'
-          pure c'
+        Nothing -> signalQSemN _barrier _indexerCount
+        Just event' -> atomically $ writeTChan _channel event'
+      waitQSemN _barrier _indexerCount
+      pure c'
 
     finish _ = pure ()
 
@@ -589,7 +589,7 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
                 "No intersection found when looking for the chain point"
                   <+> pretty chainPoint <> "."
                   <+> "Please check the slot number and the block hash do belong to the chain"
-     in io `catch` handleException
+     in finally (io `catch` handleException) (cleanExit coordinator)
 
 toException :: Exception err => ExceptT err IO a -> IO a
 toException mx = do
@@ -610,9 +610,11 @@ updateWith xBox errBox f = modifyMVar xBox $ \x -> do
       tryPutMVar errBox err $> (x, x)
     Right x' -> pure (x', x')
 
-failWhenFull :: MonadIO m => MVar a -> m ()
+failWhenFull :: Show a => MonadIO m => MVar a -> m ()
 failWhenFull x = do
   isEmpty <- liftIO $ isEmptyMVar x
   if isEmpty
     then pure ()
-    else error "an indexer raised an error"
+    else do
+      err <- liftIO $ readMVar x
+      error $ "an indexer raised an error: " <> show err

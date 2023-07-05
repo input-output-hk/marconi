@@ -314,6 +314,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
   slotNo@(C.SlotNo sn) <- forAll Gen.genSlotNo
   bhh <- forAll Gen.genHashBlockHeader
   let blockInfo = BlockInfo slotNo bhh (C.BlockNo sn) 0 1
+      blockInfo2 = BlockInfo slotNo bhh (C.BlockNo (sn + 1)) 0 1
       utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
 
   -- Generated UtxoEvents that contain only resolved datums
@@ -325,7 +326,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
           , fmap (\d -> Gen.TxOutDatumInlineLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
           ]
   txs1 <- forAll $ Gen.genTxsWithAddresses addrsWithResolvedDatum
-  let utxoEventsResolvedDatums = fmap (\tx -> Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo) txs1
+  let utxoEventsResolvedDatums = Utxo.getUtxoEvents utxoIndexerConfig txs1 blockInfo
 
   -- Generated UtxoEvents that contain only unresolved datums
   addrsWithUnresolvedDatum <-
@@ -335,9 +336,9 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
           [ fmap (\d -> Gen.TxOutDatumHashLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
           ]
   txs2 <- forAll $ Gen.genTxsWithAddresses addrsWithUnresolvedDatum
-  let utxoEventsUnresolvedDatums = (\tx -> Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo) <$> txs2
+  let utxoEventsUnresolvedDatums = Utxo.getUtxoEvents utxoIndexerConfig txs2 blockInfo2
 
-  let utxoEvents = utxoEventsResolvedDatums <> utxoEventsUnresolvedDatums
+  let utxoEvents = [utxoEventsResolvedDatums, utxoEventsUnresolvedDatums]
   Hedgehog.annotateShow utxoEvents
 
   -- Create the indexer by adding all of the generated UtxoEvents
