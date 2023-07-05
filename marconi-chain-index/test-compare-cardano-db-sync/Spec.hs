@@ -206,6 +206,10 @@ openEpochStateIndexer = do
 
 -- * MintBurn
 
+-- TODO: Temporary code I run from cabal repl to run the test.
+hot :: ()
+hot = defaultMain $ testGroup "test" [testPropertyNamed "test" "test" propMintBurn]
+
 propMintBurn :: H.Property
 propMintBurn = H.withTests 1 $ H.property $ do
   -- Open the indexer
@@ -232,7 +236,10 @@ propMintBurn = H.withTests 1 $ H.property $ do
                 <> (show $ length $ filter (isJust . MintBurn._txMintRowRedeemer) marconi)
         liftIO $ putStrLn msg
         H.footnote msg
-        sort marconi === sort dbsync -- TODO: this is where the marconi and dbsync results are compared
+        sort marconi === sort dbsync
+  -- TODO: this is where the marconi and dbsync results are
+  -- compared. Set the mintAssetRedeemer to Nothing to make the
+  -- test always succeed.
   let compareCounts :: H.PropertyT IO ()
       compareCounts = do
         [SQL.Only marconi] <-
