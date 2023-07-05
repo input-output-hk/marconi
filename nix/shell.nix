@@ -13,7 +13,7 @@ in
   packages = [ cardano-cli cardano-node ];
 
   env = {
-    CARDANO_CLI = pkgs.lib.getExe cardano-cli;
-    CARDANO_NODE = pkgs.lib.getExe cardano-node;
+    CARDANO_CLI = "${cardano-cli}/bin/cardano-cli";
+    CARDANO_NODE = "${cardano-node}/bin/cardano-node";
   };
 }
