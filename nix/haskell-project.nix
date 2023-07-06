@@ -18,8 +18,9 @@ let
 
   packages = {
     # These rely on the plutus-tx-plugin
-    # marconi-chain-index.package.buildable = !isCross;
     marconi-sidechain.package.buildable = !isCross;
+    marconi-chain-index.components.tests.marconi-chain-index-test.buildable = !isCross;
+    marconi-chain-index.components.tests.marconi-chain-index-test-lib.buildable = !isCross;
 
     marconi-core.doHaddock = meta.enableHaddock;
     marconi-core.flags.defer-plugin-errors = meta.enableHaddock;
