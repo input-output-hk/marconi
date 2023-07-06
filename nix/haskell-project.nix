@@ -20,7 +20,7 @@ let
     # These rely on the plutus-tx-plugin
     marconi-sidechain.package.buildable = !isCross;
     marconi-chain-index.components.tests.marconi-chain-index-test.buildable = lib.mkForce (!isCross);
-    marconi-chain-index.components.tests.marconi-chain-index-test-lib.buildable = lib.mkForce (!isCross);
+    marconi-chain-index.components.sublibs.marconi-chain-index-test-lib.buildable = lib.mkForce (!isCross);
 
     marconi-core.doHaddock = meta.enableHaddock;
     marconi-core.flags.defer-plugin-errors = meta.enableHaddock;
