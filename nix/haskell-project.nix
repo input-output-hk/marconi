@@ -16,32 +16,32 @@ let
   };
 
 
-  # Configuration settings needed for cabal configure to work when cross compiling
-  # for windows. We can't use `modules` for these as `modules` are only applied
-  # after cabal has been configured.
-  cabalProjectLocal = lib.optionalString pkgs.stdenv.hostPlatform.isWindows ''
-    -- When cross compiling for windows we don't have a `ghc` package, so use
-    -- the `plutus-ghc-stub` package instead.
-    package plutus-tx-plugin
-      flags: +use-ghc-stub
+  # # Configuration settings needed for cabal configure to work when cross compiling
+  # # for windows. We can't use `modules` for these as `modules` are only applied
+  # # after cabal has been configured.
+  # cabalProjectLocal = lib.optionalString pkgs.stdenv.hostPlatform.isWindows ''
+  #   -- When cross compiling for windows we don't have a `ghc` package, so use
+  #   -- the `plutus-ghc-stub` package instead.
+  #   package plutus-tx-plugin
+  #     flags: +use-ghc-stub
 
-    -- Exlcude test that use `doctest`.  They will not work for windows
-    -- cross compilation and `cabal` will not be able to make a plan.
-    package prettyprinter-configurable
-      tests: False
-  '';
+  #   -- Exlcude test that use `doctest`.  They will not work for windows
+  #   -- cross compilation and `cabal` will not be able to make a plan.
+  #   package prettyprinter-configurable
+  #     tests: False
+  # '';
 
 
   packages = {
     # Things that need plutus-tx-plugin
-    cardano-streaming.package.buildable = !isCross;
+    # cardano-streaming.package.buildable = !isCross;
     marconi-chain-index.package.buildable = !isCross;
-    marconi-core.package.buildable = !isCross;
+    # marconi-core.package.buildable = !isCross;
     marconi-sidechain.package.buildable = !isCross;
 
-    # These need R
-    plutus-core.components.benchmarks.cost-model-test.buildable = lib.mkForce (!isCross);
-    plutus-core.components.benchmarks.update-cost-model.buildable = lib.mkForce (!isCross);
+    # # These need R
+    # plutus-core.components.benchmarks.cost-model-test.buildable = lib.mkForce (!isCross);
+    # plutus-core.components.benchmarks.update-cost-model.buildable = lib.mkForce (!isCross);
 
     marconi-core.doHaddock = meta.enableHaddock;
     marconi-core.flags.defer-plugin-errors = meta.enableHaddock;
@@ -69,13 +69,13 @@ let
     marconi-sidechain.doHaddock = meta.enableHaddock;
     marconi-sidechain.flags.defer-plugin-errors = meta.enableHaddock;
     # FIXME: Haddock mysteriously gives a spurious missing-home-modules warning
-    plutus-tx-plugin.doHaddock = false;
+    # plutus-tx-plugin.doHaddock = false;
 
     # Relies on cabal-doctest, just turn it off in the Nix build
-    prettyprinter-configurable.components.tests.prettyprinter-configurable-doctest.buildable = lib.mkForce false;
+    # prettyprinter-configurable.components.tests.prettyprinter-configurable-doctest.buildable = lib.mkForce false;
 
     # Broken due to warnings, unclear why the setting that fixes this for the build doesn't work here.
-    iohk-monitoring.doHaddock = false;
+    # iohk-monitoring.doHaddock = false;
 
     # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
     cardano-streaming.ghcOptions = [ "-Werror" ];
@@ -85,14 +85,14 @@ let
 
     # Honestly not sure why we need this, it has a mysterious unused dependency on "m"
     # This will go away when we upgrade nixpkgs and things use ieee754 anyway.
-    ieee.components.library.libs = lib.mkForce [ ];
+    # ieee.components.library.libs = lib.mkForce [ ];
   };
 
 
   modules = [{ inherit packages; }];
 
 
-  project = { inherit sha256map modules cabalProjectLocal; };
+  project = { inherit sha256map modules; };
 
 in
 
