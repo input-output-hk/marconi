@@ -265,7 +265,7 @@ TBD
     "unspentBeforeSlotNo": {
       "type": "integer",
       "minimum": 0,
-      "description": "Show only UTxOs that existed at this slot. Said another way, only outputs that were created during or before that slot and were unspent during that slot will be returned."
+      "description": "Show only UTxOs that existed at this slot. Said another way, only outputs that were created during or before that slot and remain unspent up to and including that slot will be returned."
     }
   },
   "required": [
