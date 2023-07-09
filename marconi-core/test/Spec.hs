@@ -36,6 +36,11 @@ experimentTests =
         , E.delayTestGroup "SQLiteIndexer" E.mkSqliteIndexerRunner
         ]
     , testGroup
+        "WithCatchup"
+        [ E.catchupTestGroup "ListIndexer" E.listIndexerRunner
+        , E.catchupTestGroup "SQLiteIndexer" E.mkSqliteIndexerRunner
+        ]
+    , testGroup
         "WithTransform"
         [ E.withTransformTest
         ]

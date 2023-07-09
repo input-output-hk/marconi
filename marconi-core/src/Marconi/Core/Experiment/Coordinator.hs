@@ -86,12 +86,12 @@ mkCoordinator workers' =
 -- | A coordinator step (send an input to its workers, wait for an ack of every worker before listening again)
 step
   :: ( Ord (Point input)
-     , MonadIO m
-     , MonadError IndexerError m
+     , IsIndex m input indexer
+     , Rollbackable m input indexer
      )
-  => Coordinator input
+  => indexer input
   -> ProcessedInput input
-  -> m (Coordinator input)
+  -> m (indexer input)
 step coordinator input = do
   case input of
     Index e -> index e coordinator
@@ -135,16 +135,14 @@ instance
   => Rollbackable m event Coordinator
   where
   rollback p =
-    let setLastSync c = c & lastSync .~ p
-
-        rollbackWorkers :: Coordinator event -> m (Coordinator event)
+    let rollbackWorkers :: Coordinator event -> m (Coordinator event)
         rollbackWorkers c = do
           liftIO $ dispatchNewInput c $ Rollback p
           liftIO $ waitWorkers c
           errors <- healthCheck c
           case errors of
             Just err -> close c *> throwError err
-            Nothing -> pure $ setLastSync c
+            Nothing -> pure c
      in rollbackWorkers
 
 instance (MonadIO m) => Closeable m Coordinator where

@@ -77,7 +77,7 @@ indexVia l = l . index
  If you don't want to perform any other side logic, use @deriving via@ instead.
 -}
 indexAllDescendingVia
-  :: (Ord (Point event), IsIndex m event indexer, Traversable f)
+  :: (Eq (Point event), IsIndex m event indexer, Traversable f)
   => Lens' s (indexer event)
   -> f (Timed (Point event) (Maybe event))
   -> s
@@ -88,7 +88,7 @@ indexAllDescendingVia l = l . indexAllDescending
  If you don't want to perform any other side logic, use @deriving via@ instead.
 -}
 indexAllVia
-  :: (Ord (Point event), IsIndex m event indexer, Traversable f)
+  :: (Eq (Point event), IsIndex m event indexer, Traversable f)
   => Lens' s (indexer event)
   -> f (Timed (Point event) (Maybe event))
   -> s
