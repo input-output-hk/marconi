@@ -8,6 +8,8 @@ let
   lib = pkgs.lib;
 
 
+  # Only a limited subset of components can be cross-compiled on windows.
+  # When `isCross` is `true`, it means that we are cross-compiling the project.
   isCross = pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform;
 
 

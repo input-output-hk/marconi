@@ -291,8 +291,7 @@ you will also need to pull in the Nix equivalent of the newer
 <https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation 
 to learn how to update ``hackage.nix``.
 
-You can do this by running ``nix flake lock --update-input
-hackage-nix``.
+You can do this by running ``nix flake lock --update-input hackage-nix``.
 
 ==== ... from the Cardano package repository
 
@@ -307,6 +306,7 @@ Refer to `this link
 <https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation 
 to learn how to update ``CHaP``.
 
+You can do this by running ``nix flake lock --update-input CHaP``.
 
 ===== Using unreleased versions of dependencies
 

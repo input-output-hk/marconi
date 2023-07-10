@@ -2,5 +2,5 @@
 # https://www.github.com/input-output-hk/iogx#37-nixread-the-docsnix
 
 {
-  siteFolder = null; #"doc/read-the-docs-site";
+  siteFolder = "doc/read-the-docs-site";
 }
