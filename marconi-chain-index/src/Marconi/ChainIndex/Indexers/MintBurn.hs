@@ -340,8 +340,8 @@ fromRows :: [TxMintRow] -> [TxMintEvent]
 fromRows rows = do
   rs@(r :| _) <- NE.groupBy ((==) `on` slotNo) rows -- group by SlotNo
   pure $ TxMintEvent (slotNo r) (hash r) (blockNo r) $ do
-    rs' <- NE.groupBy ((==) `on` assetKey) rs
-    pure $ TxMintInfo (txId r) (txIx r) (rowToMintAsset <$> rs')
+    rs'@(r' :| _) <- NE.groupBy ((==) `on` assetKey) rs
+    pure $ TxMintInfo (txId r') (txIx r') (rowToMintAsset <$> rs')
   where
     assetKey row = (txId row, txIx row)
     txId = view txMintRowTxId
@@ -497,6 +497,27 @@ instance RI.Queryable MintBurnHandle where
       mkUpperBoundCondition = \case
         Nothing -> ([], [])
         Just s -> (["slotNo <= :slotNo"], [":slotNo" := s])
+
+-- | Query TxMintRow's at specific slot
+queryDbTxMintRowsAtSlot :: SQL.Connection -> C.SlotNo -> IO [TxMintRow]
+queryDbTxMintRowsAtSlot sqlCon slotNo = do
+  storedEvents <- queryStoredTxMintEvents sqlCon (["slotNo = :slotNo"], [":slotNo" := slotNo])
+  pure $ do
+    TxMintEvent _slotNo blockHeaderHash blockNo txAssets <- storedEvents
+    --          ^ _slotNo is same as slotNo
+    TxMintInfo txId txIx mintAssets <- txAssets
+    MintAsset policyId assetName quantity redeemer <- NE.toList mintAssets
+    pure $
+      TxMintRow
+        slotNo
+        blockHeaderHash
+        blockNo
+        txIx
+        txId
+        policyId
+        assetName
+        quantity
+        redeemer
 
 instance RI.HasPoint (RI.StorableEvent MintBurnHandle) C.ChainPoint where
   getPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
