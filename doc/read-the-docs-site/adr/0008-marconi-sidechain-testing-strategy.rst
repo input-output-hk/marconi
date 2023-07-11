@@ -1,9 +1,9 @@
 .. _adr8:
 
 ADR 8: Marconi-Sidechain Testing Strategy
-===============================
+=========================================
 
-Date:
+Date: 11/07/2023
 
 Authors
 -------
@@ -18,19 +18,26 @@ Draft
 Context
 -------
 
-Being the primary customer-facing application, Marconi-Sidechain requires a comprehensive testing process to ensure its overall quality.
-It will undergo regular updates and enhancements to meet evolving customer needs, which exposes the risk of regresions in its functionality and accepted performance.
-Consequently, an ongoing process is necessary to validate the compatibility and performance of new features or modifications.
+A general approach to functional testing Marconi-Sidechains covering all test levels.
+The scope of this document is `marconi-sidechain`, not other Marconi applications such as `marconi-chain-index`.
 
 Decision
 --------
 
-* We will design and implement tests at the following levels: Unit, Integration and End-to-end.
-  - Unit tests are run locally on individual functions and modules.
-  - ? Integration tests are run locally on integration of modules ? (is there any useful distinction between integration and e2e tests in Marconi?)
-  - End-to-end tests are run on private or public testnets with a real cardano node and network
+* We will design and implement tests at the following levels:
+    * Unit tests are run locally on individual functions and modules.
+    * Integration tests can be easily run locally and on commit using cardano-testnet for a private testnet (soon to use the node emulator).
+    * End-to-end tests are run on a public network with a real cardano node. These can be cumbersome to setup and run due requiring a fully synced cardano-node and funded wallet, and are slow to execute due to block propagation. Therefore, we will only run automated end-to-end tests nightly.
 
-FOR UNIT TESTING:
+* We will write tests in Haskell where possible so these tests easily integrate into existing infrastructure.
+  Only use other tools if there are strong benefits.
+
+* We will produce test reports for each run which will be hosted publicly in Allure format.
+  In lieu of a Haskell adapter for Allure, `tasty-test-reporter` can be used.
+  It is not important to retain previous reports triggered by nightly or for PR commits runs.
+  Reports produced for a release should be hosted indefinitely.
+
+UNIT TESTING:
 
 * We will test indexers and filters with as many positive and negative combinations as possible using data-driven and property tests.
 
@@ -38,10 +45,16 @@ FOR UNIT TESTING:
 
 * We will plan for and produce tests alongside implementation of new product features.
 
-FOR END-TO-END/INTEGRATION TESTING:
+INTEGRATION TESTING:
 
-* We will write tests in Haskell where possible so these tests easily integrate into existing infrastructure.
-  Only use other tools if there are strong benefits.
+* We will plan test coverage and also aim to produce them alongside implementation of new product features.
+  It is acceptable to have separate tasks to produce the tests but them must be complete within the same PI cycle.
+
+* We will produce sanity tests to be to be executed on PR commit and run on a private testnet (using cardano-testnet) which will be primed with a basic dataset not intended for performance evaluations or querying in a complex environment.
+  These tests should only check the essential functionality of each feature.
+  See https://github.com/input-output-hk/marconi/issues/93 for checklist of test cases.
+
+END-TO-END TESTING:
 
 * We will plan test coverage and also aim to produce them alongside implementation of new product features.
   It is acceptable to have separate tasks to produce the tests but them must be complete within the same PI cycle.
@@ -49,93 +62,34 @@ FOR END-TO-END/INTEGRATION TESTING:
 * We will sometimes perform exploratory testing on major features, such as new RPC methods or cli options.
   This can provide faster feedback in lieu of automation testing being produced.
   Should not be carried out by the engineer who implemented the feature (due to assumption bias).
-
-* We will produce a small number of sanity checks to be to be executed on PR commit and run on a private testnet (using cardano-testnet) which will be primed with a basic dataset not intended for performance evaluations or querying in a complex environment.
-  These checks primarily focus on core functionality:
-   
-  CLI-1. that the application starts correctly using each of the the cli options (mandatory and optional)
-    - Mandatory flags: node config path, node socket path, marconi db directory, magic id
-    - Optional flags: address filter and asset id filter
-
-  CLI-2. local validation correctly catches invalid input, such as incorrectness of address formats for all cli options that take an input and a useful error is shown. 
-
-  CLI-3 query version has correct commit hash
-
-  RPC-1. that input validation catches each error scenario with useful feedback
-         ? use property tests to randomise invalid inputs ?:
-    1. `getUtxosFromAddress``
-      a. invalid format address (e.g. pubkeyhash instead of Bech32)
-      b. unsupported address (e.g. stake address)
-      c. address not included in the --address-to-index
-      d. createdAfterSlotNo higher than current slot
-      e. createAfterSlotNo and unspentBeforeSlotNo not a natural number
-      f. unspentBeforeSlotNo value larger than createdAfterSlotNo
     
-    2. `getBurnTokensEvents`
-      a. invalid policyId hash
-      b. invalid afterTx id format
-      c. policyId not included in --match-asset-id filter
-      d. policyId is included in --match-asset-id filter but the assetName is not
-      e. afterTx value is not an existing burn txId (e.g. use one that only mints)
- 
-    3. `getNonceByEpoch`
-      a. epochNo in future
-      b. epochNo in byron era
-      c. epochNo not a natural number
-    
-    4. `getActiveStakePoolDelegationByEpoch`
-      a. epochNo not a natural number
-      b. epochNo in future
+* We will produce tests for each of the RPC API methods to stress the filters
+  These tests will assert against known correct response content.
+  These tests will ideally be run on mainnet because there is more interesting transaction data there and so are more likely to catch an edge-case.
+  These tests should be run either after a sync test or on an instance of the process under test that is always running fully synced.
+  See RPC-1 in https://github.com/input-output-hk/marconi/issues/93 for checklist of test cases.
 
-    5. `getActiveStakePoolDelegationByEpoch`
-      a. epochNo not a natural number
-      b. epochNo in future
-  
-  RPC-2. sanity check each RPC method for a valid query to prove validation doesn't block correct use (response data is not important)
-    - ? Could property test be used to randomise valid queries?
-
-  RPC-3. check that only mandatory fields are required for each method
-
-  RPC-4. ? `getCurrentSyncedBlock` test pre-fully-synced response ?
-    
-* We will produce tests for the RPC API query filters to be run on public testnets (including mainnet) because there is more interesting transaction data on these networks and so test the queries more broadly.
-  These will be executed nightly on each of the POST /json-rpc methods
-  These should be run either after a sync test or on an instance of the process under test that is always running fully synced.
-    1. `getCurrentSyncedBlock`
-      a. check for valid values in result object (e.g. presence and bytestring length)
-    
-    2. `getUtxosFromAddress`
-      a. check at least one unspent and one spent utxo for correct key attributes
-      b. use createdAfterSlotNo and unspentBeforeSlotNo together to find a specfic utxo
-      c. query using more than one address included in the --address-to-index filter
-      d. query address when no --address-to-index filter is used
-  
-    3. `getBurnTokensEvents`
-      a. query using more than one policyId= and assetName pair included in the --match-asset-id filter
-      b. query policyId when no --match-asset-id is used
-      c. use slotNo and afterTx together to find a specific burn event
-    
-    4. `getNonceByEpoch`
-      a. check for valid values in result object (e.g. known correct nonce)
-    
-    5. `getActiveStakePoolDelegationByEpoch`
-      a. check for valid values in result object(e.g. check known delegation of a particular epoch remains consistent)
-    
-    6. query performance test using specific periods of interesting data from each network. (e.g. the Alonzo hype on mainnet around around block 6535793)
-      a. (option) use a tool like artillery on each query method for a know subset of data. this allows us to:
-        - easily configure simulation of load ramping and number of users
-        - generate reports for each test run with useful measurements to compare over time
+* We will produce tests for the RPC API methods to cover a board set of response data comparing against a source of truth
+  These tests will compare against results produced by `cardano-db-sync <https://github.com/input-output-hk/cardano-db-sync>`_
+  These tests will ideally be run on mainnet
+  see RPC-2 in https://github.com/input-output-hk/marconi/issues/93 for checklist of test cases.
 
 * We will not have any end-to-end tests that query maroni's db because this does not always store relevant data and it does not resemble how the user should be querying.
 
 * We will produce sync performance tests to be run on each public network: preview, preprod and mainnet. (See ADR 7: Marconi observability for details)
 
+* We will produce RPC query performance tests using specific periods of interesting data from public networks. (See ADR 7: Marconi observability for details)
+
 Argument
 --------
 
+Being the primary customer-facing application, Marconi-Sidechain will undergo regular updates and enhancements to meet evolving customer needs, which exposes the risk of regressions in its functionality and accepted performance.
+
+Consequently, an ongoing process is necessary to validate the compatibility and performance of new features or modifications whilst verifying that legacy features remain working correctly.
+
 Alternative solutions
 ---------------------
-When testing marconi-chain-index we can take a similar aproach but must also:
+When testing marconi-chain-index we can take a similar approach but must also:
   - test starting the application with the CLI's disable flags:
     - end-to-end test to check absence of db file being created after run
     - property test to randomise combinations
