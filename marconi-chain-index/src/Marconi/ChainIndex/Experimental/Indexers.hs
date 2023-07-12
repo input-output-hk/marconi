@@ -9,7 +9,7 @@ import Cardano.BM.Trace (logError)
 import Cardano.Streaming (
   ChainSyncEvent (RollBackward, RollForward),
   ChainSyncEventException (NoIntersectionFound),
-  withChainSyncEventStream,
+  withChainSyncEventEpochNoStream,
  )
 import Control.Concurrent (MVar, modifyMVar_, newMVar)
 import Control.Concurrent.Async (concurrently_)
@@ -33,34 +33,34 @@ import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
 import System.FilePath ((</>))
 
-type instance Core.Point (C.BlockInMode C.CardanoMode) = C.ChainPoint
+type instance Core.Point (C.BlockInMode C.CardanoMode, C.EpochNo) = C.ChainPoint
 
 type UtxoIndexer = Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
 
 -- | Extract the timed information from a block
 blockTimed
-  :: C.BlockInMode C.CardanoMode
-  -> Core.Timed C.ChainPoint (C.BlockInMode C.CardanoMode)
-blockTimed b@(C.BlockInMode (C.Block (C.BlockHeader slotNo hsh _) _) _) =
+  :: (C.BlockInMode C.CardanoMode, a)
+  -> Core.Timed C.ChainPoint (C.BlockInMode C.CardanoMode, a)
+blockTimed b@(C.BlockInMode (C.Block (C.BlockHeader slotNo hsh _) _) _, _) =
   Core.Timed (C.ChainPoint slotNo hsh) b
 
 -- | Create a worker for the utxo indexer
 utxoWorker -- Should go in Utxo module?
   :: FilePath
   -> SecurityParam
-  -> IO (MVar UtxoIndexer, Core.Worker (C.BlockInMode C.CardanoMode) C.ChainPoint)
+  -> IO (MVar UtxoIndexer, Core.Worker (C.BlockInMode C.CardanoMode, C.EpochNo) C.ChainPoint)
 utxoWorker dbPath depth = do
   c <- Utxo.initSQLite dbPath -- TODO handle error
   let utxoIndexerConfig =
         -- TODO We forgot the TargetAddress filtering logic for now for the Experimental Indexers.Utxo module
         UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
-      extract (C.BlockInMode block _) = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
+      extract (C.BlockInMode block _, _) = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
   Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c depth
 
 -- | Process the next event in the queue with the coordinator
 readEvent
-  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode))
-  -> MVar (Core.Coordinator (C.BlockInMode C.CardanoMode))
+  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode, C.EpochNo))
+  -> MVar (Core.Coordinator (C.BlockInMode C.CardanoMode, C.EpochNo))
   -> IO r
 readEvent q cBox = forever $ do
   e <- atomically $ readTBQueue q
@@ -68,13 +68,13 @@ readEvent q cBox = forever $ do
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode))
-  -> S.Stream (S.Of (ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
+  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode, C.EpochNo))
+  -> S.Stream (S.Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo))) IO r
   -> IO r
 mkEventStream q =
   let processEvent
-        :: ChainSyncEvent (C.BlockInMode C.CardanoMode)
-        -> Core.ProcessedInput (C.BlockInMode C.CardanoMode)
+        :: ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo)
+        -> Core.ProcessedInput (C.BlockInMode C.CardanoMode, C.EpochNo)
       processEvent (RollForward x _) = Core.Index $ Just <$> blockTimed x
       processEvent (RollBackward x _) = Core.Rollback x
    in S.mapM_ $ atomically . writeTBQueue q . processEvent
@@ -100,7 +100,7 @@ runIndexers socketPath networkId _startingPoint traceName dbDir = do
   c <- defaultConfigStdout
   concurrently_
     ( withTrace c traceName $ \trace ->
-        let io = withChainSyncEventStream socketPath networkId [Core.genesis] (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
+        let io = withChainSyncEventEpochNoStream socketPath networkId [Core.genesis] (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
             handleException NoIntersectionFound =
               logError trace $
                 renderStrict $

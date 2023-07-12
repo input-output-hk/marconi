@@ -40,7 +40,7 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing (defaultConfigStdout)
-import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventEpochNoStream)
 import Gen.Marconi.ChainIndex.Types (genTxBodyWithTxIns, genWitnessAndHashInEra)
 import Marconi.ChainIndex.Indexers qualified as M
 import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
@@ -142,7 +142,7 @@ propEndToEndScriptTx = integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFina
       let chainPoint = C.ChainPointAtGenesis :: C.ChainPoint
       c <- defaultConfigStdout
       withTrace c "marconi" $ \trace ->
-        let indexerWorker = withChainSyncEventStream socketPathAbs networkId [chainPoint] $
+        let indexerWorker = withChainSyncEventEpochNoStream socketPathAbs networkId [chainPoint] $
               S.mapM_ $
                 \chainSyncEvent -> IO.atomically $ IO.writeTChan ch chainSyncEvent
             handleException NoIntersectionFound =
