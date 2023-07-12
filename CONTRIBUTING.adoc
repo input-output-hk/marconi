@@ -137,7 +137,7 @@ We don't have a `hie.yaml`, the implicit cradle support in HLS seems to work fin
 
 Haskell components are provisioned by Nix through link:https://github.com/input-output-hk/iogx[IOGX] via link:https://github.com/input-output-hk/haskell.nix[Haskell.nix]
 
-Once inside the `nix develop` shell, you can run the `list-nix-outputs` script to list all buildable Nix derivations. 
+Once inside the `nix develop` shell, you can run the `list-flake-outputs` script to list all buildable Nix derivations. 
 
 [[develop-without-nix]]
 === How to develop without Nix
