@@ -27,21 +27,23 @@ Decision
 * We will design and implement tests at the following levels:
     * Unit tests are run locally on individual functions and modules.
     * Integration tests can be easily run locally and on commit using cardano-testnet for a private testnet (soon to use the node emulator).
-    * End-to-end tests are run on a public network with a real cardano node. These can be cumbersome to setup and run due requiring a fully synced cardano-node and funded wallet, and are slow to execute due to block propagation. Therefore, we will only run automated end-to-end tests nightly.
+    * End-to-end tests are run on a public network with a real cardano node. These can be cumbersome to setup and run due requiring a fully synced cardano-node and sometimes additional services. Therefore, we will only run automated end-to-end tests nightly.
 
-* We will write tests in Haskell where possible so these tests easily integrate into existing infrastructure.
-  Only use other tools if there are strong benefits.
+* We will aim to write tests in Haskell so these are easily integrated with existing infrastructure.
+
+* We will be open to using non-Haskell tooling when there are strong benefits, such as performance measuring and report generation.
 
 * We will produce test reports for each run which will be hosted publicly in Allure format.
-  In lieu of a Haskell adapter for Allure, `tasty-test-reporter` can be used.
+  In lieu of a Haskell adapter for Allure, `tasty-test-reporter <https://hackage.haskell.org/package/tasty-test-reporter>`_ can be used.
   It is not important to retain previous reports triggered by nightly or for PR commits runs.
   Reports produced for a release should be hosted indefinitely.
 
 UNIT TESTING:
 
 * We will test indexers and filters with as many positive and negative combinations as possible using data-driven and property tests.
+  To support this, we will produce a generator to act like a "mockchain" to generate a variety of: blocks, transations and roll forward/backward events.
 
-* We will not attempt to test the CLI or RPC interface at unit level because we already have some sanity tests being run on commit on private testnet for fast feedback.
+* We will only test functions and modules at lower layers to the CLI or RPC and not aim to cover these interfaces because we will get greater coverage of those with the integration tests.
 
 * We will plan for and produce tests alongside implementation of new product features.
 
