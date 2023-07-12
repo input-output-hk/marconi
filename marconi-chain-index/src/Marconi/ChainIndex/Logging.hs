@@ -67,6 +67,7 @@ instance Pretty LastSyncLog where
               <+> pretty cp
               <+> "and current node tip is"
               <+> pretty nt
+              <> "."
 
           processingSummaryMsg timeSinceLastMsg =
             "Processed"
@@ -86,19 +87,19 @@ instance Pretty LastSyncLog where
               "Not syncing. Node tip is at Genesis"
             -- This case statement should never happen.
             (Just timeSinceLastMsg, C.ChainPointAtGenesis, C.ChainTip{}) ->
-              "Synchronising (0%)"
+              "Synchronising (0%)."
+                <+> currentTipMsg timeSinceLastMsgM
                 <+> processingSummaryMsg timeSinceLastMsg
                 <> "."
-                <+> currentTipMsg timeSinceLastMsgM
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
               )
                 | nodeTipSlot - chainSyncSlot < 100 ->
                     "Fully synchronised."
+                      <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
                       <> "."
-                      <+> currentTipMsg timeSinceLastMsgM
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -108,9 +109,9 @@ instance Pretty LastSyncLog where
                  in "Synchronising ("
                       <> pretty (printf "%.2f" pct :: String)
                       <> "%)."
+                      <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
-                      <+> currentTipMsg timeSinceLastMsgM
 
 renderLastSyncLog :: LastSyncLog -> Text
 renderLastSyncLog syncLog =
