@@ -216,7 +216,7 @@ class IsSync m event indexer where
   -- | Last sync of the indexer
   lastSyncPoint :: indexer event -> m (Point event)
 
--- | Check if the given point is ahead of the last syncPoint of an indexer,
+-- | Check if the given point is ahead of the last syncPoint of an indexer
 isAheadOfSync
   :: (Ord (Point event), IsSync m event indexer, Functor m)
   => Point event

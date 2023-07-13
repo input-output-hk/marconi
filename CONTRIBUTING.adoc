@@ -64,16 +64,16 @@ However you should pay attention to the output of `nix develop`: if you notice t
 Accepting the configuration settings as outlined above should be sufficient to avoid this, however if your caches are still broken, you may try to append the following lines to `/etc/nix/nix.conf` and/or `~/.config/nix/nix.conf`:
 
 ----
-substituters = https://cache.zw3rk.com https://cache.iog.io https://cache.nixos.org/
-trusted-public-keys = loony-tools:pr9m4BkM/5/eSTZlkQyRt57Jz7OMBxNSUiMC4FkcNfk= hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+substituters = https://cache.iog.io https://cache.nixos.org/
+trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ= cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
 extra-experimental-features = nix-command flakes
 ----
 
 On NixOS, set the following NixOS options:
 ----
 nix = {
-  binaryCaches          = [ "https://cache.zw3rk.com" "https://cache.iog.io" ];
-  binaryCachePublicKeys = [ "loony-tools:pr9m4BkM/5/eSTZlkQyRt57Jz7OMBxNSUiMC4FkcNfk=" "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" ];
+  binaryCaches          = [ "https://cache.iog.io" ];
+  binaryCachePublicKeys = [ "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=" ];
 };
 ----
 
@@ -135,22 +135,9 @@ We don't have a `hie.yaml`, the implicit cradle support in HLS seems to work fin
 [[build-with-nix]]
 === How to build the project's artifacts with Nix
 
-Haskell components are provisioned by Nix via link:https://github.com/input-output-hk/haskell.nix[Haskell.nix]
+Haskell components are provisioned by Nix through link:https://github.com/input-output-hk/iogx[IOGX] via link:https://github.com/input-output-hk/haskell.nix[Haskell.nix]
 
-In general you can run `nix build .#SYSTEM.marconi.library.marconi-project.hsPkgs.PACKAGE.components.COMPONENT`,
-where `SYSTEM` is either `x86_64-linux` or `x86_64-darwin`.
-
-For example `nix build .#x86_64-linux.marconi.library.marconi-project.hsPkgs.marconi-sidechain.components.library` to build marconi-sidechain.
-
-For full documentation about the Nix code see the link:nix/README.md[Nix README].
-
-There you will find how to build all other artifacts, which are mostly related to documentation.
-
-In order to build locally *all* the artifacts required our CI system (Hydra), you can run:
-
-----
-nix build .#hydraJobs.SYSTEM.required
-----
+Once inside the `nix develop` shell, you can run the `list-flake-outputs` script to list all buildable Nix derivations. 
 
 [[develop-without-nix]]
 === How to develop without Nix
@@ -215,7 +202,7 @@ In particular, we should not release our packages while we depend on a `source-r
 
 If we are stuck in a situation where we need a long-running fork of a package, we should release it to CHaP instead (see the https://github.com/input-output-hk/cardano-haskell-packages[CHaP README] for more).
 
-If you do add a `source-repository-package`, you need to update the `sha256` mapping in `nix/cells/marconi/library/make-marconi-project.nix`.
+If you do add a `source-repository-package`, you need to update the `sha256` mapping in `nix/haskell-project.nix`.
 For the moment you have to do this by hand, using the following command to get the sha: `nix-prefetch-git --quiet <repo-url> <rev> | jq .sha256`, or by just getting it wrong and trying to build it, in which case Nix will give you the right value.
 
 [[update-nix-pins]]
@@ -239,36 +226,16 @@ You will get the latest revision for *all* your flake inputs (similar to what `n
 [[update-ghc]]
 === How to upgrade GHC
 
-Using Nix, we build all packages in `marconi` using the GHC version specified in link:nix/cells/marconi/ghc-compiler-nix-name.nix[].
-Eventually, you might want to upgrade GHC to a later version.
-
-The first thing to do is to change the GHC version in link:nix/cells/marconi/ghc-compiler-nix-name.nix[] (ex. change `ghc8107` to `ghc927`).
-Then, you should update the constraints specified in link:nix/cells/marconi/library/haskell-language-server-project.nix[].
-For example, when updating from `ghc8107` to `ghc927`, we needed to change:
-
-```
-  cabalProjectLocal = ''
-    constraints: stylish-haskell==0.13.0.0, hlint==3.2.8
-  '';
-```
-
-to
-
-```
-  cabalProjectLocal = ''
-    constraints: stylish-haskell==0.14.2.0, hlint==3.4.1
-  '';
-```
+Refer to the `haskellCompilers
+<https://github.com/input-output-hk/iogx#323-haskellcompilers>` field in IOGX to learn how to use a different compiler. 
 
 Afterwards, you need to restart your Nix shell.
-Doing so *will* rebuild GHC and all of the Haskell packages.
-That is inevitable, and it takes around 24h.
 
 Then, you need to compile all of the Cabal projects in the repository, and fix any compilation warnings and errors.
 
 Finally, you can submit a PR and CI system will also rebuild GHC.
-Once it's done, it will cache the compiled packages, so that they can be reused when users open a Nix shell.
 
+Once it's done, it will cache the compiled packages, so that they can be reused when users open a Nix shell.
 
 === How to build the code with profiling
 
@@ -302,6 +269,8 @@ There are various tools for visualizing the resulting profile, e.g. https://hack
 [[update-index-state]]
 === Updating dependencies
 
+Dependencies are managed through Nix via the IOGX flake. To update 
+IOGX means to update `hackage.nix` and `CHaP`. 
 ==== ... from Hackage
 
 Updating package dependencies from Hackage should work like normal in a
@@ -318,8 +287,11 @@ correctly also without ``index-state``.
 
 Because of how we use Nix to manage our Haskell build, whenever you do this
 you will also need to pull in the Nix equivalent of the newer
-``index-state``. You can do this by running ``nix flake lock --update-input
-hackage-nix``.
+``index-state``. Refer to `this link
+<https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation 
+to learn how to update ``hackage.nix``.
+
+You can do this by running ``nix flake lock --update-input hackage-nix``.
 
 ==== ... from the Cardano package repository
 
@@ -329,9 +301,12 @@ package repository
 README for (lots) more information.
 
 Getting new packages from there works much like getting them from Hackage.
-The differences are that it can have an independent ``index-state``, and
-that there is a different Nix command you need to run afterwards: ``nix flake
-lock --update-input CHaP``.
+The differences are that it can have an independent ``index-state``. 
+Refer to `this link
+<https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation 
+to learn how to update ``CHaP``.
+
+You can do this by running ``nix flake lock --update-input CHaP``.
 
 ===== Using unreleased versions of dependencies
 
@@ -423,7 +398,7 @@ See link:https://plutus-apps.readthedocs.io/en/latest/adr/index.html[the readthe
 We use `fourmolu` for Haskell code formatting, and `cabal-fmt` for cabal files.
 They are run automatically as pre-commit hooks, but CI will run them again and expect that to be a no-op, so if you somehow don’t apply them your PR will not go green.
 
-To run `fourmolu` or `cabal-fmt` manually over your tree, type `fix-fourmolu` or `fix-cabal-fmt` respectively.
+To run `fourmolu` or `cabal-fmt` manually over your tree, type `pre-commit run fourmolu` or `pre-commit run cabal-fmt` respectively.
 They are provided by the `nix develop` environment.
 === Compiler warnings
 
@@ -489,7 +464,7 @@ Long-lived feature branches with too many commits are harmful because
 3. they make it more likely that other people need to depend on your unmerged changes.
 
 It is fine to have partially implemented features or not well-tested features in `main`.
-You can simply not turn them on until they are ready, or guard them with conditinal flags.
+You can simply not turn them on until they are ready, or guard them with conditional flags.
 
 But this is not a hard rule and should be determined on a case-by-case basis.
 Sometimes for a small or medium-sized piece of work, you may not want to break it into multiple PRs, and wait till each PR is merged before creating the next one.
