@@ -1122,10 +1122,11 @@ getUtxoEventsFromBlock
   => UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> C.Block era
+  -> C.EpochNo
   -> StorableEvent UtxoHandle
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) =
-  let blockInfo = BlockInfo slotNo bhh blockNo 0 1 -- TODO Set the last 2 fields when we can
+getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) epochNo =
+  let blockInfo = BlockInfo slotNo bhh blockNo 0 epochNo -- TODO Set the last 2 fields when we can
    in getUtxoEvents utxoIndexerConfig txs blockInfo
 
 -- | Extract UtxoEvents from Cardano Transactions

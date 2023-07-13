@@ -17,6 +17,7 @@ import Cardano.Api (
   BlockInMode (BlockInMode),
   CardanoMode,
   ChainPoint (ChainPoint),
+  EpochNo,
   Hash,
   ScriptData,
   SlotNo,
@@ -30,7 +31,7 @@ import Cardano.Ledger.Alonzo.TxWits qualified as Alonzo
 import Cardano.Streaming (
   ChainSyncEvent (RollBackward, RollForward),
   ChainSyncEventException (NoIntersectionFound),
-  withChainSyncEventStream,
+  withChainSyncEventEpochNoStream,
  )
 import Cardano.Streaming.Helpers (bimSlotNo)
 import Control.Concurrent (
@@ -167,7 +168,7 @@ data Coordinator' a = Coordinator
 
 makeLenses 'Coordinator
 
-type Coordinator = Coordinator' (BlockInMode CardanoMode)
+type Coordinator = Coordinator' (BlockInMode CardanoMode, EpochNo)
 
 initialCoordinator :: Int -> Word64 -> IO (Coordinator' a)
 initialCoordinator indexerCount' minIndexingDepth =
@@ -190,7 +191,7 @@ utxoWorker_
   -> UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, EpochNo))
   -> FilePath
   -> IO (IO (), C.ChainPoint)
 utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch path = do
@@ -206,8 +207,8 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
       readMVar index >>= callback
       event <- atomically . readTChan $ ch
       case event of
-        RollForward (BlockInMode block _) _ct ->
-          let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
+        RollForward (BlockInMode block _, epochNo) _ct ->
+          let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo
            in void $ updateWith index _errorVar $ Storable.insert utxoEvents
         RollBackward cp _ct ->
           void $ updateWith index _errorVar $ Storable.rewind cp
@@ -255,7 +256,7 @@ addressDatumWorker_
   -- ^ Target addresses to filter for
   -> AddressDatumDepth
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
   -> FilePath
   -> IO (IO (), C.ChainPoint)
 addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorVar} ch path = do
@@ -269,7 +270,7 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
       failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
-        RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _) _ -> do
+        RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _, _) _ -> do
           -- TODO Redo. Inefficient filtering
           let addressDatumIndexEvent =
                 AddressDatum.toAddressDatumIndexEvent (Utils.addressesToPredicate targetAddresses) txs (C.ChainPoint slotNo bh)
@@ -285,7 +286,7 @@ scriptTxWorker_
   :: (Storable.StorableEvent ScriptTx.ScriptTxHandle -> IO [()])
   -> ScriptTx.Depth
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
   -> FilePath
   -> IO (IO (), C.ChainPoint, MVar ScriptTx.ScriptTxIndexer)
 scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
@@ -299,7 +300,7 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
       failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
-        RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs :: Block era) _ :: BlockInMode CardanoMode) _ct -> do
+        RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs) _, _) _ct -> do
           let u = ScriptTx.toUpdate txs (ChainPoint slotNo hsh)
           void $ updateWith index _errorVar $ Storable.insert u
           void $ onInsert u
@@ -323,7 +324,7 @@ epochStateWorker_
   -> (Storable.State EpochStateHandle -> IO ())
   -> SecurityParam
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
   -> FilePath
   -> IO (IO b, C.ChainPoint, MVar (Storable.State EpochStateHandle))
 epochStateWorker_
@@ -355,7 +356,7 @@ epochStateWorker_
           chainSyncEvent <- atomically $ readTChan ch
 
           (newLedgerState, newEpochNo) <- case chainSyncEvent of
-            RollForward blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _) chainTip -> do
+            RollForward (blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _), _) chainTip -> do
               let newLedgerState' =
                     O.lrResult $
                       O.tickThenReapplyLedgerResult
@@ -439,7 +440,7 @@ mintBurnWorker_
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -- ^ Target assets to filter for
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
   -> FilePath
   -> IO (IO b, C.ChainPoint)
 mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
@@ -451,7 +452,7 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
         void $ readMVar indexerMVar >>= callback
         event <- atomically $ readTChan ch
         case event of
-          RollForward blockInMode _ct -> do
+          RollForward (blockInMode, _) _ct -> do
             let event' = MintBurn.toUpdate mAssets blockInMode
             void $
               updateWith indexerMVar (c ^. errorVar) $
@@ -561,9 +562,9 @@ mkIndexerStream' f coordinator =
 
 mkIndexerStream
   :: Coordinator
-  -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode))) IO r
+  -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode, EpochNo))) IO r
   -> IO ()
-mkIndexerStream = mkIndexerStream' bimSlotNo
+mkIndexerStream = mkIndexerStream' (bimSlotNo . fst)
 
 runIndexers
   :: FilePath
@@ -581,7 +582,7 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
         cliCp -> cliCp -- otherwise use what was provided on CLI.
   c <- defaultConfigStdout
   withTrace c traceName $ \trace ->
-    let io = withChainSyncEventStream socketPath networkId [chainPoint] (mkIndexerStream coordinator . chainSyncEventStreamLogging trace)
+    let io = withChainSyncEventEpochNoStream socketPath networkId [chainPoint] (mkIndexerStream coordinator . chainSyncEventStreamLogging trace)
         handleException NoIntersectionFound =
           logError trace $
             renderStrict $

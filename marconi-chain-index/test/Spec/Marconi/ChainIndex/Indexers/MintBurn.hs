@@ -10,7 +10,7 @@ import Cardano.Api qualified as C
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing (defaultConfigStdout)
-import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventEpochNoStream)
 import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
@@ -341,7 +341,7 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
       let chainPoint = C.ChainPointAtGenesis :: C.ChainPoint
       c <- defaultConfigStdout
       withTrace c "marconi" $ \trace ->
-        let indexerWorker = withChainSyncEventStream socketPath networkId [chainPoint] $
+        let indexerWorker = withChainSyncEventEpochNoStream socketPath networkId [chainPoint] $
               S.mapM_ $
                 \chainSyncEvent -> IO.atomically $ IO.writeTChan ch chainSyncEvent
             handleException NoIntersectionFound =

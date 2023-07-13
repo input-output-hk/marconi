@@ -10,7 +10,7 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Configuration.Static (defaultConfigStdout)
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
-import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
+import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventEpochNoStream)
 import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent qualified as STM
@@ -151,7 +151,7 @@ test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath ->
       c <- defaultConfigStdout
       withTrace c "marconi" $ \trace ->
         let indexerWorker =
-              withChainSyncEventStream socketPath networkId [chainPoint] $
+              withChainSyncEventEpochNoStream socketPath networkId [chainPoint] $
                 S.mapM_ $
                   \chainSyncEvent -> STM.atomically $ STM.writeTChan ch chainSyncEvent
             handleException NoIntersectionFound =

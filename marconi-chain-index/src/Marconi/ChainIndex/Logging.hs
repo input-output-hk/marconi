@@ -107,8 +107,8 @@ renderLastSyncLog syncLog =
 
 chainSyncEventStreamLogging
   :: Trace IO Text
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
+  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo))) IO r
+  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo))) IO r
 chainSyncEventStreamLogging tracer s = effect $ do
   stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
   return $ S.chain (update stats) s
@@ -116,8 +116,8 @@ chainSyncEventStreamLogging tracer s = effect $ do
     minSecondsBetweenMsg :: NominalDiffTime
     minSecondsBetweenMsg = 10
 
-    update :: IORef LastSyncStats -> ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ()
-    update statsRef (RollForward bim ct) = do
+    update :: IORef LastSyncStats -> ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo) -> IO ()
+    update statsRef (RollForward (bim, _epochNo) ct) = do
       let cp = case bim of (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) -> C.ChainPoint slotNo hash
       modifyIORef' statsRef $ \stats ->
         stats

@@ -60,19 +60,19 @@ queryCurrentEra
   -- ^ Node socket file path
   -> ExceptT IndexerError IO C.AnyCardanoEra
 queryCurrentEra networkId socketPath = do
+  let localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
+      localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
+
+      queryInMode :: C.QueryInMode C.CardanoMode C.AnyCardanoEra
+      queryInMode = C.QueryCurrentEra C.CardanoModeIsMultiEra
+
+      toError :: Show a => a -> ExceptT IndexerError IO b
+      toError = throwError . CantStartIndexer . pack . show
+
   result <- lift $ C.queryNodeLocalState localNodeConnectInfo Nothing queryInMode
   case result of
     Left err -> toError err
     Right x -> pure x
-  where
-    localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
-    localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
-
-    queryInMode :: C.QueryInMode C.CardanoMode C.AnyCardanoEra
-    queryInMode = C.QueryCurrentEra C.CardanoModeIsMultiEra
-
-    toError :: Show a => a -> ExceptT IndexerError IO b
-    toError = throwError . CantStartIndexer . pack . show
 
 -- | Query security param from the local node given a Shelley based era.
 querySecurityParamEra
