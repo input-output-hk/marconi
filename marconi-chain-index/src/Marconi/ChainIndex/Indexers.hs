@@ -77,6 +77,7 @@ import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as Text
+import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
 import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer))
 import Marconi.ChainIndex.Indexers.AddressDatum (
@@ -168,7 +169,7 @@ data Coordinator' a = Coordinator
 
 makeLenses 'Coordinator
 
-type Coordinator = Coordinator' (BlockInMode CardanoMode, EpochNo)
+type Coordinator = Coordinator' (BlockInMode CardanoMode, EpochNo, POSIXTime)
 
 initialCoordinator :: Int -> Word64 -> IO (Coordinator' a)
 initialCoordinator indexerCount' minIndexingDepth =
@@ -192,7 +193,7 @@ utxoWorker_
   -> UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, EpochNo))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, EpochNo, POSIXTime))
   -> FilePath
   -> IO (IO (), C.ChainPoint)
 utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch path = do
@@ -208,8 +209,8 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
       readMVar index >>= callback
       event <- atomically . readTChan $ ch
       case event of
-        RollForward (BlockInMode block _, epochNo) _ct ->
-          let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo
+        RollForward (BlockInMode block _, epochNo, posixTime) _ct ->
+          let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo posixTime
            in void $ updateWith index _errorVar $ Storable.insert utxoEvents
         RollBackward cp _ct ->
           void $ updateWith index _errorVar $ Storable.rewind cp
@@ -257,7 +258,7 @@ addressDatumWorker_
   -- ^ Target addresses to filter for
   -> AddressDatumDepth
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a, t))
   -> FilePath
   -> IO (IO (), C.ChainPoint)
 addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorVar} ch path = do
@@ -271,7 +272,7 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
       failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
-        RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _, _) _ -> do
+        RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _, _, _) _ -> do
           -- TODO Redo. Inefficient filtering
           let addressDatumIndexEvent =
                 AddressDatum.toAddressDatumIndexEvent
@@ -290,7 +291,7 @@ scriptTxWorker_
   :: (Storable.StorableEvent ScriptTx.ScriptTxHandle -> IO [()])
   -> ScriptTx.Depth
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a, t))
   -> FilePath
   -> IO (IO (), C.ChainPoint, MVar ScriptTx.ScriptTxIndexer)
 scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
@@ -304,7 +305,7 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
       failWhenFull _errorVar
       event <- atomically $ readTChan ch
       case event of
-        RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs) _, _) _ct -> do
+        RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs) _, _, _) _ct -> do
           let u = ScriptTx.toUpdate txs (ChainPoint slotNo hsh)
           void $ updateWith index _errorVar $ Storable.insert u
           void $ onInsert u
@@ -334,7 +335,7 @@ epochStateWorker_
   -> (Storable.State EpochStateHandle -> IO ())
   -> SecurityParam
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a, t))
   -> FilePath
   -> IO (IO b, C.ChainPoint, MVar (Storable.State EpochStateHandle))
 epochStateWorker_
@@ -348,7 +349,10 @@ epochStateWorker_
     nodeConfig <- either (throw . CantStartIndexer . Text.pack . show) pure nodeConfigE
     genesisConfigE <- runExceptT $ readCardanoGenesisConfig nodeConfig
     genesisConfig <-
-      either (throw . CantStartIndexer . Text.pack . show . renderGenesisConfigError) pure genesisConfigE
+      either
+        (throw . CantStartIndexer . Text.pack . show . renderGenesisConfigError)
+        pure
+        genesisConfigE
 
     let initialLedgerState = initExtLedgerStateVar genesisConfig
         topLevelConfig = O.pInfoConfig (mkProtocolInfoCardano genesisConfig)
@@ -367,7 +371,7 @@ epochStateWorker_
           chainSyncEvent <- atomically $ readTChan ch
 
           (newLedgerState, newEpochNo) <- case chainSyncEvent of
-            RollForward (blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _), _) chainTip -> do
+            RollForward (blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _), _, _) chainTip -> do
               let newLedgerState' =
                     O.lrResult $
                       O.tickThenReapplyLedgerResult
@@ -453,7 +457,7 @@ mintBurnWorker_
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -- ^ Target assets to filter for
   -> Coordinator
-  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a))
+  -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a, t))
   -> FilePath
   -> IO (IO b, C.ChainPoint)
 mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
@@ -465,7 +469,7 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
         void $ readMVar indexerMVar >>= callback
         event <- atomically $ readTChan ch
         case event of
-          RollForward (blockInMode, _) _ct -> do
+          RollForward (blockInMode, _, _) _ct -> do
             let event' = MintBurn.toUpdate mAssets blockInMode
             void $
               updateWith indexerMVar (c ^. errorVar) $
@@ -575,9 +579,9 @@ mkIndexerStream' f coordinator =
 
 mkIndexerStream
   :: Coordinator
-  -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode, EpochNo))) IO r
+  -> S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode, EpochNo, POSIXTime))) IO r
   -> IO ()
-mkIndexerStream = mkIndexerStream' (bimSlotNo . fst)
+mkIndexerStream = mkIndexerStream' (bimSlotNo . (\(b, _, _) -> b))
 
 runIndexers
   :: FilePath

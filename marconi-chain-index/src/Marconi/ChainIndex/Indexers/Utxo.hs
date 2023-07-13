@@ -85,6 +85,8 @@ import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Ord (Down (Down))
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
+import Data.Time (nominalDiffTimeToSeconds)
+import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
 import Database.SQLite.Simple (
   NamedParam ((:=)),
@@ -240,6 +242,7 @@ type instance StorableMonad UtxoHandle = ExceptT IndexerError IO
 type instance StorablePoint UtxoHandle = C.ChainPoint
 
 newtype Depth = Depth Int
+  deriving newtype (Eq, Ord, Num, Show)
 
 data Utxo = Utxo
   { _address :: !C.AddressAny
@@ -1136,10 +1139,12 @@ getUtxoEventsFromBlock
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> C.Block era
   -> C.EpochNo
+  -> POSIXTime
   -> StorableEvent UtxoHandle
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) epochNo =
-  let blockInfo = BlockInfo slotNo bhh blockNo 0 epochNo -- TODO Set the last 2 fields when we can
+getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) epochNo posixTime =
+  let (blockTimeStampSeconds, _) = properFraction $ nominalDiffTimeToSeconds posixTime
+      blockInfo = BlockInfo slotNo bhh blockNo blockTimeStampSeconds epochNo
    in getUtxoEvents utxoIndexerConfig txs blockInfo
 
 -- | Extract UtxoEvents from Cardano Transactions

@@ -25,6 +25,7 @@ import Data.Time (
   formatTime,
   getCurrentTime,
  )
+import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
@@ -120,8 +121,8 @@ renderLastSyncLog syncLog =
 
 chainSyncEventStreamLogging
   :: Trace IO Text
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo))) IO r
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo))) IO r
+  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r
+  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r
 chainSyncEventStreamLogging tracer s = effect $ do
   stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
   return $ S.chain (update stats) s
@@ -129,8 +130,9 @@ chainSyncEventStreamLogging tracer s = effect $ do
     minSecondsBetweenMsg :: NominalDiffTime
     minSecondsBetweenMsg = 10
 
-    update :: IORef LastSyncStats -> ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo) -> IO ()
-    update statsRef (RollForward (bim, _epochNo) ct) = do
+    update
+      :: IORef LastSyncStats -> ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) -> IO ()
+    update statsRef (RollForward (bim, _epochNo, _posixTime) ct) = do
       let cp = case bim of
             (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) -> C.ChainPoint slotNo hash
       modifyIORef' statsRef $ \stats ->
