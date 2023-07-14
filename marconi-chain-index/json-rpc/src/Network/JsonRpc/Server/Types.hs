@@ -54,7 +54,7 @@ data MaybeContent a
   = SomeContent !a
   | EmptyContent
 
-instance ToJSON a => AllCTRender '[JsonRpcContentType] (MaybeContent a) where
+instance (ToJSON a) => AllCTRender '[JsonRpcContentType] (MaybeContent a) where
   handleAcceptH px h = \case
     SomeContent x -> handleAcceptH px h x
     EmptyContent -> handleAcceptH px h NoContent
@@ -82,7 +82,7 @@ instance
 class RouteJsonRpc a where
   type RpcHandler a (m :: Type -> Type)
   jsonRpcRouter
-    :: Monad m
+    :: (Monad m)
     => Proxy a
     -> Proxy m
     -> RpcHandler a m
@@ -97,7 +97,7 @@ generalizeResponse = bimap repack toJSON
   where
     repack e = e{errorData = toJSON <$> errorData e}
 
-onDecodeFail :: IsString e => String -> JsonRpcErr e
+onDecodeFail :: (IsString e) => String -> JsonRpcErr e
 onDecodeFail msg = mkJsonRpcInvalidParamsErr $ Just $ fromString msg
 
 instance

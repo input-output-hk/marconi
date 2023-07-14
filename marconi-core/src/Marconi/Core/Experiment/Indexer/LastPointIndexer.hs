@@ -35,7 +35,7 @@ deriving stock instance (Show event, Show (Point event)) => Show (LastPointIndex
 makeLenses 'LastPointIndexer
 
 -- | A smart constructor for 'LastPointIndexer'
-lastPointIndexer :: HasGenesis (Point event) => LastPointIndexer event
+lastPointIndexer :: (HasGenesis (Point event)) => LastPointIndexer event
 lastPointIndexer = LastPointIndexer genesis
 
 instance
@@ -46,8 +46,8 @@ instance
 
   indexAllDescending evts _ = pure $ LastPointIndexer $ fromMaybe genesis $ maximumOf (folded . point) evts
 
-instance Applicative m => IsSync m event LastPointIndexer where
+instance (Applicative m) => IsSync m event LastPointIndexer where
   lastSyncPoint = pure . view lastPoint
 
-instance Applicative m => Rollbackable m event LastPointIndexer where
+instance (Applicative m) => Rollbackable m event LastPointIndexer where
   rollback p _ = pure $ LastPointIndexer p

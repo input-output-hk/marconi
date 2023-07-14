@@ -169,7 +169,7 @@ newSqliteIndexer accFn memBuf ag0 = do
   pure . Just $ Config c accFn
 
 instance Buffered Handle where
-  persistToStorage :: Foldable f => f (StorableEvent Handle) -> Handle -> IO Handle
+  persistToStorage :: (Foldable f) => f (StorableEvent Handle) -> Handle -> IO Handle
   persistToStorage es (Handle h) = do
     -- Append events to cache
     Sql.execute_ h "BEGIN"
@@ -195,7 +195,7 @@ indexedFn f (Result ag0) (Event _ e) =
 
 instance Queryable Handle where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent Handle)
     -> Handle
     -> StorableQuery Handle

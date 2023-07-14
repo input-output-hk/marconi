@@ -56,7 +56,7 @@ makeLenses 'WithTracer
 deriving via
   (IndexWrapper (ProcessedInputTracer m) indexer)
   instance
-    IsSync m event indexer
+    (IsSync m event indexer)
     => IsSync m event (WithTracer m indexer)
 
 deriving via
@@ -68,7 +68,7 @@ deriving via
 deriving via
   (IndexWrapper (ProcessedInputTracer m) indexer)
   instance
-    Closeable m indexer
+    (Closeable m indexer)
     => Closeable m (WithTracer m indexer)
 
 deriving via
@@ -80,7 +80,7 @@ deriving via
 deriving via
   (IndexWrapper (ProcessedInputTracer m) indexer)
   instance
-    Queryable m event query indexer
+    (Queryable m event query indexer)
     => Queryable m event query (WithTracer m indexer)
 
 deriving via

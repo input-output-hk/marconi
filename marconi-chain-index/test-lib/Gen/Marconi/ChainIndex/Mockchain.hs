@@ -86,7 +86,8 @@ genTxBodyContentFromTxIns
   :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentFromTxIns inputs = do
   txBodyContent <-
-    emptyTxBodyContent (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+    emptyTxBodyContent
+      (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
       <$> CGen.genProtocolParameters
   txOuts <- Gen.list (Range.linear 1 5) $ genTxOutTxContext C.BabbageEra
   pure $
@@ -149,7 +150,8 @@ genTxsWithAddresses addrsWithDatum =
   Gen.list (Range.linear 1 3) $
     C.makeSignedTransaction [] <$> genTxBodyWithAddresses addrsWithDatum
 
-genTxBodyWithAddresses :: [(C.AddressInEra C.BabbageEra, DatumLocation)] -> Gen (C.TxBody C.BabbageEra)
+genTxBodyWithAddresses
+  :: [(C.AddressInEra C.BabbageEra, DatumLocation)] -> Gen (C.TxBody C.BabbageEra)
 genTxBodyWithAddresses addresses = do
   res <- C.createAndValidateTransactionBody <$> genTxBodyContentWithAddresses addresses
   case res of

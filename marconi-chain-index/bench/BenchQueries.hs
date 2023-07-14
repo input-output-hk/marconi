@@ -32,7 +32,15 @@ import Cardano.Api qualified as C
 import Cardano.Chain.Slotting (EpochSlots (EpochSlots))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
-import Control.Concurrent.STM (STM, TMVar, atomically, newEmptyTMVar, putTMVar, readTMVar, tryTakeTMVar)
+import Control.Concurrent.STM (
+  STM,
+  TMVar,
+  atomically,
+  newEmptyTMVar,
+  putTMVar,
+  readTMVar,
+  tryTakeTMVar,
+ )
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
@@ -56,7 +64,12 @@ import Marconi.ChainIndex.Indexers.Utxo (
   UtxoHandle,
   UtxoIndexer,
  )
-import Marconi.ChainIndex.Types (IndexingDepth (MinIndexingDepth), UtxoIndexerConfig (UtxoIndexerConfig), ucEnableUtxoTxOutRef, ucTargetAddresses)
+import Marconi.ChainIndex.Types (
+  IndexingDepth (MinIndexingDepth),
+  UtxoIndexerConfig (UtxoIndexerConfig),
+  ucEnableUtxoTxOutRef,
+  ucTargetAddresses,
+ )
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
 import System.FilePath ((</>))
@@ -173,9 +186,13 @@ tests databaseDir indexerTVar = do
         , bench "Query address with most utxos and call 'show' on the result" $
             nfIO (raiseException $ fmap (fmap show . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
         , bench "Query address with most utxos and encode result in JSON" $
-            nfIO (raiseException $ fmap (fmap Aeson.encode . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
+            nfIO
+              (raiseException $ fmap (fmap Aeson.encode . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
         , bench "Query address with most utxos and JSON encode/decode roundtrip the result" $
-            nfIO (raiseException $ fmap (encodeDecodeRoundTrip . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos)
+            nfIO
+              ( raiseException $
+                  fmap (encodeDecodeRoundTrip . getUtxoByAddressResult) fetchUtxoOfAddressWithMostUtxos
+              )
         ]
     ]
 
@@ -213,7 +230,7 @@ waitUntilSynced databaseDir nodeSocketPath = do
                    ORDER BY slotNo DESC
                    LIMIT 1|]
           ()
-        :: IO [[Word64]]
+          :: IO [[Word64]]
       let maybeCurrentSyncedSlot = listToMaybe =<< listToMaybe sns
       case maybeCurrentSyncedSlot of
         Nothing -> go c

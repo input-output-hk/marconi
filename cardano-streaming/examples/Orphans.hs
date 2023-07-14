@@ -13,4 +13,4 @@ deriving instance Generic BlockHeader
 
 instance ToJSON BlockHeader
 
-instance ToJSON a => ToJSON (ChainSyncEvent a)
+instance (ToJSON a) => ToJSON (ChainSyncEvent a)

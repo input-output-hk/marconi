@@ -107,7 +107,8 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
           (C.SlotNo <$> lowerBoundSlotNo)
           (C.SlotNo upperBoundSlotNo)
 
-      queryAtAddressAndSlot :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
+      queryAtAddressAndSlot
+        :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
       queryAtAddressAndSlot = findByAddress env
 
       query :: Either QueryExceptions Utxo.QueryUtxoByAddress

@@ -67,10 +67,10 @@ nonEmptySubset s = do
   sub <- Gen.subset s
   pure $ Set.singleton e <> sub
 
-genSlotNo :: Hedgehog.MonadGen m => m C.SlotNo
+genSlotNo :: (Hedgehog.MonadGen m) => m C.SlotNo
 genSlotNo = C.SlotNo <$> Gen.word64 (Range.linear 10 1000)
 
-genBlockNo :: Hedgehog.MonadGen m => m C.BlockNo
+genBlockNo :: (Hedgehog.MonadGen m) => m C.BlockNo
 genBlockNo = C.BlockNo <$> Gen.word64 (Range.linear 100 1000)
 
 validByteSizeLength :: Int
@@ -80,7 +80,7 @@ validByteSizeLength = 32
  "almost" because the 'ChainTip' of the events is always 'ChainTipAtGenesis'.
 -}
 genChainSyncEvents
-  :: Hedgehog.MonadGen m
+  :: (Hedgehog.MonadGen m)
   => (a -> C.ChainPoint)
   -- ^ extract the chainpoint from the event
   -> (a -> m a)
@@ -94,7 +94,8 @@ genChainSyncEvents
   -> m [ChainSyncEvent a]
 genChainSyncEvents getChainPoint f start lo hi = do
   nbOfEvents <- Gen.word64 $ Range.linear lo hi
-  reverse . toList <$> evalStateT (go nbOfEvents (RollForward start C.ChainTipAtGenesis :| [])) (start :| [])
+  reverse . toList
+    <$> evalStateT (go nbOfEvents (RollForward start C.ChainTipAtGenesis :| [])) (start :| [])
   where
     go n xs
       | n <= 0 = pure xs
@@ -103,7 +104,7 @@ genChainSyncEvents getChainPoint f start lo hi = do
           go (n - 1) (cons next xs)
 
 genChainSyncEvent
-  :: Hedgehog.MonadGen m
+  :: (Hedgehog.MonadGen m)
   => (a -> C.ChainPoint)
   -> (a -> m a)
   -> StateT (NonEmpty a) m (ChainSyncEvent a)
@@ -126,7 +127,7 @@ genChainSyncEvent getChainPoint f = do
     genRollForward x = RollForward <$> f x <*> pure C.ChainTipAtGenesis
 
 genBlockHeader
-  :: Hedgehog.MonadGen m
+  :: (Hedgehog.MonadGen m)
   => m C.BlockNo
   -> m C.SlotNo
   -> m C.BlockHeader
@@ -147,7 +148,7 @@ genChainPoints b e = do
   mapM (\s -> C.ChainPoint (C.SlotNo s) <$> genHashBlockHeader) [1 .. maxSlots]
 
 genChainPoint'
-  :: Hedgehog.MonadGen m
+  :: (Hedgehog.MonadGen m)
   => m C.BlockNo
   -> m C.SlotNo
   -> m C.ChainPoint
@@ -155,7 +156,7 @@ genChainPoint' genB genS = do
   (C.BlockHeader sn hsh _) <- genBlockHeader genB genS
   pure $ C.ChainPoint sn hsh
 
-genChainPoint :: Hedgehog.MonadGen m => m C.ChainPoint
+genChainPoint :: (Hedgehog.MonadGen m) => m C.ChainPoint
 genChainPoint =
   Gen.frequency
     [ (95, genChainPoint' genBlockNo genSlotNo)
@@ -166,7 +167,7 @@ genTxIndex :: Gen C.TxIx
 genTxIndex = C.TxIx . fromIntegral <$> Gen.word16 Range.constantBounded
 
 genTxBodyWithTxIns
-  :: C.IsCardanoEra era
+  :: (C.IsCardanoEra era)
   => C.CardanoEra era
   -> [(C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn era))]
   -> C.TxInsCollateral era
@@ -194,8 +195,11 @@ genTxBodyContentWithTxInsCollateral era txIns txInsCollateral = do
 
 genTxBodyContentForPlutusScripts :: Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentForPlutusScripts = do
-  txIns <- map (,C.BuildTxWith (C.KeyWitness C.KeyWitnessForSpending)) <$> Gen.list (Range.constant 1 10) CGen.genTxIn
-  txInsCollateral <- C.TxInsCollateral C.CollateralInBabbageEra <$> Gen.list (Range.linear 1 10) CGen.genTxIn
+  txIns <-
+    map (,C.BuildTxWith (C.KeyWitness C.KeyWitnessForSpending))
+      <$> Gen.list (Range.constant 1 10) CGen.genTxIn
+  txInsCollateral <-
+    C.TxInsCollateral C.CollateralInBabbageEra <$> Gen.list (Range.linear 1 10) CGen.genTxIn
   let txInsReference = C.TxInsReferenceNone
   txOuts <- Gen.list (Range.constant 1 10) (genTxOutTxContext C.BabbageEra)
   let txTotalCollateral = C.TxTotalCollateralNone
@@ -365,7 +369,7 @@ genSimpleTxOutDatumHashTxContext era = case era of
 genHashScriptData :: Gen (C.Hash C.ScriptData)
 genHashScriptData = C.ScriptDataHash . unsafeMakeSafeHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
   where
-    mkDummyHash :: forall h a. CRYPTO.HashAlgorithm h => Int -> CRYPTO.Hash h a
+    mkDummyHash :: forall h a. (CRYPTO.HashAlgorithm h) => Int -> CRYPTO.Hash h a
     mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR
 
 genProtocolParametersForPlutusScripts :: Gen C.ProtocolParameters
@@ -391,8 +395,18 @@ genProtocolParametersForPlutusScripts =
     <*> pure Nothing -- Obsolete from babbage onwards
     <*> pure
       ( Map.fromList
-          [ (C.AnyPlutusScriptVersion C.PlutusScriptV1, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
-          , (C.AnyPlutusScriptVersion C.PlutusScriptV2, C.CostModel $ Map.elems $ fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams)
+          [
+            ( C.AnyPlutusScriptVersion C.PlutusScriptV1
+            , C.CostModel $
+                Map.elems $
+                  fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams
+            )
+          ,
+            ( C.AnyPlutusScriptVersion C.PlutusScriptV2
+            , C.CostModel $
+                Map.elems $
+                  fromMaybe (error "Ledger.Params: defaultCostModelParams is broken") defaultCostModelParams
+            )
           ]
       )
     <*> (Just <$> genExecutionUnitPrices)
@@ -451,5 +465,5 @@ genEpochNo = C.EpochNo <$> Gen.word64 (Range.linear 0 10)
 genPoolId :: Gen (C.Hash C.StakePoolKey)
 genPoolId = C.StakePoolKeyHash . KeyHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
   where
-    mkDummyHash :: forall h a. CRYPTO.HashAlgorithm h => Int -> CRYPTO.Hash h a
+    mkDummyHash :: forall h a. (CRYPTO.HashAlgorithm h) => Int -> CRYPTO.Hash h a
     mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR

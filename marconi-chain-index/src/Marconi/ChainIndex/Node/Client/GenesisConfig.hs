@@ -30,7 +30,14 @@ import Control.Exception (IOException, catch)
 import Control.Monad (when)
 import Control.Monad.Trans.Except (ExceptT (ExceptT), except)
 import Control.Monad.Trans.Except.Extra (firstExceptT, handleIOExceptT, hoistEither, left)
-import Data.Aeson as Aeson (FromJSON (parseJSON), Object, eitherDecodeStrict', withObject, (.:), (.:?))
+import Data.Aeson as Aeson (
+  FromJSON (parseJSON),
+  Object,
+  eitherDecodeStrict',
+  withObject,
+  (.:),
+  (.:?),
+ )
 import Data.Aeson.Types (Parser)
 import Data.ByteString as BS (ByteString, readFile)
 import Data.ByteString.Base16 qualified as Base16
@@ -500,7 +507,9 @@ readConwayGenesis (GenesisFile file) expectedGenesisHash = do
       when (actual /= expectedGenesisHash) $
         left (ConwayGenesisHashMismatch actual expectedGenesisHash)
 
-initExtLedgerStateVar :: GenesisConfig -> Ledger.ExtLedgerState (HFC.HardForkBlock (Consensus.CardanoEras Consensus.StandardCrypto))
+initExtLedgerStateVar
+  :: GenesisConfig
+  -> Ledger.ExtLedgerState (HFC.HardForkBlock (Consensus.CardanoEras Consensus.StandardCrypto))
 initExtLedgerStateVar genesisConfig = Consensus.pInfoInitLedger protocolInfo
   where
     protocolInfo = mkProtocolInfoCardano genesisConfig
@@ -516,7 +525,8 @@ mkProtocolInfoCardano (GenesisCardano dnc byronGenesis shelleyGenesis alonzoGene
   Consensus.protocolInfoCardano
     Consensus.ProtocolParamsByron
       { Consensus.byronGenesis = byronGenesis
-      , Consensus.byronPbftSignatureThreshold = Consensus.PBftSignatureThreshold <$> ncPBftSignatureThreshold dnc
+      , Consensus.byronPbftSignatureThreshold =
+          Consensus.PBftSignatureThreshold <$> ncPBftSignatureThreshold dnc
       , Consensus.byronProtocolVersion = ncByronProtocolVersion dnc
       , Consensus.byronSoftwareVersion = ncByronSoftwareVersion dnc
       , Consensus.byronLeaderCredentials = Nothing
@@ -569,7 +579,7 @@ shelleyProtVer dnc =
 shelleyPraosNonce :: ShelleyConfig -> Ledger.Nonce
 shelleyPraosNonce sCfg = Ledger.Nonce (Crypto.castHash . unGenesisHashShelley $ scGenesisHash sCfg)
 
-textShow :: Show a => a -> Text
+textShow :: (Show a) => a -> Text
 textShow = Text.pack . show
 
 readByteString :: FilePath -> Text -> ExceptT Text IO ByteString

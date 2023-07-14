@@ -292,7 +292,8 @@ propResumingShouldReturnAtLeastOneNonGenesisPointIfStoredOnDisk = property $ do
         Storable.insertMany events initialIndex
           >>= Storable.insert (AddressDatum.toAddressDatumIndexEvent Nothing [] (last cps))
 
-  resumablePoint <- liftIO $ raiseException $ Storable.resumeFromStorage $ finalIndex ^. Storable.handle
+  resumablePoint <-
+    liftIO $ raiseException $ Storable.resumeFromStorage $ finalIndex ^. Storable.handle
   let penultimateOrGenesis = case reverse $ List.sort cps of
         _ : cp' : _ -> cp' -- We return the penultimate chain point,
         -- this is the newest one persisted

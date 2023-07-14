@@ -66,7 +66,7 @@ queryCurrentEra networkId socketPath = do
       queryInMode :: C.QueryInMode C.CardanoMode C.AnyCardanoEra
       queryInMode = C.QueryCurrentEra C.CardanoModeIsMultiEra
 
-      toError :: Show a => a -> ExceptT IndexerError IO b
+      toError :: (Show a) => a -> ExceptT IndexerError IO b
       toError = throwError . CantStartIndexer . pack . show
 
   result <- lift $ C.queryNodeLocalState localNodeConnectInfo Nothing queryInMode
@@ -98,7 +98,7 @@ querySecurityParamEra shelleyBasedEra networkId socketPath = do
       C.QueryInEra (toShelleyEraInCardanoMode shelleyBasedEra) $
         C.QueryInShelleyBasedEra shelleyBasedEra C.QueryGenesisParameters
 
-    toError :: Show a => a -> ExceptT IndexerError IO b
+    toError :: (Show a) => a -> ExceptT IndexerError IO b
     toError = throwError . CantStartIndexer . pack . show
 
 {- | Return the first element of the list of chain points. If the list is empty, return the genesis

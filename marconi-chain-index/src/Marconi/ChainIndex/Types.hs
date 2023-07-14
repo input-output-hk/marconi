@@ -77,7 +77,21 @@ newtype SecurityParam = SecurityParam Word64
   deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show)
 
 newtype TxIndexInBlock = TxIndexInBlock Word64
-  deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show, Aeson.FromJSON, Aeson.ToJSON, SQL.ToField, SQL.FromField)
+  deriving newtype
+    ( Eq
+    , Ord
+    , Bounded
+    , Enum
+    , Real
+    , Num
+    , Read
+    , Integral
+    , Show
+    , Aeson.FromJSON
+    , Aeson.ToJSON
+    , SQL.ToField
+    , SQL.FromField
+    )
 
 -- * Database file names
 

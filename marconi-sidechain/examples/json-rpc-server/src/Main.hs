@@ -25,7 +25,19 @@ import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
 import Marconi.Sidechain.Api.Types (SidechainEnv, sidechainAddressUtxoIndexer, sidechainEnvIndexers)
 import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
 
-import Options.Applicative (Parser, execParser, help, helper, info, long, metavar, optional, short, strOption, (<**>))
+import Options.Applicative (
+  Parser,
+  execParser,
+  help,
+  helper,
+  info,
+  long,
+  metavar,
+  optional,
+  short,
+  strOption,
+  (<**>),
+ )
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 

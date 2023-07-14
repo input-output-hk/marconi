@@ -102,11 +102,22 @@ import Database.SQLite.Simple.ToField (ToField (toField), toField)
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (
-  IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer, InvalidQueryInterval),
+  IndexerError (
+    CantInsertEvent,
+    CantQueryIndexer,
+    CantRollback,
+    CantStartIndexer,
+    InvalidQueryInterval
+  ),
   liftSQLError,
  )
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
+import Marconi.ChainIndex.Indexers.LastSync (
+  addLastSyncPoints,
+  createLastSyncTable,
+  queryLastSyncPoint,
+  rollbackLastSyncPoints,
+ )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   TargetAddresses,
@@ -176,23 +187,25 @@ interval
   -> Either IndexerError (Interval r)
 interval Nothing p = Right $ LessThanOrEqual p
 interval (Just p) p' =
-  let --  Enforce the internal invariant
-      -- 'InRange'.
-      wrap
-        :: (Ord r, Show r)
-        => (r -> r -> Interval r)
-        -> r
-        -> r
-        -> Either IndexerError (Interval r)
-      wrap f x y
-        | x <= y = Right $ f x y
-        | otherwise =
-            Left . InvalidQueryInterval . Text.pack $
-              "Invalid Interval. LowerBound, "
-                <> show x
-                <> " is not less than or equal to upperBound "
-                <> show y
-   in wrap InRange p p'
+  let
+    --  Enforce the internal invariant
+    -- 'InRange'.
+    wrap
+      :: (Ord r, Show r)
+      => (r -> r -> Interval r)
+      -> r
+      -> r
+      -> Either IndexerError (Interval r)
+    wrap f x y
+      | x <= y = Right $ f x y
+      | otherwise =
+          Left . InvalidQueryInterval . Text.pack $
+            "Invalid Interval. LowerBound, "
+              <> show x
+              <> " is not less than or equal to upperBound "
+              <> show y
+   in
+    wrap InRange p p'
 
 -- | Check if a given chainpoint is in the given interval
 isInInterval :: Interval C.SlotNo -> C.SlotNo -> Bool
@@ -289,13 +302,13 @@ instance FromRow (Maybe BlockInfo) where
     maybeTimestamp <- field
     maybeEpochNo <- field
     if
-        | Just slotNo <- maybeSlotNo
-        , Just bhh <- maybeBhh
-        , Just blockNo <- maybeBlockNo
-        , Just timestamp <- maybeTimestamp
-        , Just epochNo <- maybeEpochNo ->
-            pure $ Just $ BlockInfo slotNo bhh blockNo timestamp epochNo
-        | otherwise -> pure Nothing
+      | Just slotNo <- maybeSlotNo
+      , Just bhh <- maybeBhh
+      , Just blockNo <- maybeBlockNo
+      , Just timestamp <- maybeTimestamp
+      , Just epochNo <- maybeEpochNo ->
+          pure $ Just $ BlockInfo slotNo bhh blockNo timestamp epochNo
+      | otherwise -> pure Nothing
 
 $(makeLenses ''BlockInfo)
 
@@ -729,7 +742,7 @@ getSpentFrom (UtxoEvent _ txIns bi _) = do
 -}
 instance Buffered UtxoHandle where
   persistToStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent UtxoHandle) -- Events to store
     -> UtxoHandle -- Handler for storing events
     -> StorableMonad UtxoHandle UtxoHandle
@@ -810,7 +823,7 @@ instance Buffered UtxoHandle where
   getStoredEvents (UtxoHandle{}) = error "!!! This Buffered class method will be removed"
 
 sqliteUtxoByAddressQuery
-  :: FromRow r => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
+  :: (FromRow r) => SQL.Connection -> ([SQL.Query], [NamedParam]) -> Maybe SQL.Query -> IO [r]
 sqliteUtxoByAddressQuery c (filters, params) order = SQL.queryNamed c query params
   where
     wherePart =
@@ -911,7 +924,7 @@ instance Monoid UtxoByAddressBufferEvents where
 
 -- | Filter in-memory events at the given address and interval
 eventsAtAddress
-  :: Foldable f
+  :: (Foldable f)
   => C.AddressAny
   -> Interval C.SlotNo
   -> f (StorableEvent UtxoHandle)
@@ -967,7 +980,7 @@ eventsAtAddress addr snoInterval = foldMap go
 -}
 instance Queryable UtxoHandle where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent UtxoHandle)
     -> UtxoHandle
     -> StorableQuery UtxoHandle
@@ -988,9 +1001,9 @@ instance Queryable UtxoHandle where
         Nothing ->
           let findSelfIn = Map.lookup (utxoResultTxIn utxoResult)
            in if
-                  | Just _ <- findSelfIn bufferSpent' -> Nothing
-                  | Just spent <- findSelfIn bufferFutureSpent' -> Just $ utxoResult{utxoResultSpentInfo = Just spent}
-                  | otherwise -> Just utxoResult
+                | Just _ <- findSelfIn bufferSpent' -> Nothing
+                | Just spent <- findSelfIn bufferFutureSpent' -> Just $ utxoResult{utxoResultSpentInfo = Just spent}
+                | otherwise -> Just utxoResult
 
       addressFilter = (["u.address = :address"], [":address" := addr])
       lowerBoundFilter = case lowerBound slotInterval of
@@ -1017,9 +1030,9 @@ instance Queryable UtxoHandle where
           updateSpent u =
             let findSelfIn = Map.lookup (u ^. txIn)
              in if
-                    | Just _ <- findSelfIn bufferSpent' -> pure Nothing
-                    | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just <$> toUtxoResult u maybeSpentInfo
-                    | otherwise -> Just <$> toUtxoResult u Nothing
+                  | Just _ <- findSelfIn bufferSpent' -> pure Nothing
+                  | maybeSpentInfo@(Just _) <- findSelfIn bufferFutureSpent' -> Just <$> toUtxoResult u maybeSpentInfo
+                  | otherwise -> Just <$> toUtxoResult u Nothing
 
           resolveTxIns :: Utxo -> Map C.TxIn C.TxId -> [C.TxIn]
           resolveTxIns u =
@@ -1118,7 +1131,7 @@ toAddr (C.AddressInEra (C.ShelleyAddressInEra _) addr) = C.AddressShelley addr
 
 -- | Extract UtxoEvents from Cardano Block
 getUtxoEventsFromBlock
-  :: C.IsCardanoEra era
+  :: (C.IsCardanoEra era)
   => UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> C.Block era
@@ -1131,7 +1144,7 @@ getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh bloc
 
 -- | Extract UtxoEvents from Cardano Transactions
 getUtxoEvents
-  :: C.IsCardanoEra era
+  :: (C.IsCardanoEra era)
   => UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> [C.Tx era]
@@ -1146,7 +1159,11 @@ getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs b
       plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
       plutusDatums = Datum.getPlutusDatumsFromTxs txs
       filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
-      filteredTxOutDatums = Map.fromList $ rights $ map snd $ Datum.getFilteredAddressDatumsFromTxs (addressesToPredicate maybeTargetAddresses) txs
+      filteredTxOutDatums =
+        Map.fromList $
+          rights $
+            map snd $
+              Datum.getFilteredAddressDatumsFromTxs (addressesToPredicate maybeTargetAddresses) txs
    in UtxoEvent resolvedUtxos spentTxOuts bi $ Map.union plutusDatums filteredTxOutDatums
 
 -- | does the transaction contain a targetAddress
@@ -1175,7 +1192,7 @@ getUtxosFromTxBody
 getUtxosFromTxBody utxoIndexerConfig txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) txIndexInBlock' =
   fromRight Map.empty (getUtxos $ getTxOutFromTxBodyContent txBodyContent)
   where
-    getUtxos :: C.IsCardanoEra era => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
+    getUtxos :: (C.IsCardanoEra era) => [C.TxOut C.CtxTx era] -> Either C.EraCastError (Map C.TxIn Utxo)
     getUtxos =
       fmap (mconcat . imap txoutToUtxo)
         . traverse (C.eraCast CurrentEra)
@@ -1279,7 +1296,7 @@ isAddressInTarget' targetAddresses utxo =
     C.AddressShelley addr' -> addr' `elem` targetAddresses
 
 balanceUtxoFromTx
-  :: C.IsCardanoEra era
+  :: (C.IsCardanoEra era)
   => UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> (C.Tx era, TxIndexInBlock)

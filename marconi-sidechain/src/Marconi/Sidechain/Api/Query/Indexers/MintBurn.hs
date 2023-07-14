@@ -11,7 +11,11 @@ import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle, StorableResult (MintBurnResult), TxMintRow)
+import Marconi.ChainIndex.Indexers.MintBurn (
+  MintBurnHandle,
+  StorableResult (MintBurnResult),
+  TxMintRow,
+ )
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
@@ -57,7 +61,10 @@ queryByPolicyAndAssetId
   -> Maybe C.SlotNo
   -> IO (Either QueryExceptions [AssetIdTxResult])
 queryByPolicyAndAssetId env policyId assetId slotNo = do
-  mintBurnIndexer <- atomically $ readTMVar $ env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
+  mintBurnIndexer <-
+    atomically $
+      readTMVar $
+        env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
   query mintBurnIndexer
   where
     query indexer = do

@@ -24,7 +24,12 @@ import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Time.Clock (getCurrentTime)
 import Database.SQLite.Simple (Connection, execute, execute_, open, query_)
-import Database.SQLite.Simple.FromField (FromField, ResultError (ConversionFailed), fromField, returnError)
+import Database.SQLite.Simple.FromField (
+  FromField,
+  ResultError (ConversionFailed),
+  fromField,
+  returnError,
+ )
 import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
 import Database.SQLite.Simple.ToField (ToField)
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
@@ -105,7 +110,7 @@ freqShelleyTable env = do
           query_
             conn
             "SELECT address, frequency FROM frequtxos"
-          :: IO [ShelleyFrequencyTable C.AddressAny]
+            :: IO [ShelleyFrequencyTable C.AddressAny]
       )
   let addresses = mapMaybe toShelley addressFreq
 

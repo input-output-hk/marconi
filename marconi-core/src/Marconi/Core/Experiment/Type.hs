@@ -91,4 +91,4 @@ data QueryError query
   | -- | The indexer query failed
     IndexerQueryError Text
 
-deriving stock instance Show (Result query) => Show (QueryError query)
+deriving stock instance (Show (Result query)) => Show (QueryError query)

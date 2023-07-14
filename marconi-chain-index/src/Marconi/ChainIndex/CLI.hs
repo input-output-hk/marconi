@@ -247,7 +247,9 @@ marconiDescr programName =
   Opt.fullDesc
     <> Opt.progDesc programName
     <> Opt.header
-      (programName <> " - a lightweight customizable solution for indexing and querying the Cardano blockchain")
+      ( programName
+          <> " - a lightweight customizable solution for indexing and querying the Cardano blockchain"
+      )
 
 commonMaybePort :: Opt.Parser (Maybe Int)
 commonMaybePort =

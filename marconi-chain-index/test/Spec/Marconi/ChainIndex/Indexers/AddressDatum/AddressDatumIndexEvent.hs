@@ -25,8 +25,16 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 
-import Gen.Marconi.ChainIndex.Types (genAddressInEra, genChainPoint, genExecutionUnits, genTxOutValue)
-import Marconi.ChainIndex.Indexers.AddressDatum (AddressDatumHandle, StorableEvent (AddressDatumIndexEvent))
+import Gen.Marconi.ChainIndex.Types (
+  genAddressInEra,
+  genChainPoint,
+  genExecutionUnits,
+  genTxOutValue,
+ )
+import Marconi.ChainIndex.Indexers.AddressDatum (
+  AddressDatumHandle,
+  StorableEvent (AddressDatumIndexEvent),
+ )
 import Marconi.ChainIndex.Indexers.AddressDatum qualified as AddressDatum
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators (genTxBodyContentWithPlutusScripts)
 import Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils (addressInEraToAddressAny)
@@ -203,7 +211,8 @@ addressesDatumToAddressDatumIndexEvent filterF cp addressDatums =
     getDatumFromAnyLocation (TxOutDatumInlineLocation hd d) = Just (hd, Just d)
     getDatumFromAnyLocation (PlutusScriptDatumLocation hd d) = Just (hd, Just d)
 
-    getDatumFromTxOutLocation :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
+    getDatumFromTxOutLocation
+      :: DatumLocation -> Maybe (C.Hash C.ScriptData, Maybe C.HashableScriptData)
     getDatumFromTxOutLocation NoDatumLocation = Nothing
     getDatumFromTxOutLocation (TxOutDatumHashLocation hd _) = Just (hd, Nothing)
     getDatumFromTxOutLocation (TxOutDatumInTxLocation hd d) = Just (hd, Just d)
@@ -228,7 +237,8 @@ genAddressesWithDatum genDatumLocation = do
     datLocation <- genDatumLocation
     pure (addr, datLocation)
 
-genTxBodyWithAddresses :: [(C.AddressInEra C.BabbageEra, DatumLocation)] -> Gen (C.TxBody C.BabbageEra)
+genTxBodyWithAddresses
+  :: [(C.AddressInEra C.BabbageEra, DatumLocation)] -> Gen (C.TxBody C.BabbageEra)
 genTxBodyWithAddresses addresses = do
   res <- C.createAndValidateTransactionBody <$> genTxBodyContentWithAddresses addresses
   case res of

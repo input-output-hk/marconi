@@ -93,7 +93,8 @@ propEpochNonce :: H.Property
 propEpochNonce = H.withTests 1 $ H.property $ do
   indexer <- openEpochStateIndexer
   conn <- getDbSyncPgConnection
-  dbSyncEpochNonces <- liftIO $ PG.query_ conn "select epoch_no, nonce from epoch_param order by epoch_no ASC"
+  dbSyncEpochNonces <-
+    liftIO $ PG.query_ conn "select epoch_no, nonce from epoch_param order by epoch_no ASC"
   forM_ dbSyncEpochNonces $ \(epochNo, dbSyncNonce) -> do
     res <- liftIO $ queryIndexerEpochNonce epochNo indexer
     case res of
@@ -103,7 +104,8 @@ propEpochNonce = H.withTests 1 $ H.property $ do
       Nothing ->
         fail $ "Epoch not found in indexer, is it synchronised? Epoch no: " <> show epochNo
 
-queryIndexerEpochNonce :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Maybe Ledger.Nonce)
+queryIndexerEpochNonce
+  :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Maybe Ledger.Nonce)
 queryIndexerEpochNonce epochNo indexer = do
   let query = EpochState.NonceByEpochNoQuery epochNo
   res' <- throwIndexerError $ Storable.query indexer query
@@ -119,7 +121,8 @@ propEpochStakepoolSize :: H.Property
 propEpochStakepoolSize = H.withTests 1 $ H.property $ do
   conn <- getDbSyncPgConnection
   indexer <- openEpochStateIndexer
-  [(minEpochNo :: C.EpochNo, maxEpochNo :: C.EpochNo)] <- liftIO $ PG.query_ conn "SELECT min(epoch_no), max(epoch_no) FROM epoch_stake"
+  [(minEpochNo :: C.EpochNo, maxEpochNo :: C.EpochNo)] <-
+    liftIO $ PG.query_ conn "SELECT min(epoch_no), max(epoch_no) FROM epoch_stake"
   let compareEpoch epochNo = do
         dbSyncResult <- liftIO $ dbSyncStakepoolSizes conn epochNo
         marconiResult <- liftIO $ indexerStakepoolSizes epochNo indexer
@@ -160,9 +163,11 @@ dbSyncStakepoolSizes conn epochNo = do
     rationalToLovelace :: Rational -> C.Lovelace
     rationalToLovelace n
       | 1 <- denominator n = fromIntegral $ numerator n
-      | otherwise = error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
+      | otherwise =
+          error "getEpochStakepoolSizes: This should never happen, lovelace can't be fractional."
 
-indexerStakepoolSizes :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
+indexerStakepoolSizes
+  :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Map.Map C.PoolId C.Lovelace)
 indexerStakepoolSizes epochNo indexer = do
   let query = EpochState.ActiveSDDByEpochNoQuery epochNo
   result <- throwIndexerError $ Storable.query indexer query
@@ -190,7 +195,7 @@ openEpochStateIndexer = do
         ledgerStateDirPath = dbDir </> "ledgerStates"
     throwIndexerError $ EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam
 
-throwIndexerError :: Monad m => ExceptT Marconi.IndexerError m a -> m a
+throwIndexerError :: (Monad m) => ExceptT Marconi.IndexerError m a -> m a
 throwIndexerError action = either throw return =<< runExceptT action
 
 {- | Connect to cardano-db-sync postgres with password from
@@ -219,7 +224,8 @@ envOrFail str =
 topLevelConfigFromNodeConfig
   :: FilePath -> IO (O.TopLevelConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto)))
 topLevelConfigFromNodeConfig nodeConfigPath = do
-  nodeConfigE <- runExceptT $ GenesisConfig.readNetworkConfig (GenesisConfig.NetworkConfigFile nodeConfigPath)
+  nodeConfigE <-
+    runExceptT $ GenesisConfig.readNetworkConfig (GenesisConfig.NetworkConfigFile nodeConfigPath)
   nodeConfig <- either (error . show) pure nodeConfigE
   genesisConfigE <- runExceptT $ GenesisConfig.readCardanoGenesisConfig nodeConfig
   genesisConfig <- either (error . show . GenesisConfig.renderGenesisConfigError) pure genesisConfigE
