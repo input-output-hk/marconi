@@ -379,6 +379,10 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: test-compare-cardano-db-sync
+  other-modules:
+    DBUtils
+    EpochState
+    Utxo
 
   if flag(ci)
     buildable: False
@@ -419,7 +423,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
   build-depends:
     , aeson
     , async
-    , base                  >=4.9 && <5
+    , base                   >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -431,10 +435,13 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , mtl
     , optparse-applicative
     , postgresql-simple
+    , postgresql-simple-url
     , prettyprinter
+    , raw-strings-qq
     , serialise
     , sqlite-simple
     , stm
+    , stm-chans
     , streaming
     , tasty
     , tasty-golden
