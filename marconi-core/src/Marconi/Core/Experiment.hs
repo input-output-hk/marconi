@@ -510,9 +510,23 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
   wrappedIndexer,
   wrapperConfig,
  )
-import Marconi.Core.Experiment.Transformer.WithAggregate (HasAggregateConfig (..), WithAggregate, withAggregate)
-import Marconi.Core.Experiment.Transformer.WithCache (HasCacheConfig (cache), WithCache, addCacheFor, withCache)
-import Marconi.Core.Experiment.Transformer.WithDelay (HasDelayConfig (delayCapacity), WithDelay, delayBuffer, withDelay)
+import Marconi.Core.Experiment.Transformer.WithAggregate (
+  HasAggregateConfig (..),
+  WithAggregate,
+  withAggregate,
+ )
+import Marconi.Core.Experiment.Transformer.WithCache (
+  HasCacheConfig (cache),
+  WithCache,
+  addCacheFor,
+  withCache,
+ )
+import Marconi.Core.Experiment.Transformer.WithDelay (
+  HasDelayConfig (delayCapacity),
+  WithDelay,
+  delayBuffer,
+  withDelay,
+ )
 import Marconi.Core.Experiment.Transformer.WithPruning (
   HasPruningConfig (pruneEvery, securityParam),
   Prunable (..),
@@ -526,9 +540,26 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
   stepsBeforeNext,
   withPruning,
  )
-import Marconi.Core.Experiment.Transformer.WithTracer (HasTracerConfig (tracer), WithTracer, tracer, withTracer)
-import Marconi.Core.Experiment.Transformer.WithTransform (HasTransformConfig (..), WithTransform, withTransform)
-import Marconi.Core.Experiment.Type (IndexerError (..), Point, QueryError (..), Result, Timed (..), event, point)
+import Marconi.Core.Experiment.Transformer.WithTracer (
+  HasTracerConfig (tracer),
+  WithTracer,
+  tracer,
+  withTracer,
+ )
+import Marconi.Core.Experiment.Transformer.WithTransform (
+  HasTransformConfig (..),
+  WithTransform,
+  withTransform,
+ )
+import Marconi.Core.Experiment.Type (
+  IndexerError (..),
+  Point,
+  QueryError (..),
+  Result,
+  Timed (..),
+  event,
+  point,
+ )
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (..),
   Worker,
@@ -547,12 +578,12 @@ import Marconi.Core.Experiment.Worker (
  or we don't and we throw an error.
 -}
 resumeFrom
-  :: Rollbackable m event indexer
-  => MonadError IndexerError m
-  => Resetable m event indexer
-  => IsSync m event indexer
-  => HasGenesis (Point event)
-  => Ord (Point event)
+  :: (Rollbackable m event indexer)
+  => (MonadError IndexerError m)
+  => (Resetable m event indexer)
+  => (IsSync m event indexer)
+  => (HasGenesis (Point event))
+  => (Ord (Point event))
   => Point event
   -- ^ expected resume point
   -> Bool

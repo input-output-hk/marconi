@@ -38,7 +38,12 @@ import Marconi.Core.Experiment.Class (
   Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Type (IndexerError, Point, point)
-import Marconi.Core.Experiment.Worker (ProcessedInput (Index, Rollback), Worker, WorkerM (errorBox), startWorker)
+import Marconi.Core.Experiment.Worker (
+  ProcessedInput (Index, Rollback),
+  Worker,
+  WorkerM (errorBox),
+  startWorker,
+ )
 
 {- | A coordinator synchronises the event processing of a list of indexers.
  A coordinator is itself is an indexer.
@@ -65,8 +70,8 @@ makeLenses 'Coordinator
 
 -- | create a coordinator and starts its workers
 mkCoordinator
-  :: HasGenesis (Point input)
-  => Ord (Point input)
+  :: (HasGenesis (Point input))
+  => (Ord (Point input))
   => [Worker input (Point input)]
   -> IO (Coordinator input)
 mkCoordinator workers' =
@@ -99,7 +104,7 @@ dispatchNewInput :: Coordinator input -> ProcessedInput input -> IO ()
 dispatchNewInput coordinator = STM.atomically . STM.writeTChan (coordinator ^. channel)
 
 healthCheck
-  :: MonadIO m
+  :: (MonadIO m)
   => Coordinator input
   -> m (Maybe IndexerError)
 healthCheck c = do
@@ -119,7 +124,7 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator w
             Just err -> close coordinator *> throwError err
             Nothing -> pure $ setLastSync timedEvent
 
-instance MonadIO m => IsSync m event Coordinator where
+instance (MonadIO m) => IsSync m event Coordinator where
   lastSyncPoint indexer = pure $ indexer ^. lastSync
 
 -- | To rollback a coordinator, we try and rollback all the workers.
@@ -142,7 +147,7 @@ instance
             Nothing -> pure $ setLastSync c
      in rollbackWorkers
 
-instance MonadIO m => Closeable m Coordinator where
+instance (MonadIO m) => Closeable m Coordinator where
   close coordinator = liftIO $ do
     traverse_ Con.killThread (coordinator ^. threadIds)
 

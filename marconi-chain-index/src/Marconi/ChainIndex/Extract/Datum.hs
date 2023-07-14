@@ -20,7 +20,7 @@ import Marconi.ChainIndex.Orphans ()
 -- * Datums from script data
 
 -- | Get a map of datum hash to datum from a list of transactions.
-getPlutusDatumsFromTxs :: Foldable f => f (C.Tx era) -> Map (C.Hash C.ScriptData) C.ScriptData
+getPlutusDatumsFromTxs :: (Foldable f) => f (C.Tx era) -> Map (C.Hash C.ScriptData) C.ScriptData
 getPlutusDatumsFromTxs = foldMap getPlutusDatumsFromTx
 
 getPlutusDatumsFromTx :: C.Tx era -> Map (C.Hash C.ScriptData) C.ScriptData
@@ -36,12 +36,15 @@ getPlutusDatumsFromTxBody txBody = maybe Map.empty (Map.fromList . fmap toHashed
 toHashedData :: Data ledgerera -> (C.Hash C.ScriptData, C.ScriptData)
 toHashedData alonzoDat = let d = C.fromAlonzoData alonzoDat in (C.hashScriptDataBytes d, C.getScriptData d)
 
-getDatumMapFromTxBody :: C.TxBody era -> Maybe (Map (DataHash (EraCrypto (C.ShelleyLedgerEra era))) (Data (C.ShelleyLedgerEra era)))
+getDatumMapFromTxBody
+  :: C.TxBody era
+  -> Maybe (Map (DataHash (EraCrypto (C.ShelleyLedgerEra era))) (Data (C.ShelleyLedgerEra era)))
 getDatumMapFromTxBody = \case
   C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (Ledger.TxDats' data_) _) _ _ -> Just data_
   _ -> Nothing
 
-getFilteredTxOutDatumsFromTxs :: Maybe (C.Address C.ShelleyAddr -> Bool) -> [C.Tx era] -> Map (C.Hash C.ScriptData) C.ScriptData
+getFilteredTxOutDatumsFromTxs
+  :: Maybe (C.Address C.ShelleyAddr -> Bool) -> [C.Tx era] -> Map (C.Hash C.ScriptData) C.ScriptData
 getFilteredTxOutDatumsFromTxs addressFilter txs = Map.fromList $ rights $ map snd $ getFilteredAddressDatumsFromTxs addressFilter txs
 
 getFilteredAddressDatumsFromTxs
@@ -66,15 +69,19 @@ getAddressDatumsFromTx
   -> [(C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))]
 getAddressDatumsFromTx (C.Tx (C.TxBody C.TxBodyContent{C.txOuts}) _) = mapMaybe maybePair txOuts
   where
-    maybePair :: C.TxOut C.CtxTx era -> Maybe (C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))
+    maybePair
+      :: C.TxOut C.CtxTx era
+      -> Maybe (C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))
     maybePair (C.TxOut (C.AddressInEra _ addr) _ dat _) = (C.toAddressAny addr,) <$> getTxOutDatumOrHash dat
 
-getTxOutsDatumsOrHashes :: [C.TxOut C.CtxTx era] -> [Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData)]
+getTxOutsDatumsOrHashes
+  :: [C.TxOut C.CtxTx era] -> [Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData)]
 getTxOutsDatumsOrHashes = mapMaybe (getTxOutDatumOrHash . txOutDatum)
   where
     txOutDatum (C.TxOut (C.AddressInEra _ _) _ dat _) = dat
 
-getTxOutDatumOrHash :: C.TxOutDatum C.CtxTx era -> Maybe (Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))
+getTxOutDatumOrHash
+  :: C.TxOutDatum C.CtxTx era -> Maybe (Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))
 getTxOutDatumOrHash = \case
   C.TxOutDatumHash _ dh -> Just $ Left dh
   C.TxOutDatumInTx _ d -> Just $ Right (C.hashScriptDataBytes d, C.getScriptData d)

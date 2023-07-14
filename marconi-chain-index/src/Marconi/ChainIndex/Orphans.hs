@@ -124,7 +124,9 @@ instance ToJSON C.AddressAny where
 instance SQL.FromField (C.Hash C.ScriptData) where
   fromField f =
     SQL.fromField f
-      >>= either (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.ScriptData.") pure
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.ScriptData.")
+        pure
         . C.deserialiseFromRawBytes (C.AsHash C.AsScriptData)
 
 instance SQL.ToField (C.Hash C.ScriptData) where

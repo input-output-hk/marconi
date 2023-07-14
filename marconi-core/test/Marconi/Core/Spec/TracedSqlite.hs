@@ -179,7 +179,12 @@ newSqliteIndexer accFn memBuf ag0 = do
   pure . Just $ Config c accFn
 
 instance Buffered Handle where
-  persistToStorage :: Foldable f => Tracer IO (StorableNotifications Handle) -> f (StorableEvent Handle) -> Handle -> IO Handle
+  persistToStorage
+    :: (Foldable f)
+    => Tracer IO (StorableNotifications Handle)
+    -> f (StorableEvent Handle)
+    -> Handle
+    -> IO Handle
   persistToStorage t es (Handle h) = do
     -- Append events to cache
     Sql.execute_ h "BEGIN"
@@ -206,7 +211,7 @@ indexedFn f (Result ag0) (Event _ e) =
 
 instance Queryable Handle where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => Tracer IO (StorableNotifications Handle)
     -> StorablePoint Handle
     -> f (StorableEvent Handle)
@@ -236,7 +241,8 @@ instance Queryable Handle where
     pure $ foldl' ((fst .) . indexedFn f) aggregate es''
 
 instance Rewindable Handle where
-  rewindStorage :: Tracer IO (StorableNotifications Handle) -> StorablePoint Handle -> Handle -> IO (Maybe Handle)
+  rewindStorage
+    :: Tracer IO (StorableNotifications Handle) -> StorablePoint Handle -> Handle -> IO (Maybe Handle)
   rewindStorage t pt (Handle h) = do
     Sql.execute h "DELETE FROM index_property_cache WHERE point > ?" (Sql.Only pt)
     traceWith t FourtyTwo

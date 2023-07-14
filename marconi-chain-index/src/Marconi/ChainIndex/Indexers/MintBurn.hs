@@ -62,7 +62,12 @@ import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
-import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
+import Marconi.ChainIndex.Indexers.LastSync (
+  addLastSyncPoints,
+  createLastSyncTable,
+  queryLastSyncPoint,
+  rollbackLastSyncPoints,
+ )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam, TxIndexInBlock)
 import Marconi.Core.Storable (StorableMonad)
@@ -113,7 +118,8 @@ toUpdate mAssets (C.BlockInMode (C.Block (C.BlockHeader slotNo blockHeaderHash b
    in TxMintEvent slotNo blockHeaderHash blockNo assets
 
 -- | Extracs TxMintInfo from a Tx
-txMints :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)) -> TxIndexInBlock -> C.Tx era -> Maybe TxMintInfo
+txMints
+  :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)) -> TxIndexInBlock -> C.Tx era -> Maybe TxMintInfo
 txMints mAssets ix (C.Tx txb _) =
   let isTargetOf token pId an =
         mintAssetPolicyId token == pId
@@ -379,7 +385,11 @@ groupBySlotAndHash :: [TxMintEvent] -> [TxMintEvent]
 groupBySlotAndHash events =
   events
     & sort
-    & groupBy (\e1 e2 -> txMintEventSlotNo e1 == txMintEventSlotNo e2 && txMintEventBlockHeaderHash e1 == txMintEventBlockHeaderHash e2)
+    & groupBy
+      ( \e1 e2 ->
+          txMintEventSlotNo e1 == txMintEventSlotNo e2
+            && txMintEventBlockHeaderHash e1 == txMintEventBlockHeaderHash e2
+      )
     & mapMaybe buildTxMintEvent
   where
     buildTxMintEvent [] = Nothing

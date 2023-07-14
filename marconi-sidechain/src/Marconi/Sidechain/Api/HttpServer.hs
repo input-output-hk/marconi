@@ -39,7 +39,11 @@ import Marconi.Sidechain.Api.Types (
   sidechainEnvIndexers,
  )
 import Network.JsonRpc.Server.Types ()
-import Network.JsonRpc.Types (JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage), mkJsonRpcInvalidRequestErr, mkJsonRpcParseErr)
+import Network.JsonRpc.Types (
+  JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage),
+  mkJsonRpcInvalidRequestErr,
+  mkJsonRpcParseErr,
+ )
 import Network.Wai.Handler.Warp (runSettings)
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler, Server, serve)

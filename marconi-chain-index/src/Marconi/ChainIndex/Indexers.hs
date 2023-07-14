@@ -182,7 +182,8 @@ initialCoordinator indexerCount' minIndexingDepth =
 -- The points should/could provide shared access to the indexers themselves. The result
 -- is a list of points (rather than just one) since it offers more resume possibilities
 -- to the node (in the unlikely case there were some rollbacks during downtime).
-type Worker = SecurityParam -> Coordinator -> FilePath -> IO (Storable.StorablePoint ScriptTx.ScriptTxHandle)
+type Worker =
+  SecurityParam -> Coordinator -> FilePath -> IO (Storable.StorablePoint ScriptTx.ScriptTxHandle)
 
 utxoWorker_
   :: (Utxo.UtxoIndexer -> IO ())
@@ -273,7 +274,10 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
         RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _, _) _ -> do
           -- TODO Redo. Inefficient filtering
           let addressDatumIndexEvent =
-                AddressDatum.toAddressDatumIndexEvent (Utils.addressesToPredicate targetAddresses) txs (C.ChainPoint slotNo bh)
+                AddressDatum.toAddressDatumIndexEvent
+                  (Utils.addressesToPredicate targetAddresses)
+                  txs
+                  (C.ChainPoint slotNo bh)
           void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
           void $ onInsert addressDatumIndexEvent
         RollBackward cp _ct -> do
@@ -313,7 +317,13 @@ scriptTxWorker
   -> Worker
 scriptTxWorker onInsert securityParam coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
-  (loop, cp, _indexer) <- scriptTxWorker_ onInsert (ScriptTx.Depth $ fromIntegral securityParam) coordinator workerChannel path
+  (loop, cp, _indexer) <-
+    scriptTxWorker_
+      onInsert
+      (ScriptTx.Depth $ fromIntegral securityParam)
+      coordinator
+      workerChannel
+      path
   void $ forkIO loop
   return cp
 
@@ -337,7 +347,8 @@ epochStateWorker_
     nodeConfigE <- runExceptT $ readNetworkConfig (NetworkConfigFile nodeConfigPath)
     nodeConfig <- either (throw . CantStartIndexer . Text.pack . show) pure nodeConfigE
     genesisConfigE <- runExceptT $ readCardanoGenesisConfig nodeConfig
-    genesisConfig <- either (throw . CantStartIndexer . Text.pack . show . renderGenesisConfigError) pure genesisConfigE
+    genesisConfig <-
+      either (throw . CantStartIndexer . Text.pack . show . renderGenesisConfigError) pure genesisConfigE
 
     let initialLedgerState = initExtLedgerStateVar genesisConfig
         topLevelConfig = O.pInfoConfig (mkProtocolInfoCardano genesisConfig)
@@ -399,12 +410,14 @@ epochStateWorker_
                 Right (EpochState.LedgerStateAtPointResult Nothing) -> do
                   void $
                     tryPutMVar _errorVar $
-                      CantRollback "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
+                      CantRollback
+                        "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
                   pure (initialLedgerState, Nothing)
                 Right _ -> do
                   void $
                     tryPutMVar _errorVar $
-                      CantRollback "LedgerStateAtPointQuery returned a result mismatch when applying a rollback. Should not happen!"
+                      CantRollback
+                        "LedgerStateAtPointQuery returned a result mismatch when applying a rollback. Should not happen!"
                   pure (initialLedgerState, Nothing)
                 Left err -> do
                   void $ tryPutMVar _errorVar err
@@ -576,23 +589,30 @@ runIndexers
   -> IO ()
 runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
   securityParam <- toException $ Utils.querySecurityParam networkId socketPath
-  (oldestCommonChainPoint, coordinator) <- initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
+  (oldestCommonChainPoint, coordinator) <-
+    initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
   let chainPoint = case cliChainPoint of
         C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
         cliCp -> cliCp -- otherwise use what was provided on CLI.
   c <- defaultConfigStdout
   withTrace c traceName $ \trace ->
-    let io = withChainSyncEventEpochNoStream socketPath networkId [chainPoint] (mkIndexerStream coordinator . chainSyncEventStreamLogging trace)
+    let io =
+          withChainSyncEventEpochNoStream
+            socketPath
+            networkId
+            [chainPoint]
+            (mkIndexerStream coordinator . chainSyncEventStreamLogging trace)
         handleException NoIntersectionFound =
           logError trace $
             renderStrict $
               layoutPretty defaultLayoutOptions $
                 "No intersection found when looking for the chain point"
-                  <+> pretty chainPoint <> "."
+                  <+> pretty chainPoint
+                  <> "."
                   <+> "Please check the slot number and the block hash do belong to the chain"
      in finally (io `catch` handleException) (cleanExit coordinator)
 
-toException :: Exception err => ExceptT err IO a -> IO a
+toException :: (Exception err) => ExceptT err IO a -> IO a
 toException mx = do
   x <- runExceptT mx
   case x of
@@ -611,7 +631,7 @@ updateWith xBox errBox f = modifyMVar xBox $ \x -> do
       tryPutMVar errBox err $> (x, x)
     Right x' -> pure (x', x')
 
-failWhenFull :: Show a => MonadIO m => MVar a -> m ()
+failWhenFull :: (Show a) => (MonadIO m) => MVar a -> m ()
 failWhenFull x = do
   isEmpty <- liftIO $ isEmptyMVar x
   if isEmpty

@@ -30,7 +30,12 @@ import Hedgehog.Extras.Test.Base qualified as H
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Streaming qualified as CS
-import Cardano.Testnet qualified as TC (Conf (..), ProjectBase (ProjectBase), YamlFilePath (YamlFilePath), mkConf)
+import Cardano.Testnet qualified as TC (
+  Conf (..),
+  ProjectBase (ProjectBase),
+  YamlFilePath (YamlFilePath),
+  mkConf,
+ )
 import Cardano.Testnet qualified as TN hiding (testnetMagic)
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
 import Testnet.Util.Runtime qualified as TN
@@ -42,7 +47,8 @@ startTestnet
   -> FilePath
   -> H.Integration (C.LocalNodeConnectInfo C.CardanoMode, TC.Conf, TN.TestnetRuntime)
 startTestnet testnetOptions base tempAbsBasePath' = do
-  configurationTemplate <- H.noteShow $ base </> "configuration/defaults/byron-mainnet/configuration.yaml"
+  configurationTemplate <-
+    H.noteShow $ base </> "configuration/defaults/byron-mainnet/configuration.yaml"
   conf :: TC.Conf <-
     HE.noteShowM $
       TC.mkConf
@@ -89,7 +95,7 @@ readAs as path = do
 
 -- | An empty transaction
 emptyTxBodyContent
-  :: C.IsShelleyBasedEra era
+  :: (C.IsShelleyBasedEra era)
   => (C.TxValidityLowerBound era, C.TxValidityUpperBound era)
   -> C.ProtocolParameters
   -> C.TxBodyContent C.BuildTx era
@@ -231,7 +237,7 @@ mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
           (length keyWitnesses)
           networkId
           txBody0
-        :: C.Lovelace
+          :: C.Lovelace
 
   when (howMuch + fee >= totalLovelace) $ fail "Not enough funds"
   let tx =
@@ -273,7 +279,16 @@ mkAddressAdaTxOut address lovelace =
  https://github.com/input-output-hk/cardano-node/blob/d15ff2b736452857612dd533c1ddeea2405a2630/cardano-cli/src/Cardano/CLI/Shelley/Run/Transaction.hs#L1105-L1112
  https://github.com/input-output-hk/cardano-node/blob/d15ff2b736452857612dd533c1ddeea2405a2630/cardano-cli/src/Cardano/CLI/Shelley/Run/Transaction.hs#L1121-L1128
 -}
-calculateFee :: C.IsShelleyBasedEra era => C.ProtocolParameters -> Int -> Int -> Int -> Int -> C.NetworkId -> C.TxBody era -> C.Lovelace
+calculateFee
+  :: (C.IsShelleyBasedEra era)
+  => C.ProtocolParameters
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> C.NetworkId
+  -> C.TxBody era
+  -> C.Lovelace
 calculateFee pparams nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses networkId txBody =
   C.estimateTransactionFee
     networkId
@@ -289,7 +304,7 @@ calculateFee pparams nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses ne
  applied, and also the fee in lovelace.
 -}
 calculateAndUpdateTxFee
-  :: H.MonadTest m
+  :: (H.MonadTest m)
   => C.ProtocolParameters
   -> C.NetworkId
   -> Int
@@ -298,7 +313,9 @@ calculateAndUpdateTxFee
   -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.BabbageEra)
 calculateAndUpdateTxFee pparams networkId lengthTxIns lengthKeyWitnesses txbc = do
   txb <- HE.leftFail $ C.createAndValidateTransactionBody txbc
-  let feeLovelace = calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb :: C.Lovelace
+  let feeLovelace =
+        calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb
+          :: C.Lovelace
       fee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra feeLovelace
       txbc' = txbc{C.txFee = fee}
   return (feeLovelace, txbc')

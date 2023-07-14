@@ -52,7 +52,7 @@ import Marconi.Core.Experiment.Type (
 
 -- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
 data SQLInsertPlan event = forall a.
-  SQL.ToRow a =>
+  (SQL.ToRow a) =>
   SQLInsertPlan
   { planExtractor :: Timed (Point event) event -> [a]
   -- ^ How to transform the event into a type that can be handle by the database
@@ -79,10 +79,10 @@ makeLenses 'SQLiteIndexer
  that we set 'dbLastSync' thanks to the provided query
 -}
 mkSqliteIndexer
-  :: MonadIO m
-  => MonadError IndexerError m
-  => HasGenesis (Point event)
-  => SQL.FromRow (Point event)
+  :: (MonadIO m)
+  => (MonadError IndexerError m)
+  => (HasGenesis (Point event))
+  => (SQL.FromRow (Point event))
   => SQL.Connection
   -> [[SQLInsertPlan event]]
   -- ^ extract @param@ out of a 'Timed'
@@ -112,11 +112,11 @@ mkSqliteIndexer _handle _insertPlan lastSyncQuery =
  It is monomorphic restriction of 'mkSqliteIndexer'
 -}
 mkSingleInsertSqliteIndexer
-  :: MonadIO m
-  => MonadError IndexerError m
-  => SQL.FromRow (Point event)
-  => SQL.ToRow param
-  => HasGenesis (Point event)
+  :: (MonadIO m)
+  => (MonadError IndexerError m)
+  => (SQL.FromRow (Point event))
+  => (SQL.ToRow param)
+  => (HasGenesis (Point event))
   => SQL.Connection
   -> (Timed (Point event) event -> param)
   -- ^ extract @param@ out of a 'Timed'
@@ -136,8 +136,8 @@ handleSQLErrors value =
 
 -- | Run a list of insert queries in one single transaction.
 runIndexQueriesStep
-  :: MonadIO m
-  => MonadError IndexerError m
+  :: (MonadIO m)
+  => (MonadError IndexerError m)
   => SQL.Connection
   -> [Timed (Point event) event]
   -> [SQLInsertPlan event]
@@ -155,8 +155,8 @@ runIndexQueriesStep c events xs =
 
 -- | Run a list of insert queries in one single transaction.
 runIndexQueries
-  :: MonadIO m
-  => MonadError IndexerError m
+  :: (MonadIO m)
+  => (MonadError IndexerError m)
   => SQL.Connection
   -> [Timed (Point event) event]
   -> [[SQLInsertPlan event]]
@@ -164,9 +164,9 @@ runIndexQueries
 runIndexQueries c = traverse_ . runIndexQueriesStep c
 
 runLastSyncQuery
-  :: MonadError IndexerError m
-  => MonadIO m
-  => SQL.FromRow r
+  :: (MonadError IndexerError m)
+  => (MonadIO m)
+  => (SQL.FromRow r)
   => SQL.Connection
   -> SQL.Query
   -> m [r]
@@ -195,11 +195,11 @@ instance
       (indexer ^. insertPlan)
     pure $ updateLastSync indexer
 
-instance MonadIO m => IsSync m event SQLiteIndexer where
+instance (MonadIO m) => IsSync m event SQLiteIndexer where
   lastSyncPoint indexer =
     pure $ indexer ^. dbLastSync
 
-instance MonadIO m => Closeable m SQLiteIndexer where
+instance (MonadIO m) => Closeable m SQLiteIndexer where
   close indexer = liftIO $ SQL.close $ indexer ^. handle
 
 -- | A helper for the definition of the 'Rollbackable' typeclass for 'SQLiteIndexer'
@@ -233,10 +233,10 @@ rollbackSQLiteIndexerWith q p indexer = do
  It doesn't filter the result based on the given data point.
 -}
 querySQLiteIndexerWith
-  :: MonadIO m
-  => MonadError (QueryError query) m
-  => Ord (Point event)
-  => SQL.FromRow r
+  :: (MonadIO m)
+  => (MonadError (QueryError query) m)
+  => (Ord (Point event))
+  => (SQL.FromRow r)
   => (Point event -> query -> [SQL.NamedParam])
   -> SQL.Query
   -- ^ The sqlite query statement
@@ -266,10 +266,10 @@ querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
  It doesn't filter the result based on the given data point.
 -}
 querySyncedOnlySQLiteIndexerWith
-  :: MonadIO m
-  => MonadError (QueryError query) m
-  => Ord (Point event)
-  => SQL.FromRow r
+  :: (MonadIO m)
+  => (MonadError (QueryError query) m)
+  => (Ord (Point event))
+  => (SQL.FromRow r)
   => (Point event -> query -> [SQL.NamedParam])
   -> SQL.Query
   -- ^ The sqlite query statement

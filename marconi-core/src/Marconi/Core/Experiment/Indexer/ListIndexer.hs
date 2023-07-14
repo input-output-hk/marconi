@@ -40,10 +40,10 @@ deriving stock instance (Show event, Show (Point event)) => Show (ListIndexer ev
 makeLenses ''ListIndexer
 
 -- | A smart constructor for list indexer, starting at genesis with an empty list.
-mkListIndexer :: HasGenesis (Point event) => ListIndexer event
+mkListIndexer :: (HasGenesis (Point event)) => ListIndexer event
 mkListIndexer = ListIndexer [] genesis
 
-instance Monad m => IsIndex m event ListIndexer where
+instance (Monad m) => IsIndex m event ListIndexer where
   index =
     let appendEvent :: Timed (Point event) event -> ListIndexer event -> m (ListIndexer event)
         appendEvent te = pure . (events %~ (te :))
@@ -52,10 +52,10 @@ instance Monad m => IsIndex m event ListIndexer where
         updateLatest p = pure . (latest .~ p)
      in indexIfJust appendEvent updateLatest
 
-instance Applicative m => IsSync m event ListIndexer where
+instance (Applicative m) => IsSync m event ListIndexer where
   lastSyncPoint = pure . view latest
 
-instance Applicative m => Rollbackable m event ListIndexer where
+instance (Applicative m) => Rollbackable m event ListIndexer where
   rollback p ix =
     let adjustLatestPoint :: ListIndexer event -> ListIndexer event
         adjustLatestPoint = latest .~ p
@@ -85,5 +85,5 @@ instance
         & events .~ mempty
         & latest .~ genesis
 
-instance Applicative m => Closeable m ListIndexer where
+instance (Applicative m) => Closeable m ListIndexer where
   close = const $ pure ()

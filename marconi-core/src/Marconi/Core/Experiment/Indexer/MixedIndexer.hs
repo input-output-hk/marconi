@@ -131,9 +131,9 @@ mkMixedIndexer keepNb flushNb db =
    in MixedIndexer . IndexWrapper properties
 
 standardMixedIndexer
-  :: IsSync m event store
-  => Monad m
-  => HasGenesis (Point event)
+  :: (IsSync m event store)
+  => (Monad m)
+  => (HasGenesis (Point event))
   => Word
   -- ^ how many events are kept in memory after a flush
   -> Word
@@ -163,10 +163,10 @@ class HasMixedConfig indexer where
   flushEvery :: Lens' (indexer event) Word
   keepInMemory :: Lens' (indexer event) Word
 
-flushEveryVia :: HasMixedConfig indexer => Lens' s (indexer event) -> Lens' s Word
+flushEveryVia :: (HasMixedConfig indexer) => Lens' s (indexer event) -> Lens' s Word
 flushEveryVia l = l . flushEvery
 
-keepInMemoryVia :: HasMixedConfig indexer => Lens' s (indexer event) -> Lens' s Word
+keepInMemoryVia :: (HasMixedConfig indexer) => Lens' s (indexer event) -> Lens' s Word
 keepInMemoryVia l = l . keepInMemory
 
 -- Overlapping because we prefer this instance to any other instance
@@ -281,7 +281,7 @@ instance
       Nothing -> pure indexer''
       Just p -> flush p indexer''
 
-instance IsSync event m mem => IsSync event m (MixedIndexer store mem) where
+instance (IsSync event m mem) => IsSync event m (MixedIndexer store mem) where
   lastSyncPoint = lastSyncPoint . view inMemory
 
 instance

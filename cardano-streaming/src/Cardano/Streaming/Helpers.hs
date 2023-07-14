@@ -14,7 +14,10 @@ import Streaming.Prelude qualified as S
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as CS
 import Cardano.Chain.Genesis qualified
-import Cardano.Crypto (ProtocolMagicId (unProtocolMagicId), RequiresNetworkMagic (RequiresMagic, RequiresNoMagic))
+import Cardano.Crypto (
+  ProtocolMagicId (unProtocolMagicId),
+  RequiresNetworkMagic (RequiresMagic, RequiresNoMagic),
+ )
 import Cardano.Ledger.Shelley.LedgerState qualified as SL
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Ouroboros.Consensus.Cardano.CanHardFork qualified as Consensus
@@ -130,5 +133,5 @@ mkConnectInfo env socketPath =
  monitor which blocks has been seen by the node, regardless whether
  they are permanent.
 -}
-ignoreRollbacks :: Monad m => S.Stream (S.Of (ChainSyncEvent a)) m r -> S.Stream (S.Of a) m r
+ignoreRollbacks :: (Monad m) => S.Stream (S.Of (ChainSyncEvent a)) m r -> S.Stream (S.Of a) m r
 ignoreRollbacks = S.mapMaybe (\case RollForward e _ -> Just e; _ -> Nothing)

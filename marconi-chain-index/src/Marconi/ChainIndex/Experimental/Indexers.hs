@@ -100,7 +100,12 @@ runIndexers socketPath networkId _startingPoint traceName dbDir = do
   c <- defaultConfigStdout
   concurrently_
     ( withTrace c traceName $ \trace ->
-        let io = withChainSyncEventEpochNoStream socketPath networkId [Core.genesis] (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
+        let io =
+              withChainSyncEventEpochNoStream
+                socketPath
+                networkId
+                [Core.genesis]
+                (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
             handleException NoIntersectionFound =
               logError trace $
                 renderStrict $
@@ -111,7 +116,7 @@ runIndexers socketPath networkId _startingPoint traceName dbDir = do
     )
     (readEvent eventQueue cBox)
 
-toException :: Exception err => ExceptT err IO a -> IO a
+toException :: (Exception err) => ExceptT err IO a -> IO a
 toException mx = do
   x <- runExceptT mx
   case x of

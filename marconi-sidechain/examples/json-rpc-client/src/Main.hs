@@ -4,7 +4,10 @@
 module Main where
 
 import Data.Proxy (Proxy (Proxy))
-import Marconi.Sidechain.Api.Routes (GetUtxosFromAddressParams (GetUtxosFromAddressParams), JsonRpcAPI)
+import Marconi.Sidechain.Api.Routes (
+  GetUtxosFromAddressParams (GetUtxosFromAddressParams),
+  JsonRpcAPI,
+ )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.JsonRpc.Client.Types ()
 import Network.JsonRpc.Types (JsonRpcResponse (Ack, Errors, Result))

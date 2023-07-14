@@ -76,12 +76,12 @@ chainPointParser =
 parseOptions :: IO Options
 parseOptions = execParser $ info (optionsParser <**> helper) mempty
 
-printJson :: Data.Aeson.ToJSON a => S.Stream (S.Of a) IO r -> IO r
+printJson :: (Data.Aeson.ToJSON a) => S.Stream (S.Of a) IO r -> IO r
 printJson = S.mapM_ Data.ByteString.Lazy.Char8.putStrLn . S.map Data.Aeson.encode
 
 -- https://github.com/input-output-hk/cardano-node/pull/3665
 workaround
-  :: (Cardano.Api.IsCardanoEra era => Cardano.Api.EraInMode era Cardano.Api.CardanoMode -> a)
+  :: ((Cardano.Api.IsCardanoEra era) => Cardano.Api.EraInMode era Cardano.Api.CardanoMode -> a)
   -> Cardano.Api.EraInMode era Cardano.Api.CardanoMode
   -> a
 workaround k Cardano.Api.ByronEraInCardanoMode = k Cardano.Api.ByronEraInCardanoMode

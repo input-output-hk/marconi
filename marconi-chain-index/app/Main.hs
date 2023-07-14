@@ -10,7 +10,7 @@ import System.Directory (createDirectoryIfMissing)
 {- | the worker don't have a hook to notify the query part
  (we use a monoid because some hooks return unit while other returns a list of events)
 -}
-noHook :: Monoid m => a -> IO m
+noHook :: (Monoid m) => a -> IO m
 noHook = const $ pure mempty
 
 main :: IO ()

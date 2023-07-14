@@ -10,7 +10,10 @@ import Cardano.Api qualified as C
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing (defaultConfigStdout)
-import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventEpochNoStream)
+import Cardano.Streaming (
+  ChainSyncEventException (NoIntersectionFound),
+  withChainSyncEventEpochNoStream,
+ )
 import Cardano.Testnet qualified as TN
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
@@ -58,7 +61,7 @@ import System.FilePath ((</>))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
-integration :: HasCallStack => H.Integration () -> H.Property
+integration :: (HasCallStack) => H.Integration () -> H.Property
 integration = H.withTests 1 . H.propertyOnce
 
 {- | Each test case is described beside every top level property
@@ -144,7 +147,12 @@ mintsPreserved = H.property $ do
       Right tx' -> return tx'
   -- Index the transaction:
   let mints = MintBurn.txbMints txb
-      gottenPolicyAssets = map (\mint -> (MintBurn.mintAssetPolicyId mint, MintBurn.mintAssetAssetName mint, MintBurn.mintAssetQuantity mint)) mints
+      gottenPolicyAssets =
+        map
+          ( \mint ->
+              (MintBurn.mintAssetPolicyId mint, MintBurn.mintAssetAssetName mint, MintBurn.mintAssetQuantity mint)
+          )
+          mints
   -- Print footnote should the test fail:
   let generatedPolicyAssets = getPolicyAssets mintValue
   H.footnote $
@@ -191,7 +199,8 @@ propQueryingReturnResultOrderedByAscendingBlockNumberAndTxIndex = H.property $ d
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll :: Property
 propQueryingAssetIdsIndividuallyShouldBeSameAsQueryingAll = H.property $ do
   (indexer, insertedEvents, _) <- Gen.genIndexerWithEvents ":memory:"
-  MintBurnResult allTxMintRows <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
+  MintBurnResult allTxMintRows <-
+    liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 
   -- Getting all AssetIds from generated events
   let assetIds = getAssetIds insertedEvents
@@ -295,7 +304,9 @@ propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
       raiseException $
         RI.query indexer' $
           QueryAllMintBurn Nothing
-  let expected = MintBurn.groupBySlotAndHash $ take (eventsPersisted (fromIntegral bufferSize) (length events)) events
+  let expected =
+        MintBurn.groupBySlotAndHash $
+          take (eventsPersisted (fromIntegral bufferSize) (length events)) events
   -- The test: events that were persisted are exactly those we get from the query.
   equalSet expected (MintBurn.fromRows queryResult)
 
@@ -308,10 +319,15 @@ rewind :: Property
 rewind = H.property $ do
   (indexer, events, (_bufferSize, nTx)) <- Gen.genIndexerWithEvents ":memory:"
   -- Rollback slot is from 0 to number of slots (slot numbers are from 0 to nTx - 1)
-  rollbackSlotNo <- fmap coerce $ forAll $ Gen.integral $ Range.constant 0 ((let w64 = fromIntegral nTx in if w64 == 0 then 0 else w64 - 1) :: Word64)
+  rollbackSlotNo <-
+    fmap coerce $
+      forAll $
+        Gen.integral $
+          Range.constant 0 ((let w64 = fromIntegral nTx in if w64 == 0 then 0 else w64 - 1) :: Word64)
   let cp = C.ChainPoint rollbackSlotNo dummyBlockHeaderHash
   rewoundIndexer <- liftIO (raiseException $ RI.rewind cp indexer)
-  MintBurnResult queryResult <- liftIO $ raiseException $ RI.query rewoundIndexer $ QueryAllMintBurn Nothing
+  MintBurnResult queryResult <-
+    liftIO $ raiseException $ RI.query rewoundIndexer $ QueryAllMintBurn Nothing
   -- Expect only older than rollback events.
   let isBeforeRollback e = MintBurn.txMintEventSlotNo e <= rollbackSlotNo
       expected = filter isBeforeRollback events
@@ -324,7 +340,8 @@ rewind = H.property $ do
 endToEnd :: Property
 endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.runFinallies $ H.workspace "." $ \tempPath -> do
   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  (localNodeConnectInfo, conf, runtime) <- TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempPath
+  (localNodeConnectInfo, conf, runtime) <-
+    TN.startTestnet (TN.BabbageOnlyTestnetOptions TN.babbageDefaultTestnetOptions) base tempPath
   let networkId = TN.getNetworkId runtime
   socketPath <- TN.getPoolSocketPathAbs conf runtime
 
@@ -334,7 +351,8 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   liftIO $ do
     coordinator <- M.initialCoordinator 1 0
     ch <- IO.atomically . IO.dupTChan $ M._channel coordinator
-    (loop, _indexerMVar) <- M.mintBurnWorker_ 123 (IO.writeChan indexerChan) Nothing coordinator ch (tempPath </> "db.db")
+    (loop, _indexerMVar) <-
+      M.mintBurnWorker_ 123 (IO.writeChan indexerChan) Nothing coordinator ch (tempPath </> "db.db")
     void $ IO.async loop
     -- Receive ChainSyncEvents and pass them on to indexer's channel
     void $ IO.async $ do
@@ -355,8 +373,10 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   pparams <- TN.getProtocolParams @C.BabbageEra localNodeConnectInfo
   txMintValue <- forAll Gen.genTxMintValue
 
-  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.vkey"
-  genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.skey"
+  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <-
+    TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.vkey"
+  genesisSKey :: C.SigningKey C.GenesisUTxOKey <-
+    TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempPath </> "utxo-keys/utxo1.skey"
   let paymentKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
       address :: C.Address C.ShelleyAddr
       address =
@@ -364,13 +384,17 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
           networkId
           (C.PaymentCredentialByKey (C.verificationKeyHash paymentKey :: C.Hash C.PaymentKey))
           C.NoStakeAddress
-        :: C.Address C.ShelleyAddr
+          :: C.Address C.ShelleyAddr
 
   value <- H.fromJustM $ getValue txMintValue
   (txIns, lovelace) <- TN.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
 
   let keyWitnesses = [C.WitnessPaymentKey $ C.castSigningKey genesisSKey]
-      mkTxOuts lovelace' = [TN.mkAddressValueTxOut address $ C.TxOutValue C.MultiAssetInBabbageEra $ C.lovelaceToValue lovelace' <> value]
+      mkTxOuts lovelace' =
+        [ TN.mkAddressValueTxOut address $
+            C.TxOutValue C.MultiAssetInBabbageEra $
+              C.lovelaceToValue lovelace' <> value
+        ]
       validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
   (feeLovelace, txbc) <-
     TN.calculateAndUpdateTxFee
@@ -401,7 +425,8 @@ endToEnd = H.withShrinks 0 $ integration $ (liftIO TN.setDarwinTmpdir >>) $ HE.r
   -- We assume the minted token will be part of 20 first events (ad-hoc number).
   -- Ugly solution, but it will be changed once indexers support notifications which will replace
   -- callbacks.
-  indexer :: MintBurn.MintBurnIndexer <- fmap (last . take 20) <$> liftIO $ IO.getChanContents indexerChan
+  indexer :: MintBurn.MintBurnIndexer <-
+    fmap (last . take 20) <$> liftIO $ IO.getChanContents indexerChan
   MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
     liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 
@@ -475,13 +500,15 @@ propFilterExcludeNonTargetAssets = H.property $ do
 
 eventsPersisted :: Int -> Int -> Int
 eventsPersisted bufferSize nEvents =
-  let -- Number of buffer flushes
-      bufferFlushesN =
-        let (n, m) = nEvents `divMod` bufferSize
-         in if m == 0 then n - 1 else n
-      -- Number of events persisted
-      numberOfEventsPersisted = bufferFlushesN * bufferSize
-   in numberOfEventsPersisted
+  let
+    -- Number of buffer flushes
+    bufferFlushesN =
+      let (n, m) = nEvents `divMod` bufferSize
+       in if m == 0 then n - 1 else n
+    -- Number of events persisted
+    numberOfEventsPersisted = bufferFlushesN * bufferSize
+   in
+    numberOfEventsPersisted
 
 {- | Recreate an indexe, useful because the sql connection to a
  :memory: database can be reused.
@@ -492,7 +519,9 @@ mkNewIndexerBasedOnOldDb indexer =
    in raiseException $ RI.emptyState (fromIntegral k) (MintBurnHandle sqlCon k)
 
 dummyBlockHeaderHash :: C.Hash C.BlockHeader
-dummyBlockHeaderHash = fromString "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" :: C.Hash C.BlockHeader
+dummyBlockHeaderHash =
+  fromString "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+    :: C.Hash C.BlockHeader
 
 equalSet :: (H.MonadTest m, Show a, Ord a) => [a] -> [a] -> m ()
 equalSet a b = Set.fromList a === Set.fromList b
@@ -515,7 +544,10 @@ getValue = \case
 
 mintsToPolicyAssets :: [MintAsset] -> [(C.PolicyId, C.AssetName, C.Quantity)]
 mintsToPolicyAssets =
-  map (\mint -> (MintBurn.mintAssetPolicyId mint, MintBurn.mintAssetAssetName mint, MintBurn.mintAssetQuantity mint))
+  map
+    ( \mint ->
+        (MintBurn.mintAssetPolicyId mint, MintBurn.mintAssetAssetName mint, MintBurn.mintAssetQuantity mint)
+    )
 
 -- | Getting all AssetIds from generated events
 getAssetIds :: [MintBurn.TxMintEvent] -> [(C.PolicyId, C.AssetName)]

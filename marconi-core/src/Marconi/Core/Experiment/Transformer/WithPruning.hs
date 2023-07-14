@@ -63,7 +63,7 @@ import Marconi.Core.Experiment.Type (IndexerError (RollbackBehindHistory), Point
 -}
 class Prunable m event indexer where
   -- Prune events of the indexer up to a given point in time
-  prune :: Ord (Point event) => Point event -> indexer event -> m (indexer event)
+  prune :: (Ord (Point event)) => Point event -> indexer event -> m (indexer event)
 
   -- The latest pruned point (events up to the result are pruned)
   pruningPoint :: indexer event -> m (Maybe (Point event))
@@ -83,7 +83,7 @@ pruneVia l = l . prune
  Unfortunately, as @m@ must have a functor instance, we can't use @deriving via@ directly.
 -}
 pruningPointVia
-  :: Prunable m event indexer
+  :: (Prunable m event indexer)
   => Getter s (indexer event)
   -> s
   -> m (Maybe (Point event))
@@ -149,17 +149,17 @@ withPruning sec every =
 deriving via
   (IndexWrapper PruningConfig indexer)
   instance
-    IsSync m event indexer => IsSync m event (WithPruning indexer)
+    (IsSync m event indexer) => IsSync m event (WithPruning indexer)
 
 deriving via
   (IndexWrapper PruningConfig indexer)
   instance
-    Queryable m event query indexer => Queryable m event query (WithPruning indexer)
+    (Queryable m event query indexer) => Queryable m event query (WithPruning indexer)
 
 deriving via
   (IndexWrapper PruningConfig indexer)
   instance
-    Closeable m indexer => Closeable m (WithPruning indexer)
+    (Closeable m indexer) => Closeable m (WithPruning indexer)
 
 nextPruning :: Lens' (WithPruning indexer event) (Seq (Point event))
 nextPruning = pruningWrapper . wrapperConfig . configNextPruning

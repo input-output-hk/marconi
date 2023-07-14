@@ -8,7 +8,11 @@ import Data.Data (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text qualified as Text
 import Data.Word (Word64)
-import Marconi.ChainIndex.Logging (LastSyncLog (LastSyncLog), LastSyncStats (LastSyncStats), renderLastSyncLog)
+import Marconi.ChainIndex.Logging (
+  LastSyncLog (LastSyncLog),
+  LastSyncStats (LastSyncStats),
+  renderLastSyncLog,
+ )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
 
@@ -35,7 +39,9 @@ goldenStartFromGenesisLogging = do
     either
       (error . show)
       pure
-      $ C.deserialiseFromRawBytesHex (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader)) fakeBlockHeaderHashRawBytes
+      $ C.deserialiseFromRawBytesHex
+        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        fakeBlockHeaderHashRawBytes
   let logs =
         [ mkLastSyncLog fakeBlockHeaderHash 0 0 Nothing Nothing
         , mkLastSyncLog fakeBlockHeaderHash 0 0 Nothing (Just 10)
@@ -55,7 +61,9 @@ goldenStartFromLaterPointLogging = do
     either
       (error . show)
       pure
-      $ C.deserialiseFromRawBytesHex (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader)) fakeBlockHeaderHashRawBytes
+      $ C.deserialiseFromRawBytesHex
+        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        fakeBlockHeaderHashRawBytes
   let logs =
         [ mkLastSyncLog fakeBlockHeaderHash 0 0 (Just 500) Nothing
         , mkLastSyncLog fakeBlockHeaderHash 30 0 (Just 800) (Just 10)
@@ -65,13 +73,17 @@ goldenStartFromLaterPointLogging = do
         ]
   pure $ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap renderLastSyncLog logs
 
-mkLastSyncLog :: C.Hash C.BlockHeader -> Word64 -> Word64 -> Maybe Word64 -> Maybe Word64 -> LastSyncLog
+mkLastSyncLog
+  :: C.Hash C.BlockHeader -> Word64 -> Word64 -> Maybe Word64 -> Maybe Word64 -> LastSyncLog
 mkLastSyncLog blockHeaderHash nbProcessedBlocks nbProcessedRollbacks currentSyncedSlot timeSinceLastSync =
   LastSyncLog
     ( LastSyncStats
         nbProcessedBlocks
         nbProcessedRollbacks
-        (case currentSyncedSlot of Nothing -> C.ChainPointAtGenesis; Just s -> C.ChainPoint (C.SlotNo s) blockHeaderHash)
+        ( case currentSyncedSlot of
+            Nothing -> C.ChainPointAtGenesis
+            Just s -> C.ChainPoint (C.SlotNo s) blockHeaderHash
+        )
         (C.ChainTip (C.SlotNo 1000) blockHeaderHash (C.BlockNo 1000))
         Nothing
     )

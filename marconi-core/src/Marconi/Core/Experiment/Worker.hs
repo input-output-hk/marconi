@@ -100,8 +100,8 @@ createWorker
 createWorker = createWorker' id
 
 mapIndex
-  :: Applicative f
-  => Point event ~ Point event'
+  :: (Applicative f)
+  => (Point event ~ Point event')
   => (event -> f (Maybe event'))
   -> ProcessedInput event
   -> f (ProcessedInput event')
@@ -115,8 +115,8 @@ mapIndex f (Index timedEvent) =
  and starts waiting for new events and process them as they come
 -}
 startWorker
-  :: MonadIO m
-  => Ord (Point input)
+  :: (MonadIO m)
+  => (Ord (Point input))
   => TChan (ProcessedInput input)
   -> QSemN
   -> Worker input (Point input)
@@ -126,7 +126,7 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
       unlockCoordinator = do
         Con.signalQSemN tokens 1
 
-      fresherThan :: Ord (Point event) => Timed (Point event) (Maybe event) -> Point event -> Bool
+      fresherThan :: (Ord (Point event)) => Timed (Point event) (Maybe event) -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
 
       indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer -> do

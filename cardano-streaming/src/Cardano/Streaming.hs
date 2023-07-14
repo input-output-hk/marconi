@@ -242,7 +242,11 @@ blocksPipelined
   -> S.Stream (S.Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
 blocksPipelined pipelineSize con chainPoint = do
   chan <- liftIO IO.newChan
-  void $ liftIO $ CS.linkedAsync $ CS.blocksCallbackPipelined pipelineSize con chainPoint $ IO.writeChan chan
+  void $
+    liftIO $
+      CS.linkedAsync $
+        CS.blocksCallbackPipelined pipelineSize con chainPoint $
+          IO.writeChan chan
   S.repeatM $ IO.readChan chan
 
 -- * Ledger states

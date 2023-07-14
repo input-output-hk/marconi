@@ -157,7 +157,8 @@ data EpochStateHandle = EpochStateHandle
 type instance StorableMonad EpochStateHandle = ExceptT IndexerError IO
 
 data instance StorableEvent EpochStateHandle = EpochStateEvent
-  { epochStateEventLedgerState :: Maybe (O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto)))
+  { epochStateEventLedgerState
+      :: Maybe (O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto)))
   , epochStateEventEpochNo :: Maybe C.EpochNo
   , epochStateEventNonce :: Ledger.Nonce
   , epochStateEventSDD :: Map C.PoolId C.Lovelace
@@ -245,7 +246,8 @@ getStakeMap extLedgerState = case O.ledgerState extLedgerState of
           Ledger.unStake $
             Ledger.ssStake stakeSnapshot
 
-        delegations :: VMap.VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
+        delegations
+          :: VMap.VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
         delegations = Ledger.ssDelegations stakeSnapshot
 
         sdd :: Map C.PoolId C.Lovelace
@@ -395,7 +397,7 @@ isLedgerStateFileRollbackable
 instance Buffered EpochStateHandle where
   -- We should only store on disk SDD from the last slot of each epoch.
   persistToStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent EpochStateHandle)
     -> EpochStateHandle
     -> StorableMonad EpochStateHandle EpochStateHandle
@@ -579,7 +581,7 @@ eventToEpochNonceRow (EpochStateEvent _ maybeEpochNo nonce _ slotNo blockHeaderH
 
 instance Queryable EpochStateHandle where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent EpochStateHandle)
     -> EpochStateHandle
     -> StorableQuery EpochStateHandle
