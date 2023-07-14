@@ -234,7 +234,7 @@ commonDbDir =
     Opt.short 'd'
       <> Opt.long "db-dir"
       <> Opt.metavar "DIR"
-      <> Opt.help "Directory path where all SQLite databases are located."
+      <> Opt.help "Directory path where all Marconi-related SQLite databases are located."
 
 commonVersionOption :: String -> Opt.Parser (a -> a)
 commonVersionOption sha = Opt.infoOption sha $ Opt.long "version" <> Opt.help "Show git SHA"
@@ -315,14 +315,14 @@ commonMinIndexingDepth =
   let maxIndexingDepth =
         Opt.flag'
           MaxIndexingDepth
-          (Opt.long "max-indexing-depth" <> Opt.help "Only index events that are not volatile")
+          (Opt.long "max-indexing-depth" <> Opt.help "Only index blocks that are not rollbackable")
       givenIndexingDepth =
         MinIndexingDepth
           <$> Opt.option
             Opt.auto
             ( Opt.long "min-indexing-depth"
                 <> Opt.metavar "NATURAL"
-                <> Opt.help "Depth of an event before it is indexed"
+                <> Opt.help "Depth of a block before it is indexed in relation to the tip of the local connected node"
                 <> Opt.value 0
             )
    in maxIndexingDepth Opt.<|> givenIndexingDepth

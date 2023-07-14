@@ -317,8 +317,8 @@ instance FromJSON GetBurnTokenEventsParams where
           GetBurnTokenEventsParams
             <$> (v .: "policyId")
             <*> (v .:? "assetName")
-            <*> (v .:? "slotNo")
-            <*> (v .:? "afterTx")
+            <*> (v .:? "createdBeforeSlotNo")
+            <*> (v .:? "createdAfterTx")
      in Aeson.withObject "GetBurnTokenEventsParams" parseParams
 
 instance ToJSON GetBurnTokenEventsParams where
@@ -327,8 +327,8 @@ instance ToJSON GetBurnTokenEventsParams where
       catMaybes
         [ Just ("policyId" .= policyId q)
         , ("assetName" .=) <$> assetName q
-        , ("slotNo" .=) <$> beforeSlotNo q
-        , ("afterTx" .=) <$> afterTx q
+        , ("createdBeforeSlotNo" .=) <$> beforeSlotNo q
+        , ("createdAfterTx" .=) <$> afterTx q
         ]
 
 newtype GetBurnTokenEventsResult

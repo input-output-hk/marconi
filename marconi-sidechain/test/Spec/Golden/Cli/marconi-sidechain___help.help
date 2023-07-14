@@ -18,14 +18,15 @@ Available options:
                            Path to node socket.
   --node-config-path ARG   Path to node configuration which you are connecting
                            to.
-  -d,--db-dir DIR          Directory path where all SQLite databases are
-                           located.
+  -d,--db-dir DIR          Directory path where all Marconi-related SQLite
+                           databases are located.
   --http-port HTTP-PORT    JSON-RPC http port number, default is port 3000.
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
-  --max-indexing-depth     Only index events that are not volatile
+  --max-indexing-depth     Only index blocks that are not rollbackable
   --min-indexing-depth NATURAL
-                           Depth of an event before it is indexed
+                           Depth of a block before it is indexed in relation to
+                           the tip of the local connected node
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
                            "--address-to-index address-1 --address-to-index
