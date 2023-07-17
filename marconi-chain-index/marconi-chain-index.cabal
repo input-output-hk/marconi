@@ -401,6 +401,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , cardano-crypto-class
     , cardano-ledger-core
     , cardano-ledger-shelley
+    , cardano-slotting
     , cardano-testnet
     , hedgehog-extras
     , iohk-monitoring
@@ -440,4 +441,5 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , tasty-golden
     , tasty-hedgehog
     , text
+    , time
     , transformers

@@ -29,41 +29,46 @@
 -}
 module Main where
 
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
+import Cardano.Crypto.Hash qualified as Crypto
+import Cardano.Ledger.Shelley.API qualified as Ledger
+import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Exception (throw)
+import Control.Lens ((^.))
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Data.ByteString qualified as BS
 import Data.Coerce (coerce)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
+import Data.Proxy (Proxy (Proxy))
 import Data.Ratio (denominator, numerator)
+import Data.String (fromString)
+import Data.Time (nominalDiffTimeToSeconds)
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple qualified as PG
 import Database.PostgreSQL.Simple.FromField qualified as PG
 import Database.PostgreSQL.Simple.ToField qualified as PG
-import System.Environment (lookupEnv)
-import System.FilePath ((</>))
-import Text.Read (readMaybe)
-
-import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as C
-import Cardano.Crypto.Hash qualified as Crypto
-import Cardano.Ledger.Shelley.API qualified as Ledger
+import Hedgehog ((===))
+import Hedgehog qualified as H
+import Marconi.ChainIndex.Error qualified as Marconi
+import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), blockInfoBlockNo)
+import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Node.Client.GenesisConfig qualified as GenesisConfig
+import Marconi.ChainIndex.Types (epochStateDbName, utxoDbName)
+import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.Core.Storable qualified as Storable
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.Node qualified as O
-
-import Marconi.ChainIndex.Error qualified as Marconi
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
-import Marconi.ChainIndex.Node.Client.GenesisConfig qualified as GenesisConfig
-import Marconi.ChainIndex.Types (epochStateDbName)
-import Marconi.ChainIndex.Utils qualified as Utils
-import Marconi.Core.Storable qualified as Storable
-
-import Hedgehog ((===))
-import Hedgehog qualified as H
+import System.Environment (lookupEnv)
+import System.FilePath ((</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
+import Text.Read (readMaybe)
 
 main :: IO ()
 main = defaultMain tests
@@ -73,6 +78,10 @@ tests =
   testGroup
     "Marconi to cardano-db-sync comparisons"
     [ testPropertyNamed
+        "Validate info in marconi's last synced block by comparing with cardano-db-sync"
+        "propCurrentSyncedBlockInfo"
+        propCurrentSyncedBlockInfo
+    , testPropertyNamed
         "Compare all epoch nonces between Marconi and cardano-db-sync"
         "propEpochNonce"
         propEpochNonce
@@ -81,6 +90,65 @@ tests =
         "propEpochStakepoolSize"
         propEpochStakepoolSize
     ]
+
+{- | Query the BlockInfo of the latest synced block in Marconi. Then, we compare this BlockInfo with
+    the corresponding BlockInfo in cardano-db-sync.
+-}
+propCurrentSyncedBlockInfo :: H.Property
+propCurrentSyncedBlockInfo = H.withTests 1 $ H.property $ do
+  indexer <- openUtxoIndexer
+  res <- liftIO $ queryCurrentSyncedBlockInfo indexer
+  latestBlockInfo <- case res of
+    Origin -> do
+      fail "Last synced block is genesis. Did you synchronize Marconi?"
+    At blockInfo ->
+      pure blockInfo
+
+  H.footnote $ "Comparing " <> show latestBlockInfo
+
+  conn <- getDbSyncPgConnection
+  let (C.BlockNo latestBlockNo) = latestBlockInfo ^. blockInfoBlockNo
+  dbSyncBlockInfos <-
+    fmap listToMaybe $
+      liftIO $
+        PG.query_ conn $
+          "select slot_no, hash, block_no, extract(epoch from time), epoch_no from block where block_no = "
+            <> fromString (show latestBlockNo)
+            <> " limit 1"
+  case dbSyncBlockInfos of
+    Nothing -> fail "Marconi blockNo not found in db-sync. Did you synchronize cardano-db-sync?"
+    Just (slotNo :: Int, blockHeaderHash, blockNo :: Int, time :: Double, epochNo :: Int) -> do
+      let (blockTimeStampSeconds, _) = properFraction $ nominalDiffTimeToSeconds $ realToFrac time
+      let dbSyncBlockInfo =
+            BlockInfo
+              (C.SlotNo $ fromIntegral slotNo)
+              blockHeaderHash
+              (C.BlockNo $ fromIntegral blockNo)
+              blockTimeStampSeconds
+              (C.EpochNo $ fromIntegral epochNo)
+      latestBlockInfo === dbSyncBlockInfo
+  where
+    queryCurrentSyncedBlockInfo :: Storable.State Utxo.UtxoHandle -> IO (WithOrigin Utxo.BlockInfo)
+    queryCurrentSyncedBlockInfo indexer = do
+      res <- throwIndexerError $ Storable.query indexer Utxo.LastSyncedBlockInfoQuery
+      case res of
+        Utxo.LastSyncedBlockInfoResult r -> return r
+        _ -> fail "Expected LastSyncedBlockInfoResult, but got another result type"
+
+openUtxoIndexer :: H.PropertyT IO (Storable.State Utxo.UtxoHandle)
+openUtxoIndexer = do
+  socketPath <- envOrFail "CARDANO_NODE_SOCKET_PATH"
+  dbDir <- envOrFail "MARCONI_DB_DIRECTORY_PATH"
+  networkMagicStr <- envOrFail "NETWORK_MAGIC"
+  networkMagic <- case networkMagicStr of
+    "mainnet" -> return C.Mainnet
+    _ -> case readMaybe networkMagicStr of
+      Nothing -> fail $ "Can't parse network magic: " <> networkMagicStr
+      Just word32 -> return $ C.Testnet $ C.NetworkMagic word32
+  let dbPath = dbDir </> utxoDbName
+  liftIO $ do
+    securityParam <- throwIndexerError $ Utils.querySecurityParam networkMagic socketPath
+    throwIndexerError $ Utxo.open dbPath (fromIntegral securityParam) False
 
 {- | Connect to cardano-db-sync's postgres instance, get all (EpochNo,
  Nonce) tuples, query and compare all of these to the one found in
@@ -102,7 +170,7 @@ propEpochNonce = H.withTests 1 $ H.property $ do
         H.footnote $ "Comparing epoch " <> show epochNo
         dbSyncNonce === indexerNonce
       Nothing ->
-        fail $ "Epoch not found in indexer, is it synchronised? Epoch no: " <> show epochNo
+        fail $ "EpochNo not found in indexer. Did you synchronize Marconi? Epoch no: " <> show epochNo
 
 queryIndexerEpochNonce
   :: C.EpochNo -> Storable.State EpochState.EpochStateHandle -> IO (Maybe Ledger.Nonce)
@@ -243,19 +311,30 @@ instance PG.FromField C.Lovelace where
   fromField f meta = fromIntegral @Integer <$> PG.fromField f meta
 
 instance PG.FromField Ledger.Nonce where
-  fromField f meta =
-    bsToMaybeNonce <$> PG.fromField f meta >>= \case
-      Just a -> return a
-      _ -> PG.returnError PG.ConversionFailed f "Can't parse Nonce"
+  fromField f meta = do
+    maybeNonce <- fmap bsToMaybeNonce $ PG.fromField f meta
+    case maybeNonce of
+      Just a -> pure a
+      Nothing -> PG.returnError PG.ConversionFailed f "Can't parse Nonce"
     where
       bsToMaybeNonce :: BS.ByteString -> Maybe Ledger.Nonce
       bsToMaybeNonce bs = Ledger.Nonce <$> Crypto.hashFromBytes bs
 
 instance PG.FromField C.PoolId where
-  fromField f meta =
-    C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) <$> PG.fromField f meta >>= \case
-      Right a -> return a
+  fromField f meta = do
+    maybePoolId <- C.deserialiseFromRawBytes (C.AsHash C.AsStakePoolKey) <$> PG.fromField f meta
+    case maybePoolId of
+      Right a -> pure a
       Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse PoolId, error: " <> show err
+
+instance PG.FromField (C.Hash C.BlockHeader) where
+  fromField f meta = do
+    maybeBhh <-
+      C.deserialiseFromRawBytes (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        <$> PG.fromField f meta
+    case maybeBhh of
+      Right a -> pure a
+      Left err -> PG.returnError PG.ConversionFailed f $ "Can't parse BlockHeaderHash, error: " <> show err
 
 deriving newtype instance Real C.EpochNo
 deriving newtype instance Integral C.EpochNo

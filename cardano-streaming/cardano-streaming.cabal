@@ -57,6 +57,7 @@ library
     , base          >=4.9 && <5
     , containers
     , streaming
+    , time
     , transformers
 
 executable cardano-streaming-example-1
