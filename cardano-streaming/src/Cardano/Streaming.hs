@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
@@ -21,6 +22,17 @@ module Cardano.Streaming (
   CS.ignoreRollbacks,
 ) where
 
+import Cardano.Api qualified as C
+import Cardano.Api.ChainSync.Client (
+  ClientStIdle (SendMsgFindIntersect, SendMsgRequestNext),
+  ClientStIntersect (ClientStIntersect, recvMsgIntersectFound, recvMsgIntersectNotFound),
+  ClientStNext (ClientStNext, recvMsgRollBackward, recvMsgRollForward),
+ )
+import Cardano.Slotting.Slot (WithOrigin (At, Origin))
+import Cardano.Slotting.Time qualified as C
+import Cardano.Streaming.Callbacks qualified as CS
+import Cardano.Streaming.Helpers qualified as CS
+import Control.Concurrent (readMVar)
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async (ExceptionInLinkedThread (ExceptionInLinkedThread), link, withAsync)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
@@ -34,21 +46,11 @@ import Data.Foldable (forM_)
 import Data.Function ((&))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
+import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Time.Clock.POSIX qualified as Time
 import Data.Word (Word32)
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as S
-
-import Cardano.Api qualified as C
-import Cardano.Api.ChainSync.Client (
-  ClientStIdle (SendMsgFindIntersect, SendMsgRequestNext),
-  ClientStIntersect (ClientStIntersect, recvMsgIntersectFound, recvMsgIntersectNotFound),
-  ClientStNext (ClientStNext, recvMsgRollBackward, recvMsgRollForward),
- )
-import Cardano.Slotting.Slot (WithOrigin (At, Origin))
-
-import Cardano.Streaming.Callbacks qualified as CS
-import Cardano.Streaming.Helpers qualified as CS
-import Control.Concurrent (readMVar)
 
 {- | `withChainSyncEventStream` uses the chain-sync mini-protocol to
  connect to a locally running node and fetch blocks from the given
@@ -82,23 +84,18 @@ withChainSyncEventStream socketPath networkId points consumer =
     -- slow down marconi's indexing, likely because the difference is
     -- negligeable compared to existing network and IO latencies.  Therefore,
     -- let's stick with a MVar now and revisit later.
-    nextBlockVar <- newEmptyMVar
+    nextChainSyncEventVar <- newEmptyMVar
 
-    let client = chainSyncStreamingClient points nextBlockVar
-        localNodeClientProtocols =
-          C.LocalNodeClientProtocols
-            { C.localChainSyncClient = C.LocalChainSyncClient client
-            , C.localStateQueryClient = Nothing
-            , C.localTxMonitoringClient = Nothing
-            , C.localTxSubmissionClient = Nothing
-            }
-        connectInfo = CS.mkLocalNodeConnectInfo networkId socketPath
+    let client = chainSyncStreamingClient points nextChainSyncEventVar
 
-    withAsync (C.connectToLocalNode connectInfo localNodeClientProtocols) $ \a -> do
+        localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
+        localNodeConnectInfo = CS.mkLocalNodeConnectInfo networkId socketPath
+
+    withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a -> do
       -- Make sure all exceptions in the client thread are passed to the consumer thread
       link a
       -- Run the consumer
-      consumer $ S.repeatM $ takeMVar nextBlockVar
+      consumer $ S.repeatM $ takeMVar nextChainSyncEventVar
     -- Let's rethrow exceptions from the client thread unwrapped, so that the
     -- consumer does not have to know anything about async
     `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
@@ -113,7 +110,7 @@ withChainSyncEventEpochNoStream
   -> C.NetworkId
   -> [C.ChainPoint]
   -- ^ The point on the chain to start streaming from
-  -> (Stream (Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo))) IO r -> IO b)
+  -> (Stream (Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r -> IO b)
   -- ^ The stream consumer
   -> IO b
 withChainSyncEventEpochNoStream socketPath networkId points consumer =
@@ -135,13 +132,19 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
     -- slow down marconi's indexing, likely because the difference is
     -- negligeable compared to existing network and IO latencies.  Therefore,
     -- let's stick with a MVar now and revisit later.
-    nextBlockVar <- newEmptyMVar
+    nextChainSyncEventVar <- newEmptyMVar
     eraHistoryVar <- newEmptyMVar
 
     let localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
         localNodeConnectInfo = CS.mkLocalNodeConnectInfo networkId socketPath
 
-        queryHistoryInMode :: C.QueryInMode C.CardanoMode (C.EraHistory C.CardanoMode)
+    systemStart <-
+      C.queryNodeLocalState localNodeConnectInfo Nothing C.QuerySystemStart
+        >>= \case
+          Left err -> fail $ show err
+          Right systemStart -> pure systemStart
+
+    let queryHistoryInMode :: C.QueryInMode C.CardanoMode (C.EraHistory C.CardanoMode)
         queryHistoryInMode = C.QueryEraHistory C.CardanoModeIsMultiEra
 
         askHistory :: IO ()
@@ -153,35 +156,48 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
 
         getHistory = readMVar eraHistoryVar
 
-        attachEpoch
+        attachEpochAndTime
           :: CS.ChainSyncEvent (C.BlockInMode C.CardanoMode)
-          -> IO (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo))
-        attachEpoch (CS.RollBackward cp ct) = pure $ CS.RollBackward cp ct
-        attachEpoch evt@(CS.RollForward (C.BlockInMode (C.Block (C.BlockHeader sn _ _) _) _) _) = do
+          -> IO (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))
+        attachEpochAndTime (CS.RollBackward cp ct) = pure $ CS.RollBackward cp ct
+        attachEpochAndTime evt@(CS.RollForward (C.BlockInMode (C.Block (C.BlockHeader sn _ _) _) _) _) = do
           history <- getHistory
-          case C.slotToEpoch sn history of
-            Left _ -> askHistory *> attachEpoch evt
-            Right (epoch, _, _) -> pure $ (,epoch) <$> evt
+          let epochAndTime = do
+                (epoch, _, _) <- C.slotToEpoch sn history
+                (relativeTime, _) <- C.getProgress sn history
+                pure (epoch, Time.utcTimeToPOSIXSeconds $ C.fromRelativeTime systemStart relativeTime)
+          case epochAndTime of
+            Left _ -> askHistory *> attachEpochAndTime evt
+            Right (epoch, time) -> pure $ (,epoch,time) <$> evt
 
-        client = chainSyncStreamingClient points nextBlockVar
-        localNodeSyncClientProtocols =
-          C.LocalNodeClientProtocols
-            { C.localChainSyncClient = C.LocalChainSyncClient client
-            , C.localStateQueryClient = Nothing
-            , C.localTxMonitoringClient = Nothing
-            , C.localTxSubmissionClient = Nothing
-            }
-        connectInfo = CS.mkLocalNodeConnectInfo networkId socketPath
+        client = chainSyncStreamingClient points nextChainSyncEventVar
 
     askHistory
-    withAsync (C.connectToLocalNode connectInfo localNodeSyncClientProtocols) $ \a -> do
+
+    withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a -> do
       -- Make sure all exceptions in the client thread are passed to the consumer thread
       link a
       -- Run the consumer
-      consumer $ S.repeatM $ takeMVar nextBlockVar >>= attachEpoch
+      consumer $ S.repeatM $ takeMVar nextChainSyncEventVar >>= attachEpochAndTime
     -- Let's rethrow exceptions from the client thread unwrapped, so that the
     -- consumer does not have to know anything about async
     `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
+
+connectToLocalNodeWithChainSyncClient
+  :: C.LocalNodeConnectInfo C.CardanoMode
+  -> C.ChainSyncClient (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
+  -> IO ()
+connectToLocalNodeWithChainSyncClient connectInfo client =
+  let
+    localNodeSyncClientProtocols =
+      C.LocalNodeClientProtocols
+        { C.localChainSyncClient = C.LocalChainSyncClient client
+        , C.localStateQueryClient = Nothing
+        , C.localTxMonitoringClient = Nothing
+        , C.localTxSubmissionClient = Nothing
+        }
+   in
+    C.connectToLocalNode connectInfo localNodeSyncClientProtocols
 
 {- | `chainSyncStreamingClient` is the client that connects to a local node
  and runs the chain-sync mini-protocol. This client is fire-and-forget
@@ -293,7 +309,7 @@ foldLedgerStateEvents
 foldLedgerStateEvents env initialLedgerStateHistory validationMode = loop initialLedgerStateHistory
   where
     applyBlock_ :: C.LedgerState -> C.Block era -> IO (C.LedgerState, [C.LedgerEvent])
-    applyBlock_ ledgerState block = applyBlockThrow env ledgerState validationMode block
+    applyBlock_ ledgerState = applyBlockThrow env ledgerState validationMode
 
     loop
       :: LedgerStateHistory
