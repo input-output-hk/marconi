@@ -1,8 +1,12 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
+{-# HLINT ignore "Redundant bracket" #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module Spec.Marconi.ChainIndex.Indexers.MintBurn (tests) where
 
@@ -19,12 +23,12 @@ import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
 import Control.Concurrent.STM qualified as IO
 import Control.Exception (catch)
-import Control.Lens (view, (^.))
+import Control.Lens (each, traversed, view, (%~), (&), (^.), (^..))
 import Control.Monad (forM, forM_, guard, unless, void)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Coerce (coerce)
-import Data.Foldable (foldlM)
+import Data.Foldable (foldlM, minimumBy)
 import Data.Function (on)
 import Data.List qualified as List
 import Data.List.NonEmpty qualified as NonEmpty
@@ -451,11 +455,7 @@ propQueryingOnlyBurn = H.property $ do
       burnEvents :: [MintBurn.TxMintEvent]
       burnEvents = MintBurn.fromRows $ filter ((< 0) . MintBurn._txMintRowQuantity) eventRows
 
-  -- Query all burn events from indexer
-  MintBurnResult (resultEventRows :: [MintBurn.TxMintRow]) <-
-    liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryAllBurn Nothing
-  let resultEvents = MintBurn.fromRows resultEventRows
-  equalSet burnEvents resultEvents
+  queryAllBurnEventsTest burnEvents indexer
 
   -- Query some single event
   let noBurnEvents = null eventRows
@@ -463,19 +463,84 @@ propQueryingOnlyBurn = H.property $ do
   H.classify "Some burn events" $ not noBurnEvents
   unless noBurnEvents $ do
     aRow <- forAll $ Gen.element eventRows
-    let somePolicyId = MintBurn._txMintRowPolicyId aRow
-        someAssetName = MintBurn._txMintRowAssetName aRow
-    MintBurnResult (resultEventRows' :: [MintBurn.TxMintRow]) <-
-      liftIO $
-        raiseException $
-          RI.query indexer $
-            MintBurn.QueryBurnByAssetId somePolicyId (Just someAssetName) Nothing
-    let resultEvents' = MintBurn.fromRows resultEventRows'
-        eventFilter row =
-          MintBurn._txMintRowPolicyId row == somePolicyId
-            && MintBurn._txMintRowAssetName row == someAssetName
-        expectedEvents = MintBurn.fromRows $ filter eventFilter $ MintBurn.toRows =<< burnEvents
-    equalSet resultEvents' expectedEvents
+    querySingleBurnEventsByPolicyIdAndAssetNameTest burnEvents aRow indexer
+    queryBurnEventsByPolicyIdAndTxIdTest eventRows indexer
+
+-- Query all burn events from indexer
+queryAllBurnEventsTest
+  :: (H.MonadTest m, MonadIO m)
+  => [MintBurn.TxMintEvent]
+  -- ^ Expected burnEvent
+  -> MintBurn.MintBurnIndexer
+  -- ^ BurnEvent indexer
+  -> m ()
+queryAllBurnEventsTest expectedBurnEvents indexer = do
+  MintBurnResult (resultEventRows :: [MintBurn.TxMintRow]) <-
+    liftIO $ raiseException $ RI.query indexer $ MintBurn.QueryAllBurn Nothing
+  let resultEvents = MintBurn.fromRows resultEventRows
+  equalSet expectedBurnEvents resultEvents
+
+querySingleBurnEventsByPolicyIdAndAssetNameTest
+  :: (H.MonadTest m, MonadIO m)
+  => [MintBurn.TxMintEvent]
+  -- ^ Expected burnEvent
+  -> MintBurn.TxMintRow
+  -- ^ Mint row
+  -> MintBurn.MintBurnIndexer
+  -- ^ BurnEvent indexer
+  -> m ()
+querySingleBurnEventsByPolicyIdAndAssetNameTest burnEvents aRow indexer = do
+  let somePolicyId = MintBurn._txMintRowPolicyId aRow
+      someAssetName = MintBurn._txMintRowAssetName aRow
+  MintBurnResult (resultEventRows' :: [MintBurn.TxMintRow]) <-
+    liftIO $
+      raiseException $
+        RI.query indexer $
+          MintBurn.QueryBurnByAssetId somePolicyId (Just someAssetName) Nothing Nothing
+  let resultEvents' = MintBurn.fromRows resultEventRows'
+      eventFilter row =
+        MintBurn._txMintRowPolicyId row == somePolicyId
+          && MintBurn._txMintRowAssetName row == someAssetName
+      expectedEvents = MintBurn.fromRows $ filter eventFilter $ MintBurn.toRows =<< burnEvents
+  equalSet resultEvents' expectedEvents
+
+newtype QueryParams = QueryParams {unPolicy :: C.PolicyId} deriving (Show, Eq)
+
+-- Query for mintBurn with a specific policyId should yield the same result as querying for mintBurn of that policyId with all txIds that after the minTxId the generated list
+queryBurnEventsByPolicyIdAndTxIdTest
+  :: (H.MonadTest m, MonadIO m)
+  => [MintBurn.TxMintRow]
+  -- ^ Expected burnEvent
+  -> MintBurn.MintBurnIndexer
+  -- ^ BurnEvent indexer
+  -> m ()
+queryBurnEventsByPolicyIdAndTxIdTest rows indexer =
+  let queryParams :: [QueryParams]
+      queryParams = rows ^.. each . MintBurn.txMintRowPolicyId & traversed %~ QueryParams
+
+      rowWithMinSlotNo :: MintBurn.TxMintRow
+      rowWithMinSlotNo =
+        minimumBy
+          ( \r1 r2 ->
+              compare
+                (r1 ^. MintBurn.txMintRowSlotNo)
+                (r2 ^. MintBurn.txMintRowSlotNo)
+          )
+          rows
+      mtxid = rowWithMinSlotNo ^. MintBurn.txMintRowTxId
+   in forM_
+        queryParams
+        ( \q -> do
+            MintBurnResult r <-
+              liftIO $
+                raiseException $
+                  RI.query indexer (MintBurn.QueryBurnByAssetId (unPolicy q) Nothing Nothing (Just mtxid))
+            MintBurnResult r' <-
+              liftIO $
+                raiseException $
+                  RI.query indexer (MintBurn.QueryBurnByAssetId (unPolicy q) Nothing Nothing Nothing)
+            Set.fromList r === Set.fromList r'
+        )
 
 -- check that the target assets filtering keep the tx that mint the targeted asset
 propFilterIncludeTargetAssets :: Property
