@@ -1262,6 +1262,10 @@ getRefScriptAndHash refScript = case refScript of
     ( Just s
     , Just . C.hashScript $ script
     )
+  C.ReferenceScript _ s@(C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3) script) ->
+    ( Just s
+    , Just . C.hashScript $ script
+    )
 
 getInputsFromTx :: C.Tx era -> Map C.TxIn C.TxId
 getInputsFromTx (C.Tx txbody _) = getInputs txbody

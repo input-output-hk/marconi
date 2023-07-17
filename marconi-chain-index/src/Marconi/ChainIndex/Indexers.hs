@@ -355,7 +355,7 @@ epochStateWorker_
         genesisConfigE
 
     let initialLedgerState = initExtLedgerStateVar genesisConfig
-        topLevelConfig = O.pInfoConfig (mkProtocolInfoCardano genesisConfig)
+        topLevelConfig = O.pInfoConfig $ fst $ mkProtocolInfoCardano genesisConfig
         hfLedgerConfig = O.ExtLedgerCfg topLevelConfig
 
     let ledgerStateDir = takeDirectory dbPath </> "ledgerStates"

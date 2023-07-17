@@ -93,7 +93,7 @@ genTxWithMint
 genTxWithMint txMintValue = do
   txbc <- CGen.genTxBodyContent C.BabbageEra
   txIn <- CGen.genTxIn
-  pparams' :: C.ProtocolParameters <- CGen.genProtocolParameters
+  pparams' :: C.ProtocolParameters <- CGen.genProtocolParameters C.BabbageEra
   let pparams =
         C.BuildTxWith $
           Just
