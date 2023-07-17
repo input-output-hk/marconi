@@ -59,7 +59,7 @@ import Control.Concurrent.STM.TChan (
   readTChan,
   writeTChan,
  )
-import Control.Exception (Exception, catch, finally)
+import Control.Exception (catch, finally)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
@@ -197,9 +197,9 @@ utxoWorker_
   -> FilePath
   -> IO (IO (), C.ChainPoint)
 utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch path = do
-  ix <- toException $ Utxo.open path depth False -- open SQLite with depth=depth and DO NOT perform SQLite vacuum
+  ix <- Utils.toException $ Utxo.open path depth False -- open SQLite with depth=depth and DO NOT perform SQLite vacuum
   -- TODO consider adding a CLI param to allow user to perfomr Vaccum or not.
-  cp <- toException $ Storable.resumeFromStorage $ view Storable.handle ix
+  cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle ix
   mIndexer <- newMVar ix
   pure (loop mIndexer, cp)
   where
@@ -262,8 +262,8 @@ addressDatumWorker_
   -> FilePath
   -> IO (IO (), C.ChainPoint)
 addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorVar} ch path = do
-  index <- toException $ AddressDatum.open path depth
-  cp <- toException . Storable.resumeFromStorage . view Storable.handle $ index
+  index <- Utils.toException $ AddressDatum.open path depth
+  cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ index
   mIndex <- newMVar index
   pure (innerLoop mIndex, cp)
   where
@@ -295,8 +295,8 @@ scriptTxWorker_
   -> FilePath
   -> IO (IO (), C.ChainPoint, MVar ScriptTx.ScriptTxIndexer)
 scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
-  indexer <- toException $ ScriptTx.open path depth
-  cp <- toException . Storable.resumeFromStorage . view Storable.handle $ indexer
+  indexer <- Utils.toException $ ScriptTx.open path depth
+  cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ indexer
   mIndexer <- newMVar indexer
   pure (loop mIndexer, cp, mIndexer)
   where
@@ -360,9 +360,9 @@ epochStateWorker_
 
     let ledgerStateDir = takeDirectory dbPath </> "ledgerStates"
     createDirectoryIfMissing False ledgerStateDir
-    indexer <- toException $ EpochState.open topLevelConfig dbPath ledgerStateDir securityParam
+    indexer <- Utils.toException $ EpochState.open topLevelConfig dbPath ledgerStateDir securityParam
 
-    cp <- toException $ Storable.resumeFromStorage $ view Storable.handle indexer
+    cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle indexer
     indexerMVar <- newMVar indexer
 
     let loop currentLedgerState currentEpochNo = do
@@ -461,9 +461,9 @@ mintBurnWorker_
   -> FilePath
   -> IO (IO b, C.ChainPoint)
 mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
-  indexer <- toException (MintBurn.open dbPath securityParam)
+  indexer <- Utils.toException (MintBurn.open dbPath securityParam)
   indexerMVar <- newMVar indexer
-  cp <- toException $ Storable.resumeFromStorage $ view Storable.handle indexer
+  cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle indexer
   let loop = forever $ do
         failWhenFull (c ^. errorVar)
         void $ readMVar indexerMVar >>= callback
@@ -592,7 +592,7 @@ runIndexers
   -> [(Worker, Maybe FilePath)]
   -> IO ()
 runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
-  securityParam <- toException $ Utils.querySecurityParam networkId socketPath
+  securityParam <- Utils.toException $ Utils.querySecurityParam networkId socketPath
   (oldestCommonChainPoint, coordinator) <-
     initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
   let chainPoint = case cliChainPoint of
@@ -615,13 +615,6 @@ runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
                   <> "."
                   <+> "Please check the slot number and the block hash do belong to the chain"
      in finally (io `catch` handleException) (cleanExit coordinator)
-
-toException :: (Exception err) => ExceptT err IO a -> IO a
-toException mx = do
-  x <- runExceptT mx
-  case x of
-    Left err -> throw err
-    Right res -> pure res
 
 updateWith
   :: MVar a
