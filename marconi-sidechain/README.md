@@ -276,6 +276,6 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 4, "id": 
 
 ### Other documentation
 
-See [test-json-rpc.http](./examples/test-json-rpc.http) for additional example usages.
+See [test-json-rpc.http](./examples/run-pre-prod-queries) for additional example usages.
 
 See [API](./doc/API.adoc) for the full API documentation.
