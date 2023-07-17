@@ -9,14 +9,17 @@ module Marconi.ChainIndex.Utils (
   getBlockNoFromChainTip,
   querySecurityParam,
   querySecurityParamEra,
+  toException,
   chainPointOrGenesis,
   addressesToPredicate,
 ) where
 
 import Cardano.Api qualified as C
 import Cardano.Streaming.Helpers qualified as C
+import Control.Exception (Exception, throw)
 import Control.Monad.Except (
   ExceptT,
+  runExceptT,
   throwError,
  )
 import Control.Monad.Trans (MonadTrans (lift))
@@ -100,6 +103,13 @@ querySecurityParamEra shelleyBasedEra networkId socketPath = do
 
     toError :: (Show a) => a -> ExceptT IndexerError IO b
     toError = throwError . CantStartIndexer . pack . show
+
+toException :: (Exception err) => ExceptT err IO a -> IO a
+toException mx = do
+  x <- runExceptT mx
+  case x of
+    Left err -> throw err
+    Right res -> pure res
 
 {- | Return the first element of the list of chain points. If the list is empty, return the genesis
  point.

@@ -50,6 +50,7 @@ findByAssetIdAtSlot
   -> C.PolicyId
   -> Maybe C.AssetName
   -> Maybe Word64
+  -> Maybe C.TxId
   -> IO (Either QueryExceptions [AssetIdTxResult])
 findByAssetIdAtSlot env policy asset slotWord =
   queryByPolicyAndAssetId env policy asset (fromIntegral <$> slotWord)
@@ -59,8 +60,9 @@ queryByPolicyAndAssetId
   -> C.PolicyId
   -> Maybe C.AssetName
   -> Maybe C.SlotNo
+  -> Maybe C.TxId
   -> IO (Either QueryExceptions [AssetIdTxResult])
-queryByPolicyAndAssetId env policyId assetId slotNo = do
+queryByPolicyAndAssetId env policyId assetId slotNo txId = do
   mintBurnIndexer <-
     atomically $
       readTMVar $
@@ -68,7 +70,7 @@ queryByPolicyAndAssetId env policyId assetId slotNo = do
   query mintBurnIndexer
   where
     query indexer = do
-      let q = MintBurn.QueryBurnByAssetId policyId assetId slotNo
+      let q = MintBurn.QueryBurnByAssetId policyId assetId slotNo txId
       res <- runExceptT $ Storable.query indexer q
       case res of
         Right (MintBurnResult mintBurnRows) -> pure $ Right $ toAssetIdTxResult <$> mintBurnRows

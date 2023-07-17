@@ -38,14 +38,13 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                  ^>=8.0
+    , cardano-api                  ^>=8.8
     , cardano-crypto-wrapper
     , cardano-ledger-byron
     , cardano-ledger-shelley
     , cardano-slotting
     , ouroboros-consensus
     , ouroboros-consensus-cardano
-    , ouroboros-consensus-shelley
     , ouroboros-network-protocols
     , typed-protocols
 
@@ -76,7 +75,7 @@ executable cardano-streaming-example-1
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:  cardano-api ^>=8.0
+  build-depends:  cardano-api ^>=8.8
 
   ------------------------
   -- Non-IOG dependencies
@@ -87,4 +86,4 @@ executable cardano-streaming-example-1
     , bytestring
     , optparse-applicative
     , streaming
-    , text
+    , text                  >=2.0

@@ -14,9 +14,8 @@ import Cardano.Streaming (
 import Control.Concurrent (MVar, modifyMVar_, newMVar)
 import Control.Concurrent.Async (concurrently_)
 import Control.Concurrent.STM (TBQueue, atomically, newTBQueueIO, readTBQueue, writeTBQueue)
-import Control.Exception (Exception, catch, throw)
+import Control.Exception (catch)
 import Control.Monad (forever)
-import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Text qualified as Text
 import Data.Time.Clock.POSIX (POSIXTime)
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
@@ -32,7 +31,6 @@ import Marconi.Core.Experiment qualified as Core
 import Prettyprinter (defaultLayoutOptions, layoutPretty)
 import Prettyprinter.Render.Text (renderStrict)
 import Streaming.Prelude qualified as S
-import System.FilePath ((</>))
 
 type instance Core.Point (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) = C.ChainPoint
 
@@ -65,7 +63,7 @@ readEvent
   -> IO r
 readEvent q cBox = forever $ do
   e <- atomically $ readTBQueue q
-  modifyMVar_ cBox $ \c -> toException $ Core.step c e
+  modifyMVar_ cBox $ \c -> Utils.toException $ Core.step c e
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
@@ -86,17 +84,13 @@ runIndexers
   -> C.NetworkId
   -> C.ChainPoint
   -> Text.Text
-  -> FilePath
+  -> [Core.Worker (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) C.ChainPoint]
   -- ^ base dir for indexers
   -> IO ()
-runIndexers socketPath networkId _startingPoint traceName dbDir = do
-  securityParam <- toException $ Utils.querySecurityParam networkId socketPath
+runIndexers socketPath networkId _startingPoint traceName workers = do
+  securityParam <- Utils.toException $ Utils.querySecurityParam networkId socketPath
   eventQueue <- newTBQueueIO $ fromIntegral securityParam
-  (_, worker) <-
-    utxoWorker
-      (dbDir </> "utxo.db")
-      securityParam
-  coordinator <- Core.mkCoordinator [worker]
+  coordinator <- Core.mkCoordinator workers
   cBox <- newMVar coordinator
   c <- defaultConfigStdout
   concurrently_
@@ -116,10 +110,3 @@ runIndexers socketPath networkId _startingPoint traceName dbDir = do
          in io `catch` handleException
     )
     (readEvent eventQueue cBox)
-
-toException :: (Exception err) => ExceptT err IO a -> IO a
-toException mx = do
-  x <- runExceptT mx
-  case x of
-    Left err -> throw err
-    Right res -> pure res

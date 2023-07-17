@@ -6,7 +6,20 @@
 
 
   inputs = {
+
     iogx.url = "github:input-output-hk/iogx";
+    iogx.inputs.CHaP.follows = "CHaP_2";
+
+    CHaP_2 = {
+      url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
+      flake = false;
+    };
+
+    # Used to provide the cardano-node and cardano-cli executables.
+    cardano-node = {
+      url = "github:input-output-hk/cardano-node";
+      flake = false;
+    };
   };
 
 

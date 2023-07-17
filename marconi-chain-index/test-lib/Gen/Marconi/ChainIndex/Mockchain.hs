@@ -85,10 +85,22 @@ genMockchainWithTxBodyGen genTxBody = do
 genTxBodyContentFromTxIns
   :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentFromTxIns inputs = do
-  txBodyContent <-
-    emptyTxBodyContent
-      (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-      <$> CGen.genProtocolParameters
+  initialPP <- CGen.genProtocolParameters C.BabbageEra
+  let pp =
+        initialPP
+          { C.protocolParamUTxOCostPerByte = Just 1
+          , C.protocolParamPrices = Just $ C.ExecutionUnitPrices 1 1
+          , C.protocolParamMaxTxExUnits = Just $ C.ExecutionUnits 1 1
+          , C.protocolParamMaxBlockExUnits = Just $ C.ExecutionUnits 1 1
+          , C.protocolParamMaxValueSize = Just 1
+          , C.protocolParamCollateralPercent = Just 1
+          , C.protocolParamMaxCollateralInputs = Just 1
+          }
+      txBodyContent =
+        emptyTxBodyContent
+          (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+          pp
+
   txOuts <- Gen.list (Range.linear 1 5) $ genTxOutTxContext C.BabbageEra
   pure $
     txBodyContent

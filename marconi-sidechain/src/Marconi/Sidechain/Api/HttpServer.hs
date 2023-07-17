@@ -21,7 +21,7 @@ import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (
   API,
-  GetBurnTokenEventsParams (assetName, beforeSlotNo, policyId),
+  GetBurnTokenEventsParams (afterTx, assetName, beforeSlotNo, policyId),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
   GetCurrentSyncedBlockResult,
   GetEpochActiveStakePoolDelegationResult,
@@ -161,6 +161,7 @@ getMintingPolicyHashTxHandler env query =
         (policyId query)
         (assetName query)
         (beforeSlotNo query)
+        (afterTx query)
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochStakePoolDelegationHandler
