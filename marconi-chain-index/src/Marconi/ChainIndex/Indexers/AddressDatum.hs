@@ -82,6 +82,7 @@ import Data.Maybe (
  )
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Void (Void)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -122,7 +123,7 @@ data AddressDatumHandle = AddressDatumHandle
   , _addressDatumHandleDiskStore :: Int
   }
 
-type instance StorableMonad AddressDatumHandle = ExceptT IndexerError IO
+type instance StorableMonad AddressDatumHandle = ExceptT (IndexerError Void) IO
 
 {- | 'StorableEvent AddressDatumHandle is the type of events. Events are the data atoms that the
  indexer consumes.

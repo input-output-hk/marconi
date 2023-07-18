@@ -78,8 +78,9 @@ import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text qualified as Text
 import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Void (Void)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer))
+import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer), ignoreQueryError)
 import Marconi.ChainIndex.Indexers.AddressDatum (
   AddressDatumDepth (AddressDatumDepth),
   AddressDatumHandle,
@@ -161,7 +162,7 @@ makeLenses 'Buffer
 -}
 data Coordinator' a = Coordinator
   { _channel :: !(TChan (ChainSyncEvent a))
-  , _errorVar :: !(MVar IndexerError)
+  , _errorVar :: !(MVar (IndexerError Void))
   , _barrier :: !QSemN
   , _indexerCount :: !Int
   , _buffer :: !(Buffer a)
@@ -211,9 +212,9 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
       case event of
         RollForward (BlockInMode block _, epochNo, posixTime) _ct ->
           let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo posixTime
-           in void $ updateWith index _errorVar $ Storable.insert utxoEvents
+           in void $ updateWith index _errorVar $ ignoreQueryError . Storable.insert utxoEvents
         RollBackward cp _ct ->
-          void $ updateWith index _errorVar $ Storable.rewind cp
+          void $ updateWith index _errorVar $ ignoreQueryError . Storable.rewind cp
       signalQSemN _barrier 1
 
 utxoWorker
@@ -346,11 +347,11 @@ epochStateWorker_
   ch
   dbPath = do
     nodeConfigE <- runExceptT $ readNetworkConfig (NetworkConfigFile nodeConfigPath)
-    nodeConfig <- either (throw . CantStartIndexer . Text.pack . show) pure nodeConfigE
+    nodeConfig <- either (throw . CantStartIndexer @Void . Text.pack . show) pure nodeConfigE
     genesisConfigE <- runExceptT $ readCardanoGenesisConfig nodeConfig
     genesisConfig <-
       either
-        (throw . CantStartIndexer . Text.pack . show . renderGenesisConfigError)
+        (throw . CantStartIndexer @Void . Text.pack . show . renderGenesisConfigError)
         pure
         genesisConfigE
 
@@ -393,22 +394,22 @@ epochStateWorker_
                       securityParam
                       isFirstEventOfEpoch
 
-              void $ updateWith indexerMVar _errorVar $ Storable.insert storableEvent
+              void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.insert storableEvent
 
               -- Compute new LedgerState given block and old LedgerState
               pure (newLedgerState', newEpochNo)
             RollBackward C.ChainPointAtGenesis _ct -> do
-              void $ updateWith indexerMVar _errorVar $ Storable.rewind C.ChainPointAtGenesis
+              void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind C.ChainPointAtGenesis
               pure (initialLedgerState, Nothing)
             RollBackward cp' _ct -> do
-              newIndex <- updateWith indexerMVar _errorVar $ Storable.rewind cp'
+              newIndex <- updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind cp'
 
               -- We query the LedgerState from disk at the point where we need to rollback to.
               -- For that to work, we need to be sure that any volatile LedgerState are stored
               -- on disk. For immutable LedgerStates, they are only stored on disk at the first
               -- slot of an epoch.
               maybeLedgerState <-
-                runExceptT $ Storable.query newIndex (EpochState.LedgerStateAtPointQuery cp')
+                runExceptT $ ignoreQueryError $ Storable.query newIndex (EpochState.LedgerStateAtPointQuery cp')
               case maybeLedgerState of
                 Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure (ledgerState, EpochState.getEpochNo ledgerState)
                 Right (EpochState.LedgerStateAtPointResult Nothing) -> do
@@ -473,10 +474,9 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
             let event' = MintBurn.toUpdate mAssets blockInMode
             void $
               updateWith indexerMVar (c ^. errorVar) $
-                Storable.insert $
-                  MintBurn.MintBurnEvent event'
+                ignoreQueryError . Storable.insert (MintBurn.MintBurnEvent event')
           RollBackward cp' _ct ->
-            void $ updateWith indexerMVar (c ^. errorVar) $ Storable.rewind cp'
+            void $ updateWith indexerMVar (c ^. errorVar) $ ignoreQueryError . Storable.rewind cp'
         signalQSemN (c ^. barrier) 1
   pure (loop, cp)
 
@@ -592,7 +592,7 @@ runIndexers
   -> [(Worker, Maybe FilePath)]
   -> IO ()
 runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
-  securityParam <- Utils.toException $ Utils.querySecurityParam networkId socketPath
+  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
   (oldestCommonChainPoint, coordinator) <-
     initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
   let chainPoint = case cliChainPoint of

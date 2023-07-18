@@ -18,6 +18,7 @@ import Control.Exception (catch)
 import Control.Monad (forever)
 import Data.Text qualified as Text
 import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Void (Void)
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
 import Marconi.ChainIndex.Types (
@@ -88,7 +89,7 @@ runIndexers
   -- ^ base dir for indexers
   -> IO ()
 runIndexers socketPath networkId _startingPoint traceName workers = do
-  securityParam <- Utils.toException $ Utils.querySecurityParam networkId socketPath
+  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
   eventQueue <- newTBQueueIO $ fromIntegral securityParam
   coordinator <- Core.mkCoordinator workers
   cBox <- newMVar coordinator

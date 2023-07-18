@@ -52,7 +52,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Concurrent.Async (concurrently_)
-import Control.Exception (bracket_)
+import Control.Exception (Exception, bracket_)
 import Control.Lens.Combinators (
   Lens',
   Traversal',
@@ -109,7 +109,7 @@ import Marconi.ChainIndex.Error (
     CantQueryIndexer,
     CantRollback,
     CantStartIndexer,
-    InvalidQueryInterval
+    QueryError
   ),
   liftSQLError,
  )
@@ -181,31 +181,20 @@ upperBound = \case
 
 -- | Smart constructor for 'Interval ', return an error if the lower bound is greater than the upper bound.
 interval
-  :: (Ord r, Show r)
-  => Maybe r
+  :: Maybe C.SlotNo
   -- ^ lower bound
-  -> r
+  -> C.SlotNo
   -- ^ upper bound
-  -> Either IndexerError (Interval r)
+  -> Either (IndexerError UtxoIndexerError) (Interval C.SlotNo)
 interval Nothing p = Right $ LessThanOrEqual p
 interval (Just p) p' =
   let
     --  Enforce the internal invariant
     -- 'InRange'.
-    wrap
-      :: (Ord r, Show r)
-      => (r -> r -> Interval r)
-      -> r
-      -> r
-      -> Either IndexerError (Interval r)
     wrap f x y
       | x <= y = Right $ f x y
       | otherwise =
-          Left . InvalidQueryInterval . Text.pack $
-            "Invalid Interval. LowerBound, "
-              <> show x
-              <> " is not less than or equal to upperBound "
-              <> show y
+          Left . QueryError $ InvalidInterval x y
    in
     wrap InRange p p'
 
@@ -235,9 +224,14 @@ data instance StorableQuery UtxoHandle
   | LastSyncedBlockInfoQuery
   deriving (Show, Eq)
 
+data UtxoIndexerError = InvalidInterval C.SlotNo C.SlotNo
+  deriving (Show, Eq)
+
+instance Exception UtxoIndexerError
+
 type QueryableAddresses = NonEmpty (StorableQuery UtxoHandle)
 
-type instance StorableMonad UtxoHandle = ExceptT IndexerError IO
+type instance StorableMonad UtxoHandle = ExceptT (IndexerError UtxoIndexerError) IO
 
 type instance StorablePoint UtxoHandle = C.ChainPoint
 

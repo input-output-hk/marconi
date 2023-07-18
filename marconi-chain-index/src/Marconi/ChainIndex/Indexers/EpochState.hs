@@ -113,6 +113,7 @@ import Database.SQLite.Simple.QQ (sql)
 
 import GHC.Generics (Generic)
 
+import Data.Void (Void)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
@@ -154,7 +155,7 @@ data EpochStateHandle = EpochStateHandle
   , _epochStateHandleSecurityParam :: !SecurityParam
   }
 
-type instance StorableMonad EpochStateHandle = ExceptT IndexerError IO
+type instance StorableMonad EpochStateHandle = ExceptT (IndexerError Void) IO
 
 data instance StorableEvent EpochStateHandle = EpochStateEvent
   { epochStateEventLedgerState
