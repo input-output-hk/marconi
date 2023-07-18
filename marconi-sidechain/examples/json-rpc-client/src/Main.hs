@@ -43,7 +43,7 @@ main = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' url
   let (rpcEcho :<|> rpcTargets :<|> _ :<|> rpcUtxos :<|> _ :<|> _ :<|> _) = getClients env
-  let boundaries = fromRight (error "the provided interval is correct") (interval Nothing maxBound)
+  let boundaries = fromRight (error "the provided interval is correct") (interval Nothing (Just maxBound))
   -- RPC calls
   msg <- rpcEcho "marconi client calling ???" --  return the echo message
   addresses <- rpcTargets "" --  get the targetAddresss

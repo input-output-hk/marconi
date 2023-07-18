@@ -174,7 +174,7 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
         List.nub
           . fmap
             ( Utxo.QueryUtxoByAddressWrapper
-                . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
+                . flip Utxo.QueryUtxoByAddress (Utxo.lessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
                 . view Utxo.address
             )
           . concatMap Utxo.ueUtxos
@@ -219,7 +219,7 @@ propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs = property $ do
   let upperBound = maximum $ fmap (Utxo._blockInfoSlotNo . ueBlockInfo) events
       queryUtxoByAddress =
         Utxo.QueryUtxoByAddressWrapper
-          . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual upperBound)
+          . flip Utxo.QueryUtxoByAddress (Utxo.lessThanOrEqual upperBound)
       addressQueries :: [StorableQuery Utxo.UtxoHandle] -- we want to query for all addresses
       addressQueries =
         fmap queryUtxoByAddress $
@@ -255,7 +255,7 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
       -- We want to query for all addresses
       addressQueries :: C.SlotNo -> [StorableQuery Utxo.UtxoHandle]
       addressQueries sn =
-        Utxo.QueryUtxoByAddressWrapper . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual sn)
+        Utxo.QueryUtxoByAddressWrapper . flip Utxo.QueryUtxoByAddress (Utxo.lessThanOrEqual sn)
           <$> allAddresses
   indexer <-
     liftIO $
@@ -366,7 +366,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
           >>= Storable.insertMany utxoEvents
 
   -- Query all Utxos and extract actual resolved and unresolved datums.
-  let qs = mkUtxoQueries utxoEvents (Utxo.LessThanOrEqual $ C.SlotNo 20000)
+  let qs = mkUtxoQueries utxoEvents (Utxo.lessThanOrEqual $ C.SlotNo 20000)
   results <-
     liftIO $
       raiseException $
@@ -496,7 +496,7 @@ propSaveAndRetrieveUtxoEvents = Hedgehog.property $ do
         Utxo.open ":memory:" (Utxo.Depth depth) False
           >>= Storable.insertMany events
   let upperBound = C.SlotNo 20000
-      qs = mkUtxoQueries events (Utxo.LessThanOrEqual upperBound) --  TODO maxBound use this when PLT-5937 is implmented. See TODO below.
+      qs = mkUtxoQueries events (Utxo.lessThanOrEqual upperBound) --  TODO maxBound use this when PLT-5937 is implmented. See TODO below.
   results <-
     liftIO
       . raiseException
@@ -548,12 +548,11 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
     forAll $ forM blockInfos genEventWithShelleyAddressAtChainPoint <&> concat
   h <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth 1) False -- don't vacuum sqlite
   indexer <- liftIO $ raiseException $ Storable.insertMany events h
-  let upperIntervalQuery = mkUtxoQueries events (Utxo.LessThanOrEqual $ C.SlotNo upperBoundSlotNo)
+  let upperIntervalQuery = mkUtxoQueries events (Utxo.lessThanOrEqual $ C.SlotNo upperBoundSlotNo)
       maxIntervalQuery =
         mkUtxoQueries
           events
-          ( Utxo.InRange (C.SlotNo minBound) $
-              C.SlotNo 2000
+          ( Utxo.Interval (Just $ C.SlotNo minBound) (Just $ C.SlotNo 2000)
           )
   -- TODO --
   -- Use this to trigger Integer overvflow And SQL trace to observe the overflow
@@ -602,7 +601,7 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
               Utxo.open ":memory:" (Utxo.Depth 1) False
                 >>= Storable.insertMany events
 
-        upperBoundInterval <- Hedgehog.evalEither (Utxo.interval Nothing (C.SlotNo upperBoundSlotNo))
+        let upperBoundInterval = Utxo.lessThanOrEqual $ C.SlotNo upperBoundSlotNo
         let upperBoundIntervalQuery :: [StorableQuery Utxo.UtxoHandle]
             upperBoundIntervalQuery = mkUtxoQueries events upperBoundInterval
 
@@ -613,11 +612,11 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
 
         -- set queryInterval for the open interval [lowerBoundSlotno, upperBoundSlotNo]
         slotnoIntervalOpen <-
-          Hedgehog.evalEither (Utxo.interval (Just lowerBoundSlotNo) (C.SlotNo upperBoundSlotNo))
+          Hedgehog.evalEither (Utxo.interval (Just lowerBoundSlotNo) (Just $ C.SlotNo upperBoundSlotNo))
 
         -- we're tesing for all addresses in all slotNo
         maxInterval <-
-          Hedgehog.evalEither (Utxo.interval (Just $ C.SlotNo minBound) (C.SlotNo 2000))
+          Hedgehog.evalEither (Utxo.intervalInRange (C.SlotNo minBound) (C.SlotNo 2000))
         let maxIntervalQuery :: [StorableQuery Utxo.UtxoHandle]
             maxIntervalQuery = mkUtxoQueries events maxInterval
 
@@ -660,7 +659,7 @@ propComputeEventsAtAddress = Hedgehog.property $ do
   let addresses :: [C.AddressAny]
       addresses = map (view Utxo.address) $ Utxo.ueUtxos event
       sameAddressEvents :: Utxo.UtxoByAddressBufferEvents
-      sameAddressEvents = Utxo.eventsAtAddress (head addresses) (Utxo.LessThanOrEqual $ C.SlotNo maxBound) [event]
+      sameAddressEvents = Utxo.eventsAtAddress (head addresses) (Utxo.lessThanOrEqual $ C.SlotNo maxBound) [event]
       targetAddress = head addresses
       computedAddresses =
         toListOf (folded . Utxo.address) $
@@ -796,7 +795,7 @@ propJsonRoundtripUtxoRow :: Property
 propJsonRoundtripUtxoRow = Hedgehog.property $ do
   utxoEvents <- Hedgehog.forAll genUtxoEvents
   let utxoRows = concatMap Utxo.eventToRows utxoEvents
-  forM_ utxoRows $ \utxoRow -> Hedgehog.tripping utxoRow Aeson.encode Aeson.decode
+  forM_ utxoRows $ \utxoRow -> Hedgehog.tripping utxoRow Aeson.encode Aeson.eitherDecode
 
 {- |
   getUtxoEvens should compute the same event as the event generator
