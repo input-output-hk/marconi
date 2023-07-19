@@ -543,7 +543,7 @@ instance RI.Queryable MintBurnHandle where
             Nothing -> mempty
             Just txId -> do
               slotNo <- getSlotNoFromTxId txId
-              pure (["slotNo >= :slotNo"], [":slotNo" := slotNo])
+              pure (["slotNo >= :loSlotNo"], [":loSlotNo" := slotNo])
 
       mkAssetIdCondition :: C.PolicyId -> Maybe C.AssetName -> ([SQL.Query], [NamedParam])
       mkAssetIdCondition policyId assetName =
@@ -555,7 +555,7 @@ instance RI.Queryable MintBurnHandle where
       mkUpperBoundCondition :: Maybe C.SlotNo -> ([SQL.Query], [NamedParam])
       mkUpperBoundCondition = \case
         Nothing -> mempty
-        Just s -> (["slotNo <= :slotNo"], [":slotNo" := s])
+        Just s -> (["slotNo <= :hiSlotNo"], [":hiSlotNo" := s])
 
 instance RI.HasPoint (RI.StorableEvent MintBurnHandle) C.ChainPoint where
   getPoint (MintBurnEvent e) = C.ChainPoint (txMintEventSlotNo e) (txMintEventBlockHeaderHash e)
