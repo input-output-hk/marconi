@@ -116,7 +116,7 @@ data MintAsset = MintAsset
   deriving (Show, Eq, Ord)
 
 -- | Errors that can occurs when you query the indexer
-data MintBurnError
+data MintBurnQueryError
   = -- | The lower slot that correspond to the given TxId is greater or equal to the provider higher
     -- slot
     InvalidInterval C.TxId C.SlotNo C.SlotNo
@@ -124,7 +124,7 @@ data MintBurnError
     TxNotIndexed C.TxId
   deriving (Show, Eq)
 
-instance Exception MintBurnError
+instance Exception MintBurnQueryError
 
 -- | Extract the mint events from a block
 toUpdate
@@ -427,7 +427,7 @@ type MintBurnIndexer = RI.State MintBurnHandle
 
 type instance RI.StorablePoint MintBurnHandle = C.ChainPoint
 
-type instance RI.StorableMonad MintBurnHandle = ExceptT (IndexerError MintBurnError) IO
+type instance RI.StorableMonad MintBurnHandle = ExceptT (IndexerError MintBurnQueryError) IO
 
 newtype instance RI.StorableEvent MintBurnHandle = MintBurnEvent {getEvent :: TxMintEvent}
   deriving (Show)
@@ -541,7 +541,7 @@ instance RI.Queryable MintBurnHandle where
 
       -- \* Filter sqlite events
 
-      mkSqliteConditions :: ExceptT (IndexerError MintBurnError) IO ([SQL.Query], [NamedParam])
+      mkSqliteConditions :: ExceptT (IndexerError MintBurnQueryError) IO ([SQL.Query], [NamedParam])
       mkSqliteConditions = do
         cond <- mkAfterTxCondtion
         pure $
@@ -551,7 +551,7 @@ instance RI.Queryable MintBurnHandle where
             <> if burnOnly then (["quantity < 0"], []) else mempty
 
       --  filter for transaction at or after
-      mkAfterTxCondtion :: ExceptT (IndexerError MintBurnError) IO ([SQL.Query], [NamedParam])
+      mkAfterTxCondtion :: ExceptT (IndexerError MintBurnQueryError) IO ([SQL.Query], [NamedParam])
       mkAfterTxCondtion =
         let
           getSlotNoFromTxId :: C.TxId -> IO (Maybe C.SlotNo)
