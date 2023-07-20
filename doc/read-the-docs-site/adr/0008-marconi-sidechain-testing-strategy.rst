@@ -53,7 +53,7 @@ UNIT TESTING:
 INTEGRATION TESTING:
 
 * We will plan test coverage and also aim to produce them alongside implementation of new product features.
-  It is acceptable to have separate tasks to produce the tests but them must be complete within the same PI cycle.
+  It is acceptable to have separate tasks to produce the tests but they must be complete within the same PI cycle.
 
 * We will produce sanity tests to be executed on PR commit and initially run on a private testnet (using cardano-testnet) which will be primed with a basic dataset not intended for performance evaluations or querying in a complex environment.
 
@@ -67,19 +67,19 @@ INTEGRATION TESTING:
 END-TO-END TESTING:
 
 * We will plan test coverage and also aim to produce them alongside implementation of new product features.
-  It is acceptable to have separate tasks to produce the tests but them must be complete within the same PI cycle.
+  It is acceptable to have separate tasks to produce the tests but they must be complete within the same PI cycle.
 
 * We will sometimes perform exploratory testing on major features, such as new RPC methods or cli options.
   This can provide faster feedback in lieu of automation testing being produced.
   Should not be carried out by the engineer who implemented the feature (due to assumption bias).
     
-* We will produce tests for each of the RPC API methods to stress the filters
+* We will produce tests for each of the RPC API methods to stress the filters.
   These tests will assert against known correct response content.
   These tests will ideally be run on mainnet because there is more interesting transaction data there and so are more likely to catch an edge-case.
   These tests should be run either after a sync test or on an instance of the process under test that is always running fully synced.
   See RPC-1 in https://github.com/input-output-hk/marconi/issues/93 for a checklist of test cases.
 
-* We will produce tests for the RPC API methods to cover a board set of response data comparing against a source of truth
+* We will produce tests for the RPC API methods to cover a board set of response data comparing against a source of truth.
   These tests will compare against results produced by `cardano-db-sync <https://github.com/input-output-hk/cardano-db-sync>`_
   These tests will ideally be run on mainnet
   see RPC-2 in https://github.com/input-output-hk/marconi/issues/93 for a checklist of test cases.
