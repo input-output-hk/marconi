@@ -20,6 +20,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as Shelley
 import Control.Monad.Trans (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT)
+import Data.Void (Void)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
@@ -72,7 +73,7 @@ data ScriptTxHandle = ScriptTxHandle
    The first type we introduce is the monad in which the database (and by extension,
    the indexer) runs. -}
 
-type instance StorableMonad ScriptTxHandle = ExceptT IndexerError IO
+type instance StorableMonad ScriptTxHandle = ExceptT (IndexerError Void) IO
 
 {- The next type we introduce is the type of events. Events are the data atoms that
    the indexer consumes. They depend on the `handle` because they need to eventually

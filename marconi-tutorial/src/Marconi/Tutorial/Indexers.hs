@@ -1,5 +1,8 @@
+{-# LANGUAGE TypeApplications #-}
+
 module Marconi.Tutorial.Indexers where
 
+import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Indexers qualified as Indexers
 import Marconi.ChainIndex.Utils qualified as Utils
@@ -14,7 +17,7 @@ runIndexers o = do
 
   let socketPath = CommonCLI.optionsSocketPath $ CLI.commonOptions o
       networkId = CommonCLI.optionsNetworkId $ CLI.commonOptions o
-  securityParam <- Utils.toException $ Utils.querySecurityParam networkId socketPath
+  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
   indexers <-
     sequence
       [ fmap snd $

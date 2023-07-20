@@ -49,7 +49,7 @@ querySecurityParam
   :: C.NetworkId
   -> FilePath
   -- ^ Node socket file path
-  -> ExceptT IndexerError IO SecurityParam
+  -> ExceptT (IndexerError err) IO SecurityParam
 querySecurityParam networkId socketPath = do
   (C.AnyCardanoEra era) <- queryCurrentEra networkId socketPath
   case shelleyBasedToCardanoEra era of
@@ -61,7 +61,7 @@ queryCurrentEra
   :: C.NetworkId
   -> FilePath
   -- ^ Node socket file path
-  -> ExceptT IndexerError IO C.AnyCardanoEra
+  -> ExceptT (IndexerError err) IO C.AnyCardanoEra
 queryCurrentEra networkId socketPath = do
   let localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
       localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
@@ -69,7 +69,7 @@ queryCurrentEra networkId socketPath = do
       queryInMode :: C.QueryInMode C.CardanoMode C.AnyCardanoEra
       queryInMode = C.QueryCurrentEra C.CardanoModeIsMultiEra
 
-      toError :: (Show a) => a -> ExceptT IndexerError IO b
+      toError :: (Show a) => a -> ExceptT (IndexerError err) IO b
       toError = throwError . CantStartIndexer . pack . show
 
   result <- lift $ C.queryNodeLocalState localNodeConnectInfo Nothing queryInMode
@@ -80,11 +80,12 @@ queryCurrentEra networkId socketPath = do
 -- | Query security param from the local node given a Shelley based era.
 querySecurityParamEra
   :: forall era
+   . forall err
    . C.ShelleyBasedEra era
   -> C.NetworkId
   -> FilePath
   -- ^ Node socket file path
-  -> ExceptT IndexerError IO SecurityParam
+  -> ExceptT (IndexerError err) IO SecurityParam
 querySecurityParamEra shelleyBasedEra networkId socketPath = do
   result <- lift $ C.queryNodeLocalState localNodeConnectInfo Nothing queryInMode
   genesisParameters <- case result of
@@ -101,7 +102,7 @@ querySecurityParamEra shelleyBasedEra networkId socketPath = do
       C.QueryInEra (toShelleyEraInCardanoMode shelleyBasedEra) $
         C.QueryInShelleyBasedEra shelleyBasedEra C.QueryGenesisParameters
 
-    toError :: (Show a) => a -> ExceptT IndexerError IO b
+    toError :: (Show a) => a -> ExceptT (IndexerError err) IO b
     toError = throwError . CantStartIndexer . pack . show
 
 toException :: (Exception err) => ExceptT err IO a -> IO a

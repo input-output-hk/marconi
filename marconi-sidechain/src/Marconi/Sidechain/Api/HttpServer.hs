@@ -13,7 +13,7 @@ import Control.Lens ((^.))
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.Proxy (Proxy (Proxy))
-import Data.Text (Text, pack)
+import Data.Text (Text, pack, unpack)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
@@ -32,7 +32,7 @@ import Marconi.Sidechain.Api.Routes (
   RestAPI,
  )
 import Marconi.Sidechain.Api.Types (
-  QueryExceptions (AddressConversionError, QueryError, UnexpectedQueryResult),
+  QueryExceptions (QueryError, UnexpectedQueryResult, UntrackedPolicy),
   SidechainEnv,
   sidechainAddressUtxoIndexer,
   sidechainEnvHttpSettings,
@@ -191,11 +191,13 @@ getEpochNonceHandler env epochNo =
 toRpcErr
   :: QueryExceptions
   -> JsonRpcErr String
-toRpcErr (AddressConversionError e) =
-  mkJsonRpcInvalidRequestErr $ Just e
 toRpcErr (QueryError e) =
   -- TODO Change to specific code and message
-  mkJsonRpcParseErr $ Just e
+  mkJsonRpcParseErr $ Just $ unpack e
 toRpcErr (UnexpectedQueryResult e) =
   -- TODO Change to specific code and message
   mkJsonRpcParseErr $ Just $ show e
+toRpcErr (UntrackedPolicy _ _) =
+  mkJsonRpcParseErr $
+    Just
+      "The 'policyId' and 'assetName' param values must belong to the provided target 'AssetIds'."

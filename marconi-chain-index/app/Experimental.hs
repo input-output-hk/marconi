@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Experimental.Indexers qualified as Indexers
 import Marconi.ChainIndex.Utils qualified as Utils
@@ -13,7 +14,7 @@ main = do
 
   let socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
       networkId = Cli.optionsNetworkId $ Cli.commonOptions o
-  securityParam <- Utils.toException $ Utils.querySecurityParam networkId socketPath
+  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
   indexers <-
     sequence
       [ fmap snd $ Indexers.utxoWorker (Cli.optionsDbPath o </> "utxo.db") securityParam

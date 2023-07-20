@@ -10,6 +10,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.BaseTypes qualified as Ledger
 import Cardano.Slotting.Slot (WithOrigin (At, Origin), withOriginFromMaybe)
+import Control.Applicative ((<|>))
 import Control.Monad (join)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
@@ -315,10 +316,10 @@ instance FromJSON GetBurnTokenEventsParams where
   parseJSON =
     let parseParams v =
           GetBurnTokenEventsParams
-            <$> (v .: "policyId")
+            <$> (v .: "policyId" <|> fail "The 'policyId' param value must be a valid minting policy hash.")
             <*> (v .:? "assetName")
-            <*> (v .:? "createdBeforeSlotNo")
-            <*> (v .:? "createdAfterTx")
+            <*> (v .:? "createdBeforeSlotNo" <|> fail "The 'slotNo' param value must be a natural number.")
+            <*> (v .:? "createdAfterTx" <|> fail "The 'afterTx' param value must be a valid transaction ID.")
      in Aeson.withObject "GetBurnTokenEventsParams" parseParams
 
 instance ToJSON GetBurnTokenEventsParams where
