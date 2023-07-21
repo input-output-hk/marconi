@@ -7,7 +7,9 @@
 
   inputs = {
 
-    iogx.url = "github:input-output-hk/iogx";
+    # TODO The `?ref=remove-list-binaries` is a temporary solution to solve a CI error.
+    # Probably an # edge case in IOGX.
+    iogx.url = "github:input-output-hk/iogx?ref=remove-list-binaries";
     iogx.inputs.CHaP.follows = "CHaP_2";
 
     CHaP_2 = {
@@ -18,7 +20,9 @@
     # Used to provide the cardano-node and cardano-cli executables.
     cardano-node = {
       url = "github:input-output-hk/cardano-node";
-      flake = false;
+    };
+    mithril = {
+      url = "github:input-output-hk/mithril";
     };
   };
 

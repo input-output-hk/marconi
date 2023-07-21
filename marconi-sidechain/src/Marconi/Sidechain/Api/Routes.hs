@@ -94,17 +94,6 @@ type RpcEpochNonceMethod =
     String
     GetEpochNonceResult
 
---------------------
--- REST related ---
---------------------
-
--- | REST API, endpoints
-type RestAPI = "rest" :> (GetTime :<|> GetTargetAddresses)
-
-type GetTime = "time" :> Get '[PlainText] String
-
-type GetTargetAddresses = "addresses" :> Get '[JSON] [Text]
-
 --------------------------
 -- Query and Result types
 --------------------------
@@ -456,3 +445,18 @@ instance ToJSON NonceResult where
             , "blockHeaderHash" .= blockHeaderHash
             , "blockNo" .= blockNo
             ]
+
+------------------------
+-- REST API endpoints --
+------------------------
+
+type RestAPI =
+  GetTime
+    :<|> GetTargetAddresses
+    :<|> GetMetrics
+
+type GetTime = "time" :> Get '[PlainText] String
+
+type GetTargetAddresses = "addresses" :> Get '[JSON] [Text]
+
+type GetMetrics = "metrics" :> Get '[PlainText] Text
