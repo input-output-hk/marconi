@@ -17,7 +17,6 @@ index-state:
   , cardano-haskell-packages 2023-07-10T00:00:00Z
 packages: marconi-chain-index
           marconi-core
-          marconi-lightweight-node
           marconi-sidechain
           marconi-tutorial
           cardano-streaming
