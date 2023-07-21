@@ -307,7 +307,7 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
           Utxo.utxoResultTxIn utxoResult `Set.notMember` futureSpent
             && Utxo.utxoResultTxIn utxoResult `Set.notMember` currentSpent
         Just spentInfo ->
-          if Utxo._blockInfoSlotNo (Utxo._siSpentBlockInfo spentInfo) > upperBound
+          if (spentInfo ^. Utxo.srSpentBlockInfo . Utxo.blockInfoSlotNo) > upperBound
             then Utxo.utxoResultTxIn utxoResult `Set.member` futureSpent
             else Utxo.utxoResultTxIn utxoResult `Set.member` currentSpent
 
