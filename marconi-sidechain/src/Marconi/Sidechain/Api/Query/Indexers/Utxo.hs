@@ -136,7 +136,10 @@ withQueryAction env query =
   where
     action indexer = do
       res <- runExceptT $ Storable.query indexer query
-      let spentInfoResult row = SpentInfoResult (Utxo._blockInfoSlotNo . Utxo._siSpentBlockInfo $ row) (Utxo._siSpentTxId row)
+      let spentInfoResult row =
+            SpentInfoResult
+              (row ^. Utxo.srSpentBlockInfo . Utxo.blockInfoSlotNo)
+              (row ^. Utxo.srSpentTxId)
       pure $ case res of
         Right (Utxo.UtxoByAddressResult rows) ->
           Right $
