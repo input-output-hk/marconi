@@ -592,8 +592,7 @@ runIndexers
   -> [(Worker, Maybe FilePath)]
   -> IO ()
 runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
-  _securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
-  let securityParam = 1
+  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
   (oldestCommonChainPoint, coordinator) <-
     initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
   let chainPoint = case cliChainPoint of
