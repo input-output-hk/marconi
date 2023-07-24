@@ -36,3 +36,4 @@ The general process for creating an ADR is:
    0005-marconi-indexers-query-synchronisation-primitive
    0006-indexer-resuming-strategy
    0007-observability
+   0008-marconi-sidechain-testing-strategy
