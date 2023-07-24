@@ -4,7 +4,10 @@
 {-# LANGUAGE TypeOperators #-}
 
 -- | Defines REST and JSON-RPC routes
-module Marconi.Sidechain.Api.Routes where
+module Marconi.Sidechain.Api.Routes (
+  module Marconi.Sidechain.Api.Routes,
+  Utxo.interval,
+) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
