@@ -228,8 +228,6 @@ Retrieves UTXOs of a given address until a given slot, and optionally after a gi
 
 * The `unspentBeforeSlotNo` param value should be larger than the `createdAfterSlotNo`.
 
-* The `createdAfterSlotNo` param value must be lower or equal to the current indexed `SlotNo` (returned by the `getCurrentSyncedBlock` endpoint).
-
 ==== Post-conditions
 
 * The `datumHash` result value should always be available if the `datum` result value is available.
@@ -409,9 +407,6 @@ TBD
     {
       "const": "The 'unspentBeforeSlotNo' param value must be larger than 'createAfterSlotNo'."
     },
-    {
-      "const": "The 'createAfterSlotNo' param value must be lower than the latest indexed SlotNo."
-    }
   ]
 }
 ```

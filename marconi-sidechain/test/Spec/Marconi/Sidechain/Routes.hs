@@ -25,6 +25,7 @@ import Hedgehog (
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
+import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Sidechain.Api.Routes (
   ActiveSDDResult (ActiveSDDResult),
@@ -140,12 +141,16 @@ propJSONRountripCurrentSyncedBlockResult = property $ do
 
 propJSONRountripGetUtxosFromAddressParams :: Property
 propJSONRountripGetUtxosFromAddressParams = property $ do
+  Right interval <-
+    forAll $
+      Utxo.interval
+        <$> Gen.maybe (C.SlotNo <$> Gen.word64 (Range.linear 1 100))
+        <*> (C.SlotNo <$> Gen.word64 (Range.linear 101 200))
   r <-
     forAll $
       GetUtxosFromAddressParams
         <$> Gen.string (Range.linear 1 10) Gen.alphaNum
-        <*> Gen.maybe (Gen.word64 (Range.linear 1 100))
-        <*> Gen.word64 (Range.linear 101 200)
+        <*> pure interval
   tripping r Aeson.encode Aeson.decode
 
 propJSONRountripGetUtxosFromAddressResult :: Property

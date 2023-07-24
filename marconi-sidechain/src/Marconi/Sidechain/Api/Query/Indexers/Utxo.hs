@@ -10,7 +10,6 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
 ) where
 
 import Cardano.Api qualified as C
-import Control.Arrow (left)
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, readTMVar)
 import Control.Lens ((^.))
@@ -20,8 +19,6 @@ import Data.Bifunctor (Bifunctor (bimap))
 import Data.Functor ((<&>))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text, pack)
-import GHC.Word (Word64)
-import Marconi.ChainIndex.Error (IndexerError)
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
@@ -86,26 +83,12 @@ findByBech32AddressAtSlot
   -- ^ Query run time environment
   -> Text
   -- ^ Bech32 Address
-  -> Word64
-  -- ^ slotNo upper bound query
-  -> Maybe Word64
-  -- ^ slotNo lower bound query
+  -> Utxo.Interval C.SlotNo
+  -- ^ slotNo query interval
   -> IO (Either QueryExceptions GetUtxosFromAddressResult)
   -- ^ Plutus address conversion error may occur
-findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
+findByBech32AddressAtSlot env addressText slotInterval =
   let toQueryExceptions e = QueryError (addressText <> " generated error: " <> pack (show e))
-
-      intervalWrapper :: Maybe C.SlotNo -> C.SlotNo -> Either QueryExceptions (Utxo.Interval C.SlotNo)
-      intervalWrapper s s' =
-        let f :: IndexerError Utxo.UtxoIndexerError -> QueryExceptions
-            f = QueryError . pack . show
-         in left f (Utxo.interval s s')
-
-      slotInterval :: Either QueryExceptions (Utxo.Interval C.SlotNo)
-      slotInterval =
-        intervalWrapper
-          (C.SlotNo <$> lowerBoundSlotNo)
-          (C.SlotNo upperBoundSlotNo)
 
       queryAtAddressAndSlot
         :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
@@ -113,11 +96,10 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
 
       query :: Either QueryExceptions Utxo.QueryUtxoByAddress
       query = do
-        si <- slotInterval
         addr <-
           bimap toQueryExceptions C.toAddressAny $
             C.deserialiseFromBech32 C.AsShelleyAddress addressText
-        pure $ Utxo.QueryUtxoByAddress addr si
+        pure $ Utxo.QueryUtxoByAddress addr slotInterval
    in case query of
         Right q -> queryAtAddressAndSlot q
         Left e -> pure $ Left e

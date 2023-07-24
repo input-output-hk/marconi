@@ -29,7 +29,7 @@ import Marconi.Sidechain.Api.Routes (
   GetCurrentSyncedBlockResult,
   GetEpochActiveStakePoolDelegationResult,
   GetEpochNonceResult,
-  GetUtxosFromAddressParams (queryAddress, queryCreatedAfterSlotNo, queryUnspentBeforeSlotNo),
+  GetUtxosFromAddressParams (queryAddress, querySearchInterval),
   GetUtxosFromAddressResult,
   JsonRpcAPI,
   RestAPI,
@@ -154,8 +154,7 @@ getAddressUtxoHandler env query =
       Q.Utxo.findByBech32AddressAtSlot
         (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
         (pack $ queryAddress query)
-        (queryUnspentBeforeSlotNo query)
-        (queryCreatedAfterSlotNo query)
+        (querySearchInterval query)
 
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler
