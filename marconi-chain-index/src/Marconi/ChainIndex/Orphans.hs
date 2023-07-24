@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -80,6 +81,12 @@ instance Pretty C.SlotNo where
 deriving newtype instance SQL.ToField C.SlotNo
 deriving newtype instance SQL.FromField C.SlotNo
 
+instance ToRow C.SlotNo where
+  toRow (C.SlotNo bn) = [toField bn]
+
+instance SQL.FromRow C.SlotNo where
+  fromRow = C.SlotNo <$> SQL.field
+
 -- * C.BlockNo
 
 instance Pretty C.BlockNo where
@@ -124,7 +131,9 @@ instance ToJSON C.AddressAny where
 instance SQL.FromField (C.Hash C.ScriptData) where
   fromField f =
     SQL.fromField f
-      >>= either (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.ScriptData.") pure
+      >>= either
+        (const $ SQL.returnError SQL.ConversionFailed f "Cannot deserialise C.Hash C.ScriptData.")
+        pure
         . C.deserialiseFromRawBytes (C.AsHash C.AsScriptData)
 
 instance SQL.ToField (C.Hash C.ScriptData) where

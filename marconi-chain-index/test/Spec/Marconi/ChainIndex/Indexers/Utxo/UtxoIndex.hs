@@ -40,7 +40,12 @@ import Marconi.ChainIndex.Indexers.Utxo (
   StorableResult (LastSyncedBlockInfoResult),
  )
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Types (TargetAddresses, UtxoIndexerConfig (UtxoIndexerConfig), ucEnableUtxoTxOutRef, ucTargetAddresses)
+import Marconi.ChainIndex.Types (
+  TargetAddresses,
+  UtxoIndexerConfig (UtxoIndexerConfig),
+  ucEnableUtxoTxOutRef,
+  ucTargetAddresses,
+ )
 import Marconi.Core.Storable qualified as Storable
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
@@ -159,7 +164,10 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
 
   -- It is crtical that we perform NO vacuum.
   -- With depth at such small numbers, the likelihood of SQLite vaccume is almost certain in
-  indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
+  indexer <-
+    liftIO $
+      raiseException $
+        Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
   let upperBound = maximum $ fmap (Utxo._blockInfoSlotNo . ueBlockInfo) events
       -- we want to query for all addresses
       addressQueries :: [StorableQuery Utxo.UtxoHandle] =
@@ -189,7 +197,8 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
   Hedgehog.assert (not $ null retrievedUtxoResults)
 
   -- There should be no `Spent` in the retrieved UtxoRows
-  Hedgehog.footnote "Regression test must return at least one Utxo. Utxo's may not have any Spent in the Orig. event"
+  Hedgehog.footnote
+    "Regression test must return at least one Utxo. Utxo's may not have any Spent in the Orig. event"
   Hedgehog.assert $ all (`notElem` txInsFromGeneratedEvents) txInsFromRetrievedUtxoRows
 
 -- | We retrieve all the utxos, and verify that their spent correspond to an existing utxo
@@ -203,7 +212,10 @@ propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs = property $ do
   Hedgehog.classify "Query both in-memory and storage " $ depth <= numOfEvents
   Hedgehog.classify "Query in-memory only" $ depth > numOfEvents
 
-  indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
+  indexer <-
+    liftIO $
+      raiseException $
+        Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
   let upperBound = maximum $ fmap (Utxo._blockInfoSlotNo . ueBlockInfo) events
       queryUtxoByAddress =
         Utxo.QueryUtxoByAddressWrapper
@@ -245,7 +257,10 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
       addressQueries sn =
         Utxo.QueryUtxoByAddressWrapper . flip Utxo.QueryUtxoByAddress (Utxo.LessThanOrEqual sn)
           <$> allAddresses
-  indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
+  indexer <-
+    liftIO $
+      raiseException $
+        Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries upperBound
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
@@ -292,7 +307,7 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
           Utxo.utxoResultTxIn utxoResult `Set.notMember` futureSpent
             && Utxo.utxoResultTxIn utxoResult `Set.notMember` currentSpent
         Just spentInfo ->
-          if Utxo._blockInfoSlotNo (Utxo._siSpentBlockInfo spentInfo) > upperBound
+          if (spentInfo ^. Utxo.srSpentBlockInfo . Utxo.blockInfoSlotNo) > upperBound
             then Utxo.utxoResultTxIn utxoResult `Set.member` futureSpent
             else Utxo.utxoResultTxIn utxoResult `Set.member` currentSpent
 
@@ -395,7 +410,10 @@ propUtxoQueryShouldHaveSameDatumAsDatumQuery = Hedgehog.property $ do
 -}
 propTxInWhenPhase2ValidationFails :: Property
 propTxInWhenPhase2ValidationFails = Hedgehog.property $ do
-  tx@(C.Tx (C.TxBody C.TxBodyContent{..}) _) <- head . mockBlockTxs . snd . head <$> Hedgehog.forAll (UtxoGen.genUtxoEventsWithTxs' UtxoGen.genTxBodyContentFromTxInsWithPhase2Validation)
+  tx@(C.Tx (C.TxBody C.TxBodyContent{..}) _) <-
+    head . mockBlockTxs . snd . head
+      <$> Hedgehog.forAll
+        (UtxoGen.genUtxoEventsWithTxs' UtxoGen.genTxBodyContentFromTxInsWithPhase2Validation)
   slotNo@(C.SlotNo sn) <- forAll Gen.genSlotNo
   bhh <- forAll Gen.genHashBlockHeader
   let blockInfo = BlockInfo slotNo bhh (C.BlockNo sn) 0 1
@@ -415,7 +433,10 @@ propTxInWhenPhase2ValidationFails = Hedgehog.property $ do
         C.TxInsCollateralNone -> Hedgehog.assert $ null computedTxIns
         C.TxInsCollateral _ txinsC_ -> do
           Hedgehog.footnoteShow txReturnCollateral
-          let (Utxo.TxOutBalance _ ins) = Utxo.balanceUtxoFromTx UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True} (tx, 0)
+          let (Utxo.TxOutBalance _ ins) =
+                Utxo.balanceUtxoFromTx
+                  UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
+                  (tx, 0)
           -- This property shows collateral TxIns will be processed and balanced
           -- Note: not all collateral txins may be utilized in when phase-2 validation fails
           Map.keysSet ins === Set.fromList txinsC_
@@ -433,7 +454,10 @@ propTxInWhenPhase2ValidationFails = Hedgehog.property $ do
 -}
 propTxOutWhenPhase2ValidationFails :: Property
 propTxOutWhenPhase2ValidationFails = Hedgehog.property $ do
-  (C.Tx (C.TxBody txBodyContent@C.TxBodyContent{..}) _) <- head . mockBlockTxs . snd . head <$> Hedgehog.forAll (UtxoGen.genUtxoEventsWithTxs' UtxoGen.genTxBodyContentFromTxInsWithPhase2Validation)
+  (C.Tx (C.TxBody txBodyContent@C.TxBodyContent{..}) _) <-
+    head . mockBlockTxs . snd . head
+      <$> Hedgehog.forAll
+        (UtxoGen.genUtxoEventsWithTxs' UtxoGen.genTxBodyContentFromTxInsWithPhase2Validation)
   let computedTxOuts = Utxo.getTxOutFromTxBodyContent txBodyContent
   case txReturnCollateral of
     C.TxReturnCollateralNone -> Hedgehog.success -- nothing to do here
@@ -520,7 +544,8 @@ propUtxoQueryAtLatestPointShouldBeSameAsQueryingAll = property $ do
       <*> pure (C.BlockNo slotNo)
       <*> pure 0
       <*> pure 1
-  events :: [StorableEvent Utxo.UtxoHandle] <- forAll $ forM blockInfos genEventWithShelleyAddressAtChainPoint <&> concat
+  events :: [StorableEvent Utxo.UtxoHandle] <-
+    forAll $ forM blockInfos genEventWithShelleyAddressAtChainPoint <&> concat
   h <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth 1) False -- don't vacuum sqlite
   indexer <- liftIO $ raiseException $ Storable.insertMany events h
   let upperIntervalQuery = mkUtxoQueries events (Utxo.LessThanOrEqual $ C.SlotNo upperBoundSlotNo)
@@ -607,7 +632,8 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
         maxIntervalResult <-
           liftIO $ raiseException $ traverse (Storable.query indexer) maxIntervalQuery
 
-        upperBoundIntervalResult <- liftIO . raiseException . traverse (Storable.query indexer) $ upperBoundIntervalQuery
+        upperBoundIntervalResult <-
+          liftIO . raiseException . traverse (Storable.query indexer) $ upperBoundIntervalQuery
 
         openIntervalResult <-
           liftIO $ raiseException $ traverse (Storable.query indexer) openIntervalQuery
@@ -789,7 +815,8 @@ propGetUtxoEventFromBlock = Hedgehog.property $ do
     length (Utxo.ueInputs computedEvent) === length (Utxo.ueInputs expectedUtxoEvent)
     computedEvent === expectedUtxoEvent
 
-genEventWithShelleyAddressAtChainPoint :: BlockInfo -> Hedgehog.Gen [Utxo.StorableEvent Utxo.UtxoHandle]
+genEventWithShelleyAddressAtChainPoint
+  :: BlockInfo -> Hedgehog.Gen [Utxo.StorableEvent Utxo.UtxoHandle]
 genEventWithShelleyAddressAtChainPoint bi =
   genShelleyEraUtxoEvents <&> fmap (\e -> e{Utxo.ueBlockInfo = bi})
 

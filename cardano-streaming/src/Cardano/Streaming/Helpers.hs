@@ -14,7 +14,10 @@ import Streaming.Prelude qualified as S
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as CS
 import Cardano.Chain.Genesis qualified
-import Cardano.Crypto (ProtocolMagicId (unProtocolMagicId), RequiresNetworkMagic (RequiresMagic, RequiresNoMagic))
+import Cardano.Crypto (
+  ProtocolMagicId (unProtocolMagicId),
+  RequiresNetworkMagic (RequiresMagic, RequiresNoMagic),
+ )
 import Cardano.Ledger.Shelley.LedgerState qualified as SL
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Ouroboros.Consensus.Cardano.CanHardFork qualified as Consensus
@@ -42,14 +45,8 @@ instance IO.Exception RollbackException
 
 -- * Orphans
 
-instance IO.Exception C.LedgerStateError
-
 instance IO.Exception C.FoldBlocksError
 deriving instance Show C.FoldBlocksError
-
-instance IO.Exception C.InitialLedgerStateError
-deriving instance Show C.InitialLedgerStateError
-deriving instance Show CS.GenesisConfigError
 
 -- * Block
 
@@ -88,7 +85,7 @@ mkLocalNodeConnectInfo networkId socketPath =
   C.LocalNodeConnectInfo
     { C.localConsensusModeParams = C.CardanoModeParams epochSlots
     , C.localNodeNetworkId = networkId
-    , C.localNodeSocketPath = socketPath
+    , C.localNodeSocketPath = C.File socketPath
     }
   where
     -- This a parameter needed only for the Byron era. Since the Byron
@@ -103,7 +100,7 @@ mkConnectInfo env socketPath =
   C.LocalNodeConnectInfo
     { C.localConsensusModeParams = cardanoModeParams
     , C.localNodeNetworkId = networkId'
-    , C.localNodeSocketPath = socketPath
+    , C.localNodeSocketPath = C.File socketPath
     }
   where
     -- Derive the NetworkId as described in network-magic.md from the
@@ -130,5 +127,5 @@ mkConnectInfo env socketPath =
  monitor which blocks has been seen by the node, regardless whether
  they are permanent.
 -}
-ignoreRollbacks :: Monad m => S.Stream (S.Of (ChainSyncEvent a)) m r -> S.Stream (S.Of a) m r
+ignoreRollbacks :: (Monad m) => S.Stream (S.Of (ChainSyncEvent a)) m r -> S.Stream (S.Of a) m r
 ignoreRollbacks = S.mapMaybe (\case RollForward e _ -> Just e; _ -> Nothing)

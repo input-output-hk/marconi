@@ -12,8 +12,11 @@ import Cardano.Api ()
 import Control.Lens ((^.))
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (Bifunctor (bimap), first)
+import Data.ByteString qualified as BS
 import Data.Proxy (Proxy (Proxy))
-import Data.Text (Text, pack)
+import Data.String (fromString)
+import Data.Text (Text, pack, unpack)
+import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
@@ -21,7 +24,7 @@ import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
 import Marconi.Sidechain.Api.Routes (
   API,
-  GetBurnTokenEventsParams (assetName, beforeSlotNo, policyId),
+  GetBurnTokenEventsParams (afterTx, assetName, beforeSlotNo, policyId),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
   GetCurrentSyncedBlockResult,
   GetEpochActiveStakePoolDelegationResult,
@@ -32,15 +35,20 @@ import Marconi.Sidechain.Api.Routes (
   RestAPI,
  )
 import Marconi.Sidechain.Api.Types (
-  QueryExceptions (AddressConversionError, QueryError, UnexpectedQueryResult),
+  QueryExceptions (QueryError, UnexpectedQueryResult, UntrackedPolicy),
   SidechainEnv,
   sidechainAddressUtxoIndexer,
   sidechainEnvHttpSettings,
   sidechainEnvIndexers,
  )
 import Network.JsonRpc.Server.Types ()
-import Network.JsonRpc.Types (JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage), mkJsonRpcInvalidRequestErr, mkJsonRpcParseErr)
+import Network.JsonRpc.Types (
+  JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage),
+  mkJsonRpcInvalidRequestErr,
+  mkJsonRpcParseErr,
+ )
 import Network.Wai.Handler.Warp (runSettings)
+import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler, Server, serve)
 
@@ -70,7 +78,10 @@ jsonRpcServer env =
 restApiServer
   :: SidechainEnv
   -> Server RestAPI
-restApiServer env = getTimeHandler :<|> getTargetAddressesHandler env
+restApiServer env =
+  getTimeHandler
+    :<|> getTargetAddressesHandler env
+    :<|> getMetricsHandler
 
 httpRpcServer
   :: SidechainEnv
@@ -101,6 +112,9 @@ getTargetAddressesHandler env =
   pure $
     Q.Utxo.reportBech32Addresses $
       env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer
+
+getMetricsHandler :: Handler Text
+getMetricsHandler = liftIO $ Text.decodeUtf8 . BS.toStrict <$> P.exportMetricsAsText
 
 -- | prints TargetAddresses Bech32 representation as thru JsonRpc
 getTargetAddressesQueryHandler
@@ -157,6 +171,7 @@ getMintingPolicyHashTxHandler env query =
         (policyId query)
         (assetName query)
         (beforeSlotNo query)
+        (afterTx query)
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochStakePoolDelegationHandler
@@ -186,11 +201,13 @@ getEpochNonceHandler env epochNo =
 toRpcErr
   :: QueryExceptions
   -> JsonRpcErr String
-toRpcErr (AddressConversionError e) =
-  mkJsonRpcInvalidRequestErr $ Just e
 toRpcErr (QueryError e) =
   -- TODO Change to specific code and message
-  mkJsonRpcParseErr $ Just e
+  mkJsonRpcParseErr $ Just $ unpack e
 toRpcErr (UnexpectedQueryResult e) =
   -- TODO Change to specific code and message
   mkJsonRpcParseErr $ Just $ show e
+toRpcErr (UntrackedPolicy _ _) =
+  mkJsonRpcParseErr $
+    Just
+      "The 'policyId' and 'assetName' param values must belong to the provided target 'AssetIds'."

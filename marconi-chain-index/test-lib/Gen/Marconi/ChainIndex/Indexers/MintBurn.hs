@@ -77,7 +77,10 @@ genMintEvents = do
   -- Filter out Left C.TxBodyError
   txAll <- forM txAll' $ \case
     (Right tx, slotNo) -> pure (tx, slotNo)
-    (Left txBodyError, _) -> fail $ "Failed to create a transaction! This shouldn't happen, the generator should be fixed. TxBodyError: " <> show txBodyError
+    (Left txBodyError, _) ->
+      fail $
+        "Failed to create a transaction! This shouldn't happen, the generator should be fixed. TxBodyError: "
+          <> show txBodyError
   let buildEvent ix (tx, slotNo) =
         MintBurn.TxMintEvent slotNo dummyBlockHeaderHash dummyBlockNo . pure
           <$> MintBurn.txMints Nothing ix tx
@@ -90,7 +93,7 @@ genTxWithMint
 genTxWithMint txMintValue = do
   txbc <- CGen.genTxBodyContent C.BabbageEra
   txIn <- CGen.genTxIn
-  pparams' :: C.ProtocolParameters <- CGen.genProtocolParameters
+  pparams' :: C.ProtocolParameters <- CGen.genProtocolParameters C.BabbageEra
   let pparams =
         C.BuildTxWith $
           Just
@@ -115,7 +118,12 @@ genTxWithMint txMintValue = do
 
 -- | Helper to create tx with @commonMintingPolicy@, @assetName@ and @quantity@
 genTxWithAsset :: C.AssetName -> C.Quantity -> Gen (Either C.TxBodyError (C.Tx C.BabbageEra))
-genTxWithAsset assetName quantity = genTxWithMint $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith $ Map.singleton policyId policyWitness)
+genTxWithAsset assetName quantity =
+  genTxWithMint $
+    C.TxMintValue
+      C.MultiAssetInBabbageEra
+      mintedValues
+      (C.BuildTxWith $ Map.singleton policyId policyWitness)
   where
     (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy [(assetName, quantity)]
 
@@ -147,13 +155,15 @@ onlyPersisted bufferSize events = take (eventsPersisted bufferSize $ length even
 
 eventsPersisted :: Int -> Int -> Int
 eventsPersisted bufferSize nEvents =
-  let -- Number of buffer flushes
-      bufferFlushesN =
-        let (n, m) = nEvents `divMod` bufferSize
-         in if m == 0 then n - 1 else n
-      -- Number of events persisted
-      numberOfEventsPersisted = bufferFlushesN * bufferSize
-   in numberOfEventsPersisted
+  let
+    -- Number of buffer flushes
+    bufferFlushesN =
+      let (n, m) = nEvents `divMod` bufferSize
+       in if m == 0 then n - 1 else n
+    -- Number of events persisted
+    numberOfEventsPersisted = bufferFlushesN * bufferSize
+   in
+    numberOfEventsPersisted
 
 type MintingPolicy = PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
 
@@ -198,13 +208,16 @@ commonMintingPolicyId =
 {- | Recreate an indexe, useful because the sql connection to a
  :memory: database can be reused.
 -}
-mkNewIndexerBasedOnOldDb :: Storable.State MintBurn.MintBurnHandle -> IO (Storable.State MintBurn.MintBurnHandle)
+mkNewIndexerBasedOnOldDb
+  :: Storable.State MintBurn.MintBurnHandle -> IO (Storable.State MintBurn.MintBurnHandle)
 mkNewIndexerBasedOnOldDb indexer =
   let MintBurn.MintBurnHandle sqlCon k = indexer ^. Storable.handle
    in raiseException $ Storable.emptyState (fromIntegral k) (MintBurn.MintBurnHandle sqlCon k)
 
 dummyBlockHeaderHash :: C.Hash C.BlockHeader
-dummyBlockHeaderHash = fromString "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef" :: C.Hash C.BlockHeader
+dummyBlockHeaderHash =
+  fromString "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+    :: C.Hash C.BlockHeader
 
 dummyBlockNo :: C.BlockNo
 dummyBlockNo = 12

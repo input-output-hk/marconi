@@ -37,7 +37,16 @@ module Network.JsonRpc.Types (
 ) where
 
 import Control.Applicative (liftA3, (<|>))
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Null), object, withObject, (.:), (.:?), (.=))
+import Data.Aeson (
+  FromJSON (parseJSON),
+  ToJSON (toJSON),
+  Value (Null),
+  object,
+  withObject,
+  (.:),
+  (.:?),
+  (.=),
+ )
 import Data.Aeson.Types (Parser)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (isNothing)
@@ -66,7 +75,7 @@ data Request p = Request
   }
   deriving (Eq, Show)
 
-instance ToJSON p => ToJSON (Request p) where
+instance (ToJSON p) => ToJSON (Request p) where
   toJSON (Request m p ix) =
     object
       . maybe id (onValue "id") ix
@@ -77,7 +86,7 @@ instance ToJSON p => ToJSON (Request p) where
     where
       onValue n v = ((n .= v) :)
 
-instance FromJSON p => FromJSON (Request p) where
+instance (FromJSON p) => FromJSON (Request p) where
   parseJSON = withObject "JsonRpc Request" $ \obj -> do
     ix <- obj .:? "id"
     m <- obj .: "method"
@@ -198,8 +207,8 @@ data JsonRpcContentType
 instance Accept JsonRpcContentType where
   contentTypes _ = "application" // "json-rpc" :| ["application" // "json"]
 
-instance ToJSON a => MimeRender JsonRpcContentType a where
+instance (ToJSON a) => MimeRender JsonRpcContentType a where
   mimeRender _ = mimeRender (Proxy @JSON)
 
-instance FromJSON a => MimeUnrender JsonRpcContentType a where
+instance (FromJSON a) => MimeUnrender JsonRpcContentType a where
   mimeUnrender _ = mimeUnrender (Proxy @JSON)

@@ -26,7 +26,13 @@ import Gen.Marconi.ChainIndex.Mockchain (
 import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Hedgehog (Gen)
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), StorableEvent (UtxoEvent), Utxo (Utxo), UtxoHandle, _address)
+import Marconi.ChainIndex.Indexers.Utxo (
+  BlockInfo (BlockInfo),
+  StorableEvent (UtxoEvent),
+  Utxo (Utxo),
+  UtxoHandle,
+  _address,
+ )
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -56,7 +62,8 @@ genUtxoEventsWithTxs'
   :: ([C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra))
   -> Gen [(StorableEvent UtxoHandle, MockBlock C.BabbageEra)]
 genUtxoEventsWithTxs' genTxBodyContent = do
-  fmap (\block -> (getStorableEventFromBlock block, block)) <$> Gen.genMockchainWithTxBodyGen genTxBodyContent
+  fmap (\block -> (getStorableEventFromBlock block, block))
+    <$> Gen.genMockchainWithTxBodyGen genTxBodyContent
   where
     getStorableEventFromBlock :: MockBlock C.BabbageEra -> StorableEvent UtxoHandle
     getStorableEventFromBlock (MockBlock (BlockHeader slotNo blockHeaderHash blockNo) txs) =

@@ -4,6 +4,9 @@
 
 module Helpers where
 
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
+import Cardano.Streaming qualified as CS
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
 import Control.Monad (void, when)
@@ -12,84 +15,84 @@ import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import GHC.Stack qualified as GHC
+import Hedgehog (MonadTest)
+import Hedgehog qualified as H
+import Hedgehog.Extras.Stock.CallStack qualified as H
+import Hedgehog.Extras.Test qualified as HE
+import Hedgehog.Extras.Test.Base qualified as H
+import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.Environment qualified as IO
-import System.FilePath ((</>))
 import System.IO qualified as IO
 import System.IO.Temp qualified as IO
 import System.Info qualified as IO
 
-import Hedgehog (MonadTest)
-import Hedgehog qualified as H
-import Hedgehog.Extras.Stock.CallStack qualified as H
-import Hedgehog.Extras.Stock.IO.Network.Sprocket qualified as IO
-import Hedgehog.Extras.Test qualified as HE
-import Hedgehog.Extras.Test.Base qualified as H
+{- | Note [cardano-testnet update] }
 
-import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as C
-import Cardano.Streaming qualified as CS
-import Cardano.Testnet qualified as TC (Conf (..), ProjectBase (ProjectBase), YamlFilePath (YamlFilePath), mkConf)
-import Cardano.Testnet qualified as TN hiding (testnetMagic)
-import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
-import Testnet.Util.Runtime qualified as TN
+Everything related to `cardano-testnet` has been commented after we updated to the CHaP release of
+`cardano-api-8.8`. The reason is that `cardano-tesnet` still wasn't updated, and we don't know when
+it will be updated. Thus, we prefer to always be in the latest version of `cardano-api`. However, in
+the near future we're planning to replace cardano-testnet with cardano-node-emulator, so the
+cardano-testnet related code should change anyway.
+-}
 
--- | Start a testnet.
-startTestnet
-  :: TN.TestnetOptions
-  -> FilePath
-  -> FilePath
-  -> H.Integration (C.LocalNodeConnectInfo C.CardanoMode, TC.Conf, TN.TestnetRuntime)
-startTestnet testnetOptions base tempAbsBasePath' = do
-  configurationTemplate <- H.noteShow $ base </> "configuration/defaults/byron-mainnet/configuration.yaml"
-  conf :: TC.Conf <-
-    HE.noteShowM $
-      TC.mkConf
-        (TC.ProjectBase base)
-        (TC.YamlFilePath configurationTemplate)
-        (tempAbsBasePath' <> "/")
-        Nothing
-  tn <- TN.testnet testnetOptions conf
+{- | Start a testnet.
+ startTestnet
+   :: TN.TestnetOptions
+   -> FilePath
+   -> FilePath
+   -> H.Integration (C.LocalNodeConnectInfo C.CardanoMode, TC.Conf, TN.TestnetRuntime)
+ startTestnet testnetOptions base tempAbsBasePath' = do
+   configurationTemplate <- H.noteShow $ base </> "configuration/defaults/byron-mainnet/configuration.yaml"
+   conf :: TC.Conf <-
+     HE.noteShowM $
+       TC.mkConf
+         (TC.ProjectBase base)
+         (TC.YamlFilePath configurationTemplate)
+         (tempAbsBasePath' <> "/")
+         Nothing
+   tn <- TN.testnet testnetOptions conf
+-}
 
-  -- Boilerplate codecs used for protocol serialisation.  The number
-  -- of epochSlots is specific to each blockchain instance. This value
-  -- what the cardano main and testnet uses. Only applies to the Byron
-  -- era.
-  socketPathAbs <- getPoolSocketPathAbs conf tn
-  let epochSlots = C.EpochSlots 21600
-      localNodeConnectInfo =
-        C.LocalNodeConnectInfo
-          { C.localConsensusModeParams = C.CardanoModeParams epochSlots
-          , C.localNodeNetworkId = getNetworkId tn
-          , C.localNodeSocketPath = socketPathAbs
-          }
+--   -- Boilerplate codecs used for protocol serialisation.  The number
+--   -- of epochSlots is specific to each blockchain instance. This value
+--   -- what the cardano main and testnet uses. Only applies to the Byron
+--   -- era.
+--   socketPathAbs <- getPoolSocketPathAbs conf tn
+--   let epochSlots = C.EpochSlots 21600
+--       localNodeConnectInfo =
+--         C.LocalNodeConnectInfo
+--           { C.localConsensusModeParams = C.CardanoModeParams epochSlots
+--           , C.localNodeNetworkId = getNetworkId tn
+--           , C.localNodeSocketPath = socketPathAbs
+--           }
 
-  pure (localNodeConnectInfo, conf, tn)
+--   pure (localNodeConnectInfo, conf, tn)
 
-getNetworkId :: TN.TestnetRuntime -> C.NetworkId
-getNetworkId tn = C.Testnet $ C.NetworkMagic $ fromIntegral (TN.testnetMagic tn)
+-- getNetworkId :: TN.TestnetRuntime -> C.NetworkId
+-- getNetworkId tn = C.Testnet $ C.NetworkMagic $ fromIntegral (TN.testnetMagic tn)
 
-getSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
-getSocketPathAbs conf tn = do
-  let tempAbsPath = TC.tempAbsPath conf
-  socketPath <- IO.sprocketArgumentName <$> H.headM (TN.nodeSprocket <$> TN.bftNodes tn)
-  H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
+-- getSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
+-- getSocketPathAbs conf tn = do
+--   let tempAbsPath = TC.tempAbsPath conf
+--   socketPath <- IO.sprocketArgumentName <$> H.headM (TN.nodeSprocket <$> TN.bftNodes tn)
+--   H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
 
-getPoolSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
-getPoolSocketPathAbs conf tn = do
-  let tempAbsPath = TC.tempAbsPath conf
-  socketPath <- IO.sprocketArgumentName <$> H.headM (TN.poolSprockets tn)
-  H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
+-- getPoolSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
+-- getPoolSocketPathAbs conf tn = do
+--   let tempAbsPath = TC.tempAbsPath conf
+--   socketPath <- IO.sprocketArgumentName <$> H.headM (TN.poolSprockets tn)
+--   H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
 
-readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
-readAs as path = do
-  path' <- H.note path
-  H.leftFailM . liftIO $ C.readFileTextEnvelope as path'
+-- readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
+-- readAs as path = do
+--   path' <- H.note path
+--   H.leftFailM . liftIO $ C.readFileTextEnvelope as path'
 
 -- | An empty transaction
 emptyTxBodyContent
-  :: C.IsShelleyBasedEra era
+  :: (C.IsShelleyBasedEra era)
   => (C.TxValidityLowerBound era, C.TxValidityUpperBound era)
   -> C.ProtocolParameters
   -> C.TxBodyContent C.BuildTx era
@@ -112,6 +115,8 @@ emptyTxBodyContent validityRange pparams =
     , C.txUpdateProposal = C.TxUpdateProposalNone
     , C.txMintValue = C.TxMintNone
     , C.txScriptValidity = C.TxScriptValidityNone
+    , C.txGovernanceActions = C.TxGovernanceActionsNone
+    , C.txVotes = C.TxVotesNone
     }
 
 getProtocolParams
@@ -231,7 +236,7 @@ mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
           (length keyWitnesses)
           networkId
           txBody0
-        :: C.Lovelace
+          :: C.Lovelace
 
   when (howMuch + fee >= totalLovelace) $ fail "Not enough funds"
   let tx =
@@ -273,7 +278,16 @@ mkAddressAdaTxOut address lovelace =
  https://github.com/input-output-hk/cardano-node/blob/d15ff2b736452857612dd533c1ddeea2405a2630/cardano-cli/src/Cardano/CLI/Shelley/Run/Transaction.hs#L1105-L1112
  https://github.com/input-output-hk/cardano-node/blob/d15ff2b736452857612dd533c1ddeea2405a2630/cardano-cli/src/Cardano/CLI/Shelley/Run/Transaction.hs#L1121-L1128
 -}
-calculateFee :: C.IsShelleyBasedEra era => C.ProtocolParameters -> Int -> Int -> Int -> Int -> C.NetworkId -> C.TxBody era -> C.Lovelace
+calculateFee
+  :: (C.IsShelleyBasedEra era)
+  => C.ProtocolParameters
+  -> Int
+  -> Int
+  -> Int
+  -> Int
+  -> C.NetworkId
+  -> C.TxBody era
+  -> C.Lovelace
 calculateFee pparams nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses networkId txBody =
   C.estimateTransactionFee
     networkId
@@ -289,7 +303,7 @@ calculateFee pparams nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses ne
  applied, and also the fee in lovelace.
 -}
 calculateAndUpdateTxFee
-  :: H.MonadTest m
+  :: (H.MonadTest m)
   => C.ProtocolParameters
   -> C.NetworkId
   -> Int
@@ -298,7 +312,9 @@ calculateAndUpdateTxFee
   -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.BabbageEra)
 calculateAndUpdateTxFee pparams networkId lengthTxIns lengthKeyWitnesses txbc = do
   txb <- HE.leftFail $ C.createAndValidateTransactionBody txbc
-  let feeLovelace = calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb :: C.Lovelace
+  let feeLovelace =
+        calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb
+          :: C.Lovelace
       fee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra feeLovelace
       txbc' = txbc{C.txFee = fee}
   return (feeLovelace, txbc')

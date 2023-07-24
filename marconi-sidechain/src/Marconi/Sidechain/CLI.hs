@@ -10,20 +10,20 @@ parseCli = Opt.execParser . programParser =<< Cli.getGitSha
 programParser :: String -> Opt.ParserInfo CliArgs
 programParser gitSha =
   Opt.info
-    (Opt.helper <*> Cli.commonVersionOption gitSha <*> parserCliArgs)
+    (Opt.helper <*> Cli.commonVersionOptionParser gitSha <*> parserCliArgs)
     (Cli.marconiDescr "marconi-sidechain")
 
 parserCliArgs :: Opt.Parser CliArgs
 parserCliArgs =
   CliArgs
-    <$> Cli.commonSocketPath
+    <$> Cli.commonSocketPathParser
     <*> Opt.strOption
       ( Opt.long "node-config-path"
           <> Opt.help "Path to node configuration which you are connecting to."
       )
-    <*> Cli.commonDbDir
-    <*> Cli.commonMaybePort
-    <*> Cli.pNetworkId
-    <*> Cli.commonMinIndexingDepth
-    <*> Cli.commonMaybeTargetAddress
-    <*> Cli.commonMaybeTargetAsset
+    <*> Cli.commonDbDirParser
+    <*> Cli.commonMaybePortParser
+    <*> Cli.pNetworkIdParser
+    <*> Cli.commonMinIndexingDepthParser
+    <*> Cli.commonMaybeTargetAddressParser
+    <*> Cli.commonMaybeTargetAssetParser

@@ -17,7 +17,7 @@ import Control.Concurrent.STM (atomically)
 import Control.Lens.Operators ((^.))
 import Control.Monad.Except (runExceptT)
 
-import Marconi.ChainIndex.CLI (multiAddresses)
+import Marconi.ChainIndex.CLI (multiAddressesParser)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.Sidechain.Api.HttpServer (bootstrap)
@@ -25,7 +25,19 @@ import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
 import Marconi.Sidechain.Api.Types (SidechainEnv, sidechainAddressUtxoIndexer, sidechainEnvIndexers)
 import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
 
-import Options.Applicative (Parser, execParser, help, helper, info, long, metavar, optional, short, strOption, (<**>))
+import Options.Applicative (
+  Parser,
+  execParser,
+  help,
+  helper,
+  info,
+  long,
+  metavar,
+  optional,
+  short,
+  strOption,
+  (<**>),
+ )
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
@@ -46,7 +58,7 @@ cliParser =
           <> metavar "PATH"
           <> help "directory path to the utxo SQLite database."
       )
-    <*> (optional . multiAddresses)
+    <*> (optional . multiAddressesParser)
       ( long "addresses-to-index"
           <> help
             ( "Bech32 Shelley addresses to index."

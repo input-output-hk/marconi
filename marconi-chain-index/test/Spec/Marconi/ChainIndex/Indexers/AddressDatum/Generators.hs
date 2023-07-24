@@ -14,8 +14,11 @@ import Test.Gen.Cardano.Api.Typed qualified as CGen
 
 genTxBodyContentWithPlutusScripts :: Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentWithPlutusScripts = do
-  txIns <- map (,C.BuildTxWith (C.KeyWitness C.KeyWitnessForSpending)) <$> Gen.list (Range.constant 1 10) CGen.genTxIn
-  txInsCollateral <- C.TxInsCollateral C.CollateralInBabbageEra <$> Gen.list (Range.linear 1 10) CGen.genTxIn
+  txIns <-
+    map (,C.BuildTxWith (C.KeyWitness C.KeyWitnessForSpending))
+      <$> Gen.list (Range.constant 1 10) CGen.genTxIn
+  txInsCollateral <-
+    C.TxInsCollateral C.CollateralInBabbageEra <$> Gen.list (Range.linear 1 10) CGen.genTxIn
   let txInsReference = C.TxInsReferenceNone
   txOuts <- Gen.list (Range.constant 1 10) (genTxOutTxContext C.BabbageEra)
   let txTotalCollateral = C.TxTotalCollateralNone
@@ -31,6 +34,8 @@ genTxBodyContentWithPlutusScripts = do
   let txUpdateProposal = C.TxUpdateProposalNone
   let txMintValue = C.TxMintNone
   let txScriptValidity = C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid
+  let txGovernanceActions = C.TxGovernanceActionsNone
+  let txVotes = C.TxVotesNone
 
   pure $
     C.TxBodyContent
@@ -51,6 +56,8 @@ genTxBodyContentWithPlutusScripts = do
       , C.txUpdateProposal
       , C.txMintValue
       , C.txScriptValidity
+      , C.txGovernanceActions
+      , C.txVotes
       }
   where
     -- Copied from cardano-api. Delete when this function is reexported

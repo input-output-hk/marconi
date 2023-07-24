@@ -10,7 +10,7 @@ import System.Directory (createDirectoryIfMissing)
 {- | the worker don't have a hook to notify the query part
  (we use a monoid because some hooks return unit while other returns a list of events)
 -}
-noHook :: Monoid m => a -> IO m
+noHook :: (Monoid m) => a -> IO m
 noHook = const $ pure mempty
 
 main :: IO ()
@@ -32,9 +32,9 @@ main = do
             Nothing -> []
 
   Indexers.runIndexers
-    (Cli.optionsSocketPath o)
-    (Cli.optionsNetworkId o)
-    (Cli.optionsChainPoint o)
-    (Cli.optionsMinIndexingDepth o)
+    (Cli.optionsSocketPath $ Cli.commonOptions o)
+    (Cli.optionsNetworkId $ Cli.commonOptions o)
+    (Cli.optionsChainPoint $ Cli.commonOptions o)
+    (Cli.optionsMinIndexingDepth $ Cli.commonOptions o)
     "marconi-chain-index"
     indexers

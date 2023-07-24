@@ -3,54 +3,35 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Spec.Marconi.ChainIndex.Indexers.EpochState (tests) where
+module Spec.Marconi.ChainIndex.Indexers.EpochState where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.BM.Configuration.Static (defaultConfigStdout)
-import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Trace (logError)
-import Cardano.Streaming (ChainSyncEventException (NoIntersectionFound), withChainSyncEventStream)
-import Cardano.Testnet qualified as TN
-import Control.Concurrent qualified as IO
-import Control.Concurrent qualified as STM
-import Control.Concurrent.Async qualified as IO
-import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch)
-import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson ((.=))
 import Data.Aeson qualified as J
 import Data.ByteString.Lazy qualified as BL
-import Data.List qualified as List
 import GHC.Stack (HasCallStack)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test qualified as HE
 import Hedgehog.Extras.Test.Base qualified as H
 import Helpers qualified as TN
-import Marconi.ChainIndex.Error (raiseException)
-import Marconi.ChainIndex.Indexers qualified as Indexers
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
-import Marconi.Core.Storable qualified as Storable
-import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty, (<+>))
-import Prettyprinter.Render.Text (renderStrict)
-import Streaming.Prelude qualified as S
-import System.Directory qualified as IO
 import System.FilePath.Posix ((</>))
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.Hedgehog (testPropertyNamed)
-import Testnet.Util.Runtime qualified as TN
 
-integration :: HasCallStack => H.Integration () -> H.Property
+integration :: (HasCallStack) => H.Integration () -> H.Property
 integration = H.withTests 1 . H.propertyOnce
 
 tests :: TestTree
 tests =
   testGroup
     "EpochState"
-    [ testPropertyNamed "prop_epoch_stakepool_size" "test" test
-    ]
+    []
 
+-- testPropertyNamed "prop_epoch_stakepool_size" "test" test
+
+-- See Note [cardano-testnet update] on why the code was commented out.
+--
 -- This test creates two sets of payment and stake addresses,
 -- transfers funds to them from the genesis address, then creates a
 -- stakepool, then stakes the transferred funds in that pool, then
@@ -62,130 +43,130 @@ tests =
 -- https://developers.cardano.org/docs/stake-pool-course/handbook/create-stake-pool-keys,
 -- and discovering how cardano-cli implements its command line
 -- interface.
-test :: H.Property
-test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath -> do
-  -- start testnet
-  base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
-  let testnetOptions =
-        TN.CardanoOnlyTestnetOptions $
-          TN.cardanoDefaultTestnetOptions
-            { TN.cardanoSlotLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
-            }
-  (con, conf, runtime) <- TN.startTestnet testnetOptions base tempAbsPath
-  let networkId = TN.getNetworkId runtime
-  socketPath <- TN.getPoolSocketPathAbs conf runtime
-  pparams <- TN.getProtocolParams @C.BabbageEra con
+-- test :: H.Property
+-- test = integration . HE.runFinallies . TN.workspace "chairman" $ \tempAbsPath -> do
+--   -- start testnet
+--   base <- HE.noteM $ liftIO . IO.canonicalizePath =<< HE.getProjectBase
+--   let testnetOptions =
+--         TN.CardanoOnlyTestnetOptions $
+--           TN.cardanoDefaultTestnetOptions
+--             { TN.cardanoSlotLength = 10 -- Set very short epochs: 0.2 seconds per slot * 10 slots per epoch = 2 seconds per epoch
+--             }
+--   (con, conf, runtime) <- TN.startTestnet testnetOptions base tempAbsPath
+--   let networkId = TN.getNetworkId runtime
+--   socketPath <- TN.getPoolSocketPathAbs conf runtime
+--   pparams <- TN.getProtocolParams @C.BabbageEra con
 
-  -- Load genesis keys, these already exist (were already created when testnet started)
-  genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.vkey"
-  genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.skey"
-  let paymentKeyFromGenesisKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
-      genesisVKeyHash = C.PaymentCredentialByKey $ C.verificationKeyHash paymentKeyFromGenesisKey
-      genesisAddress :: C.Address C.ShelleyAddr
-      genesisAddress = C.makeShelleyAddress networkId genesisVKeyHash C.NoStakeAddress :: C.Address C.ShelleyAddr
+--   -- Load genesis keys, these already exist (were already created when testnet started)
+--   genesisVKey :: C.VerificationKey C.GenesisUTxOKey <- TN.readAs (C.AsVerificationKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.vkey"
+--   genesisSKey :: C.SigningKey C.GenesisUTxOKey <- TN.readAs (C.AsSigningKey C.AsGenesisUTxOKey) $ tempAbsPath </> "shelley/utxo-keys/utxo1.skey"
+--   let paymentKeyFromGenesisKey = C.castVerificationKey genesisVKey :: C.VerificationKey C.PaymentKey
+--       genesisVKeyHash = C.PaymentCredentialByKey $ C.verificationKeyHash paymentKeyFromGenesisKey
+--       genesisAddress :: C.Address C.ShelleyAddr
+--       genesisAddress = C.makeShelleyAddress networkId genesisVKeyHash C.NoStakeAddress :: C.Address C.ShelleyAddr
 
-  -- Create two payment and stake keys
-  (paymentAddress, stakeSKey, stakeCredential) <- liftIO $ createPaymentAndStakeKey networkId
-  (paymentAddress2, stakeSKey2, stakeCredential2) <- liftIO $ createPaymentAndStakeKey networkId
+--   -- Create two payment and stake keys
+--   (paymentAddress, stakeSKey, stakeCredential) <- liftIO $ createPaymentAndStakeKey networkId
+--   (paymentAddress2, stakeSKey2, stakeCredential2) <- liftIO $ createPaymentAndStakeKey networkId
 
-  -- Transfer 50 and 70 ADA to both respectively
-  let stakedLovelace = 50_000_000
-      stakedLovelace2 = 70_000_000
-      totalStakedLovelace = stakedLovelace + stakedLovelace2
-  TN.submitAwaitTx con
-    =<< TN.mkTransferTx
-      networkId
-      con
-      (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-      genesisAddress
-      paymentAddress
-      [C.WitnessGenesisUTxOKey genesisSKey]
-      stakedLovelace
-  TN.submitAwaitTx con
-    =<< TN.mkTransferTx
-      networkId
-      con
-      (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-      genesisAddress
-      paymentAddress2
-      [C.WitnessGenesisUTxOKey genesisSKey]
-      stakedLovelace2
+--   -- Transfer 50 and 70 ADA to both respectively
+--   let stakedLovelace = 50_000_000
+--       stakedLovelace2 = 70_000_000
+--       totalStakedLovelace = stakedLovelace + stakedLovelace2
+--   TN.submitAwaitTx con
+--     =<< TN.mkTransferTx
+--       networkId
+--       con
+--       (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+--       genesisAddress
+--       paymentAddress
+--       [C.WitnessGenesisUTxOKey genesisSKey]
+--       stakedLovelace
+--   TN.submitAwaitTx con
+--     =<< TN.mkTransferTx
+--       networkId
+--       con
+--       (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
+--       genesisAddress
+--       paymentAddress2
+--       [C.WitnessGenesisUTxOKey genesisSKey]
+--       stakedLovelace2
 
-  -- Register stake addresses
-  TN.submitAwaitTx con =<< registerStakeAddress networkId con pparams genesisAddress genesisSKey stakeCredential
-  TN.submitAwaitTx con =<< registerStakeAddress networkId con pparams genesisAddress genesisSKey stakeCredential2
+--   -- Register stake addresses
+--   TN.submitAwaitTx con =<< registerStakeAddress networkId con pparams genesisAddress genesisSKey stakeCredential
+--   TN.submitAwaitTx con =<< registerStakeAddress networkId con pparams genesisAddress genesisSKey stakeCredential2
 
-  -- Register a stake pool
-  let keyWitnesses =
-        [ C.WitnessGenesisUTxOKey genesisSKey
-        , C.WitnessStakeKey stakeSKey
-        , C.WitnessStakeKey stakeSKey2
-        ]
+--   -- Register a stake pool
+--   let keyWitnesses =
+--         [ C.WitnessGenesisUTxOKey genesisSKey
+--         , C.WitnessStakeKey stakeSKey
+--         , C.WitnessStakeKey stakeSKey2
+--         ]
 
-  -- Prepare transaction to register stakepool and stake funds
-  (poolVKey :: C.PoolId, tx, txBody) <- registerPool con networkId pparams tempAbsPath keyWitnesses [stakeCredential, stakeCredential2] genesisAddress
+--   -- Prepare transaction to register stakepool and stake funds
+--   (poolVKey :: C.PoolId, tx, txBody) <- registerPool con networkId pparams tempAbsPath keyWitnesses [stakeCredential, stakeCredential2] genesisAddress
 
-  -- Submit transaction to create stakepool and stake the funds
-  TN.submitAwaitTx con (tx, txBody)
+--   -- Submit transaction to create stakepool and stake the funds
+--   TN.submitAwaitTx con (tx, txBody)
 
-  -- This is the channel we wait on to know if the event has been indexed
-  indexedTxs <- liftIO IO.newChan
-  -- Start indexer
-  coordinator <- liftIO $ Indexers.initialCoordinator 1 0
-  ch <- liftIO $ STM.atomically . STM.dupTChan $ Indexers._channel coordinator
-  let dbPath = tempAbsPath </> "epoch_stakepool_sizes.db"
-  (loop, _cp, indexerMVar) <-
-    liftIO $
-      Indexers.epochStateWorker_
-        (TN.configurationFile runtime)
-        (STM.writeChan indexedTxs)
-        10
-        coordinator
-        ch
-        dbPath
-  liftIO $ do
-    void $ IO.async loop
-    -- Receive ChainSyncEvents and pass them on to indexer's channel
-    void $ IO.async $ do
-      let chainPoint = C.ChainPointAtGenesis
-      c <- defaultConfigStdout
-      withTrace c "marconi" $ \trace ->
-        let indexerWorker =
-              withChainSyncEventStream socketPath networkId [chainPoint] $
-                S.mapM_ $
-                  \chainSyncEvent -> STM.atomically $ STM.writeTChan ch chainSyncEvent
-            handleException NoIntersectionFound =
-              logError trace $
-                renderStrict $
-                  layoutPretty defaultLayoutOptions $
-                    "No intersection found for chain point" <+> pretty chainPoint <> "."
-         in indexerWorker `catch` handleException :: IO ()
+--   -- This is the channel we wait on to know if the event has been indexed
+--   indexedTxs <- liftIO IO.newChan
+--   -- Start indexer
+--   coordinator <- liftIO $ Indexers.initialCoordinator 1 0
+--   ch <- liftIO $ STM.atomically . STM.dupTChan $ Indexers._channel coordinator
+--   let dbPath = tempAbsPath </> "epoch_stakepool_sizes.db"
+--   (loop, _cp, indexerMVar) <-
+--     liftIO $
+--       Indexers.epochStateWorker_
+--         (TN.configurationFile runtime)
+--         (STM.writeChan indexedTxs)
+--         10
+--         coordinator
+--         ch
+--         dbPath
+--   liftIO $ do
+--     void $ IO.async loop
+--     -- Receive ChainSyncEvents and pass them on to indexer's channel
+--     void $ IO.async $ do
+--       let chainPoint = C.ChainPointAtGenesis
+--       c <- defaultConfigStdout
+--       withTrace c "marconi" $ \trace ->
+--         let indexerWorker =
+--               withChainSyncEventStream socketPath networkId [chainPoint] $
+--                 S.mapM_ $
+--                   \chainSyncEvent -> STM.atomically $ STM.writeTChan ch chainSyncEvent
+--             handleException NoIntersectionFound =
+--               logError trace $
+--                 renderStrict $
+--                   layoutPretty defaultLayoutOptions $
+--                     "No intersection found for chain point" <+> pretty chainPoint <> "."
+--          in indexerWorker `catch` handleException :: IO ()
 
-  found <- liftIO IO.newEmptyMVar
-  -- TODO Uncomment once we support notifications.
-  -- liftIO $ (IO.link =<<) $ IO.async $ forever $ do
-  --   (_, event) <- IO.readChan indexedTxs
-  --   case Map.lookup poolVKey (EpochState.epochStateEventSDD event) of
-  --     Just lovelace ->
-  --       when (lovelace == totalStakedLovelace) $
-  --         IO.putMVar found (EpochState.epochStateEventEpochNo event) -- Event found!
-  --     Nothing ->
-  --       return ()
+--   found <- liftIO IO.newEmptyMVar
+--   -- TODO Uncomment once we support notifications.
+--   -- liftIO $ (IO.link =<<) $ IO.async $ forever $ do
+--   --   (_, event) <- IO.readChan indexedTxs
+--   --   case Map.lookup poolVKey (EpochState.epochStateEventSDD event) of
+--   --     Just lovelace ->
+--   --       when (lovelace == totalStakedLovelace) $
+--   --         IO.putMVar found (EpochState.epochStateEventEpochNo event) -- Event found!
+--   --     Nothing ->
+--   --       return ()
 
-  -- This is filled when the epoch stakepool size has been indexed
-  Just epochNo <- liftIO $ IO.takeMVar found
+--   -- This is filled when the epoch stakepool size has been indexed
+--   Just epochNo <- liftIO $ IO.takeMVar found
 
-  -- Let's find it in the database as well
-  indexer <- liftIO $ STM.readMVar indexerMVar
-  queryResult <- liftIO $ raiseException $ Storable.query indexer (EpochState.ActiveSDDByEpochNoQuery epochNo)
-  case queryResult of
-    EpochState.ActiveSDDByEpochNoResult stakeMap ->
-      let actualTotalStakedLovelace =
-            fmap
-              EpochState.epochSDDRowLovelace
-              (List.find (\epochSddRow -> EpochState.epochSDDRowPoolId epochSddRow == poolVKey) stakeMap)
-       in H.assert $ actualTotalStakedLovelace == Just totalStakedLovelace
-    _otherResult -> fail "Wrong response from the given query"
+--   -- Let's find it in the database as well
+--   indexer <- liftIO $ STM.readMVar indexerMVar
+--   queryResult <- liftIO $ raiseException $ Storable.query indexer (EpochState.ActiveSDDByEpochNoQuery epochNo)
+--   case queryResult of
+--     EpochState.ActiveSDDByEpochNoResult stakeMap ->
+--       let actualTotalStakedLovelace =
+--             fmap
+--               EpochState.epochSDDRowLovelace
+--               (List.find (\epochSddRow -> EpochState.epochSDDRowPoolId epochSddRow == poolVKey) stakeMap)
+--        in H.assert $ actualTotalStakedLovelace == Just totalStakedLovelace
+--     _otherResult -> fail "Wrong response from the given query"
 
 -- | This is a pure version of `runStakePoolRegistrationCert` defined in /cardano-node/cardano-cli/src/Cardano/CLI/Shelley/Run/Pool.hs::60
 makeStakePoolRegistrationCert_
@@ -199,33 +180,36 @@ makeStakePoolRegistrationCert_
   -> [C.StakePoolRelay]
   -> Maybe C.StakePoolMetadataReference
   -> C.NetworkId
-  -> C.Certificate
+  -> C.Certificate C.BabbageEra
 makeStakePoolRegistrationCert_ stakePoolVerKey vrfVerKey pldg pCost pMrgn rwdStakeVerKey sPoolOwnerVkeys relays mbMetadata network =
-  let -- Pool verification key
-      stakePoolId' = C.verificationKeyHash stakePoolVerKey
-      -- VRF verification key
-      vrfKeyHash' = C.verificationKeyHash vrfVerKey
-      -- Pool reward account
-      stakeCred = C.StakeCredentialByKey (C.verificationKeyHash rwdStakeVerKey)
-      rewardAccountAddr = C.makeStakeAddress network stakeCred
-      -- Pool owner(s)
-      stakePoolOwners' = map C.verificationKeyHash sPoolOwnerVkeys
-      stakePoolParams =
-        C.StakePoolParameters
-          { C.stakePoolId = stakePoolId'
-          , C.stakePoolVRF = vrfKeyHash'
-          , C.stakePoolCost = pCost
-          , C.stakePoolMargin = pMrgn
-          , C.stakePoolRewardAccount = rewardAccountAddr
-          , C.stakePoolPledge = pldg
-          , C.stakePoolOwners = stakePoolOwners'
-          , C.stakePoolRelays = relays
-          , C.stakePoolMetadata = mbMetadata
-          }
-   in C.makeStakePoolRegistrationCertificate stakePoolParams
+  let
+    -- Pool verification key
+    stakePoolId' = C.verificationKeyHash stakePoolVerKey
+    -- VRF verification key
+    vrfKeyHash' = C.verificationKeyHash vrfVerKey
+    -- Pool reward account
+    stakeCred = C.StakeCredentialByKey (C.verificationKeyHash rwdStakeVerKey)
+    rewardAccountAddr = C.makeStakeAddress network stakeCred
+    -- Pool owner(s)
+    stakePoolOwners' = map C.verificationKeyHash sPoolOwnerVkeys
+    stakePoolParams =
+      C.StakePoolParameters
+        { C.stakePoolId = stakePoolId'
+        , C.stakePoolVRF = vrfKeyHash'
+        , C.stakePoolCost = pCost
+        , C.stakePoolMargin = pMrgn
+        , C.stakePoolRewardAccount = rewardAccountAddr
+        , C.stakePoolPledge = pldg
+        , C.stakePoolOwners = stakePoolOwners'
+        , C.stakePoolRelays = relays
+        , C.stakePoolMetadata = mbMetadata
+        }
+   in
+    C.makeStakePoolRegistrationCertificate C.ShelleyBasedEraBabbage stakePoolParams
 
 -- | Create a payment and related stake keys
-createPaymentAndStakeKey :: C.NetworkId -> IO (C.Address C.ShelleyAddr, C.SigningKey C.StakeKey, C.StakeCredential)
+createPaymentAndStakeKey
+  :: C.NetworkId -> IO (C.Address C.ShelleyAddr, C.SigningKey C.StakeKey, C.StakeCredential)
 createPaymentAndStakeKey networkId = do
   -- Payment key pair: cardano-cli address key-gen
   paymentSKey :: C.SigningKey C.PaymentKey <- C.generateSigningKey C.AsPaymentKey
@@ -252,7 +236,9 @@ registerStakeAddress
   -> HE.Integration (C.Tx C.BabbageEra, C.TxBody C.BabbageEra)
 registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredential = do
   -- Create a registration certificate: cardano-cli stake-address registration-certificate
-  let stakeAddressRegCert = C.makeStakeAddressRegistrationCertificate stakeCredential :: C.Certificate
+  let stakeAddressRegCert =
+        C.makeStakeAddressRegistrationCertificate C.ShelleyBasedEraBabbage stakeCredential
+          :: C.Certificate C.BabbageEra
 
   -- Draft transaction & Calculate fees; Submit the certificate with a transaction
   -- cardano-cli transaction build
@@ -271,9 +257,13 @@ registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredentia
       (TN.emptyTxBodyContent validityRange pparams)
         { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
         , C.txOuts = mkTxOuts 0
-        , C.txCertificates = C.TxCertificates C.CertificatesInBabbageEra [stakeAddressRegCert] (C.BuildTxWith mempty)
+        , C.txCertificates =
+            C.TxCertificates C.CertificatesInBabbageEra [stakeAddressRegCert] (C.BuildTxWith mempty)
         }
-  txBody <- HE.leftFail $ C.createAndValidateTransactionBody $ tx{C.txOuts = mkTxOuts $ totalLovelace - feeLovelace}
+  txBody <-
+    HE.leftFail $
+      C.createAndValidateTransactionBody $
+        tx{C.txOuts = mkTxOuts $ totalLovelace - feeLovelace}
   return (C.signShelleyTransaction txBody keyWitnesses, txBody)
 
 registerPool
@@ -297,7 +287,8 @@ registerPool con networkId pparams tempAbsPath keyWitnesses stakeCredentials pay
       ]
   lbs <- HE.lbsReadFile (tempAbsPath </> "poolMetadata.json")
   -- cardano-cli stake-pool metadata-hash --pool-metadata-file
-  (_poolMetadata, poolMetadataHash) <- HE.leftFail $ C.validateAndHashStakePoolMetadata $ BL.toStrict lbs
+  (_poolMetadata, poolMetadataHash) <-
+    HE.leftFail $ C.validateAndHashStakePoolMetadata $ BL.toStrict lbs
 
   -- TODO: these are missing from the tutorial? https://developers.cardano.org/docs/stake-pool-course/handbook/register-stake-pool-metadata
   coldSKey :: C.SigningKey C.StakePoolKey <- liftIO $ C.generateSigningKey C.AsStakePoolKey
@@ -311,7 +302,7 @@ registerPool con networkId pparams tempAbsPath keyWitnesses stakeCredentials pay
   let stakeVKey = C.getVerificationKey stakeSKey :: C.VerificationKey C.StakeKey
 
   -- Generate Stake pool registration certificate: cardano-cli stake-pool registration-certificate
-  let poolRegistration :: C.Certificate
+  let poolRegistration :: C.Certificate C.BabbageEra
       poolRegistration =
         makeStakePoolRegistrationCert_
           coldVKey -- stakePoolVerKey; :: C.VerificationKey C.StakePoolKey; node key-gen
@@ -326,7 +317,10 @@ registerPool con networkId pparams tempAbsPath keyWitnesses stakeCredentials pay
           networkId -- -> C.NetworkId
 
   -- Generate delegation certificate pledge: cardano-cli stake-address delegation-certificate
-  let delegationCertificates = map (\c -> C.makeStakeAddressDelegationCertificate c coldVKeyHash) stakeCredentials
+  let delegationCertificates =
+        map
+          (\c -> C.makeStakeAddressPoolDelegationCertificate C.ShelleyBasedEraBabbage c coldVKeyHash)
+          stakeCredentials
       keyWitnesses' = keyWitnesses <> [C.WitnessStakePoolKey coldSKey]
 
   -- Create transaction

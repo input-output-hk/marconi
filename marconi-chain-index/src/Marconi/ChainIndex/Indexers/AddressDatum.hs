@@ -82,6 +82,7 @@ import Data.Maybe (
  )
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Void (Void)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -91,7 +92,12 @@ import Marconi.ChainIndex.Error (
   liftSQLError,
  )
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
+import Marconi.ChainIndex.Indexers.LastSync (
+  addLastSyncPoints,
+  createLastSyncTable,
+  queryLastSyncPoint,
+  rollbackLastSyncPoints,
+ )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Storable (
   Buffered (persistToStorage),
@@ -117,7 +123,7 @@ data AddressDatumHandle = AddressDatumHandle
   , _addressDatumHandleDiskStore :: Int
   }
 
-type instance StorableMonad AddressDatumHandle = ExceptT IndexerError IO
+type instance StorableMonad AddressDatumHandle = ExceptT (IndexerError Void) IO
 
 {- | 'StorableEvent AddressDatumHandle is the type of events. Events are the data atoms that the
  indexer consumes.
@@ -208,7 +214,8 @@ toAddressDatumIndexEvent addressFilter txs = AddressDatumIndexEvent addressDatum
     plutusDatums :: Map (C.Hash C.ScriptData) C.ScriptData
     plutusDatums = Datum.getPlutusDatumsFromTxs txs
 
-    filteredAddressDatums :: [(C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))]
+    filteredAddressDatums
+      :: [(C.AddressAny, Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))]
     filteredAddressDatums = Datum.getFilteredAddressDatumsFromTxs addressFilter txs
 
     filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
@@ -219,7 +226,7 @@ toAddressDatumIndexEvent addressFilter txs = AddressDatumIndexEvent addressDatum
 
 instance Buffered AddressDatumHandle where
   persistToStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent AddressDatumHandle)
     -> AddressDatumHandle
     -> StorableMonad AddressDatumHandle AddressDatumHandle
@@ -347,13 +354,14 @@ asEvents events =
 
 instance Queryable AddressDatumHandle where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent AddressDatumHandle)
     -> AddressDatumHandle
     -> StorableQuery AddressDatumHandle
     -> StorableMonad AddressDatumHandle (StorableResult AddressDatumHandle)
   queryStorage es (AddressDatumHandle c _) AllAddressesQuery = liftSQLError CantQueryIndexer $ do
-    persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
+    persistedData
+      :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
       SQL.query
         c
         [sql|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash
@@ -369,7 +377,8 @@ instance Queryable AddressDatumHandle where
           concatMap (\(AddressDatumIndexEvent addrMap _ _) -> Map.keys addrMap) addressDatumIndexEvents
   queryStorage es (AddressDatumHandle c _) (AddressDatumQuery q) =
     liftSQLError CantQueryIndexer $ do
-      persistedData :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
+      persistedData
+        :: [(C.AddressAny, C.Hash C.ScriptData, Maybe C.ScriptData, C.SlotNo, C.Hash C.BlockHeader)] <-
         SQL.query
           c
           [sql|SELECT address, address_datums.datum_hash, datumhash_datum.datum, slot_no, block_hash

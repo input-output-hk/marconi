@@ -15,7 +15,17 @@ module Marconi.Core.Experiment.Transformer.WithCache (
   HasCacheConfig (cache),
 ) where
 
-import Control.Lens (At (at), Getter, Indexable (indexed), IndexedTraversal', Lens', itraverseOf, lens, makeLenses, to)
+import Control.Lens (
+  At (at),
+  Getter,
+  Indexable (indexed),
+  IndexedTraversal',
+  Lens',
+  itraverseOf,
+  lens,
+  makeLenses,
+  to,
+ )
 import Control.Lens.Operators ((%~), (&), (^.))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Data.Foldable (foldl')
@@ -86,18 +96,18 @@ makeLenses 'WithCache
 deriving via
   (IndexWrapper (CacheConfig query) indexer)
   instance
-    IsSync m event indexer => IsSync m event (WithCache query indexer)
+    (IsSync m event indexer) => IsSync m event (WithCache query indexer)
 
 deriving via
   (IndexWrapper (CacheConfig query) indexer)
   instance
-    Closeable m indexer => Closeable m (WithCache query indexer)
+    (Closeable m indexer) => Closeable m (WithCache query indexer)
 
 {- | A smart constructor for 'WithCache'.
  The cache starts empty, you can populate it with 'addCacheFor'
 -}
 withCache
-  :: Ord query
+  :: (Ord query)
   => (Timed (Point event) (Maybe event) -> Result query -> Result query)
   -> indexer event
   -> WithCache query indexer event
@@ -149,13 +159,13 @@ onForward = cacheWrapper . wrapperConfig . configOnForward
  If you want to add several indexers at the same time, use @traverse@.
 -}
 addCacheFor
-  :: Queryable (ExceptT (QueryError query) m) event query indexer
-  => IsSync (ExceptT (QueryError query) m) event indexer
-  => HasCacheConfig query indexer
-  => Monad m
-  => MonadError IndexerError m
-  => Ord query
-  => Ord (Point event)
+  :: (Queryable (ExceptT (QueryError query) m) event query indexer)
+  => (IsSync (ExceptT (QueryError query) m) event indexer)
+  => (HasCacheConfig query indexer)
+  => (Monad m)
+  => (MonadError IndexerError m)
+  => (Ord query)
+  => (Ord (Point event))
   => query
   -> indexer event
   -> m (indexer event)
@@ -189,9 +199,9 @@ instance
     pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
 
 rollbackCache
-  :: Applicative f
-  => Ord (Point event)
-  => Queryable f event query indexer
+  :: (Applicative f)
+  => (Ord (Point event))
+  => (Queryable f event query indexer)
   => Point event
   -> WithCache query indexer event
   -> f (WithCache query indexer event)

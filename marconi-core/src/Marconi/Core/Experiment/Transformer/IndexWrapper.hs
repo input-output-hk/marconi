@@ -105,14 +105,14 @@ instance
  If you don't want to perform any other side logic, use @deriving via@ instead.
 -}
 lastSyncPointVia
-  :: IsSync m event indexer
+  :: (IsSync m event indexer)
   => Getter s (indexer event)
   -> s
   -> m (Point event)
 lastSyncPointVia l = lastSyncPoint . view l
 
 instance
-  IsSync event m index
+  (IsSync event m index)
   => IsSync event m (IndexWrapper config index)
   where
   lastSyncPoint = lastSyncPointVia wrappedIndexer
@@ -121,14 +121,14 @@ instance
  If you don't want to perform any other side logic, use @deriving via@ instead.
 -}
 closeVia
-  :: Closeable m indexer
+  :: (Closeable m indexer)
   => Getter s (indexer event)
   -> s
   -> m ()
 closeVia l = close . view l
 
 instance
-  Closeable m index
+  (Closeable m index)
   => Closeable m (IndexWrapper config index)
   where
   close = closeVia wrappedIndexer
@@ -161,7 +161,7 @@ queryLatestVia
 queryLatestVia l q = queryLatest q . view l
 
 instance
-  Queryable m event query indexer
+  (Queryable m event query indexer)
   => Queryable m event query (IndexWrapper config indexer)
   where
   query = queryVia wrappedIndexer

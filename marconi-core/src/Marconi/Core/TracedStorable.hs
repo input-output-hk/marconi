@@ -90,7 +90,8 @@ data ControlNotification pt n
 
 type family StorableMonad h :: Type -> Type
 
-type ControlTracer h = Tracer (StorableMonad h) (ControlNotification (StorablePoint h) (StorableNotifications h))
+type ControlTracer h =
+  Tracer (StorableMonad h) (ControlNotification (StorablePoint h) (StorableNotifications h))
 
 type AppTracer h = Tracer (StorableMonad h) (StorableNotifications h)
 
@@ -127,7 +128,7 @@ type AppTracer h = Tracer (StorableMonad h) (StorableNotifications h)
 -}
 class Buffered h where
   -- | This function persists the memory/buffer events to disk when the memory buffer is filled.
-  persistToStorage :: Foldable f => AppTracer h -> f (StorableEvent h) -> h -> StorableMonad h h
+  persistToStorage :: (Foldable f) => AppTracer h -> f (StorableEvent h) -> h -> StorableMonad h h
 
   {- This function retrieves the events from the disk/events area.
      If the user chooses to only store events, without accumulating them, this function
@@ -143,7 +144,7 @@ class Buffered h where
 -}
 class Queryable h where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => AppTracer h
     -> StorablePoint h
     -> f (StorableEvent h)
@@ -201,19 +202,25 @@ data SyntheticEvent e p
   = Event !e
   | Synthetic !p
 
-syntheticPoint :: HasPoint e p => SyntheticEvent e p -> p
+syntheticPoint :: (HasPoint e p) => SyntheticEvent e p -> p
 syntheticPoint (Event e) = getPoint e
 syntheticPoint (Synthetic p) = p
 
-foldEvents :: forall f h. Foldable f => f (SyntheticEvent (StorableEvent h) (StorablePoint h)) -> [StorableEvent h]
+foldEvents
+  :: forall f h
+   . (Foldable f)
+  => f (SyntheticEvent (StorableEvent h) (StorablePoint h))
+  -> [StorableEvent h]
 foldEvents = reverse . foldl' unwrap []
   where
-    unwrap :: [StorableEvent h] -> SyntheticEvent (StorableEvent h) (StorablePoint h) -> [StorableEvent h]
+    unwrap
+      :: [StorableEvent h] -> SyntheticEvent (StorableEvent h) (StorablePoint h) -> [StorableEvent h]
     unwrap acc (Synthetic _) = acc
     unwrap acc (Event e) = e : acc
 
 data Storage h = Storage
-  { _events :: !(VM.MVector (PrimState (StorableMonad h)) (SyntheticEvent (StorableEvent h) (StorablePoint h)))
+  { _events
+      :: !(VM.MVector (PrimState (StorableMonad h)) (SyntheticEvent (StorableEvent h) (StorablePoint h)))
   , _cursor :: !Int
   }
 $(Lens.makeLenses ''Storage)
@@ -226,7 +233,7 @@ data State h = State
 $(Lens.makeLenses ''State)
 
 emptyState
-  :: PrimMonad (StorableMonad h)
+  :: (PrimMonad (StorableMonad h))
   => Int
   -> h
   -> StorableMonad h (State h)
@@ -254,8 +261,8 @@ getMemoryEvents s = VM.slice 0 (s ^. cursor) (s ^. events)
 
 -- Get events from memory buffer and disk buffer.
 getEvents
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => State h
   -> StorableMonad h [StorableEvent h]
 getEvents s = do
@@ -293,8 +300,8 @@ getEvents s = do
      currently processed block (similar to the in-memory description of checkpoints).
 -}
 checkpoint
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => AppTracer h
   -> StorablePoint h
   -> State h
@@ -305,9 +312,9 @@ checkpoint t p s = do
   pure $ state'{_storage = storage'}
 
 insert
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
-  => HasPoint (StorableEvent h) (StorablePoint h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
+  => (HasPoint (StorableEvent h) (StorablePoint h))
   => ControlTracer h
   -> StorableEvent h
   -> State h
@@ -319,7 +326,7 @@ insert t e s = do
   pure $ state'{_storage = storage'}
 
 appendEvent
-  :: PrimMonad (StorableMonad h)
+  :: (PrimMonad (StorableMonad h))
   => SyntheticEvent (StorableEvent h) (StorablePoint h)
   -> Storage h
   -> StorableMonad h (Storage h)
@@ -329,8 +336,8 @@ appendEvent e s = do
   pure $ s & cursor %~ (+ 1)
 
 flushBuffer
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => AppTracer h
   -> State h
   -> StorableMonad h (State h)
@@ -349,10 +356,10 @@ flushBuffer t s = do
     else pure s
 
 insertMany
-  :: Foldable f
-  => Buffered h
-  => PrimMonad (StorableMonad h)
-  => HasPoint (StorableEvent h) (StorablePoint h)
+  :: (Foldable f)
+  => (Buffered h)
+  => (PrimMonad (StorableMonad h))
+  => (HasPoint (StorableEvent h) (StorablePoint h))
   => ControlTracer h
   -> f (StorableEvent h)
   -> State h
@@ -362,10 +369,10 @@ insertMany t es s =
 
 rewind
   :: forall h
-   . Rewindable h
-  => PrimMonad (StorableMonad h)
-  => Ord (StorablePoint h)
-  => HasPoint (StorableEvent h) (StorablePoint h)
+   . (Rewindable h)
+  => (PrimMonad (StorableMonad h))
+  => (Ord (StorablePoint h))
+  => (HasPoint (StorableEvent h) (StorablePoint h))
   => ControlTracer h
   -> StorablePoint h
   -> State h
@@ -392,15 +399,15 @@ rewind t p s = do
         _ -> return $ Just s
 
 resume
-  :: Resumable h
+  :: (Resumable h)
   => AppTracer h
   -> State h
   -> StorableMonad h (StorablePoint h)
 resume t s = resumeFromStorage t (s ^. handle)
 
 query
-  :: Queryable h
-  => PrimMonad (StorableMonad h)
+  :: (Queryable h)
+  => (PrimMonad (StorableMonad h))
   => AppTracer h
   -> StorablePoint h
   -> State h

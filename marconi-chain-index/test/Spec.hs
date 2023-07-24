@@ -25,13 +25,13 @@ tests =
   testGroup
     "Marconi"
     [ Orphans.tests
-    , Coordinator.tests
+    , CLI.tests
     , Logging.tests
+    , Coordinator.tests
     , Indexers.Utxo.tests
     , Indexers.MintBurn.tests
     , Indexers.AddressDatum.tests
     , Indexers.ScriptTx.tests
-    , CLI.tests
     , Experimental.Indexers.Utxo.tests
     -- TODO Enable when test environemnt is reconfigured
     -- , EpochStakepoolSize.tests

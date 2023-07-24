@@ -23,11 +23,12 @@ Available options:
                            Path to node socket.
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
-  --max-indexing-depth     Only index events that are not volatile
+  --max-indexing-depth     Only index blocks that are not rollbackable
   --min-indexing-depth NATURAL
-                           Depth of an event before it is indexed
-  -d,--db-dir DIR          Directory path where all SQLite databases are
-                           located.
+                           Depth of a block before it is indexed in relation to
+                           the tip of the local connected node
+  -d,--db-dir DIR          Directory path where all Marconi-related SQLite
+                           databases are located.
   --enable-txoutref        enable txout ref storage.
   --disable-utxo           disable utxo indexers.
   --disable-address-datum  disable address->datum indexers.

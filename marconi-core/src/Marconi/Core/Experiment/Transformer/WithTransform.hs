@@ -115,7 +115,7 @@ instance
   reset = resetVia unwrapMap
 
 instance
-  Closeable m indexer
+  (Closeable m indexer)
   => Closeable m (WithTransform indexer output)
   where
   close = closeVia unwrapMap

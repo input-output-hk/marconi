@@ -74,17 +74,17 @@ makeLenses 'WithDelay
 deriving via
   (IndexWrapper DelayConfig indexer)
   instance
-    IsSync m event indexer => IsSync m event (WithDelay indexer)
+    (IsSync m event indexer) => IsSync m event (WithDelay indexer)
 
 deriving via
   (IndexWrapper DelayConfig indexer)
   instance
-    Closeable m indexer => Closeable m (WithDelay indexer)
+    (Closeable m indexer) => Closeable m (WithDelay indexer)
 
 deriving via
   (IndexWrapper DelayConfig indexer)
   instance
-    Queryable m event query indexer => Queryable m event query (WithDelay indexer)
+    (Queryable m event query indexer) => Queryable m event query (WithDelay indexer)
 
 instance IndexerTrans WithDelay where
   type Config WithDelay = DelayConfig

@@ -77,7 +77,7 @@ See [this automatically generated golden file](./test/Spec/Golden/Cli/marconi-si
 We are assuming that:
 
 * you have a local running cardano-node instance
-  * since we upgraded to v8.0.0, you need to use the config file available in the `config` directory of the `marconi` repository, or else you will get some Conway exceptions.
+  * since we upgraded to v8.x, you need to use the config file available in the `config` directory of the `marconi` repository, or else you will get some Conway exceptions.
 * you've set the following environment variables:
   * `CARDANO_NODE_SOCKET_PATH`: socket path of your local cardano-node instance
   * `MARCONI_DB_DIRECTORY`: directory in which to create the various SQLite database files
@@ -202,21 +202,44 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "ad
 #### getBurnTokenEvents (PARTIALLY IMPLEMENTED)
 
 ```sh
-$ curl -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e2bab64ca481afc5a695b7db22fd0a7df4bf930158dfa652fb337999", "assetName": "53554d4d495441574152445344656669", "slotNo": 10680629}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
+curl -d  '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": { "afterTx":"a9279f32f7d36320b61074e7abd95651c8c01f0be2b91a06d9d3e99d00d18602", "policyId": "e2bab64ca481afc5a695b7db22fd0a7df4bf930158dfa652fb337999"}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:3000/json-rpc | jq
 {
   "id": 1,
   "jsonrpc": "2.0",
   "result": [
     {
-      "blockHeaderHash": "834ac116737ed735805864491626aa8eadca3a9c3be86b559c65c92fd3ddd9fa",
-      "burnAmount": 22411,
-      "redeemer": "80",
-      "redeemerHash": "45b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0",
+      "assetName": "53554d4d495441574152445344656669",
+      "blockHeaderHash": "6604093589b301e60a7fa52c68346104ab07c92c9190f1d2c01286ecb3acbd96",
+      "blockNo": 178085,
+      "burnAmount": 1,
+      "redeemer": null,
+      "redeemerHash": null,
       "slotNo": 10680629,
-      "txId": "cf944108d7130a8d53925ff9903a254d5133d5978b7e69e04c67d5b8776a6fb2"
+      "txId": "a9279f32f7d36320b61074e7abd95651c8c01f0be2b91a06d9d3e99d00d18602"
+    },
+    {
+      "assetName": "436f696e41",
+      "blockHeaderHash": "4389b62bae6452e2798f8c264f69ea09607205bf7961b86f4f822d861a282eff",
+      "blockNo": 178226,
+      "burnAmount": 1,
+      "redeemer": null,
+      "redeemerHash": null,
+      "slotNo": 10683562,
+      "txId": "890472618e16a09d9ce6bc048378be0150ff8848c04069f24ec60290aace48d1"
+    },
+    {
+      "assetName": "436f696e42",
+      "blockHeaderHash": "34988e3ee455d5a37edf977d8eb61ecd2761f1c5cdfda3b8a782f4cfd3b888aa",
+      "blockNo": 178228,
+      "burnAmount": 1,
+      "redeemer": null,
+      "redeemerHash": null,
+      "slotNo": 10683595,
+      "txId": "8c866323290381105321fd33e884fbc9989514bd9ca54507eefd8cc19bc5dedd"
     }
   ]
 }
+
 ```
 
 #### getActiveStakePoolDelegationByEpoch
@@ -276,6 +299,6 @@ $ curl -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 4, "id": 
 
 ### Other documentation
 
-See [test-json-rpc.http](./examples/test-json-rpc.http) for additional example usages.
+See [test-json-rpc.http](./examples/run-pre-prod-queries) for additional example usages.
 
 See [API](./doc/API.adoc) for the full API documentation.

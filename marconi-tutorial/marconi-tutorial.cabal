@@ -1,0 +1,124 @@
+cabal-version: 3.0
+name:          marconi-tutorial
+version:       1.2.0.0
+license:       Apache-2.0
+license-files:
+  LICENSE
+  NOTICE
+
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/input-output-hk/marconi
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+
+  ghc-options:
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wmissing-import-lists
+    -Wnoncanonical-monad-instances -Wredundant-constraints
+    -Wunused-packages
+
+library
+  import:          lang
+  hs-source-dirs:  src
+  exposed-modules:
+    Marconi.Tutorial.CLI
+    Marconi.Tutorial.HttpServer
+    Marconi.Tutorial.Indexers
+    Marconi.Tutorial.Indexers.AddressCount
+    Marconi.Tutorial.Run
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-chain-index:{marconi-chain-index, json-rpc}  >=1.2.0
+    , marconi-core                                         >=1.2.0
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:   cardano-api
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , async
+    , base                  >=4.9 && <5
+    , containers
+    , directory
+    , filepath
+    , lens
+    , mtl
+    , optparse-applicative
+    , servant
+    , servant-server
+    , sqlite-simple
+    , time
+    , warp
+
+executable marconi-tutorial
+  import:         lang
+  hs-source-dirs: app
+  main-is:        Main.hs
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-tutorial
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:  base >=4.9 && <5
+
+test-suite marconi-tutorial-test
+  import:             lang
+  ghc-options:        -Wno-unused-packages
+  type:               exitcode-stdio-1.0
+  main-is:            Driver.hs
+  hs-source-dirs:     test
+  other-modules:      Spec.Marconi.Tutorial.AddressCount
+  build-tool-depends: tasty-discover:tasty-discover
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api
+    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}
+    , marconi-core
+    , marconi-tutorial
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , base            >=4.9 && <5
+    , containers
+    , hedgehog
+    , lens
+    , mtl
+    , tasty
+    , tasty-discover
+    , tasty-golden
+    , tasty-hedgehog

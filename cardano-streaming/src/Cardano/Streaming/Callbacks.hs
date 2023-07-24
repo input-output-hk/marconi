@@ -11,7 +11,10 @@ import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Network.TypedProtocol.Pipelined (N (Z), Nat (Succ, Zero))
 import Ouroboros.Network.Protocol.ChainSync.Client qualified as CS
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined qualified as CSP
-import Ouroboros.Network.Protocol.ChainSync.PipelineDecision (PipelineDecision (Collect), pipelineDecisionMax)
+import Ouroboros.Network.Protocol.ChainSync.PipelineDecision (
+  PipelineDecision (Collect),
+  pipelineDecisionMax,
+ )
 
 import Cardano.Streaming.Helpers qualified as H
 
@@ -26,7 +29,11 @@ blocksCallbackPipelined
 blocksCallbackPipelined n con point callback =
   C.connectToLocalNode con $
     C.LocalNodeClientProtocols
-      { C.localChainSyncClient = C.LocalChainSyncClientPipelined $ CSP.ChainSyncClientPipelined $ pure $ CSP.SendMsgFindIntersect [point] onIntersect
+      { C.localChainSyncClient =
+          C.LocalChainSyncClientPipelined $
+            CSP.ChainSyncClientPipelined $
+              pure $
+                CSP.SendMsgFindIntersect [point] onIntersect
       , C.localTxSubmissionClient = Nothing
       , C.localStateQueryClient = Nothing
       , C.localTxMonitoringClient = Nothing
@@ -38,7 +45,8 @@ blocksCallbackPipelined n con point callback =
         , CSP.recvMsgIntersectNotFound = throw H.NoIntersectionFound
         }
 
-    work :: Word32 -> CSP.ClientPipelinedStIdle 'Z (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
+    work
+      :: Word32 -> CSP.ClientPipelinedStIdle 'Z (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
     work pipelineSize = requestMore Origin Origin Zero
       where
         requestMore -- was clientIdle_RequestMoreN
@@ -47,11 +55,12 @@ blocksCallbackPipelined n con point callback =
           -> Nat n
           -> CSP.ClientPipelinedStIdle n (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
         requestMore clientTip serverTip rqsInFlight =
-          let -- handle a response
+          let
+           in -- handle a response
 
               -- fire more requests
 
-           in case pipelineDecisionMax pipelineSize rqsInFlight clientTip serverTip of
+              case pipelineDecisionMax pipelineSize rqsInFlight clientTip serverTip of
                 Collect -> case rqsInFlight of
                   Succ predN -> CSP.CollectResponse Nothing (clientNextN predN)
                 _ -> CSP.SendMsgRequestNextPipelined (requestMore clientTip serverTip (Succ rqsInFlight))
@@ -77,7 +86,8 @@ blocksCallback
 blocksCallback con point callback =
   C.connectToLocalNode con $
     C.LocalNodeClientProtocols
-      { C.localChainSyncClient = C.LocalChainSyncClient $ CS.ChainSyncClient $ pure $ CS.SendMsgFindIntersect [point] onIntersect
+      { C.localChainSyncClient =
+          C.LocalChainSyncClient $ CS.ChainSyncClient $ pure $ CS.SendMsgFindIntersect [point] onIntersect
       , C.localTxSubmissionClient = Nothing
       , C.localStateQueryClient = Nothing
       , C.localTxMonitoringClient = Nothing

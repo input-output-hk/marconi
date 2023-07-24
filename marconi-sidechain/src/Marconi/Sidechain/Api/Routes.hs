@@ -10,6 +10,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.BaseTypes qualified as Ledger
 import Cardano.Slotting.Slot (WithOrigin (At, Origin), withOriginFromMaybe)
+import Control.Applicative ((<|>))
 import Control.Monad (join)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
@@ -92,17 +93,6 @@ type RpcEpochNonceMethod =
     Word64
     String
     GetEpochNonceResult
-
---------------------
--- REST related ---
---------------------
-
--- | REST API, endpoints
-type RestAPI = "rest" :> (GetTime :<|> GetTargetAddresses)
-
-type GetTime = "time" :> Get '[PlainText] String
-
-type GetTargetAddresses = "addresses" :> Get '[JSON] [Text]
 
 --------------------------
 -- Query and Result types
@@ -315,10 +305,10 @@ instance FromJSON GetBurnTokenEventsParams where
   parseJSON =
     let parseParams v =
           GetBurnTokenEventsParams
-            <$> (v .: "policyId")
+            <$> (v .: "policyId" <|> fail "The 'policyId' param value must be a valid minting policy hash.")
             <*> (v .:? "assetName")
-            <*> (v .:? "slotNo")
-            <*> (v .:? "afterTx")
+            <*> (v .:? "createdBeforeSlotNo" <|> fail "The 'slotNo' param value must be a natural number.")
+            <*> (v .:? "createdAfterTx" <|> fail "The 'afterTx' param value must be a valid transaction ID.")
      in Aeson.withObject "GetBurnTokenEventsParams" parseParams
 
 instance ToJSON GetBurnTokenEventsParams where
@@ -327,8 +317,8 @@ instance ToJSON GetBurnTokenEventsParams where
       catMaybes
         [ Just ("policyId" .= policyId q)
         , ("assetName" .=) <$> assetName q
-        , ("slotNo" .=) <$> beforeSlotNo q
-        , ("afterTx" .=) <$> afterTx q
+        , ("createdBeforeSlotNo" .=) <$> beforeSlotNo q
+        , ("createdAfterTx" .=) <$> afterTx q
         ]
 
 newtype GetBurnTokenEventsResult
@@ -455,3 +445,18 @@ instance ToJSON NonceResult where
             , "blockHeaderHash" .= blockHeaderHash
             , "blockNo" .= blockNo
             ]
+
+------------------------
+-- REST API endpoints --
+------------------------
+
+type RestAPI =
+  GetTime
+    :<|> GetTargetAddresses
+    :<|> GetMetrics
+
+type GetTime = "time" :> Get '[PlainText] String
+
+type GetTargetAddresses = "addresses" :> Get '[JSON] [Text]
+
+type GetMetrics = "metrics" :> Get '[PlainText] Text

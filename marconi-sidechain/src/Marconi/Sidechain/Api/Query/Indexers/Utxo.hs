@@ -19,7 +19,7 @@ import Control.Monad.STM (STM)
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.Functor ((<&>))
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Text (Text, unpack)
+import Data.Text (Text, pack)
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Error (IndexerError)
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
@@ -93,12 +93,12 @@ findByBech32AddressAtSlot
   -> IO (Either QueryExceptions GetUtxosFromAddressResult)
   -- ^ Plutus address conversion error may occur
 findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
-  let toQueryExceptions e = QueryError (unpack addressText <> " generated error: " <> show e)
+  let toQueryExceptions e = QueryError (addressText <> " generated error: " <> pack (show e))
 
       intervalWrapper :: Maybe C.SlotNo -> C.SlotNo -> Either QueryExceptions (Utxo.Interval C.SlotNo)
       intervalWrapper s s' =
-        let f :: IndexerError -> QueryExceptions
-            f = QueryError . show
+        let f :: IndexerError Utxo.UtxoIndexerError -> QueryExceptions
+            f = QueryError . pack . show
          in left f (Utxo.interval s s')
 
       slotInterval :: Either QueryExceptions (Utxo.Interval C.SlotNo)
@@ -107,7 +107,8 @@ findByBech32AddressAtSlot env addressText upperBoundSlotNo lowerBoundSlotNo =
           (C.SlotNo <$> lowerBoundSlotNo)
           (C.SlotNo upperBoundSlotNo)
 
-      queryAtAddressAndSlot :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
+      queryAtAddressAndSlot
+        :: Utxo.QueryUtxoByAddress -> IO (Either QueryExceptions GetUtxosFromAddressResult)
       queryAtAddressAndSlot = findByAddress env
 
       query :: Either QueryExceptions Utxo.QueryUtxoByAddress
@@ -135,7 +136,10 @@ withQueryAction env query =
   where
     action indexer = do
       res <- runExceptT $ Storable.query indexer query
-      let spentInfoResult row = SpentInfoResult (Utxo._blockInfoSlotNo . Utxo._siSpentBlockInfo $ row) (Utxo._siSpentTxId row)
+      let spentInfoResult row =
+            SpentInfoResult
+              (row ^. Utxo.srSpentBlockInfo . Utxo.blockInfoSlotNo)
+              (row ^. Utxo.srSpentTxId)
       pure $ case res of
         Right (Utxo.UtxoByAddressResult rows) ->
           Right $

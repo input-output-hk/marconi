@@ -17,7 +17,15 @@ import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward))
 import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
-import Data.Time (NominalDiffTime, UTCTime, defaultTimeLocale, diffUTCTime, formatTime, getCurrentTime)
+import Data.Time (
+  NominalDiffTime,
+  UTCTime,
+  defaultTimeLocale,
+  diffUTCTime,
+  formatTime,
+  getCurrentTime,
+ )
+import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
@@ -60,6 +68,7 @@ instance Pretty LastSyncLog where
               <+> pretty cp
               <+> "and current node tip is"
               <+> pretty nt
+              <> "."
 
           processingSummaryMsg timeSinceLastMsg =
             "Processed"
@@ -68,36 +77,42 @@ instance Pretty LastSyncLog where
               <+> pretty numRollBackwards
               <+> "rollbacks in the last"
               <+> pretty (formatTime defaultTimeLocale "%s" timeSinceLastMsg)
-                <> "s"
+              <> "s"
        in case (timeSinceLastMsgM, cp, nt) of
             (Nothing, _, _) ->
               "Starting from"
                 <+> pretty cp
-                  <> "."
+                <> "."
                 <+> currentTipMsg timeSinceLastMsgM
             (Just _, _, C.ChainTipAtGenesis) ->
               "Not syncing. Node tip is at Genesis"
             -- This case statement should never happen.
             (Just timeSinceLastMsg, C.ChainPointAtGenesis, C.ChainTip{}) ->
-              "Synchronising (0%)"
-                <+> processingSummaryMsg timeSinceLastMsg
-                  <> "."
+              "Synchronising (0%)."
                 <+> currentTipMsg timeSinceLastMsgM
-            (Just timeSinceLastMsg, C.ChainPoint (C.SlotNo chainSyncSlot) _, C.ChainTip (C.SlotNo nodeTipSlot) _ _)
-              | nodeTipSlot - chainSyncSlot < 100 ->
-                  "Fully synchronised."
-                    <+> processingSummaryMsg timeSinceLastMsg
+                <+> processingSummaryMsg timeSinceLastMsg
+                <> "."
+            ( Just timeSinceLastMsg
+              , C.ChainPoint (C.SlotNo chainSyncSlot) _
+              , C.ChainTip (C.SlotNo nodeTipSlot) _ _
+              )
+                | nodeTipSlot - chainSyncSlot < 100 ->
+                    "Fully synchronised."
+                      <+> currentTipMsg timeSinceLastMsgM
+                      <+> processingSummaryMsg timeSinceLastMsg
                       <> "."
-                    <+> currentTipMsg timeSinceLastMsgM
-            (Just timeSinceLastMsg, C.ChainPoint (C.SlotNo chainSyncSlot) _, C.ChainTip (C.SlotNo nodeTipSlot) _ _) ->
-              let pct = ((100 :: Double) * fromIntegral chainSyncSlot) / fromIntegral nodeTipSlot
-                  rate = fromIntegral numRollForward / realToFrac timeSinceLastMsg :: Double
-               in "Synchronising ("
-                    <> pretty (printf "%.2f" pct :: String)
-                    <> "%)."
-                    <+> processingSummaryMsg timeSinceLastMsg
-                    <+> pretty (printf "(%.0f blocks/s)." rate :: String)
-                    <+> currentTipMsg timeSinceLastMsgM
+            ( Just timeSinceLastMsg
+              , C.ChainPoint (C.SlotNo chainSyncSlot) _
+              , C.ChainTip (C.SlotNo nodeTipSlot) _ _
+              ) ->
+                let pct = ((100 :: Double) * fromIntegral chainSyncSlot) / fromIntegral nodeTipSlot
+                    rate = fromIntegral numRollForward / realToFrac timeSinceLastMsg :: Double
+                 in "Synchronising ("
+                      <> pretty (printf "%.2f" pct :: String)
+                      <> "%)."
+                      <+> currentTipMsg timeSinceLastMsgM
+                      <+> processingSummaryMsg timeSinceLastMsg
+                      <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
 renderLastSyncLog :: LastSyncLog -> Text
 renderLastSyncLog syncLog =
@@ -107,8 +122,8 @@ renderLastSyncLog syncLog =
 
 chainSyncEventStreamLogging
   :: Trace IO Text
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode))) IO r
+  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r
+  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r
 chainSyncEventStreamLogging tracer s = effect $ do
   stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
   return $ S.chain (update stats) s
@@ -116,9 +131,11 @@ chainSyncEventStreamLogging tracer s = effect $ do
     minSecondsBetweenMsg :: NominalDiffTime
     minSecondsBetweenMsg = 10
 
-    update :: IORef LastSyncStats -> ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ()
-    update statsRef (RollForward bim ct) = do
-      let cp = case bim of (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) -> C.ChainPoint slotNo hash
+    update
+      :: IORef LastSyncStats -> ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) -> IO ()
+    update statsRef (RollForward (bim, _epochNo, _posixTime) ct) = do
+      let cp = case bim of
+            (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) -> C.ChainPoint slotNo hash
       modifyIORef' statsRef $ \stats ->
         stats
           { syncStatsNumBlocks = syncStatsNumBlocks stats + 1

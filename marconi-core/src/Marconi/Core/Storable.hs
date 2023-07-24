@@ -110,7 +110,7 @@ type family StorableMonad h :: Type -> Type
 class Buffered h where
   -- | This function persists the memory/buffer events to disk when the memory buffer is filled.
   persistToStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent h)
     -> h
     -> StorableMonad h h
@@ -135,7 +135,7 @@ class Buffered h where
 -}
 class Queryable h where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent h)
     -> h
     -> StorableQuery h
@@ -193,19 +193,25 @@ data SyntheticEvent e p
   = Event !e
   | Synthetic !p
 
-syntheticPoint :: HasPoint e p => SyntheticEvent e p -> p
+syntheticPoint :: (HasPoint e p) => SyntheticEvent e p -> p
 syntheticPoint (Event e) = getPoint e
 syntheticPoint (Synthetic p) = p
 
-foldEvents :: forall f h. Foldable f => f (SyntheticEvent (StorableEvent h) (StorablePoint h)) -> [StorableEvent h]
+foldEvents
+  :: forall f h
+   . (Foldable f)
+  => f (SyntheticEvent (StorableEvent h) (StorablePoint h))
+  -> [StorableEvent h]
 foldEvents = reverse . foldl' unwrap []
   where
-    unwrap :: [StorableEvent h] -> SyntheticEvent (StorableEvent h) (StorablePoint h) -> [StorableEvent h]
+    unwrap
+      :: [StorableEvent h] -> SyntheticEvent (StorableEvent h) (StorablePoint h) -> [StorableEvent h]
     unwrap acc (Synthetic _) = acc
     unwrap acc (Event e) = e : acc
 
 data Storage h = Storage
-  { _events :: !(VM.MVector (PrimState (StorableMonad h)) (SyntheticEvent (StorableEvent h) (StorablePoint h)))
+  { _events
+      :: !(VM.MVector (PrimState (StorableMonad h)) (SyntheticEvent (StorableEvent h) (StorablePoint h)))
   , _cursor :: !Int
   }
 $(Lens.makeLenses ''Storage)
@@ -218,7 +224,7 @@ data State h = State
 $(Lens.makeLenses ''State)
 
 emptyState
-  :: PrimMonad (StorableMonad h)
+  :: (PrimMonad (StorableMonad h))
   => Int
   -> h
   -> StorableMonad h (State h)
@@ -246,8 +252,8 @@ getMemoryEvents s = VM.slice 0 (s ^. cursor) (s ^. events)
 
 -- Get events from memory buffer and disk buffer.
 getEvents
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => State h
   -> StorableMonad h [StorableEvent h]
 getEvents s = do
@@ -285,8 +291,8 @@ getEvents s = do
      currently processed block (similar to the in-memory description of checkpoints).
 -}
 checkpoint
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => StorablePoint h
   -> State h
   -> StorableMonad h (State h)
@@ -296,8 +302,8 @@ checkpoint p s = do
   pure $ state'{_storage = storage'}
 
 insert
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => StorableEvent h
   -> State h
   -> StorableMonad h (State h)
@@ -307,7 +313,7 @@ insert e s = do
   pure $ state'{_storage = storage'}
 
 appendEvent
-  :: PrimMonad (StorableMonad h)
+  :: (PrimMonad (StorableMonad h))
   => SyntheticEvent (StorableEvent h) (StorablePoint h)
   -> Storage h
   -> StorableMonad h (Storage h)
@@ -317,8 +323,8 @@ appendEvent e s = do
   pure $ s & cursor %~ (+ 1)
 
 flushBuffer
-  :: Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => State h
   -> StorableMonad h (State h)
 flushBuffer s = do
@@ -336,9 +342,9 @@ flushBuffer s = do
     else pure s
 
 insertMany
-  :: Foldable f
-  => Buffered h
-  => PrimMonad (StorableMonad h)
+  :: (Foldable f)
+  => (Buffered h)
+  => (PrimMonad (StorableMonad h))
   => f (StorableEvent h)
   -> State h
   -> StorableMonad h (State h)
@@ -347,10 +353,10 @@ insertMany es s =
 
 rewind
   :: forall h
-   . Rewindable h
-  => HasPoint (StorableEvent h) (StorablePoint h)
-  => PrimMonad (StorableMonad h)
-  => Ord (StorablePoint h)
+   . (Rewindable h)
+  => (HasPoint (StorableEvent h) (StorablePoint h))
+  => (PrimMonad (StorableMonad h))
+  => (Ord (StorablePoint h))
   => StorablePoint h
   -> State h
   -> StorableMonad h (State h)
@@ -375,14 +381,14 @@ rewind p s =
         Nothing -> pure s
 
 resume
-  :: Resumable h
+  :: (Resumable h)
   => State h
   -> StorableMonad h (StorablePoint h)
 resume s = resumeFromStorage (s ^. handle)
 
 query
-  :: Queryable h
-  => PrimMonad (StorableMonad h)
+  :: (Queryable h)
+  => (PrimMonad (StorableMonad h))
   => State h
   -> StorableQuery h
   -> StorableMonad h (StorableResult h)

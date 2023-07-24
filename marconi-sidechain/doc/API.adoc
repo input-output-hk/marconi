@@ -186,7 +186,7 @@ The param object can be fully omitted for this method.
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
-    "slotNo": {
+    "createdBeforeSlotNo": {
       "type": "integer",
       "minimum": 0
     },
@@ -240,6 +240,8 @@ Retrieves UTXOs of a given address until a given slot, and optionally after a gi
 
 * The `slotNo` result value should be larger or equal to the `blockNo` result value.
 
+* In the `value` result value, the AssetName key should always be empty if the linked PolicyId is empty.
+
 ==== Rationale
 
 TBD
@@ -265,7 +267,7 @@ TBD
     "unspentBeforeSlotNo": {
       "type": "integer",
       "minimum": 0,
-      "description": "Show only UTxOs that existed at this slot. Said another way, only outputs that were created during or before that slot and were unspent during that slot will be returned."
+      "description": "Show only UTxOs that existed at this slot. Said another way, only outputs that were created during or before that slot and remain unspent up to and including that slot will be returned."
     }
   },
   "required": [
@@ -354,6 +356,23 @@ TBD
         }
       },
     },
+    "value": {
+      "type": "object",
+      "description": "The key represents the PolicyId of the value. The empty string refers to ADA.",
+      "patternProperties": {
+        "^.*$": {
+          "type": "object",
+          "description": "The key represents the AssetName of the value linked to a particular PolicyId. If the PolicyId is the empty string, then the AssetName should also be the empty string. Additionaly, if the PolicyId is not the empty string, the AssetName can be empty.",
+          "patternProperties": {
+            "^.*$": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "required": [
       "blockHeaderHash",
       "blockNo",
@@ -361,7 +380,8 @@ TBD
       "txId",
       "txIx",
       "txIndexInBlock",
-      "txInputs"
+      "txInputs",
+      "value"
     ]
   }
 }
@@ -406,15 +426,15 @@ Retrieves all token burning events given an `AssetId` that have occurred before 
 
 * The `policyId` param value must be a valid minting policy hash.
 
-* The `afterTx` param value must be a valid transaction ID.
+* The `createdAfterTx` param value must be a valid transaction ID.
 
 * If `marconi-sidechain` was configured to track a specific set of `AssetIds`, then the pair `(policyId, assetName)` param value should be part of them.
 
-* The 'afterTx' param value must be an existing transaction ID in the Cardano network that burned a token ('AssetId').
+* The `createdAfterTx` param value must be an existing transaction ID in the Cardano network that burned a token (`AssetId`).
 
-* The `slotNo` param value must be natural numbers starting at 0.
+* The `createdBeforeSlotNo` param value must be natural numbers starting at 0.
 
-* The `slotNo` param value should be larger than the slot number where the `afterTx` transaction has appeared in the network.
+* The `createdBeforeSlotNo` param value should be larger than the slot number where the `createdAfterTx` transaction has appeared in the network.
 
 ==== Post-conditions
 
@@ -448,12 +468,12 @@ TBD
       "pattern": "^([0-9a-f]{2})+$",
       "description": "Name of the AssetId."
     },
-    "slotNo": {
+    "createdBeforeSlotNo": {
       "type": "integer",
       "minimum": 0,
       "description": "Return the state of the chain at this slot. Effectively it filters out transactions that occured during or after this slot."
     },
-    "afterTx": {
+    "createdAfterTx": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
       "description": "Filters out transaction that occurred before this transaction. The specific transaction must be part of the indexed transactions."
@@ -523,19 +543,19 @@ TBD
       "const": "The 'policyId' param value must be a valid minting policy hash."
     },
     {
-      "const": "The 'afterTx' param value must be a valid transaction ID."
+      "const": "The 'createdAfterTx' param value must be a valid transaction ID."
     },
     {
       "const": "The 'policyId' and 'assetName' param values must belong to the provided target 'AssetIds'."
     },
     {
-      "const": "The 'afterTx' param value must be an existing transaction ID in the Cardano network that burned a token ('AssetId')."
+      "const": "The 'createdAfterTx' param value must be an existing transaction ID in the Cardano network that burned a token ('AssetId')."
     },
     {
-      "const": "The 'slotNo' param value must be a natural number."
+      "const": "The 'createdBeforeSlotNo' param value must be a natural number."
     },
     {
-      "const": "The 'slotNo' param value must be larger than the slot number of the 'afterTx' transaction."
+      "const": "The 'createdBeforeSlotNo' param value must be larger than the slot number of the 'createdAfterTx' transaction."
     },
   ]
 }

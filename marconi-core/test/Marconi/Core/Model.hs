@@ -458,7 +458,8 @@ instance
     generateGrammarIndex complexity ix
   shrink = shrinkNothing
 
-generateGrammarIndex :: (Arbitrary e, Show a, Show e) => Int -> Index a e n -> Gen (GrammarBuilder a e n)
+generateGrammarIndex
+  :: (Arbitrary e, Show a, Show e) => Int -> Index a e n -> Gen (GrammarBuilder a e n)
 generateGrammarIndex n ix
   | n <= 0 = pure $ GrammarBuilder ix
   | otherwise = do
@@ -473,7 +474,7 @@ generateGrammarIndex n ix
           ]
       generateGrammarIndex (n - 1) nextIx
 
-instance Arbitrary a => Arbitrary (IndexView a) where
+instance (Arbitrary a) => Arbitrary (IndexView a) where
   arbitrary = sized $ \n -> do
     depth <- chooseInt (2, n)
     size <- chooseInt (0, depth)

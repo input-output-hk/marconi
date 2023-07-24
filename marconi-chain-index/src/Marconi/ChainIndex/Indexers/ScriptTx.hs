@@ -20,11 +20,17 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as Shelley
 import Control.Monad.Trans (MonadTrans (lift))
 import Control.Monad.Trans.Except (ExceptT)
+import Data.Void (Void)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
   liftSQLError,
  )
-import Marconi.ChainIndex.Indexers.LastSync (addLastSyncPoints, createLastSyncTable, queryLastSyncPoint, rollbackLastSyncPoints)
+import Marconi.ChainIndex.Indexers.LastSync (
+  addLastSyncPoints,
+  createLastSyncTable,
+  queryLastSyncPoint,
+  rollbackLastSyncPoints,
+ )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types ()
 import Marconi.Core.Storable (
@@ -67,7 +73,7 @@ data ScriptTxHandle = ScriptTxHandle
    The first type we introduce is the monad in which the database (and by extension,
    the indexer) runs. -}
 
-type instance StorableMonad ScriptTxHandle = ExceptT IndexerError IO
+type instance StorableMonad ScriptTxHandle = ExceptT (IndexerError Void) IO
 
 {- The next type we introduce is the type of events. Events are the data atoms that
    the indexer consumes. They depend on the `handle` because they need to eventually
@@ -132,7 +138,9 @@ instance SQL.ToField (StorableQuery ScriptTxHandle) where
 instance SQL.FromField (StorableQuery ScriptTxHandle) where
   fromField f =
     SQL.fromField f
-      >>= \b -> either (const cantDeserialise) (return . ScriptTxAddress) $ Shelley.deserialiseFromRawBytes Shelley.AsScriptHash b
+      >>= \b ->
+        either (const cantDeserialise) (return . ScriptTxAddress) $
+          Shelley.deserialiseFromRawBytes Shelley.AsScriptHash b
     where
       cantDeserialise = SQL.returnError SQL.ConversionFailed f "Cannot deserialise address."
 
@@ -153,7 +161,7 @@ type Result = StorableResult ScriptTxHandle
 
 toUpdate
   :: forall era
-   . C.IsCardanoEra era
+   . (C.IsCardanoEra era)
   => [C.Tx era]
   -> ChainPoint
   -> StorableEvent ScriptTxHandle
@@ -183,7 +191,7 @@ instance Buffered ScriptTxHandle where
   {- The data is buffered in memory. When the memory buffer is filled, we need to store
      it on disk. -}
   persistToStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent ScriptTxHandle)
     -> ScriptTxHandle
     -> StorableMonad ScriptTxHandle ScriptTxHandle
@@ -232,13 +240,20 @@ instance Buffered ScriptTxHandle where
     -> StorableMonad ScriptTxHandle [StorableEvent ScriptTxHandle]
   getStoredEvents (ScriptTxHandle c sz) = liftSQLError CantInsertEvent $ do
     sns :: [[Integer]] <-
-      SQL.query c "SELECT slotNo FROM script_transactions GROUP BY slotNo ORDER BY slotNo DESC LIMIT ?" (SQL.Only sz)
+      SQL.query
+        c
+        "SELECT slotNo FROM script_transactions GROUP BY slotNo ORDER BY slotNo DESC LIMIT ?"
+        (SQL.Only sz)
     -- Take the slot number of the sz'th slot
     let sn =
           if null sns
             then 0
             else head . last $ take sz sns
-    es <- SQL.query c "SELECT scriptAddress, txCbor, slotNo, blockHash FROM script_transactions WHERE slotNo >= ? ORDER BY slotNo DESC, txCbor, scriptAddress" (SQL.Only (sn :: Integer))
+    es <-
+      SQL.query
+        c
+        "SELECT scriptAddress, txCbor, slotNo, blockHash FROM script_transactions WHERE slotNo >= ? ORDER BY slotNo DESC, txCbor, scriptAddress"
+        (SQL.Only (sn :: Integer))
     pure $ asEvents es
 
 -- This function recomposes the in-memory format from the database records. This
@@ -269,7 +284,7 @@ asEvents rs@(ScriptTxRow _ _ sn hsh : _) =
 
 instance Queryable ScriptTxHandle where
   queryStorage
-    :: Foldable f
+    :: (Foldable f)
     => f (StorableEvent ScriptTxHandle)
     -> ScriptTxHandle
     -> StorableQuery ScriptTxHandle
@@ -315,11 +330,18 @@ open :: FilePath -> Depth -> StorableMonad ScriptTxHandle ScriptTxIndexer
 open dbPath (Depth k) = do
   c <- liftSQLError CantStartIndexer (SQL.open dbPath)
   lift $ SQL.execute_ c "PRAGMA journal_mode=WAL"
-  lift $ SQL.execute_ c "CREATE TABLE IF NOT EXISTS script_transactions (scriptAddress TEXT NOT NULL, txCbor BLOB NOT NULL, slotNo INT NOT NULL, blockHash BLOB NOT NULL)"
+  lift $
+    SQL.execute_
+      c
+      "CREATE TABLE IF NOT EXISTS script_transactions (scriptAddress TEXT NOT NULL, txCbor BLOB NOT NULL, slotNo INT NOT NULL, blockHash BLOB NOT NULL)"
   -- Add this index for normal queries.
-  lift $ SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_address ON script_transactions (scriptAddress)"
+  lift $
+    SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_address ON script_transactions (scriptAddress)"
   -- Add this index for interval queries.
-  lift $ SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_address_slot ON script_transactions (scriptAddress, slotNo)"
+  lift $
+    SQL.execute_
+      c
+      "CREATE INDEX IF NOT EXISTS script_address_slot ON script_transactions (scriptAddress, slotNo)"
   -- This index helps with group by
   lift $ SQL.execute_ c "CREATE INDEX IF NOT EXISTS script_grp ON script_transactions (slotNo)"
   lift $ createLastSyncTable c
