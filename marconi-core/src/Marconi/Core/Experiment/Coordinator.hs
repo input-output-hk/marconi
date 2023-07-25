@@ -135,14 +135,17 @@ instance
   => Rollbackable m event Coordinator
   where
   rollback p =
-    let rollbackWorkers :: Coordinator event -> m (Coordinator event)
+    let setLastSync :: Coordinator event -> Coordinator event
+        setLastSync c = c & lastSync .~ p
+
+        rollbackWorkers :: Coordinator event -> m (Coordinator event)
         rollbackWorkers c = do
           liftIO $ dispatchNewInput c $ Rollback p
           liftIO $ waitWorkers c
           errors <- healthCheck c
           case errors of
             Just err -> close c *> throwError err
-            Nothing -> pure c
+            Nothing -> pure $ setLastSync c
      in rollbackWorkers
 
 instance (MonadIO m) => Closeable m Coordinator where
