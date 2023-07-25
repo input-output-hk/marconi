@@ -57,12 +57,12 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Error (raiseException)
 import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.Utxo (
-  Interval (LessThanOrEqual),
   QueryUtxoByAddress (QueryUtxoByAddress),
   StorableQuery (QueryUtxoByAddressWrapper),
   StorableResult (UtxoByAddressResult, getUtxoByAddressResult),
   UtxoHandle,
   UtxoIndexer,
+  lessThanOrEqual,
  )
 import Marconi.ChainIndex.Types (
   IndexingDepth (MinIndexingDepth),
@@ -163,10 +163,10 @@ tests databaseDir indexerTVar = do
   let fetchUtxoOfAddressWithMostUtxos =
         Storable.query @UtxoHandle
           utxoIndexer
-          . QueryUtxoByAddressWrapper
-          . QueryUtxoByAddress addressWithMostUtxos
-          . LessThanOrEqual
-          $ C.SlotNo 2000000 -- maxBound will create SQL.Integer overflow, see PLT 5937
+          $ QueryUtxoByAddressWrapper
+          $ QueryUtxoByAddress addressWithMostUtxos
+          $ lessThanOrEqual
+          $ C.SlotNo 2_000_000 -- maxBound will create SQL.Integer overflow, see PLT 5937
   let countRows = \case
         UtxoByAddressResult rows -> length rows
         _other -> 0
@@ -214,7 +214,7 @@ waitUntilSynced databaseDir nodeSocketPath = do
       C.ChainTip (C.SlotNo currentNodeSlot) _ _ <-
         C.getLocalChainTip $
           C.LocalNodeConnectInfo
-            { C.localConsensusModeParams = C.CardanoModeParams (EpochSlots 21600)
+            { C.localConsensusModeParams = C.CardanoModeParams (EpochSlots 21_600)
             , C.localNodeNetworkId = C.Testnet $ C.NetworkMagic 1 -- TODO This should be provded as a CLI param
             , C.localNodeSocketPath = C.File nodeSocketPath
             }

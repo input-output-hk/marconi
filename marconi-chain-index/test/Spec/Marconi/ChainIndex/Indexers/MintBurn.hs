@@ -415,7 +415,7 @@ propJsonRoundtripTxMintRow :: Property
 propJsonRoundtripTxMintRow = H.property $ do
   mintEvents <- forAll Gen.genMintEvents
   let mpsTxRows = concatMap MintBurn.toRows $ fst mintEvents
-  forM_ mpsTxRows $ \txMintRow -> Hedgehog.tripping txMintRow Aeson.encode Aeson.decode
+  forM_ mpsTxRows $ \txMintRow -> Hedgehog.tripping txMintRow Aeson.encode Aeson.eitherDecode
 
 propQueryingOnlyBurn :: Property
 propQueryingOnlyBurn = H.property $ do

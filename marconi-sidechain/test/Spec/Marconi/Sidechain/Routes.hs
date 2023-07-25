@@ -137,7 +137,7 @@ propJSONRountripCurrentSyncedBlockResult = property $ do
         [ pure Origin
         , At <$> genBlockInfo
         ]
-  tripping (GetCurrentSyncedBlockResult blockInfo) Aeson.encode Aeson.decode
+  tripping (GetCurrentSyncedBlockResult blockInfo) Aeson.encode Aeson.eitherDecode
 
 propJSONRountripGetUtxosFromAddressParams :: Property
 propJSONRountripGetUtxosFromAddressParams = property $ do
@@ -145,13 +145,13 @@ propJSONRountripGetUtxosFromAddressParams = property $ do
     forAll $
       Utxo.interval
         <$> Gen.maybe (C.SlotNo <$> Gen.word64 (Range.linear 1 100))
-        <*> (C.SlotNo <$> Gen.word64 (Range.linear 101 200))
+        <*> Gen.maybe (C.SlotNo <$> Gen.word64 (Range.linear 101 200))
   r <-
     forAll $
       GetUtxosFromAddressParams
         <$> Gen.string (Range.linear 1 10) Gen.alphaNum
         <*> pure interval
-  tripping r Aeson.encode Aeson.decode
+  tripping r Aeson.encode Aeson.eitherDecode
 
 propJSONRountripGetUtxosFromAddressResult :: Property
 propJSONRountripGetUtxosFromAddressResult = property $ do
@@ -169,7 +169,7 @@ propJSONRountripGetUtxosFromAddressResult = property $ do
       <*> Gen.maybe genSpentInfo
       <*> Gen.list (Range.linear 0 10) (UtxoTxInput <$> CGen.genTxIn)
 
-  tripping r Aeson.encode Aeson.decode
+  tripping r Aeson.encode Aeson.eitherDecode
 
 genSpentInfo :: Gen SpentInfoResult
 genSpentInfo = do
@@ -186,7 +186,7 @@ propJSONRountripGetBurnTokenEventsParams = property $ do
         <*> (fmap fromString <$> Gen.maybe (Gen.string (Range.linear 1 10) Gen.alphaNum))
         <*> (Gen.maybe $ Gen.integral (Range.linear 1 10))
         <*> Gen.maybe CGen.genTxId
-  tripping r Aeson.encode Aeson.decode
+  tripping r Aeson.encode Aeson.eitherDecode
 
 propJSONRountripGetBurnTokenEventsResult :: Property
 propJSONRountripGetBurnTokenEventsResult = property $ do
@@ -201,7 +201,7 @@ propJSONRountripGetBurnTokenEventsResult = property $ do
       <*> pure (fmap C.getScriptData hsd)
       <*> CGen.genAssetName
       <*> Gen.genQuantity (Range.linear 0 10)
-  tripping r Aeson.encode Aeson.decode
+  tripping r Aeson.encode Aeson.eitherDecode
 
 propJSONRountripEpochStakePoolDelegationResult :: Property
 propJSONRountripEpochStakePoolDelegationResult = property $ do
@@ -212,7 +212,7 @@ propJSONRountripEpochStakePoolDelegationResult = property $ do
       <*> Gen.genSlotNo
       <*> Gen.genHashBlockHeader
       <*> Gen.genBlockNo
-  tripping sdds Aeson.encode Aeson.decode
+  tripping sdds Aeson.encode Aeson.eitherDecode
 
 propJSONRountripEpochNonceResult :: Property
 propJSONRountripEpochNonceResult = property $ do
@@ -222,12 +222,12 @@ propJSONRountripEpochNonceResult = property $ do
       <*> Gen.genSlotNo
       <*> Gen.genHashBlockHeader
       <*> Gen.genBlockNo
-  tripping nonce Aeson.encode Aeson.decode
+  tripping nonce Aeson.encode Aeson.eitherDecode
 
 propJSONRountripSidechainValue :: Property
 propJSONRountripSidechainValue = property $ do
   v <- forAll $ CGen.genValue CGen.genAssetId (CGen.genQuantity (Range.linear 1 100))
-  tripping (SidechainValue v) Aeson.encode Aeson.decode
+  tripping (SidechainValue v) Aeson.encode Aeson.eitherDecode
 
 goldenCurrentChainPointGenesisResult :: IO ByteString
 goldenCurrentChainPointGenesisResult = do

@@ -135,7 +135,7 @@ data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   { queryAddress :: !String
   -- ^ address to query for
   , querySearchInterval :: !(Utxo.Interval Ledger.SlotNo)
-  -- ^ query interval
+  -- ^ Query interval
   }
   deriving (Show, Eq)
 
@@ -146,7 +146,7 @@ instance FromJSON GetUtxosFromAddressParams where
             v .:? "createdAfterSlotNo"
               <|> fail "The 'createAfterSlotNo' param value must be a natural number"
           hi <-
-            v .: "unspentBeforeSlotNo"
+            v .:? "unspentBeforeSlotNo"
               <|> fail "The 'unspentBeforeSlotNo' param value must be a natural number"
           case Utxo.interval lo hi of
             Left _ -> fail "The 'unspentBeforeSlotNo' param value must be larger than 'createAfterSlotNo'."
@@ -162,8 +162,8 @@ instance ToJSON GetUtxosFromAddressParams where
     Aeson.object $
       catMaybes
         [ Just ("address" .= queryAddress q)
-        , ("createdAfterSlotNo" .=) <$> Utxo.lowerBound (querySearchInterval q)
-        , ("unspentBeforeSlotNo" .=) <$> Utxo.upperBound (querySearchInterval q)
+        , ("createdAfterSlotNo" .=) <$> Utxo.intervalLowerBound (querySearchInterval q)
+        , ("unspentBeforeSlotNo" .=) <$> Utxo.intervalUpperBound (querySearchInterval q)
         ]
 
 newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult

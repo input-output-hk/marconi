@@ -123,7 +123,7 @@ propSQLFieldRoundtripAddressAny = property $ do
 propJsonRoundtripAddressAny :: Property
 propJsonRoundtripAddressAny = property $ do
   (C.AddressInEra _ addr) <- forAll $ Gen.genAddressInEra C.BabbageEra
-  tripping (C.toAddressAny addr) Aeson.encode Aeson.decode
+  tripping (C.toAddressAny addr) Aeson.encode Aeson.eitherDecode
 
 propSQLFieldRoundtripScriptDataHash :: Property
 propSQLFieldRoundtripScriptDataHash = property $ do
@@ -138,7 +138,7 @@ propSQLFieldRoundtripScriptData = property $ do
 propJsonRoundtripScriptData :: Property
 propJsonRoundtripScriptData = property $ do
   d <- forAll $ C.getScriptData <$> CGen.genHashableScriptData
-  tripping d Aeson.encode Aeson.decode
+  tripping d Aeson.encode Aeson.eitherDecode
 
 propSQLFieldRoundtripTxId :: Property
 propSQLFieldRoundtripTxId = property $ do

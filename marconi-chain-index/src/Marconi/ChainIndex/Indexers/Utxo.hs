@@ -156,47 +156,50 @@ import Text.Read (readMaybe)
  - indexers. Taking the block info before ensures that we have consistent information across all the indexers.
  -}
 
--- | Not comprehensive, only supports ChainPoint interval as outlines in <https://github.com/input-output-hk/marconi/blob/main/marconi-sidechain/doc/API.adoc#getutxosfromaddress>
-data Interval r
-  = LessThanOrEqual !r
-  | InRange !r !r
+data Interval r = Interval
+  { intervalLowerBound :: !(Maybe r)
+  , intervalUpperBound :: !(Maybe r)
+  }
   deriving (Eq, Show)
 
-lowerBound :: Interval r -> Maybe r
-lowerBound = \case
-  LessThanOrEqual _ -> Nothing
-  InRange x _ -> Just x
+lessThanOrEqual :: r -> Interval r
+lessThanOrEqual = Interval Nothing . Just
 
-upperBound :: Interval r -> Maybe r
-upperBound = \case
-  LessThanOrEqual x -> Just x
-  InRange _ x -> Just x
+higherThanOrEqual :: r -> Interval r
+higherThanOrEqual r = Interval (Just r) Nothing
 
--- | Smart constructor for 'Interval ', return an error if the lower bound is greater than the upper bound.
+{- | Smart constructor for 'Interval' with a mandatory range.
+Return an error if the lower bound is greater than the upper bound.
+-}
+intervalInRange
+  :: C.SlotNo
+  -> C.SlotNo
+  -> Either (IndexerError UtxoIndexerError) (Interval C.SlotNo)
+intervalInRange x y
+  | x <= y = Right $ Interval (Just x) (Just y)
+  | otherwise =
+      Left $ QueryError $ InvalidInterval x y
+
+{- | Smart constructor for 'Interval'.
+Returns an error if the lower bound is greater than the upper bound.
+-}
 interval
   :: Maybe C.SlotNo
   -- ^ lower bound
-  -> C.SlotNo
+  -> Maybe C.SlotNo
   -- ^ upper bound
   -> Either (IndexerError UtxoIndexerError) (Interval C.SlotNo)
-interval Nothing p = Right $ LessThanOrEqual p
-interval (Just p) p' =
-  let
-    --  Enforce the internal invariant
-    -- 'InRange'.
-    wrap f x y
-      | x <= y = Right $ f x y
-      | otherwise =
-          Left . QueryError $ InvalidInterval x y
-   in
-    wrap InRange p p'
+interval (Just p) (Just p') = intervalInRange p p'
+interval p p' = Right $ Interval p p'
 
 -- | Check if a given chainpoint is in the given interval
 isInInterval :: Interval C.SlotNo -> C.SlotNo -> Bool
 isInInterval slotNoInterval slotNo =
   case slotNoInterval of
-    LessThanOrEqual slotNo' -> slotNo' >= slotNo
-    InRange l h -> l <= slotNo && h >= slotNo
+    Interval lowerBoundSlotNo Nothing ->
+      Just slotNo >= lowerBoundSlotNo
+    Interval lowerBoundSlotNo (Just upperBoundSlotNo) ->
+      Just slotNo >= lowerBoundSlotNo && slotNo <= upperBoundSlotNo
 
 type UtxoIndexer = Storable.State UtxoHandle
 
@@ -882,7 +885,7 @@ eventsAtAddress addr snoInterval = foldMap go
     pointFilter = isInInterval snoInterval . _blockInfoSlotNo . ueBlockInfo
 
     afterBoundCheck :: C.SlotNo -> Bool
-    afterBoundCheck slotNo = case upperBound snoInterval of
+    afterBoundCheck slotNo = case intervalUpperBound snoInterval of
       Nothing -> False
       Just s -> slotNo > s
 
@@ -952,10 +955,10 @@ instance Queryable UtxoHandle where
                 | otherwise -> Just utxoResult
 
       addressFilter = (["u.address = :address"], [":address" := addr])
-      lowerBoundFilter = case lowerBound slotInterval of
+      lowerBoundFilter = case intervalLowerBound slotInterval of
         Nothing -> mempty
         Just lowerBound' -> (["u.slotNo >= :lowerBound"], [":lowerBound" := lowerBound'])
-      upperBoundFilter = case upperBound slotInterval of
+      upperBoundFilter = case intervalUpperBound slotInterval of
         Nothing -> mempty
         Just upperBound' ->
           (

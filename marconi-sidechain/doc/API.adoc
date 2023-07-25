@@ -121,9 +121,9 @@ However, each supported JSON-RPC methods described below will respond with a cus
 
 === getCurrentSyncedBlock
 
-Retrieves the block information from which the indexers are synced at.
+Retrieves the block information from which the indexers are synced at, and the tip of the connected node.
 
-It queries the UTXO indexer and doesn't return the last indexed chainpoint, but the one before.
+In the implementation, it actually queries the UTXO indexer and doesn't return the last indexed chainpoint, but the one before.
 The reason is that we want to use this query to find a sync point that is common to all the indexers
 that are under the same coordinator.
 Unfortunately, while the coordinator ensures that all the indexer move at the same speed,
@@ -143,7 +143,8 @@ None as there are no required inputs.
 
 ==== Rationale
 
-TBD
+This endpoint is not called during normal operation of the Sidechain.
+It’s triggered when a user calls the Sidechain API to get info about the state of the node.
 
 ==== JSON Schema
 
@@ -186,13 +187,35 @@ The param object can be fully omitted for this method.
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
-    "createdBeforeSlotNo": {
+    "slotNo": {
       "type": "integer",
       "minimum": 0
     },
     "epochNo": {
       "type": "integer",
       "minimum": 0
+    },
+    "nodeTip": {
+      "type": "object",
+      "properties": {
+        "blockNo": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blockHeaderHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "slotNo": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "blockNo",
+        "blockHeaderHash",
+        "slotNo"
+      ]
     }
   },
   "required": []
@@ -242,7 +265,13 @@ Retrieves UTXOs of a given address until a given slot, and optionally after a gi
 
 ==== Rationale
 
-TBD
+The main use case of this endpoint will be to get registration UTXOs.
+Since you need to be an SPO to be a valid candidate then we can expect the number of result to be the same order of magnitude as the number of SPO on Cardano, ~500 at the moment on mainnet.
+
+Note that since since anyone can create a UTXO belonging to a validator, there is not an exact 1-1
+correspondance between the number of UTXOS and the number of SPOs.
+Additionally, a SPO can create several valid registrations (last one wins), to declare a new public key for instance.
+They are expected, however, to clean up older registration.
 
 ==== JSON Schema
 
@@ -413,7 +442,7 @@ TBD
 ====
 
 
-=== getBurnTokensEvents
+=== getBurnTokenEvents
 
 Retrieves all token burning events given an `AssetId` that have occurred before a given slot, and optionally after a given transaction ID.
 
@@ -513,6 +542,9 @@ TBD
       "burnAmount": {
         "type": "integer"
         "minimum": 0
+      },
+      "isStable": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -521,7 +553,8 @@ TBD
       "blockNo",
       "txId",
       "burnAmount",
-      "redeemer"
+      "redeemer",
+      "isStable"
     ]
   }
 }
