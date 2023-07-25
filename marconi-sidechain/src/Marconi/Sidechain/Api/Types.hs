@@ -90,6 +90,7 @@ data QueryExceptions
   = QueryError !Text
   | UntrackedPolicy C.PolicyId (Maybe C.AssetName)
   | UnexpectedQueryResult !(StorableQuery UtxoHandle)
+  | IndexerInternalError !Text
   deriving stock (Show)
   deriving anyclass (Exception)
 

@@ -12,6 +12,7 @@ import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM, atomically)
 import Data.Functor ((<&>))
 import Data.Word (Word64)
+import Marconi.ChainIndex.Error (IndexerError (InvalidIndexer))
 import Marconi.ChainIndex.Indexers.EpochState (
   EpochStateHandle,
   StorableQuery (ActiveSDDByEpochNoQuery, NonceByEpochNoQuery),
@@ -28,7 +29,7 @@ import Marconi.Sidechain.Api.Routes (
  )
 import Marconi.Sidechain.Api.Types (
   EpochStateIndexerEnv (EpochStateIndexerEnv),
-  QueryExceptions (QueryError),
+  QueryExceptions (IndexerInternalError, QueryError),
   SidechainEnv,
   epochStateIndexerEnvIndexer,
   sidechainEnvIndexers,
@@ -118,4 +119,5 @@ queryNonceByEpochNo env epochNo = do
                         (EpochState.epochNonceRowSlotNo row)
                         (EpochState.epochNonceRowBlockHeaderHash row)
                         (EpochState.epochNonceRowBlockNo row)
+        Left (InvalidIndexer err) -> pure $ Left $ IndexerInternalError err
         _other -> pure $ Left $ QueryError "Query failed"
