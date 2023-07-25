@@ -3,10 +3,12 @@
 -- | A sample servant json-rpc client for marconi-sidechain
 module Main where
 
+import Data.Either (fromRight)
 import Data.Proxy (Proxy (Proxy))
 import Marconi.Sidechain.Api.Routes (
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   JsonRpcAPI,
+  interval,
  )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.JsonRpc.Client.Types ()
@@ -41,11 +43,12 @@ main = do
   manager' <- newManager defaultManagerSettings
   let env = mkClientEnv manager' url
   let (rpcEcho :<|> rpcTargets :<|> _ :<|> rpcUtxos :<|> _ :<|> _ :<|> _) = getClients env
+  let boundaries = fromRight (error "the provided interval is correct") (interval Nothing maxBound)
   -- RPC calls
   msg <- rpcEcho "marconi client calling ???" --  return the echo message
   addresses <- rpcTargets "" --  get the targetAddresss
   --  get utxos for this address
-  utxos <- rpcUtxos $ GetUtxosFromAddressParams bech32Address Nothing maxBound
+  utxos <- rpcUtxos $ GetUtxosFromAddressParams bech32Address boundaries
   printResults msg
   printResults addresses
   printResults utxos

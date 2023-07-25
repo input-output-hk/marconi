@@ -4,7 +4,10 @@
 {-# LANGUAGE TypeOperators #-}
 
 -- | Defines REST and JSON-RPC routes
-module Marconi.Sidechain.Api.Routes where
+module Marconi.Sidechain.Api.Routes (
+  module Marconi.Sidechain.Api.Routes,
+  Utxo.interval,
+) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
@@ -29,6 +32,7 @@ import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
+import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
@@ -130,20 +134,27 @@ instance FromJSON GetCurrentSyncedBlockResult where
 data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   { queryAddress :: !String
   -- ^ address to query for
-  , queryCreatedAfterSlotNo :: !(Maybe Word64)
-  -- ^ query upper bound slotNo interval, unspent before or at this slot
-  , queryUnspentBeforeSlotNo :: !Word64
-  -- ^ query lower bound slotNo interval, filter out UTxO that were created during or before that slo
+  , querySearchInterval :: !(Utxo.Interval Ledger.SlotNo)
+  -- ^ query interval
   }
   deriving (Show, Eq)
 
 instance FromJSON GetUtxosFromAddressParams where
   parseJSON =
-    let parseParams v =
-          GetUtxosFromAddressParams
-            <$> (v .: "address")
-            <*> (v .:? "createdAfterSlotNo")
-            <*> (v .: "unspentBeforeSlotNo")
+    let buildInterval v = do
+          lo <-
+            v .:? "createdAfterSlotNo"
+              <|> fail "The 'createAfterSlotNo' param value must be a natural number"
+          hi <-
+            v .: "unspentBeforeSlotNo"
+              <|> fail "The 'unspentBeforeSlotNo' param value must be a natural number"
+          case Utxo.interval lo hi of
+            Left _ -> fail "The 'unspentBeforeSlotNo' param value must be larger than 'createAfterSlotNo'."
+            Right i -> pure i
+        parseParams v = do
+          address <- v .: "address" <|> fail "The 'address' param value must be in the Bech32 format"
+          interval <- buildInterval v
+          pure $ GetUtxosFromAddressParams address interval
      in Aeson.withObject "GetUtxosFromAddressParams" parseParams
 
 instance ToJSON GetUtxosFromAddressParams where
@@ -151,8 +162,8 @@ instance ToJSON GetUtxosFromAddressParams where
     Aeson.object $
       catMaybes
         [ Just ("address" .= queryAddress q)
-        , ("createdAfterSlotNo" .=) <$> queryCreatedAfterSlotNo q
-        , Just $ "unspentBeforeSlotNo" .= queryUnspentBeforeSlotNo q
+        , ("createdAfterSlotNo" .=) <$> Utxo.lowerBound (querySearchInterval q)
+        , ("unspentBeforeSlotNo" .=) <$> Utxo.upperBound (querySearchInterval q)
         ]
 
 newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult

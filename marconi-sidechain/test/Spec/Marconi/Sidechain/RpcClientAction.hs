@@ -64,7 +64,7 @@ mkRpcClientAction env port = do
     RpcClientAction
       (mkInsertUtxoEventsCallback env)
       (mkInsertMintBurnEventsCallback env)
-      (\a -> rpcUtxos $ GetUtxosFromAddressParams a Nothing maxBound)
+      (\a -> rpcUtxos $ GetUtxosFromAddressParams a (Utxo.LessThanOrEqual maxBound))
       (rpcSyncPoint "")
       (\(p, a) -> rpcMinting $ GetBurnTokenEventsParams p a Nothing Nothing)
 
