@@ -30,6 +30,7 @@ module Marconi.ChainIndex.Types (
   SecurityParam (SecurityParam),
   IndexingDepth (MinIndexingDepth, MaxIndexingDepth),
   TxIndexInBlock (TxIndexInBlock),
+  ShouldFailIfResync (ShouldFailIfResync),
 ) where
 
 import Cardano.Api qualified as C
@@ -69,6 +70,13 @@ type TxOutRef = C.TxIn
 
 txOutRef :: C.TxId -> C.TxIx -> C.TxIn
 txOutRef = C.TxIn
+
+newtype ShouldFailIfResync = ShouldFailIfResync Bool
+  deriving newtype
+    ( Eq
+    , Ord
+    , Show
+    )
 
 data IndexingDepth = MinIndexingDepth !Word64 | MaxIndexingDepth
   deriving (Show, Eq)

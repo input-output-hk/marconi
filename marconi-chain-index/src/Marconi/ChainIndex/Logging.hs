@@ -132,10 +132,13 @@ chainSyncEventStreamLogging tracer s = effect $ do
     minSecondsBetweenMsg = 10
 
     update
-      :: IORef LastSyncStats -> ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) -> IO ()
+      :: IORef LastSyncStats
+      -> ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime)
+      -> IO ()
     update statsRef (RollForward (bim, _epochNo, _posixTime) ct) = do
       let cp = case bim of
-            (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) -> C.ChainPoint slotNo hash
+            (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) ->
+              C.ChainPoint slotNo hash
       modifyIORef' statsRef $ \stats ->
         stats
           { syncStatsNumBlocks = syncStatsNumBlocks stats + 1

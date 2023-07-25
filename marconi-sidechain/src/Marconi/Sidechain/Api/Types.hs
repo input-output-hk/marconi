@@ -27,7 +27,7 @@ import Network.Wai.Handler.Warp (Settings)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
-import Marconi.ChainIndex.Types as Export (IndexingDepth, TargetAddresses)
+import Marconi.ChainIndex.Types as Export (IndexingDepth, ShouldFailIfResync, TargetAddresses)
 import Marconi.Core.Storable (State, StorableQuery)
 
 -- | Type represents http port for JSON-RPC
@@ -48,6 +48,9 @@ data CliArgs = CliArgs
   -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
   , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   -- ^ a list of asset to track
+  , optionsFailsIfResync :: !ShouldFailIfResync
+  -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
+  -- synced point.
   }
   deriving (Show)
 

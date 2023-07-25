@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
@@ -25,7 +26,11 @@ import Cardano.Api (
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Trace (logError)
+import Cardano.BM.Trace (
+  Trace,
+  logError,
+  logInfo,
+ )
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Ledger.Alonzo.TxWits qualified as Alonzo
 import Cardano.Streaming (
@@ -62,8 +67,19 @@ import Control.Concurrent.STM.TChan (
 import Control.Exception (catch, finally)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
-import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
-import Control.Monad (forM_, forever, void, when)
+import Control.Lens.Operators (
+  (%~),
+  (&),
+  (+~),
+  (.~),
+  (^.),
+ )
+import Control.Monad (
+  forM_,
+  forever,
+  void,
+  when,
+ )
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (
   ExceptT,
@@ -76,11 +92,15 @@ import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Void (Void)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Error (IndexerError (CantRollback, CantStartIndexer), ignoreQueryError)
+import Marconi.ChainIndex.Error (
+  IndexerError (CantRollback, CantStartIndexer),
+  ignoreQueryError,
+ )
 import Marconi.ChainIndex.Indexers.AddressDatum (
   AddressDatumDepth (AddressDatumDepth),
   AddressDatumHandle,
@@ -104,6 +124,7 @@ import Marconi.ChainIndex.Node.Client.GenesisConfig (
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   SecurityParam (SecurityParam),
+  ShouldFailIfResync (ShouldFailIfResync),
   TargetAddresses,
   UtxoIndexerConfig,
  )
@@ -113,8 +134,13 @@ import Ouroboros.Consensus.Ledger.Abstract qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Ouroboros.Consensus.Node qualified as O
 import Prettyprinter (
+  align,
   defaultLayoutOptions,
+  indent,
   layoutPretty,
+  line,
+  list,
+  nest,
   pretty,
   (<+>),
  )
@@ -496,35 +522,27 @@ mintBurnWorker callback mAssets securityParam coordinator path = do
   void $ forkIO loop
   return cp
 
-initializeIndexers
+-- | Initialize the 'Coordinator' which coordinators a list of indexers to index at the same speeds.
+initializeCoordinatorFromIndexers
   :: SecurityParam
   -> IndexingDepth
   -> [(Worker, FilePath)]
-  -> IO (ChainPoint, Coordinator)
-initializeIndexers securityParam@(SecurityParam sec) indexingDepth indexers = do
+  -> IO Coordinator
+initializeCoordinatorFromIndexers (SecurityParam sec) indexingDepth indexers = do
   let resolvedDepth = case indexingDepth of
         MinIndexingDepth w -> w
         MaxIndexingDepth -> sec
   when (resolvedDepth > sec) $
     fail "Indexing depth is greater than security param"
-  coordinator <- initialCoordinator (length indexers) resolvedDepth
-  startingPoints <- mapM (\(ix, fp) -> ix securityParam coordinator fp) indexers
-  -- We want to use the set of points that are common to all indexers
-  -- giving priority to recent ones.
-  let oldestStartingPoint = minimum startingPoints
-  pure
-    ( oldestStartingPoint
-    , coordinator
-    )
+  initialCoordinator (length indexers) resolvedDepth
 
-cleanExit :: Coordinator' a -> IO ()
-cleanExit c = do
-  putStrLn ""
-  putStrLn "Marconi is shutting down."
-  putStrLn "Waiting for indexers to finish their work..."
-
-  void $ timeout 180_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
-  putStrLn "Done."
+getStartingPointsFromIndexers
+  :: SecurityParam
+  -> [(Worker, FilePath)]
+  -> Coordinator
+  -> IO [ChainPoint]
+getStartingPointsFromIndexers securityParam indexers coordinator =
+  mapM (\(ix, fp) -> ix securityParam coordinator fp) indexers
 
 mkIndexerStream'
   :: (a -> SlotNo)
@@ -593,32 +611,67 @@ runIndexers
   -> C.NetworkId
   -> ChainPoint
   -> IndexingDepth
+  -> ShouldFailIfResync
   -> Text.Text
   -> [(Worker, Maybe FilePath)]
   -> IO ()
-runIndexers socketPath networkId cliChainPoint indexingDepth traceName list = do
+runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync shouldFailIfResync) traceName indexerList = do
   securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
-  (oldestCommonChainPoint, coordinator) <-
-    initializeIndexers securityParam indexingDepth $ mapMaybe sequenceA list
-  let chainPoint = case cliChainPoint of
+  let indexers = mapMaybe sequenceA indexerList
+  coordinator <- initializeCoordinatorFromIndexers securityParam indexingDepth indexers
+  resumablePoints <- getStartingPointsFromIndexers securityParam indexers coordinator
+  let oldestCommonChainPoint = minimum resumablePoints
+  let resumePoint = case cliChainPoint of
         C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
         cliCp -> cliCp -- otherwise use what was provided on CLI.
   c <- defaultConfigStdout
-  withTrace c traceName $ \trace ->
-    let stream =
-          mkIndexerStream coordinator
-            . chainSyncEventStreamLogging trace
-            . updateProcessedBlocksMetric
-        io = withChainSyncEventEpochNoStream socketPath networkId [chainPoint] stream
-        handleException NoIntersectionFound =
-          logError trace $
-            renderStrict $
-              layoutPretty defaultLayoutOptions $
-                "No intersection found when looking for the chain point"
-                  <+> pretty chainPoint
-                  <> "."
-                  <+> "Please check the slot number and the block hash do belong to the chain"
-     in finally (io `catch` handleException) (cleanExit coordinator)
+  withTrace c traceName $ \trace -> do
+    logInfo trace $
+      renderStrict $
+        layoutPretty defaultLayoutOptions $
+          "Resumable points for each indexer:"
+            <> line
+            <> indent 4 (align (list (fmap pretty resumablePoints)))
+
+    -- Possible runtime failure if an indexer with a non-genesis resumable point will resume from
+    -- genesis.
+    if shouldFailIfResync
+      && elem C.ChainPointAtGenesis resumablePoints
+      && any (\case ChainPoint{} -> True; _ -> False) resumablePoints
+      then do
+        logError trace $
+          renderStrict $
+            layoutPretty defaultLayoutOptions $
+              nest
+                4
+                ( "At least one indexer has a non-genesis resumable point, while the oldest common resumable point between indexers is genesis."
+                    <> line
+                    <> "Are you sure you want to restart syncing that indexer from genesis?"
+                    <> line
+                    <> "If so, remove the '--fail-if-resyncing-from-genesis' flag."
+                )
+      else do
+        let stream =
+              mkIndexerStream coordinator
+                . chainSyncEventStreamLogging trace
+                . updateProcessedBlocksMetric
+            io = withChainSyncEventEpochNoStream socketPath networkId [resumePoint] stream
+            handleException NoIntersectionFound = do
+              logError trace $
+                renderStrict $
+                  layoutPretty defaultLayoutOptions $
+                    "No intersection found when looking for the chain point"
+                      <+> pretty resumePoint
+                      <> "."
+                      <+> "Please check the slot number and the block hash do belong to the chain."
+              signalQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
+         in finally (io `catch` handleException) (cleanExit trace coordinator)
+  where
+    cleanExit :: Trace IO Text -> Coordinator' a -> IO ()
+    cleanExit trace c = do
+      logInfo trace "Marconi is shutting down. Waiting for indexers to finish their work..."
+      void $ timeout 180_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
+      logInfo trace "Done!"
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode, C.EpochNo, POSIXTime))) IO r
