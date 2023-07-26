@@ -36,6 +36,9 @@ module Marconi.Core.Spec.Experiment (
   cacheHitProperty,
   cacheMissProperty,
 
+  -- ** Catchup test suite
+  catchupTestGroup,
+
   -- ** Delay test suite
   delayTestGroup,
 
@@ -943,6 +946,131 @@ delayTestGroup title runner =
         , Tasty.testProperty "in a chain with rollbacks" $
             Test.withMaxSuccess 10000 $
               delayProperty 10 (view defaultChain <$> Test.arbitrary) runner
+        ]
+    ]
+
+-- | A runner for a the 'WithTracer' tranformer
+withCatchupRunner
+  :: (Monad m)
+  => (Core.Point event ~ TestPoint)
+  => Word
+  -> Word
+  -> IndexerTestRunner m event wrapped
+  -> IndexerTestRunner m event (Core.WithCatchup wrapped)
+withCatchupRunner batchSize bypassDistance wRunner =
+  let computeDistance (TestPoint d) _ = fromIntegral $ 100 - d
+   in IndexerTestRunner
+        (wRunner ^. indexerRunner)
+        (Core.withCatchup computeDistance batchSize bypassDistance <$> wRunner ^. indexerGenerator)
+
+catchupProperty
+  :: (Core.IsIndex m TestEvent indexer)
+  => (Core.IsSync m TestEvent indexer)
+  => (Core.Rollbackable m TestEvent indexer)
+  => ( Core.Queryable
+        (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
+        TestEvent
+        (Core.EventsMatchingQuery TestEvent)
+        indexer
+     )
+  => (Core.IsSync m TestEvent indexer)
+  => Word
+  -> Word
+  -> Gen [Item TestEvent]
+  -> IndexerTestRunner m TestEvent indexer
+  -> Property
+catchupProperty batchSize bypassDistance gen runner =
+  let indexerEvents indexer' =
+        fmap (view Core.event)
+          . fromRight []
+          <$> Core.queryLatest' Core.allEvents indexer'
+
+      modelEvents lastSync =
+        views model (mapMaybe snd . filter ((lastSync >=) . fst))
+
+      dRunner = withCatchupRunner batchSize bypassDistance runner
+
+      r = dRunner ^. indexerRunner
+      genIndexer = dRunner ^. indexerGenerator
+   in Test.forAll gen $ \chain -> r $ do
+        initialIndexer <- GenM.run genIndexer
+        indexer <- GenM.run $ foldM (flip process) initialIndexer chain
+        iResult <- GenM.run $ indexerEvents indexer
+        lastSyncPoint <- GenM.run $ Core.lastSyncPoint indexer
+        let model' = runModel chain
+            mResult = modelEvents lastSyncPoint model'
+        GenM.stop $ mResult === iResult
+
+-- | A test tree for the core functionalities of a delayed indexer
+catchupTestGroup
+  :: (Core.Rollbackable m TestEvent indexer)
+  => (Core.IsIndex m TestEvent indexer)
+  => (Core.IsSync m TestEvent indexer)
+  => ( Core.Queryable
+        (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
+        TestEvent
+        (Core.EventsMatchingQuery TestEvent)
+        indexer
+     )
+  => String
+  -> IndexerTestRunner m TestEvent indexer
+  -> Tasty.TestTree
+catchupTestGroup title runner =
+  Tasty.testGroup
+    (title <> "WithCatchup behaviour with WithCatchup")
+    [ Tasty.testGroup
+        "0 bufferSize, stop on tip (100 events)"
+        [ Tasty.testProperty "indexes events without rollback" $
+            Test.withMaxSuccess 5000 $
+              catchupProperty 0 0 (view forwardChain <$> Test.arbitrary) runner
+        , Tasty.testProperty "indexes events with rollbacks" $
+            Test.withMaxSuccess 10000 $
+              catchupProperty 0 0 (view defaultChain <$> Test.arbitrary) runner
+        ]
+    , Tasty.testGroup
+        "100 bufferSize, stop on tip (100 events)"
+        [ Tasty.testProperty "indexes events without rollback" $
+            Test.withMaxSuccess 5000 $
+              catchupProperty 100 0 (view forwardChain <$> Test.arbitrary) runner
+        , Tasty.testProperty "indexes events with rollbacks" $
+            Test.withMaxSuccess 10000 $
+              catchupProperty 100 0 (view defaultChain <$> Test.arbitrary) runner
+        ]
+    , Tasty.testGroup
+        "1000 bufferSize, stop on tip (100 events)"
+        [ Tasty.testProperty "indexes events without rollback" $
+            Test.withMaxSuccess 5000 $
+              catchupProperty 1000 0 (view forwardChain <$> Test.arbitrary) runner
+        , Tasty.testProperty "indexes events with rollbacks" $
+            Test.withMaxSuccess 10000 $
+              catchupProperty 1000 0 (view defaultChain <$> Test.arbitrary) runner
+        ]
+    , Tasty.testGroup
+        "0 bufferSize, stop 10 to tip (100 events)"
+        [ Tasty.testProperty "indexes events without rollback" $
+            Test.withMaxSuccess 5000 $
+              catchupProperty 0 10 (view forwardChain <$> Test.arbitrary) runner
+        , Tasty.testProperty "indexes events with rollbacks" $
+            Test.withMaxSuccess 10000 $
+              catchupProperty 0 10 (view defaultChain <$> Test.arbitrary) runner
+        ]
+    , Tasty.testGroup
+        "100 bufferSize, stop 10 to tip (100 events)"
+        [ Tasty.testProperty "indexes events without rollback" $
+            Test.withMaxSuccess 5000 $
+              catchupProperty 100 10 (view forwardChain <$> Test.arbitrary) runner
+        , Tasty.testProperty "indexes events with rollbacks" $
+            Test.withMaxSuccess 10000 $
+              catchupProperty 100 10 (view defaultChain <$> Test.arbitrary) runner
+        ]
+    , Tasty.testGroup
+        "1000 bufferSize, stop 10 to tip (100 events)"
+        [ Tasty.testProperty "indexes events without rollback" $
+            Test.withMaxSuccess 5000 $
+              catchupProperty 1000 10 (view forwardChain <$> Test.arbitrary) runner
+        , Tasty.testProperty "indexes events with rollbacks" $
+            Test.withMaxSuccess 10000 $
+              catchupProperty 1000 10 (view defaultChain <$> Test.arbitrary) runner
         ]
     ]
 

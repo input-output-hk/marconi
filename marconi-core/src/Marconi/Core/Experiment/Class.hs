@@ -49,7 +49,7 @@ class (Monad m) => IsIndex m event indexer where
   --
   -- The events must be sorted in ascending order (the most recent first)
   indexAll
-    :: (Ord (Point event), Traversable f)
+    :: (Eq (Point event), Traversable f)
     => f (Timed (Point event) (Maybe event))
     -> indexer event
     -> m (indexer event)
@@ -59,7 +59,7 @@ class (Monad m) => IsIndex m event indexer where
   --
   -- The events must be sorted in descending order (the most recent first)
   indexAllDescending
-    :: (Ord (Point event), Traversable f)
+    :: (Eq (Point event), Traversable f)
     => f (Timed (Point event) (Maybe event))
     -> indexer event
     -> m (indexer event)

@@ -11,10 +11,10 @@ module Marconi.Core.Experiment.Indexer.LastPointIndexer (
   lastPointIndexer,
 ) where
 
-import Control.Lens (folded, makeLenses, maximumOf, view)
+import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((^.))
-import Data.Maybe (fromMaybe)
 
+import Data.Foldable (Foldable (toList))
 import Marconi.Core.Experiment.Class (
   HasGenesis (genesis),
   IsIndex (index, indexAllDescending),
@@ -44,7 +44,9 @@ instance
   where
   index timedEvent _ = pure $ LastPointIndexer $ timedEvent ^. point
 
-  indexAllDescending evts _ = pure $ LastPointIndexer $ fromMaybe genesis $ maximumOf (folded . point) evts
+  indexAllDescending evts _ = case toList evts of
+    [] -> pure $ LastPointIndexer genesis
+    (evt : _) -> pure $ LastPointIndexer $ evt ^. point
 
 instance (Applicative m) => IsSync m event LastPointIndexer where
   lastSyncPoint = pure . view lastPoint

@@ -37,7 +37,7 @@ import Data.Either (fromRight)
 import Data.Foldable (fold, foldl')
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Ord ()
+import Data.Ord (comparing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified as Text
@@ -76,7 +76,7 @@ data Utxo = Utxo
 $(makeLenses ''Utxo)
 
 instance Ord Utxo where
-  compare u1 u2 = compare (u1 ^. utxoTxIn) (u2 ^. utxoTxIn)
+  compare = comparing (view utxoTxIn)
 
 newtype Spent = Spent {unSpent :: C.TxIn}
   deriving (Show, Eq, Ord)

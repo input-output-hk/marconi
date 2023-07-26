@@ -13,7 +13,6 @@
 module Marconi.Core.Experiment.Transformer.WithDelay (
   WithDelay,
   withDelay,
-  delayBuffer,
   HasDelayConfig (delayCapacity),
 ) where
 

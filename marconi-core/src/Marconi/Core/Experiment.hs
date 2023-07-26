@@ -370,10 +370,14 @@ module Marconi.Core.Experiment (
   withTracer,
   HasTracerConfig (tracer),
 
+  -- ** WithCatchup
+  WithCatchup,
+  withCatchup,
+  HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
+
   -- ** Delay
   WithDelay,
   withDelay,
-  delayBuffer,
   -- | A type class that give access to the configuration of 'WithDelay'
   HasDelayConfig (delayCapacity),
 
@@ -521,10 +525,14 @@ import Marconi.Core.Experiment.Transformer.WithCache (
   addCacheFor,
   withCache,
  )
+import Marconi.Core.Experiment.Transformer.WithCatchup (
+  HasCatchupConfig (catchupBatchSize, catchupBypassDistance),
+  WithCatchup,
+  withCatchup,
+ )
 import Marconi.Core.Experiment.Transformer.WithDelay (
   HasDelayConfig (delayCapacity),
   WithDelay,
-  delayBuffer,
   withDelay,
  )
 import Marconi.Core.Experiment.Transformer.WithPruning (
