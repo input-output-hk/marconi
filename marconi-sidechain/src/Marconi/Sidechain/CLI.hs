@@ -1,6 +1,7 @@
 module Marconi.Sidechain.CLI where
 
 import Marconi.ChainIndex.CLI qualified as Cli
+import Marconi.ChainIndex.Types (ShouldFailIfResync (ShouldFailIfResync))
 import Marconi.Sidechain.Api.Types (CliArgs (CliArgs))
 import Options.Applicative qualified as Opt
 
@@ -27,3 +28,10 @@ parserCliArgs =
     <*> Cli.commonMinIndexingDepthParser
     <*> Cli.commonMaybeTargetAddressParser
     <*> Cli.commonMaybeTargetAssetParser
+    <*> ( ShouldFailIfResync
+            <$> Opt.switch
+              ( Opt.long "fail-if-resyncing-from-genesis"
+                  <> Opt.help
+                    "Fails resuming if one indexer must resync from genesis when it can resume from a later point."
+              )
+        )

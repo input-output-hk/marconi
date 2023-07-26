@@ -36,5 +36,6 @@ main = do
     (Cli.optionsNetworkId $ Cli.commonOptions o)
     (Cli.optionsChainPoint $ Cli.commonOptions o)
     (Cli.optionsMinIndexingDepth $ Cli.commonOptions o)
+    (Cli.optionsFailsIfResync o)
     "marconi-chain-index"
     indexers

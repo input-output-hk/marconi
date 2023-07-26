@@ -66,6 +66,7 @@ import Marconi.ChainIndex.Indexers.Utxo (
  )
 import Marconi.ChainIndex.Types (
   IndexingDepth (MinIndexingDepth),
+  ShouldFailIfResync (ShouldFailIfResync),
   UtxoIndexerConfig (UtxoIndexerConfig),
   ucEnableUtxoTxOutRef,
   ucTargetAddresses,
@@ -130,6 +131,7 @@ runIndexerSyncing databaseDir nodeSocketPath indexerTVar = do
     (C.Testnet $ C.NetworkMagic 1) -- TODO Needs to be passed a CLI param
     C.ChainPointAtGenesis
     (MinIndexingDepth 0)
+    (ShouldFailIfResync True)
     "marconi"
     indexers
 

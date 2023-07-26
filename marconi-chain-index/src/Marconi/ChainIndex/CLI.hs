@@ -22,6 +22,7 @@ import Cardano.Api qualified as C
 import Data.List.NonEmpty qualified as NonEmpty
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
+  ShouldFailIfResync (ShouldFailIfResync),
   TargetAddresses,
   UtxoIndexerConfig (UtxoIndexerConfig),
   addressDatumDbName,
@@ -139,6 +140,9 @@ data Options = Options
   , optionsTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   , optionsNodeConfigPath :: !(Maybe FilePath)
   -- ^ Path to the node config
+  , optionsFailsIfResync :: !ShouldFailIfResync
+  -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
+  -- synced point.
   }
   deriving (Show)
 
@@ -194,6 +198,13 @@ optionsParser =
             Opt.strOption $
               Opt.long "node-config-path"
                 <> Opt.help "Path to node configuration which you are connecting to."
+        )
+    <*> ( ShouldFailIfResync
+            <$> Opt.switch
+              ( Opt.long "fail-if-resyncing-from-genesis"
+                  <> Opt.help
+                    "Fails resuming if one indexer must resync from genesis when it can resume from a later point."
+              )
         )
 
 -- * Database paths

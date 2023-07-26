@@ -96,5 +96,6 @@ bootstrapIndexers args env = do
     (CLI.networkId args)
     C.ChainPointAtGenesis
     (CLI.minIndexingDepth args)
+    (CLI.optionsFailsIfResync args)
     "marconi-sidechain"
     indexers
