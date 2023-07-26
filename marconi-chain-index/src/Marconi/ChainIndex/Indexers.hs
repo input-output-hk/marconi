@@ -216,7 +216,11 @@ initialCoordinator indexerCount' minIndexingDepth =
 -- is a list of points (rather than just one) since it offers more resume possibilities
 -- to the node (in the unlikely case there were some rollbacks during downtime).
 type Worker =
-  SecurityParam -> Coordinator -> FilePath -> IO (Storable.StorablePoint ScriptTx.ScriptTxHandle)
+  SecurityParam
+  -> C.BlockNo
+  -> Coordinator
+  -> FilePath
+  -> IO (Storable.StorablePoint ScriptTx.ScriptTxHandle)
 
 utxoWorker_
   :: (Utxo.UtxoIndexer -> IO ())
@@ -254,7 +258,7 @@ utxoWorker
   -> UtxoIndexerConfig
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> Worker
-utxoWorker callback utxoIndexerConfig securityParam coordinator path = do
+utxoWorker callback utxoIndexerConfig securityParam _ coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, cp) <-
     utxoWorker_
@@ -271,7 +275,7 @@ addressDatumWorker
   :: (Storable.StorableEvent AddressDatumHandle -> IO [()])
   -> Maybe TargetAddresses
   -> Worker
-addressDatumWorker onInsert targetAddresses securityParam coordinator path = do
+addressDatumWorker onInsert targetAddresses securityParam _ coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, cp) <-
     addressDatumWorker_
@@ -348,7 +352,7 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
 scriptTxWorker
   :: (Storable.StorableEvent ScriptTx.ScriptTxHandle -> IO [()])
   -> Worker
-scriptTxWorker onInsert securityParam coordinator path = do
+scriptTxWorker onInsert securityParam _ coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, cp, _indexer) <-
     scriptTxWorker_
@@ -366,6 +370,7 @@ epochStateWorker_
   :: FilePath
   -> (Storable.State EpochStateHandle -> IO ())
   -> SecurityParam
+  -> C.BlockNo
   -> Coordinator
   -> TChan (ChainSyncEvent (BlockInMode CardanoMode, a, t))
   -> FilePath
@@ -374,6 +379,7 @@ epochStateWorker_
   nodeConfigPath
   callback
   securityParam
+  currentNodeBlockNoAtStartup
   Coordinator{_barrier, _errorVar}
   ch
   dbPath = do
@@ -392,7 +398,9 @@ epochStateWorker_
 
     let ledgerStateDir = takeDirectory dbPath </> "ledgerStates"
     createDirectoryIfMissing False ledgerStateDir
-    indexer <- Utils.toException $ EpochState.open topLevelConfig dbPath ledgerStateDir securityParam
+    indexer <-
+      Utils.toException $
+        EpochState.open topLevelConfig dbPath ledgerStateDir securityParam currentNodeBlockNoAtStartup
 
     cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle indexer
     indexerMVar <- newMVar indexer
@@ -468,13 +476,14 @@ epochStateWorker
   :: FilePath
   -> (Storable.State EpochStateHandle -> IO ())
   -> Worker
-epochStateWorker nodeConfigPath callback securityParam coordinator path = do
+epochStateWorker nodeConfigPath callback securityParam currentNodeBlockNo coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, cp, _indexer) <-
     epochStateWorker_
       nodeConfigPath
       callback
       securityParam
+      currentNodeBlockNo
       coordinator
       workerChannel
       path
@@ -516,7 +525,7 @@ mintBurnWorker
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -- ^ Target assets to filter for
   -> Worker
-mintBurnWorker callback mAssets securityParam coordinator path = do
+mintBurnWorker callback mAssets securityParam _ coordinator path = do
   workerChannel <- atomically . dupTChan $ _channel coordinator
   (loop, cp) <- mintBurnWorker_ securityParam callback mAssets coordinator workerChannel path
   void $ forkIO loop
@@ -538,11 +547,12 @@ initializeCoordinatorFromIndexers (SecurityParam sec) indexingDepth indexers = d
 
 getStartingPointsFromIndexers
   :: SecurityParam
+  -> C.BlockNo
   -> [(Worker, FilePath)]
   -> Coordinator
   -> IO [ChainPoint]
-getStartingPointsFromIndexers securityParam indexers coordinator =
-  mapM (\(ix, fp) -> ix securityParam coordinator fp) indexers
+getStartingPointsFromIndexers securityParam currentNodeBlockNo indexers coordinator =
+  mapM (\(ix, fp) -> ix securityParam currentNodeBlockNo coordinator fp) indexers
 
 mkIndexerStream'
   :: (a -> SlotNo)
@@ -617,9 +627,11 @@ runIndexers
   -> IO ()
 runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync shouldFailIfResync) traceName indexerList = do
   securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+  currentNodeBlockNo <- Utils.toException $ Utils.queryCurrentNodeBlockNo @Void networkId socketPath
   let indexers = mapMaybe sequenceA indexerList
   coordinator <- initializeCoordinatorFromIndexers securityParam indexingDepth indexers
-  resumablePoints <- getStartingPointsFromIndexers securityParam indexers coordinator
+  resumablePoints <-
+    getStartingPointsFromIndexers securityParam currentNodeBlockNo indexers coordinator
   let oldestCommonChainPoint = minimum resumablePoints
   let resumePoint = case cliChainPoint of
         C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,

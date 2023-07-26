@@ -7,6 +7,7 @@ This module contains a bunch of utility functions for working in `marconi-chain-
 module Marconi.ChainIndex.Utils (
   isBlockRollbackable,
   getBlockNoFromChainTip,
+  queryCurrentNodeBlockNo,
   querySecurityParam,
   querySecurityParamEra,
   toException,
@@ -15,6 +16,7 @@ module Marconi.ChainIndex.Utils (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Cardano.Streaming.Helpers qualified as C
 import Control.Exception (Exception, throw)
 import Control.Monad.Except (
@@ -41,6 +43,28 @@ getBlockNoFromChainTip chainTip =
   case chainTip of
     C.ChainTipAtGenesis -> 0
     (C.ChainTip _ _ bn) -> bn
+
+-- | Query the current tip from the local node.
+queryCurrentNodeBlockNo
+  :: C.NetworkId
+  -> FilePath
+  -- ^ Node socket file path
+  -> ExceptT (IndexerError err) IO C.BlockNo
+queryCurrentNodeBlockNo networkId socketPath = do
+  let localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
+      localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
+
+      queryInMode :: C.QueryInMode C.CardanoMode (WithOrigin C.BlockNo)
+      queryInMode = C.QueryChainBlockNo
+
+      toError :: (Show a) => a -> ExceptT (IndexerError err) IO b
+      toError = throwError . CantStartIndexer . pack . show
+
+  result <- lift $ C.queryNodeLocalState localNodeConnectInfo Nothing queryInMode
+  case result of
+    Left err -> toError err
+    Right Origin -> toError ("The node chain is still at genesis. Did it start syncing?" :: String)
+    Right (At blockNo) -> pure blockNo
 
 {- | Query security param from the local node.
  It queries the current era first, and uses that to query the security parameter.
