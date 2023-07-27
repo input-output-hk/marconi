@@ -164,17 +164,18 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
 
   -- It is crtical that we perform NO vacuum.
   -- With depth at such small numbers, the likelihood of SQLite vaccume is almost certain in
+  upperBound <-
+    forAll $ Gen.element [Nothing, Just . maximum $ fmap (Utxo._blockInfoSlotNo . ueBlockInfo) events]
   indexer <-
     liftIO $
       raiseException $
         Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
-  let upperBound = maximum $ fmap (Utxo._blockInfoSlotNo . ueBlockInfo) events
-      -- we want to query for all addresses
-      addressQueries :: [StorableQuery Utxo.UtxoHandle] =
+  -- we want to query for all addresses
+  let addressQueries :: [StorableQuery Utxo.UtxoHandle] =
         List.nub
           . fmap
             ( Utxo.QueryUtxoByAddressWrapper
-                . flip Utxo.QueryUtxoByAddress (Utxo.lessThanOrEqual upperBound) --  maxBound will overflow. See TODO below
+                . flip Utxo.QueryUtxoByAddress (Utxo.Interval Nothing upperBound) --  maxBound will overflow. See TODO below
                 . view Utxo.address
             )
           . concatMap Utxo.ueUtxos
