@@ -33,9 +33,11 @@ liftSQLError errorWrapper =
           pure (Left (errorWrapper $ Text.pack $ show err0))
             `catch` \(err1 :: SQL.FormatError) ->
               pure (Left (InvalidIndexer $ Text.pack $ show err1))
-                `catch` \(err2 :: SQL.ResultError) -> pure (Left (InvalidIndexer $ Text.pack $ show err2))
+                `catch` \(err2 :: SQL.ResultError) ->
+                  pure (Left (InvalidIndexer $ Text.pack $ show err2))
     )
 
+-- | Hide an explicit error into an IO @Exception@.
 raiseException :: (Exception err) => ExceptT (IndexerError err) IO a -> IO a
 raiseException x = do
   x' <- runExceptT x
@@ -43,6 +45,10 @@ raiseException x = do
     Left err -> throw err
     Right result -> pure result
 
+{- | Used to hide indexers specific query errors that can't occur while indexing new data
+
+Ideally, we should separate indexing and querying errors
+-}
 ignoreQueryError :: ExceptT (IndexerError err) IO a -> ExceptT (IndexerError Void) IO a
 ignoreQueryError x = ExceptT $ do
   x' <- runExceptT x
