@@ -26,7 +26,7 @@ import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (AssetIdTxResult (AssetIdTxResult))
 import Marconi.Sidechain.Api.Types (
   MintBurnIndexerEnv (MintBurnIndexerEnv),
-  QueryExceptions (QueryError, UntrackedPolicy),
+  QueryExceptions (IndexerInternalError, QueryError, UntrackedPolicy),
   SidechainEnv,
   mintBurnIndexerEnvIndexer,
   mintBurnIndexerEnvTargetAssets,
@@ -90,6 +90,7 @@ queryByPolicyAndAssetId env policyId assetId slotNo txId = do
             Left $
               QueryError
                 "The 'createdAfterTx' param value must be an existing transaction ID in the Cardano network that burned a token ('AssetId')."
+        Left (CI.InvalidIndexer err) -> pure $ Left $ IndexerInternalError err
         _other -> pure $ Left $ QueryError "invalid query result"
 
     validAssetName maybeName = fromMaybe True $ do

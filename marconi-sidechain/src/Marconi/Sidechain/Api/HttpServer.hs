@@ -16,6 +16,7 @@ import Data.ByteString qualified as BS
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text (Text, pack, unpack)
+import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
@@ -35,7 +36,7 @@ import Marconi.Sidechain.Api.Routes (
   RestAPI,
  )
 import Marconi.Sidechain.Api.Types (
-  QueryExceptions (QueryError, UnexpectedQueryResult, UntrackedPolicy),
+  QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult, UntrackedPolicy),
   SidechainEnv,
   sidechainAddressUtxoIndexer,
   sidechainEnvHttpSettings,
@@ -210,3 +211,5 @@ toRpcErr (UntrackedPolicy _ _) =
   mkJsonRpcParseErr $
     Just
       "The 'policyId' and 'assetName' param values must belong to the provided target 'AssetIds'."
+toRpcErr (IndexerInternalError err) =
+  JsonRpcErr (-32001) (Text.unpack err) Nothing

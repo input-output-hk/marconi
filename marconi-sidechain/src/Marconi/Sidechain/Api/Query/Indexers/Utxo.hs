@@ -19,6 +19,7 @@ import Data.Bifunctor (Bifunctor (bimap))
 import Data.Functor ((<&>))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text, pack)
+import Marconi.ChainIndex.Error (IndexerError (InvalidIndexer))
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (TargetAddresses)
@@ -32,7 +33,7 @@ import Marconi.Sidechain.Api.Routes (
  )
 import Marconi.Sidechain.Api.Types (
   AddressUtxoIndexerEnv (AddressUtxoIndexerEnv),
-  QueryExceptions (QueryError, UnexpectedQueryResult),
+  QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult),
   addressUtxoIndexerEnvIndexer,
   addressUtxoIndexerEnvTargetAddresses,
  )
@@ -70,10 +71,11 @@ currentSyncedBlock
 currentSyncedBlock env = do
   indexer <- atomically (readTMVar $ env ^. addressUtxoIndexerEnvIndexer)
   res <- runExceptT $ Storable.query indexer Utxo.LastSyncedBlockInfoQuery
-  case res of
+  pure $ case res of
     Right (Utxo.LastSyncedBlockInfoResult blockInfoM) ->
-      pure $ Right $ GetCurrentSyncedBlockResult blockInfoM
-    _other -> pure $ Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
+      Right $ GetCurrentSyncedBlockResult blockInfoM
+    Left (InvalidIndexer err) -> Left $ IndexerInternalError err
+    _other -> Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
 
 {- | Retrieve Utxos associated with the given address
  We return an empty list if no address is not found
@@ -139,6 +141,7 @@ withQueryAction env query =
                       (Utxo.utxoResultValue row)
                       (spentInfoResult <$> Utxo.utxoResultSpentInfo row)
                       (UtxoTxInput <$> Utxo.utxoResultTxIns row)
+        Left (InvalidIndexer err) -> Left $ IndexerInternalError err
         _other ->
           Left $ UnexpectedQueryResult query
 
