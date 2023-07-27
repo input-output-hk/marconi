@@ -36,7 +36,7 @@ import Cardano.Ledger.Core qualified as Ledger
 import Cardano.Ledger.Mary.Value qualified as LA
 import Cardano.Ledger.Mary.Value qualified as LM
 import Control.Exception (Exception)
-import Control.Lens (makeLenses, view, (&), (^.))
+import Control.Lens (makeLenses, view, (^.))
 import Control.Monad.Except (ExceptT, MonadError (throwError))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (MonadTrans (lift))
@@ -46,7 +46,7 @@ import Data.ByteString.Short qualified as Short
 import Data.Coerce (coerce)
 import Data.Foldable (toList)
 import Data.Function (on)
-import Data.List (find, groupBy, sort)
+import Data.List (find)
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NE
@@ -70,8 +70,8 @@ import Marconi.ChainIndex.Error (
   liftSQLError,
  )
 import Marconi.ChainIndex.Indexers.LastSync (
-  addLastSyncPoints,
   createLastSyncTable,
+  insertLastSyncPoints,
   queryLastSyncPoint,
   rollbackLastSyncPoints,
  )
@@ -83,14 +83,6 @@ import Ouroboros.Consensus.Shelley.Eras qualified as OEra
 
 -- * Event
 
--- | The info about the tx that does the minting
-data TxMintInfo = TxMintInfo
-  { txMintTxId :: C.TxId
-  , txMintIndexInBlock :: TxIndexInBlock
-  , txMintAsset :: NE.NonEmpty MintAsset
-  }
-  deriving (Show, Eq, Ord)
-
 -- | Gather all the relevant minting in a block
 data TxMintEvent = TxMintEvent
   { txMintEventSlotNo :: !C.SlotNo
@@ -100,11 +92,13 @@ data TxMintEvent = TxMintEvent
   }
   deriving (Show, Eq, Ord)
 
-data MintAssetRedeemer = MintAssetRedeemer
-  { mintAssetRedeemerData :: !C.ScriptData
-  , mintAssetRedeemerHash :: !(C.Hash C.ScriptData)
+-- | The info about the tx that does the minting
+data TxMintInfo = TxMintInfo
+  { txMintTxId :: C.TxId
+  , txMintIndexInBlock :: TxIndexInBlock
+  , txMintAsset :: NE.NonEmpty MintAsset
   }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
+  deriving (Show, Eq, Ord)
 
 data MintAsset = MintAsset
   { mintAssetPolicyId :: !C.PolicyId
@@ -114,6 +108,12 @@ data MintAsset = MintAsset
   -- ^ Nothing if  the policyId is a simple script
   }
   deriving (Show, Eq, Ord)
+
+data MintAssetRedeemer = MintAssetRedeemer
+  { mintAssetRedeemerData :: !C.ScriptData
+  , mintAssetRedeemerHash :: !(C.Hash C.ScriptData)
+  }
+  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
 
 -- | Errors that can occurs when you query the indexer
 data MintBurnQueryError
@@ -130,10 +130,10 @@ instance Exception MintBurnQueryError
 toUpdate
   :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> C.BlockInMode C.CardanoMode
-  -> TxMintEvent
+  -> RI.StorableEvent MintBurnHandle
 toUpdate mAssets (C.BlockInMode (C.Block (C.BlockHeader slotNo blockHeaderHash blockNo) txs) _) =
   let assets = mapMaybe (uncurry $ txMints mAssets) $ zip [0 ..] txs
-   in TxMintEvent slotNo blockHeaderHash blockNo assets
+   in MintBurnEvent $ TxMintEvent slotNo blockHeaderHash blockNo assets
 
 -- | Extracs TxMintInfo from a Tx
 txMints
@@ -199,6 +199,41 @@ fromMaryAssetName (LM.AssetName n) = C.AssetName $ Short.fromShort n -- from car
 
 fromAlonzoData :: LA.Data ledgerera -> C.ScriptData
 fromAlonzoData = C.fromPlutusData . LA.getPlutusData -- from cardano-api:src/Cardano/Api/ScriptData.hs
+
+-- * Indexer
+
+data MintBurnHandle = MintBurnHandle
+  { sqlConnection :: !SQL.Connection
+  , securityParam :: !SecurityParam
+  }
+
+type MintBurnIndexer = RI.State MintBurnHandle
+
+type instance RI.StorablePoint MintBurnHandle = C.ChainPoint
+
+type instance RI.StorableMonad MintBurnHandle = ExceptT (IndexerError MintBurnQueryError) IO
+
+newtype instance RI.StorableEvent MintBurnHandle = MintBurnEvent {getEvent :: TxMintEvent}
+  deriving (Show)
+
+data instance RI.StorableQuery MintBurnHandle
+  = -- | Query all transactions that minted a specific 'AssetId' until an upper bound slot in the
+    -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
+    QueryByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo)
+  | -- | Query all transactions that minted 'AssetId's until an upper bound slot in the blockchain. If
+    -- the upper bound slot is 'Nothing', then we return everything.
+    QueryAllMintBurn (Maybe C.SlotNo)
+  | -- | Query all transactions that burned until an upper bound slot
+    -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
+    QueryBurnByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo) (Maybe C.TxId)
+  | -- | Query all transactions that burned 'AssetId's until an upper bound slot in the blockchain. If
+    -- the upper bound slot is 'Nothing', then we return everything.
+    QueryAllBurn (Maybe C.SlotNo)
+  deriving (Show)
+
+newtype instance RI.StorableResult MintBurnHandle
+  = MintBurnResult [TxMintRow]
+  deriving (Show)
 
 -- * Sqlite
 
@@ -399,58 +434,6 @@ queryStoredTxMintEvents sqlCon (conditions, params) =
         <> "                                        \
            \ ORDER BY blockNo ASC, txIndexInBlock ASC"
 
-groupBySlotAndHash :: [TxMintEvent] -> [TxMintEvent]
-groupBySlotAndHash events =
-  events
-    & sort
-    & groupBy
-      ( \e1 e2 ->
-          txMintEventSlotNo e1 == txMintEventSlotNo e2
-            && txMintEventBlockHeaderHash e1 == txMintEventBlockHeaderHash e2
-      )
-    & mapMaybe buildTxMintEvent
-  where
-    buildTxMintEvent [] = Nothing
-    buildTxMintEvent (e : es) =
-      Just $
-        TxMintEvent (txMintEventSlotNo e) (txMintEventBlockHeaderHash e) (txMintEventBlockNo e) $
-          txMintEventTxAssets =<< (e : es)
-
--- * Indexer
-
-data MintBurnHandle = MintBurnHandle
-  { sqlConnection :: !SQL.Connection
-  , securityParam :: !SecurityParam
-  }
-
-type MintBurnIndexer = RI.State MintBurnHandle
-
-type instance RI.StorablePoint MintBurnHandle = C.ChainPoint
-
-type instance RI.StorableMonad MintBurnHandle = ExceptT (IndexerError MintBurnQueryError) IO
-
-newtype instance RI.StorableEvent MintBurnHandle = MintBurnEvent {getEvent :: TxMintEvent}
-  deriving (Show)
-
-data instance RI.StorableQuery MintBurnHandle
-  = -- | Query all transactions that minted a specific 'AssetId' until an upper bound slot in the
-    -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
-    QueryByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo)
-  | -- | Query all transactions that minted 'AssetId's until an upper bound slot in the blockchain. If
-    -- the upper bound slot is 'Nothing', then we return everything.
-    QueryAllMintBurn (Maybe C.SlotNo)
-  | -- | Query all transactions that burned until an upper bound slot
-    -- blockchain. If the upper bound slot is 'Nothing', then we return everything.
-    QueryBurnByAssetId C.PolicyId (Maybe C.AssetName) (Maybe C.SlotNo) (Maybe C.TxId)
-  | -- | Query all transactions that burned 'AssetId's until an upper bound slot in the blockchain. If
-    -- the upper bound slot is 'Nothing', then we return everything.
-    QueryAllBurn (Maybe C.SlotNo)
-  deriving (Show)
-
-newtype instance RI.StorableResult MintBurnHandle
-  = MintBurnResult [TxMintRow]
-  deriving (Show)
-
 instance RI.Queryable MintBurnHandle where
   queryStorage memoryEvents (MintBurnHandle sqlCon _k) query = do
     sqliteCondition <- mkSqliteConditions
@@ -539,7 +522,7 @@ instance RI.Queryable MintBurnHandle where
       mkRowPredicates :: [TxMintRow -> Bool]
       mkRowPredicates = [matchesPolicyId, isBurn, matchesAssetName, matchAfterTxId] <> upToSlot
 
-      -- \* Filter sqlite events
+      -- Filter sqlite events
 
       mkSqliteConditions :: ExceptT (IndexerError MintBurnQueryError) IO ([SQL.Query], [NamedParam])
       mkSqliteConditions = do
@@ -550,7 +533,7 @@ instance RI.Queryable MintBurnHandle where
             <> mkAssetIdCondition
             <> if burnOnly then (["quantity < 0"], []) else mempty
 
-      --  filter for transaction at or after
+      -- Filter for transaction at or after
       mkAfterTxCondtion :: ExceptT (IndexerError MintBurnQueryError) IO ([SQL.Query], [NamedParam])
       mkAfterTxCondtion =
         let
@@ -586,7 +569,7 @@ instance RI.Queryable MintBurnHandle where
           maybe [] (\pId -> [("policyId = :policyId", ":policyId" := pId)]) policyIdParam
             <> maybe [] (\name -> [("assetName = :assetName", ":assetName" := name)]) assetNameParam
 
-      -- \* filter for slotNo interval
+      -- Filter for slotNo interval
       mkUpperBoundCondition :: ([SQL.Query], [NamedParam])
       mkUpperBoundCondition = case upperSlot of
         Nothing -> mempty
@@ -599,12 +582,13 @@ instance RI.Buffered MintBurnHandle where
   persistToStorage events h@(MintBurnHandle sqlCon _k) =
     liftSQLError CantInsertEvent $
       do
-        sqliteInsert sqlCon (map coerce $ toList events)
-        let chainPoints =
-              (C.ChainPoint <$> txMintEventSlotNo <*> txMintEventBlockHeaderHash)
-                . getEvent
-                <$> toList events
-        addLastSyncPoints sqlCon chainPoints
+        SQL.withTransaction sqlCon $ do
+          sqliteInsert sqlCon (map coerce $ toList events)
+          let chainPoints =
+                (C.ChainPoint <$> txMintEventSlotNo <*> txMintEventBlockHeaderHash)
+                  . getEvent
+                  <$> toList events
+          insertLastSyncPoints sqlCon chainPoints
         pure h
 
   getStoredEvents (MintBurnHandle sqlCon k) =

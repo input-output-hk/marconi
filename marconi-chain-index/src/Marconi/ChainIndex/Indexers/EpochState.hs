@@ -407,33 +407,31 @@ instance Buffered EpochStateHandle where
       let eventsList = toList events
 
       SQL.execute_ c "BEGIN"
-      forM_ (concatMap eventToEpochSDDRows $ filter epochStateEventIsFirstEventOfEpoch eventsList) $ \row ->
-        SQL.execute
-          c
-          [sql|INSERT INTO epoch_sdd
-                  ( epochNo
-                  , poolId
-                  , lovelace
-                  , slotNo
-                  , blockHeaderHash
-                  , blockNo
-                  ) VALUES (?, ?, ?, ?, ?, ?)|]
-          row
-      SQL.execute_ c "COMMIT"
+      SQL.withTransaction c $ do
+        forM_ (concatMap eventToEpochSDDRows $ filter epochStateEventIsFirstEventOfEpoch eventsList) $ \row ->
+          SQL.execute
+            c
+            [sql|INSERT INTO epoch_sdd
+                    ( epochNo
+                    , poolId
+                    , lovelace
+                    , slotNo
+                    , blockHeaderHash
+                    , blockNo
+                    ) VALUES (?, ?, ?, ?, ?, ?)|]
+            row
 
-      SQL.execute_ c "BEGIN"
-      forM_ (mapMaybe eventToEpochNonceRow $ filter epochStateEventIsFirstEventOfEpoch eventsList) $ \row ->
-        SQL.execute
-          c
-          [sql|INSERT INTO epoch_nonce
-                  ( epochNo
-                  , nonce
-                  , slotNo
-                  , blockHeaderHash
-                  , blockNo
-                  ) VALUES (?, ?, ?, ?, ?)|]
-          row
-      SQL.execute_ c "COMMIT"
+        forM_ (mapMaybe eventToEpochNonceRow $ filter epochStateEventIsFirstEventOfEpoch eventsList) $ \row ->
+          SQL.execute
+            c
+            [sql|INSERT INTO epoch_nonce
+                    ( epochNo
+                    , nonce
+                    , slotNo
+                    , blockHeaderHash
+                    , blockNo
+                    ) VALUES (?, ?, ?, ?, ?)|]
+            row
 
       -- We store the LedgerState if one of following conditions hold:
       --   * the LedgerState cannot be rollbacked and is the last of an epoch

@@ -4,7 +4,7 @@
 -- | SQlite helpers to manage the last sync table
 module Marconi.ChainIndex.Indexers.LastSync (
   createLastSyncTable,
-  addLastSyncPoints,
+  insertLastSyncPoints,
   queryLastSyncPoint,
   rollbackLastSyncPoints,
 ) where
@@ -29,11 +29,11 @@ createLastSyncTable c =
     )|]
 
 -- | update the last sync point of the indexer
-addLastSyncPoints :: SQL.Connection -> [C.ChainPoint] -> IO ()
-addLastSyncPoints c chainPoints = do
+insertLastSyncPoints :: SQL.Connection -> [C.ChainPoint] -> IO ()
+insertLastSyncPoints c chainPoints = do
   let notGenesis C.ChainPointAtGenesis = Nothing
       notGenesis (C.ChainPoint slotNo blockHeader) = Just (slotNo, blockHeader)
-  cleanLastSync c
+  deleteAllLastSyncPoints c
   SQL.executeMany c [sql|INSERT INTO lastSync VALUES (?, ?)|] (mapMaybe notGenesis chainPoints)
 
 -- | get the last sync point of the indexer
@@ -46,9 +46,9 @@ queryLastSyncPoint c =
 
 -- | Remove chainpoints that are after the rollback
 rollbackLastSyncPoints :: SQL.Connection -> C.ChainPoint -> IO ()
-rollbackLastSyncPoints c C.ChainPointAtGenesis = cleanLastSync c
+rollbackLastSyncPoints c C.ChainPointAtGenesis = deleteAllLastSyncPoints c
 rollbackLastSyncPoints c (C.ChainPoint sno _) =
   SQL.execute c [sql|DELETE FROM lastSync WHERE slotNo > ?|] (SQL.Only sno)
 
-cleanLastSync :: SQL.Connection -> IO ()
-cleanLastSync c = SQL.execute_ c [sql|DELETE FROM lastSync|]
+deleteAllLastSyncPoints :: SQL.Connection -> IO ()
+deleteAllLastSyncPoints c = SQL.execute_ c [sql|DELETE FROM lastSync|]

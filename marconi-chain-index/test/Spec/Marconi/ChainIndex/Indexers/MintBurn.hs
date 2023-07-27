@@ -153,7 +153,7 @@ propQueryingEverythingShouldReturnAllIndexedEvents = H.property $ do
   MintBurnResult queryResult <- liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
   -- Compare the sets of events inserted to the indexer and the set
   -- gotten out of the indexer:
-  equalSet (MintBurn.groupBySlotAndHash insertedEvents) (MintBurn.fromRows queryResult)
+  equalSet (groupBySlotAndHash insertedEvents) (MintBurn.fromRows queryResult)
 
 -- | Create transactions, index them, query indexer and find mint events.
 propQueryingReturnResultOrderedByAscendingBlockNumberAndTxIndex :: Property
@@ -285,7 +285,7 @@ propRecreatingIndexerFromDiskShouldOnlyReturnPersistedEvents = H.property $ do
         RI.query indexer' $
           QueryAllMintBurn Nothing
   let expected =
-        MintBurn.groupBySlotAndHash $
+        groupBySlotAndHash $
           take (eventsPersisted (fromIntegral bufferSize) (length events)) events
   -- The test: events that were persisted are exactly those we get from the query.
   equalSet expected (MintBurn.fromRows queryResult)
@@ -589,3 +589,23 @@ getAssetIds =
         concatMap
           (fmap extractInfo . NonEmpty.toList . MintBurn.txMintAsset)
           . MintBurn.txMintEventTxAssets
+
+groupBySlotAndHash :: [MintBurn.TxMintEvent] -> [MintBurn.TxMintEvent]
+groupBySlotAndHash events =
+  events
+    & List.sort
+    & List.groupBy
+      ( \e1 e2 ->
+          MintBurn.txMintEventSlotNo e1 == MintBurn.txMintEventSlotNo e2
+            && MintBurn.txMintEventBlockHeaderHash e1 == MintBurn.txMintEventBlockHeaderHash e2
+      )
+    & mapMaybe buildTxMintEvent
+  where
+    buildTxMintEvent [] = Nothing
+    buildTxMintEvent (e : es) =
+      Just
+        $ MintBurn.TxMintEvent
+          (MintBurn.txMintEventSlotNo e)
+          (MintBurn.txMintEventBlockHeaderHash e)
+          (MintBurn.txMintEventBlockNo e)
+        $ MintBurn.txMintEventTxAssets =<< (e : es)

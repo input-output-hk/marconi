@@ -26,8 +26,8 @@ import Marconi.ChainIndex.Error (
   liftSQLError,
  )
 import Marconi.ChainIndex.Indexers.LastSync (
-  addLastSyncPoints,
   createLastSyncTable,
+  insertLastSyncPoints,
   queryLastSyncPoint,
   rollbackLastSyncPoints,
  )
@@ -199,12 +199,15 @@ instance Buffered ScriptTxHandle where
     liftSQLError CantInsertEvent $ do
       let rows = foldl' (\ea e -> ea ++ flatten e) [] es
           c = hdlConnection h
-      SQL.executeMany
-        c
-        "INSERT INTO script_transactions (scriptAddress, txCbor, slotNo, blockHash) VALUES (?, ?, ?, ?)"
-        rows
-      let chainPoints = chainPoint <$> toList es
-      addLastSyncPoints c chainPoints
+
+      SQL.withTransaction c $ do
+        SQL.executeMany
+          c
+          "INSERT INTO script_transactions (scriptAddress, txCbor, slotNo, blockHash) VALUES (?, ?, ?, ?)"
+          rows
+        let chainPoints = chainPoint <$> toList es
+        insertLastSyncPoints c chainPoints
+
       pure h
     where
       flatten :: StorableEvent ScriptTxHandle -> [ScriptTxRow]

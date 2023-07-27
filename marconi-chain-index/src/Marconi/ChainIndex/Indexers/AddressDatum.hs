@@ -93,8 +93,8 @@ import Marconi.ChainIndex.Error (
  )
 import Marconi.ChainIndex.Extract.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.LastSync (
-  addLastSyncPoints,
   createLastSyncTable,
+  insertLastSyncPoints,
   queryLastSyncPoint,
   rollbackLastSyncPoints,
  )
@@ -237,27 +237,30 @@ instance Buffered AddressDatumHandle where
           c = addressDatumHandleConnection h
           getChainPoint (AddressDatumIndexEvent _ _ cp) = cp
           chainPoints = getChainPoint <$> toList es
-      SQL.execute_ c "BEGIN"
-      forM_ addressDatumHashRows $
-        SQL.execute
+
+      SQL.withTransaction c $ do
+        forM_ addressDatumHashRows $
+          SQL.execute
+            c
+            [sql|INSERT INTO address_datums
+                ( address
+                , datum_hash
+                , slot_no
+                , block_hash
+                )
+               VALUES (?, ?, ?, ?)|]
+
+        SQL.executeMany
           c
-          [sql|INSERT INTO address_datums
-              ( address
-              , datum_hash
-              , slot_no
-              , block_hash
-              )
-             VALUES (?, ?, ?, ?)|]
-      SQL.executeMany
-        c
-        [sql|INSERT OR IGNORE INTO datumhash_datum
-             ( datum_hash
-             , datum
-             )
-             VALUES (?, ?)|]
-        datumRows
-      addLastSyncPoints c chainPoints
-      SQL.execute_ c "COMMIT"
+          [sql|INSERT OR IGNORE INTO datumhash_datum
+               ( datum_hash
+               , datum
+               )
+               VALUES (?, ?)|]
+          datumRows
+
+        insertLastSyncPoints c chainPoints
+
       pure h
     where
       toAddressDatumHashRow :: StorableEvent AddressDatumHandle -> [AddressDatumHashRow]
