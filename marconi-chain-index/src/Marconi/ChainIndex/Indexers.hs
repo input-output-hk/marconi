@@ -514,7 +514,7 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
             let event' = MintBurn.toUpdate mAssets blockInMode
             void $
               updateWith indexerMVar (c ^. errorVar) $
-                ignoreQueryError . Storable.insert (MintBurn.MintBurnEvent event')
+                ignoreQueryError . Storable.insert event'
           RollBackward cp' _ct ->
             void $ updateWith indexerMVar (c ^. errorVar) $ ignoreQueryError . Storable.rewind cp'
         signalQSemN (c ^. barrier) 1
