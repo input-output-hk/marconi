@@ -693,6 +693,7 @@ coordinatorIndexerRunner wRunner =
       (t, run) <-
         lift $
           Core.createWorker
+            "TestWorker"
             (pure . pure)
             wrapped
       UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.mkCoordinator [run])

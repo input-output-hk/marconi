@@ -253,8 +253,8 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
         readMVar mIndexer >>= callback
         bracket
           (atomically . readTChan $ ch)
-          (flip onException raiseError . process)
           (const $ signalQSemN _barrier 1)
+          (flip onException raiseError . process)
   cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle ix
   pure (loop, cp)
 
@@ -325,8 +325,8 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
         failWhenFull _errorVar
         bracket
           (atomically $ readTChan ch)
-          (flip onException raiseError . process)
           (const $ signalQSemN _barrier 1)
+          (flip onException raiseError . process)
   cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ index
   pure (innerLoop, cp)
 
@@ -356,8 +356,8 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
         failWhenFull _errorVar
         bracket
           (atomically $ readTChan ch)
-          (flip onException raiseError . process)
           (const $ signalQSemN _barrier 1)
+          (flip onException raiseError . process)
   cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ indexer
   pure (loop, cp, mIndexer)
 
@@ -490,10 +490,10 @@ epochStateWorker_
           void $ readMVar indexerMVar >>= callback
           bracket
             (atomically $ readTChan ch)
+            (const $ signalQSemN _barrier 1)
             ( flip onException raiseError
                 . (updateLedgerState <=< process currentLedgerState currentEpochNo)
             )
-            (const $ signalQSemN _barrier 1)
 
     pure (loop, cp, indexerMVar)
 
@@ -545,8 +545,8 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
         void $ readMVar indexerMVar >>= callback
         bracket
           (atomically $ readTChan ch)
-          (flip onException raiseError . process)
           (const $ signalQSemN (c ^. barrier) 1)
+          (flip onException raiseError . process)
   pure (loop, cp)
 
 mintBurnWorker

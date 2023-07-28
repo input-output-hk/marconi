@@ -175,8 +175,8 @@ startWorker chan tokens (Worker name ix transformInput hoistError errorBox) =
           -- `bracket` ensures that the coordinator won't be stuck (we always unlock it)
           bracket
             (STM.atomically $ STM.readTChan chan')
-            safeProcessEvent
             (const unlockCoordinator)
+            safeProcessEvent
    in liftIO $ do
         chan' <- STM.atomically $ STM.dupTChan chan
         Con.forkFinally (loop chan') (const swallowPill)
