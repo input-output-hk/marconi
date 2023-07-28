@@ -68,49 +68,53 @@ Decision
 
   .. code-block:: haskell
 
-    applyChainSyncEvent previousChainSyncEventPoint event indexer = do
+    -- Preconditions:
+    --   * The 'initialLastSyncPoints' param should be sorted in ascending order on SlotNo
+    --   * Each element of the 'initialLastSyncPoints' param should satisfy the property '\(point, nextPoint) -> getBlockNo point == getBlockNo (succ point) + 1'.
+    --     where `(point, nextPoint)` is any two consecutive elements in the list `initialLastSyncPoints`.
+    applyChainSyncEvent initialLastSyncPoints previousChainSyncEventPoint event indexer = do
       case event of
-        lastSyncPoints <- getLastSyncPoints indexer
         Resume point -> do
-          maybePoint <- getPointFromSlotNo (slotNo point) indexer
+          maybePoint <- find (\p -> getSlotNo p == getSlotNo point) initialLastSyncPoints
           case maybePoint of
             Nothing ->
               pure () -- Do nothing
             Just _ ->
-              rewind point indexer
+              update initialLastSyncPoints $ filter (\p -> getSlotNo p > getSlotNo point)
         RollBackward point -> do
           rewind point indexer
         RollForward block point -> do
-          lastSyncPoints <- getLastSyncPoints indexer
-          let lastSyncSlotNos = fmap getSlotNo lastSyncPoints
-          let lowestLastSyncSlotNo = minimum lastSyncSlotNos
-          let highestLastSyncSlotNo = maximum lastSyncSlotNos
+          case initialLastSyncPoints of
+            -- Processed all initial last sync points. The indexer is in sync.
+            -- So we just index the block.
+            [] -> do
+              insert block indexer
 
-          -- Block already processed. Do nothing
-          if point `elem` lastSyncPoints
-          then do
-            pure ()
+            -- The lowest last sync point is the same as the current chain event point.
+            -- We drain the event and remove the last sync point from the initial last sync points.
+            (lowestLastSyncPoint:restOfLastSyncPoints) | point == lowestLastSyncPoint -> do
+                update initialLastSyncPoints $ \_ -> restOfLastSyncPoints
 
-          -- SlotNo of new block point already processed, but with different block header hash
-          -- We need to rewind and insert the new block
-          else if getSlotNo point `elem` lastSyncSlotNos
-          then do
-            rewind previousChainSyncEventPoint indexer
-            insert block indexer
+            -- The lowest last sync point is not the same as the current chain event point, but they
+            -- have the same slot number.
+            -- We rewind to the previous point, insert the block and remove all points from the
+            -- initial last sync point list.
+            -- We drain the event and remove the last sync point from the initial last sync points.
+            (lowestLastSyncPoint:_) | getSlotNo point == getSlotNo lowestLastSyncPoint -> do
+                rewind previousChainSyncEventPoint indexer
+                insert block indexer
+                update initialLastSyncPoints $ \_ -> []
 
-          -- Block already processed. Do nothing
-          else if getSlotNo point < lowestLastSyncSlotNo
-          then do
-            pure ()
+            -- The chain sync event slot number is higher than the lowest last sync point of the
+            -- indexer. Should not happen though. We get in this case statement IIF we started the
+            -- chain-sync client with a resuming point that is higher than this indexer's resuming
+            -- point.
+            (lowestLastSyncPoint:_) | getSlotNo point > getSlotNo lowestLastSyncPoint -> do
+                error "The point of the new block is higher than the lowest last sync point of the indexer. That means a bug in the resuming point selection provided for the chain-sync client."
 
-          -- New block not processed yet. We insert it in the indexer
-          else if getSlotNo point > highestLastSyncSlotNo
-          then do
-            insert block indexer
-
-          -- Should never go here
-          else do
-            pure ()
+            -- The indexer is still more up-to-date than the ChainSyncClient event. Drain the event.
+             _ -> do
+                pure ()
 
   It is important to note that the implementation of ``applyChainSyncEvent`` highly depends on the implementation of ``selectIntersectionPoints``.
 
