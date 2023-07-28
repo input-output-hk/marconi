@@ -46,7 +46,9 @@ import Control.Concurrent (
   modifyMVar,
   newEmptyMVar,
   newMVar,
+  putMVar,
   readMVar,
+  takeMVar,
   tryPutMVar,
   tryReadMVar,
  )
@@ -64,7 +66,7 @@ import Control.Concurrent.STM.TChan (
   readTChan,
   writeTChan,
  )
-import Control.Exception (catch, finally)
+import Control.Exception (bracket, catch, finally, onException)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators (
@@ -79,6 +81,7 @@ import Control.Monad (
   forever,
   void,
   when,
+  (<=<),
  )
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (
@@ -98,13 +101,12 @@ import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Void (Void)
 import Data.Word (Word64)
 import Marconi.ChainIndex.Error (
-  IndexerError (CantRollback, CantStartIndexer),
+  IndexerError (CantInsertEvent, CantRollback, CantStartIndexer),
   ignoreQueryError,
  )
 import Marconi.ChainIndex.Indexers.AddressDatum (
   AddressDatumDepth (AddressDatumDepth),
   AddressDatumHandle,
-  AddressDatumIndex,
  )
 import Marconi.ChainIndex.Indexers.AddressDatum qualified as AddressDatum
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
@@ -233,24 +235,28 @@ utxoWorker_
   -> FilePath
   -> IO (IO (), C.ChainPoint)
 utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch path = do
-  ix <- Utils.toException $ Utxo.open path depth False -- open SQLite with depth=depth and DO NOT perform SQLite vacuum
+  -- open SQLite with depth=depth and DO NOT perform SQLite vacuum
+  ix <- Utils.toException $ Utxo.open path depth False
   -- TODO consider adding a CLI param to allow user to perfomr Vaccum or not.
-  cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle ix
   mIndexer <- newMVar ix
-  pure (loop mIndexer, cp)
-  where
-    loop :: MVar Utxo.UtxoIndexer -> IO ()
-    loop index = forever $ do
-      failWhenFull _errorVar
-      readMVar index >>= callback
-      event <- atomically . readTChan $ ch
-      case event of
+  let process = \case
         RollForward (BlockInMode block _, epochNo, posixTime) _ct ->
           let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo posixTime
-           in void $ updateWith index _errorVar $ ignoreQueryError . Storable.insert utxoEvents
+           in void $ updateWith mIndexer _errorVar $ ignoreQueryError . Storable.insert utxoEvents
         RollBackward cp _ct ->
-          void $ updateWith index _errorVar $ ignoreQueryError . Storable.rewind cp
-      signalQSemN _barrier 1
+          void $ updateWith mIndexer _errorVar $ ignoreQueryError . Storable.rewind cp
+      raiseError =
+        tryPutMVar _errorVar $ CantInsertEvent "Utxo raised an uncaught exception"
+      loop :: IO ()
+      loop = forever $ do
+        failWhenFull _errorVar
+        readMVar mIndexer >>= callback
+        bracket
+          (atomically . readTChan $ ch)
+          (flip onException raiseError . process)
+          (const $ signalQSemN _barrier 1)
+  cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle ix
+  pure (loop, cp)
 
 utxoWorker
   :: (Utxo.UtxoIndexer -> IO ())
@@ -299,15 +305,8 @@ addressDatumWorker_
   -> IO (IO (), C.ChainPoint)
 addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorVar} ch path = do
   index <- Utils.toException $ AddressDatum.open path depth
-  cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ index
   mIndex <- newMVar index
-  pure (innerLoop mIndex, cp)
-  where
-    innerLoop :: MVar AddressDatumIndex -> IO ()
-    innerLoop index = forever $ do
-      failWhenFull _errorVar
-      event <- atomically $ readTChan ch
-      case event of
+  let process = \case
         RollForward (BlockInMode (Block (BlockHeader slotNo bh _) txs) _, _, _) _ -> do
           -- TODO Redo. Inefficient filtering
           let addressDatumIndexEvent =
@@ -315,11 +314,21 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
                   (Utils.addressesToPredicate targetAddresses)
                   txs
                   (C.ChainPoint slotNo bh)
-          void $ updateWith index _errorVar $ Storable.insert addressDatumIndexEvent
+          void $ updateWith mIndex _errorVar $ Storable.insert addressDatumIndexEvent
           void $ onInsert addressDatumIndexEvent
         RollBackward cp _ct -> do
-          void $ updateWith index _errorVar $ Storable.rewind cp
-      signalQSemN _barrier 1
+          void $ updateWith mIndex _errorVar $ Storable.rewind cp
+      raiseError =
+        tryPutMVar _errorVar $ CantInsertEvent "AddressDatum raised an uncaught exception"
+      innerLoop :: IO ()
+      innerLoop = forever $ do
+        failWhenFull _errorVar
+        bracket
+          (atomically $ readTChan ch)
+          (flip onException raiseError . process)
+          (const $ signalQSemN _barrier 1)
+  cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ index
+  pure (innerLoop, cp)
 
 -- * ScriptTx indexer
 
@@ -332,22 +341,25 @@ scriptTxWorker_
   -> IO (IO (), C.ChainPoint, MVar ScriptTx.ScriptTxIndexer)
 scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
   indexer <- Utils.toException $ ScriptTx.open path depth
-  cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ indexer
   mIndexer <- newMVar indexer
-  pure (loop mIndexer, cp, mIndexer)
-  where
-    loop :: MVar ScriptTx.ScriptTxIndexer -> IO ()
-    loop index = forever $ do
-      failWhenFull _errorVar
-      event <- atomically $ readTChan ch
-      case event of
+  let process = \case
         RollForward (BlockInMode (Block (BlockHeader slotNo hsh _) txs) _, _, _) _ct -> do
           let u = ScriptTx.toUpdate txs (ChainPoint slotNo hsh)
-          void $ updateWith index _errorVar $ Storable.insert u
+          void $ updateWith mIndexer _errorVar $ Storable.insert u
           void $ onInsert u
         RollBackward cp _ct -> do
-          void $ updateWith index _errorVar $ Storable.rewind cp
-      signalQSemN _barrier 1
+          void $ updateWith mIndexer _errorVar $ Storable.rewind cp
+      raiseError =
+        tryPutMVar _errorVar $ CantInsertEvent "ScriptTx raised an uncaught exception"
+      loop :: IO ()
+      loop = forever $ do
+        failWhenFull _errorVar
+        bracket
+          (atomically $ readTChan ch)
+          (flip onException raiseError . process)
+          (const $ signalQSemN _barrier 1)
+  cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ indexer
+  pure (loop, cp, mIndexer)
 
 scriptTxWorker
   :: (Storable.StorableEvent ScriptTx.ScriptTxHandle -> IO [()])
@@ -404,73 +416,86 @@ epochStateWorker_
 
     cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle indexer
     indexerMVar <- newMVar indexer
+    ledgerStateMVar <- newMVar initialLedgerState
+    epochNoMVar <- newMVar $ EpochState.getEpochNo initialLedgerState
 
-    let loop currentLedgerState currentEpochNo = do
+    let process currentLedgerState currentEpochNo = \case
+          RollForward (blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _), _, _) chainTip -> do
+            let newLedgerState' =
+                  O.lrResult $
+                    O.tickThenReapplyLedgerResult
+                      hfLedgerConfig
+                      (C.toConsensusBlock blockInMode)
+                      currentLedgerState
+                newEpochNo = EpochState.getEpochNo newLedgerState'
+
+            -- If the block is rollbackable, we always store the LedgerState. If the block is
+            -- immutable, we only store it right at the beginning of a new epoch.
+            let isFirstEventOfEpoch = newEpochNo > currentEpochNo
+            let storableEvent =
+                  EpochState.toStorableEvent
+                    newLedgerState'
+                    slotNo
+                    bh
+                    bn
+                    chainTip
+                    securityParam
+                    isFirstEventOfEpoch
+
+            void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.insert storableEvent
+
+            -- Compute new LedgerState given block and old LedgerState
+            pure (newLedgerState', newEpochNo)
+          RollBackward C.ChainPointAtGenesis _ct -> do
+            void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind C.ChainPointAtGenesis
+            pure (initialLedgerState, Nothing)
+          RollBackward cp' _ct -> do
+            newIndex <- updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind cp'
+
+            -- We query the LedgerState from disk at the point where we need to rollback to.
+            -- For that to work, we need to be sure that any volatile LedgerState are stored
+            -- on disk. For immutable LedgerStates, they are only stored on disk at the first
+            -- slot of an epoch.
+            maybeLedgerState <-
+              runExceptT $ ignoreQueryError $ Storable.query newIndex (EpochState.LedgerStateAtPointQuery cp')
+            case maybeLedgerState of
+              Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure (ledgerState, EpochState.getEpochNo ledgerState)
+              Right (EpochState.LedgerStateAtPointResult Nothing) -> do
+                void $
+                  tryPutMVar _errorVar $
+                    CantRollback
+                      "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
+                pure (initialLedgerState, Nothing)
+              Right _ -> do
+                void $
+                  tryPutMVar _errorVar $
+                    CantRollback
+                      "LedgerStateAtPointQuery returned a result mismatch when applying a rollback. Should not happen!"
+                pure (initialLedgerState, Nothing)
+              Left err -> do
+                void $ tryPutMVar _errorVar err
+                pure (initialLedgerState, Nothing)
+
+        raiseError =
+          tryPutMVar _errorVar $ CantInsertEvent "EpochState raised an uncaught exception"
+
+        updateLedgerState (currentLedgerState, newEpochNo) = do
+          putMVar ledgerStateMVar currentLedgerState
+          putMVar epochNoMVar newEpochNo
+
+        loop = forever $ do
+          currentLedgerState <- takeMVar ledgerStateMVar
+          currentEpochNo <- takeMVar epochNoMVar
           failWhenFull _errorVar
           void $ readMVar indexerMVar >>= callback
-          chainSyncEvent <- atomically $ readTChan ch
+          bracket
+            (atomically $ readTChan ch)
+            ( flip onException raiseError
+                . (updateLedgerState <=< process currentLedgerState currentEpochNo)
+            )
+            (const $ signalQSemN _barrier 1)
 
-          (newLedgerState, newEpochNo) <- case chainSyncEvent of
-            RollForward (blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _), _, _) chainTip -> do
-              let newLedgerState' =
-                    O.lrResult $
-                      O.tickThenReapplyLedgerResult
-                        hfLedgerConfig
-                        (C.toConsensusBlock blockInMode)
-                        currentLedgerState
-                  newEpochNo = EpochState.getEpochNo newLedgerState'
-
-              -- If the block is rollbackable, we always store the LedgerState. If the block is
-              -- immutable, we only store it right at the beginning of a new epoch.
-              let isFirstEventOfEpoch = newEpochNo > currentEpochNo
-              let storableEvent =
-                    EpochState.toStorableEvent
-                      newLedgerState'
-                      slotNo
-                      bh
-                      bn
-                      chainTip
-                      securityParam
-                      isFirstEventOfEpoch
-
-              void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.insert storableEvent
-
-              -- Compute new LedgerState given block and old LedgerState
-              pure (newLedgerState', newEpochNo)
-            RollBackward C.ChainPointAtGenesis _ct -> do
-              void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind C.ChainPointAtGenesis
-              pure (initialLedgerState, Nothing)
-            RollBackward cp' _ct -> do
-              newIndex <- updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind cp'
-
-              -- We query the LedgerState from disk at the point where we need to rollback to.
-              -- For that to work, we need to be sure that any volatile LedgerState are stored
-              -- on disk. For immutable LedgerStates, they are only stored on disk at the first
-              -- slot of an epoch.
-              maybeLedgerState <-
-                runExceptT $ ignoreQueryError $ Storable.query newIndex (EpochState.LedgerStateAtPointQuery cp')
-              case maybeLedgerState of
-                Right (EpochState.LedgerStateAtPointResult (Just ledgerState)) -> pure (ledgerState, EpochState.getEpochNo ledgerState)
-                Right (EpochState.LedgerStateAtPointResult Nothing) -> do
-                  void $
-                    tryPutMVar _errorVar $
-                      CantRollback
-                        "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
-                  pure (initialLedgerState, Nothing)
-                Right _ -> do
-                  void $
-                    tryPutMVar _errorVar $
-                      CantRollback
-                        "LedgerStateAtPointQuery returned a result mismatch when applying a rollback. Should not happen!"
-                  pure (initialLedgerState, Nothing)
-                Left err -> do
-                  void $ tryPutMVar _errorVar err
-                  pure (initialLedgerState, Nothing)
-
-          signalQSemN _barrier 1
-          loop newLedgerState newEpochNo
-
-    pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState), cp, indexerMVar)
+    pure (loop, cp, indexerMVar)
 
 epochStateWorker
   :: FilePath
@@ -505,19 +530,23 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
   indexer <- Utils.toException (MintBurn.open dbPath securityParam)
   indexerMVar <- newMVar indexer
   cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle indexer
-  let loop = forever $ do
+  let process = \case
+        RollForward (blockInMode, _, _) _ct -> do
+          let event' = MintBurn.toUpdate mAssets blockInMode
+          void $
+            updateWith indexerMVar (c ^. errorVar) $
+              ignoreQueryError . Storable.insert event'
+        RollBackward cp' _ct ->
+          void $ updateWith indexerMVar (c ^. errorVar) $ ignoreQueryError . Storable.rewind cp'
+      raiseError =
+        tryPutMVar (c ^. errorVar) $ CantInsertEvent "MintBurn raised an uncaught exception"
+      loop = forever $ do
         failWhenFull (c ^. errorVar)
         void $ readMVar indexerMVar >>= callback
-        event <- atomically $ readTChan ch
-        case event of
-          RollForward (blockInMode, _, _) _ct -> do
-            let event' = MintBurn.toUpdate mAssets blockInMode
-            void $
-              updateWith indexerMVar (c ^. errorVar) $
-                ignoreQueryError . Storable.insert event'
-          RollBackward cp' _ct ->
-            void $ updateWith indexerMVar (c ^. errorVar) $ ignoreQueryError . Storable.rewind cp'
-        signalQSemN (c ^. barrier) 1
+        bracket
+          (atomically $ readTChan ch)
+          (flip onException raiseError . process)
+          (const $ signalQSemN (c ^. barrier) 1)
   pure (loop, cp)
 
 mintBurnWorker

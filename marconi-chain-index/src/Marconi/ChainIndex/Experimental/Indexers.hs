@@ -55,7 +55,7 @@ utxoWorker dbPath depth = do
         -- TODO We forgot the TargetAddress filtering logic for now for the Experimental Indexers.Utxo module
         UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
       extract (C.BlockInMode block _, _, _) = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
-  Core.createWorker (pure . extract) $ Utxo.mkMixedIndexer c depth
+  Core.createWorker "Utxo" (pure . extract) $ Utxo.mkMixedIndexer c depth
 
 -- | Process the next event in the queue with the coordinator
 readEvent

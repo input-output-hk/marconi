@@ -30,6 +30,7 @@ import Control.Monad.Trans (MonadTrans (lift))
 
 import Control.Lens.Operators ((^.))
 import Control.Monad (forever, void)
+import Data.Text (Text)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index),
@@ -51,7 +52,9 @@ data WorkerM m input point = forall indexer event n.
   , Point event ~ point
   ) =>
   Worker
-  { workerState :: MVar (indexer event)
+  { workerName :: Text
+  -- ^ use to identify the worker in logs
+  , workerState :: MVar (indexer event)
   -- ^ the indexer controlled by this worker
   , transformInput :: input -> m (Maybe event)
   -- ^ used by the worker to check whether an input is a rollback or an event
@@ -77,18 +80,20 @@ data ProcessedInput event
 createWorker'
   :: (MonadIO m, WorkerIndexer n event indexer)
   => (forall a. n a -> ExceptT IndexerError m a)
+  -> Text
   -> (input -> m (Maybe event))
   -> indexer event
   -> m (MVar (indexer event), WorkerM m input (Point event))
-createWorker' hoist getEvent ix = do
+createWorker' hoist name getEvent ix = do
   workerState <- liftIO $ Con.newMVar ix
   errorBox <- liftIO Con.newEmptyMVar
-  pure (workerState, Worker workerState getEvent hoist errorBox)
+  pure (workerState, Worker name workerState getEvent hoist errorBox)
 
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
   :: (MonadIO m, WorkerIndexer m event indexer)
-  => (input -> m (Maybe event))
+  => Text
+  -> (input -> m (Maybe event))
   -> indexer event
   -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorkerPure = createWorker' lift
@@ -96,14 +101,14 @@ createWorkerPure = createWorker' lift
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
   :: (MonadIO m, WorkerIndexer (ExceptT IndexerError m) event indexer)
-  => (input -> m (Maybe event))
+  => Text
+  -> (input -> m (Maybe event))
   -> indexer event
   -> m (MVar (indexer event), WorkerM m input (Point event))
 createWorker = createWorker' id
 
 mapIndex
-  :: (Applicative f)
-  => (Point event ~ Point event')
+  :: (Applicative f, Point event ~ Point event')
   => (event -> f (Maybe event'))
   -> ProcessedInput event
   -> f (ProcessedInput event')
@@ -123,7 +128,7 @@ startWorker
   -> QSemN
   -> Worker input (Point input)
   -> m ThreadId
-startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
+startWorker chan tokens (Worker name ix transformInput hoistError errorBox) =
   let unlockCoordinator :: IO ()
       unlockCoordinator = Con.signalQSemN tokens 1
 
@@ -153,9 +158,9 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
         indexer <- Con.readMVar ix
         void $ runExceptT $ hoistError $ close indexer
 
-      raiseErrorOnException = do
+      notifyCoordinatorOnError = do
         indexer <- Con.readMVar ix
-        raiseError indexer $ OtherIndexError "Abnormal termination"
+        raiseError indexer $ OtherIndexError $ name <> ": Abnormal termination"
 
       process = \case
         Rollback p -> handleRollback p
@@ -163,10 +168,11 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
 
       safeProcessEvent input = do
         processedInput <- mapIndex transformInput input
-        process processedInput `onException` raiseErrorOnException
+        process processedInput `onException` notifyCoordinatorOnError
 
       loop chan' =
         forever $
+          -- `bracket` ensures that the coordinator won't be stuck (we always unlock it)
           bracket
             (STM.atomically $ STM.readTChan chan')
             safeProcessEvent
