@@ -959,7 +959,7 @@ instance Queryable UtxoHandle where
         Nothing -> mempty
         Just lowerBound' -> (["u.slotNo >= :lowerBound"], [":lowerBound" := lowerBound'])
       upperBoundFilter = case intervalUpperBound slotInterval of
-        Nothing -> mempty
+        Nothing -> (["s.slotNo IS NULL"], [])
         Just upperBound' ->
           (
             [ -- created before the upperBound
