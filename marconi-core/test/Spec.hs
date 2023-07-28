@@ -56,6 +56,7 @@ experimentTests =
     , testGroup
         "Error handling"
         [ E.stopCoordinatorTest E.listIndexerRunner
+        , E.withRollbackFailureTest
         ]
     , testGroup
         "Resuming"
