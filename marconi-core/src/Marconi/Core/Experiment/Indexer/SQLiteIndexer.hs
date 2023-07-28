@@ -10,6 +10,7 @@
 -}
 module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   SQLiteIndexer (SQLiteIndexer),
+  databasePath,
   handle,
   insertPlan,
   dbLastSync,
@@ -83,7 +84,9 @@ data SQLRollbackPlan point = forall a.
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
 data SQLiteIndexer event = SQLiteIndexer
-  { _handle :: SQL.Connection
+  { _databasePath :: FilePath
+  -- ^ The location of the database
+  , _handle :: SQL.Connection
   -- ^ The connection used to interact with the database
   , _insertPlan :: [[SQLInsertPlan event]]
   -- ^ A plan is a list of lists : each 'SQLInsertPlan' in a list is executed concurrently.
@@ -106,7 +109,9 @@ mkSqliteIndexer
   => (MonadError IndexerError m)
   => (HasGenesis (Point event))
   => (SQL.FromRow (Point event))
-  => SQL.Connection
+  => FilePath
+  -> [SQL.Query]
+  -- ^ cration statement
   -> [[SQLInsertPlan event]]
   -- ^ extract @param@ out of a 'Timed'
   -> [SQLRollbackPlan (Point event)]
@@ -114,18 +119,24 @@ mkSqliteIndexer
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-mkSqliteIndexer _handle _insertPlan _rollbackPlan lastSyncQuery =
-  let getLastSync = do
-        res <- runLastSyncQuery _handle lastSyncQuery
+mkSqliteIndexer _databasePath _creationStatements _insertPlan _rollbackPlan lastSyncQuery =
+  let getLastSync h = do
+        res <- runLastSyncQuery h lastSyncQuery
         case res of
           [] -> pure genesis
           [x] -> pure x
           _other -> throwError (InvalidIndexer "Ambiguous sync point")
    in do
-        _dbLastSync <- getLastSync
+        _handle <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
+        traverse_ (liftIO . SQL.execute_ _handle) _creationStatements
+        -- allow for concurrent insert/query.
+        -- see SQLite WAL, https://www.sqlite.org/wal.html
+        liftIO $ SQL.execute_ _handle "PRAGMA journal_mode=WAL"
+        _dbLastSync <- getLastSync _handle
         pure $
           SQLiteIndexer
-            { _handle
+            { _databasePath
+            , _handle
             , _insertPlan
             , _rollbackPlan
             , _dbLastSync
@@ -143,9 +154,11 @@ mkSingleInsertSqliteIndexer
   => (SQL.FromRow (Point event))
   => (SQL.ToRow param)
   => (HasGenesis (Point event))
-  => SQL.Connection
+  => FilePath
   -> (Timed (Point event) event -> param)
   -- ^ extract @param@ out of a 'Timed'
+  -> SQL.Query
+  -- ^ the creation query
   -> SQL.Query
   -- ^ the insert query
   -> SQLRollbackPlan (Point event)
@@ -153,8 +166,8 @@ mkSingleInsertSqliteIndexer
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-mkSingleInsertSqliteIndexer con extract insert rollback' =
-  mkSqliteIndexer con [[SQLInsertPlan (pure . extract) insert]] [rollback']
+mkSingleInsertSqliteIndexer path extract create insert rollback' =
+  mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) insert]] [rollback']
 
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
 handleSQLErrors value =
@@ -271,9 +284,9 @@ querySQLiteIndexerWith
   => (Ord (Point event))
   => (SQL.FromRow r)
   => (Point event -> query -> [SQL.NamedParam])
-  -> SQL.Query
-  -- ^ The sqlite query statement
   -- ^ A preprocessing of the query, to obtain SQL parameters
+  -> (query -> SQL.Query)
+  -- ^ The sqlite query statement
   -> (query -> [r] -> Result query)
   -- ^ Post processing of the result, to obtain the final result
   -> Point event
@@ -283,8 +296,8 @@ querySQLiteIndexerWith
 querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
     let c = indexer ^. handle
-    res <- liftIO $ SQL.queryNamed c sqlQuery (toNamedParam p q)
-    when (p < indexer ^. dbLastSync) $
+    res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
+    when (p > indexer ^. dbLastSync) $
       throwError (AheadOfLastSync $ Just $ fromRows q res)
     pure $ fromRows q res
 
@@ -304,9 +317,9 @@ querySyncedOnlySQLiteIndexerWith
   => (Ord (Point event))
   => (SQL.FromRow r)
   => (Point event -> query -> [SQL.NamedParam])
-  -> SQL.Query
-  -- ^ The sqlite query statement
   -- ^ A preprocessing of the query, to obtain SQL parameters
+  -> (query -> SQL.Query)
+  -- ^ The sqlite query statement
   -> (query -> [r] -> Result query)
   -- ^ Post processing of the result, to obtain the final result
   -> Point event
@@ -316,7 +329,7 @@ querySyncedOnlySQLiteIndexerWith
 querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
     let c = indexer ^. handle
-    when (p < indexer ^. dbLastSync) $
+    when (p > indexer ^. dbLastSync) $
       throwError (AheadOfLastSync Nothing)
-    res <- liftIO $ SQL.queryNamed c sqlQuery (toNamedParam p q)
+    res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     pure $ fromRows q res

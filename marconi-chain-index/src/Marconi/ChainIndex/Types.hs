@@ -21,6 +21,9 @@ module Marconi.ChainIndex.Types (
   TxOutRef,
   txOutRef,
 
+  -- * Reexport from cardano-streaming
+  BlockEvent (..),
+
   -- * Database file names
   utxoDbName,
   addressDatumDbName,
@@ -34,6 +37,7 @@ module Marconi.ChainIndex.Types (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
 import Data.Word (Word64)

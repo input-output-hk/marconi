@@ -28,6 +28,7 @@ import Marconi.Core.Experiment.Class (
   Queryable,
   Resetable (reset),
  )
+import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (IndexWrapper),
@@ -73,6 +74,11 @@ deriving via
   (IndexWrapper DelayConfig indexer)
   instance
     (IsSync m event indexer) => IsSync m event (WithDelay indexer)
+
+deriving via
+  (IndexWrapper DelayConfig indexer)
+  instance
+    (HasDatabasePath indexer) => HasDatabasePath (WithDelay indexer)
 
 deriving via
   (IndexWrapper DelayConfig indexer)

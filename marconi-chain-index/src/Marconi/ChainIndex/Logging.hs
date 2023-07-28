@@ -13,7 +13,7 @@ module Marconi.ChainIndex.Logging (
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace, logInfo)
-import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward))
+import Cardano.Streaming (BlockEvent (BlockEvent), ChainSyncEvent (RollBackward, RollForward))
 import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
@@ -25,7 +25,6 @@ import Data.Time (
   formatTime,
   getCurrentTime,
  )
-import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
@@ -122,8 +121,8 @@ renderLastSyncLog syncLog =
 
 chainSyncEventStreamLogging
   :: Trace IO Text
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r
-  -> Stream (Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r
+  -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
+  -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
 chainSyncEventStreamLogging tracer s = effect $ do
   stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
   return $ S.chain (update stats) s
@@ -133,9 +132,9 @@ chainSyncEventStreamLogging tracer s = effect $ do
 
     update
       :: IORef LastSyncStats
-      -> ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime)
+      -> ChainSyncEvent BlockEvent
       -> IO ()
-    update statsRef (RollForward (bim, _epochNo, _posixTime) ct) = do
+    update statsRef (RollForward (BlockEvent bim _epochNo _posixTime) ct) = do
       let cp = case bim of
             (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) ->
               C.ChainPoint slotNo hash

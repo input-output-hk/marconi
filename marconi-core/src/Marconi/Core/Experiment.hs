@@ -68,11 +68,6 @@
 
  = TODO List (non-exhaustive)
 
-    * Re-implement some of our indexers (WIP).
-    * Test, test, test. The current code is partially tested, and it's wrong (WIP).
-    * Provide a less naive in-memory indexer implementation than the list one.
-      /This is actually debatable, as most of the data manipulation in memory fits very well with the complexity/
-      /of the list operations (except if we need to foldr the in memory resume to answer a query)./
     * Provide MonadState version of the functions that manipulates the indexer.
     * Add custom error handling at the worker and at the coordinator level,
       even if its likely that the coordinator can't do much aside distributing poison pills.
@@ -207,9 +202,9 @@ module Marconi.Core.Experiment (
   Closeable (..),
   isAheadOfSync,
   Queryable (..),
-  query',
+  queryEither,
   queryLatest,
-  queryLatest',
+  queryLatestEither,
   AppendResult (..),
 
   -- ** Errors
@@ -278,12 +273,12 @@ module Marconi.Core.Experiment (
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
-  -- | The indexer of the most recent events must be able to send a part
-  -- of its events to the other indexer when they are stable.
-  --
-  -- The number of events that are sent and the number of events kept in memory
-  -- is controlled by the 'MixedIndexer'
-  Flushable (..),
+  SQLiteAggregateQuery (SQLiteAggregateQuery),
+  aggregateHandle,
+  mkSQLiteAggregateQuery,
+  SQLiteSourceProvider (SQLiteSourceProvider),
+  IsSourceProvider,
+  HasDatabasePath (getDatabasePath),
 
   -- ** Mixed indexer
 
@@ -313,6 +308,12 @@ module Marconi.Core.Experiment (
   inDatabase,
   -- | A type class that give access to the configuration of a 'MixedIndexer'
   HasMixedConfig (flushEvery, keepInMemory),
+  -- | The indexer of the most recent events must be able to send a part
+  -- of its events to the other indexer when they are stable.
+  --
+  -- The number of events that are sent and the number of events kept in memory
+  -- is controlled by the 'MixedIndexer'
+  Flushable (..),
 
   -- ** LastPointIndexer
   LastPointIndexer,
@@ -373,6 +374,7 @@ module Marconi.Core.Experiment (
   -- ** WithCatchup
   WithCatchup,
   withCatchup,
+  CatchupConfig (CatchupConfig),
   HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
 
   -- ** Delay
@@ -459,9 +461,9 @@ import Marconi.Core.Experiment.Class (
   indexAllEither,
   indexEither,
   isAheadOfSync,
-  query',
+  queryEither,
   queryLatest,
-  queryLatest',
+  queryLatestEither,
  )
 import Marconi.Core.Experiment.Coordinator (
   Coordinator,
@@ -484,6 +486,14 @@ import Marconi.Core.Experiment.Indexer.MixedIndexer (
   inMemory,
   mkMixedIndexer,
   standardMixedIndexer,
+ )
+import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
+  HasDatabasePath (..),
+  IsSourceProvider,
+  SQLiteAggregateQuery (..),
+  SQLiteSourceProvider (..),
+  aggregateHandle,
+  mkSQLiteAggregateQuery,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   SQLInsertPlan (..),
@@ -526,6 +536,7 @@ import Marconi.Core.Experiment.Transformer.WithCache (
   withCache,
  )
 import Marconi.Core.Experiment.Transformer.WithCatchup (
+  CatchupConfig (CatchupConfig),
   HasCatchupConfig (catchupBatchSize, catchupBypassDistance),
   WithCatchup,
   withCatchup,

@@ -56,9 +56,19 @@ library
   exposed-modules:
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Experimental.Extract.WithDistance
     Marconi.ChainIndex.Experimental.Indexers
+    Marconi.ChainIndex.Experimental.Indexers.BlockInfo
+    Marconi.ChainIndex.Experimental.Indexers.Coordinator
+    Marconi.ChainIndex.Experimental.Indexers.Datum
     Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent
+    Marconi.ChainIndex.Experimental.Indexers.Orphans
+    Marconi.ChainIndex.Experimental.Indexers.Spent
+    Marconi.ChainIndex.Experimental.Indexers.SyncHelper
     Marconi.ChainIndex.Experimental.Indexers.Utxo
+    Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
+    Marconi.ChainIndex.Experimental.Indexers.Worker
+    Marconi.ChainIndex.Experimental.Runner
     Marconi.ChainIndex.Extract.Datum
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
@@ -184,7 +194,9 @@ executable marconi-chain-index-experimental
   --------------------
   -- Local components
   --------------------
-  build-depends:  marconi-chain-index >=1.2.0
+  build-depends:
+    , marconi-chain-index  >=1.2.0
+    , marconi-core         >=1.2.0
 
   ------------------------
   -- Non-IOG dependencies
@@ -192,7 +204,7 @@ executable marconi-chain-index-experimental
   build-depends:
     , base       >=4.9 && <5
     , directory
-    , filepath
+    , mtl
 
 library marconi-chain-index-test-lib
   import:          lang
@@ -204,7 +216,6 @@ library marconi-chain-index-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
-    Gen.Marconi.ChainIndex.Experimental.Indexers.Utxo
     Gen.Marconi.ChainIndex.Indexers.MintBurn
     Gen.Marconi.ChainIndex.Indexers.Utxo
     Gen.Marconi.ChainIndex.Mockchain
@@ -249,6 +260,7 @@ library marconi-chain-index-test-lib
     , mtl
     , streaming
     , temporary
+    , time
 
 benchmark marconi-chain-index-bench
   import:         lang
@@ -299,8 +311,12 @@ test-suite marconi-chain-index-test
   other-modules:
     Spec.Marconi.ChainIndex.CLI
     Spec.Marconi.ChainIndex.Coordinator
+    Spec.Marconi.ChainIndex.Experimental.Indexers
+    Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo
+    Spec.Marconi.ChainIndex.Experimental.Indexers.Datum
+    Spec.Marconi.ChainIndex.Experimental.Indexers.Spent
     Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo
-    Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo.UtxoIndex
+    Spec.Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
     Spec.Marconi.ChainIndex.Indexers.AddressDatum
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
     Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent
@@ -318,10 +334,10 @@ test-suite marconi-chain-index-test
   -- Local components
   --------------------
   build-depends:
-    , cardano-streaming             >=1.2.0
-    , marconi-chain-index           >=1.2.0
-    , marconi-chain-index-test-lib  >=1.2.0
-    , marconi-core                  >=1.2.0
+    , cardano-streaming                                   >=1.2.0
+    , marconi-chain-index                                 >=1.2.0
+    , marconi-chain-index-test-lib                        >=1.2.0
+    , marconi-core:{marconi-core, marconi-core-test-lib}  >=1.2.0
 
   --------------------------
   -- Other IOG dependencies
@@ -369,7 +385,9 @@ test-suite marconi-chain-index-test
     , tasty
     , tasty-golden
     , tasty-hedgehog
+    , temporary
     , text
+    , time
     , transformers
 
 test-suite marconi-chain-index-test-compare-cardano-db-sync

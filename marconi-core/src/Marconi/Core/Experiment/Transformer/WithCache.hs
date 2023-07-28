@@ -41,6 +41,7 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
   queryLatest,
  )
+import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (IndexWrapper),
@@ -95,10 +96,15 @@ makeLenses 'WithCache
 deriving via
   (IndexWrapper (CacheConfig query) indexer)
   instance
+    (HasDatabasePath indexer) => HasDatabasePath (WithCache query indexer)
+
+deriving via
+  IndexWrapper (CacheConfig query) indexer
+  instance
     (IsSync m event indexer) => IsSync m event (WithCache query indexer)
 
 deriving via
-  (IndexWrapper (CacheConfig query) indexer)
+  IndexWrapper (CacheConfig query) indexer
   instance
     (Closeable m indexer) => Closeable m (WithCache query indexer)
 
@@ -108,6 +114,7 @@ deriving via
 withCache
   :: (Ord query)
   => (Timed (Point event) (Maybe event) -> Result query -> Result query)
+  -- ^ The cache update function
   -> indexer event
   -> WithCache query indexer event
 withCache _configOnForward =

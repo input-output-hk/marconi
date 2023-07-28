@@ -76,33 +76,33 @@ data ProcessedInput event
 
 -- | create a worker for an indexer, retuning the worker and the @MVar@ it's using internally
 createWorker'
-  :: (MonadIO m, WorkerIndexer n event indexer)
+  :: (MonadIO f, WorkerIndexer n event indexer)
   => (forall a. n a -> ExceptT IndexerError m a)
   -> Text
   -> (input -> m (Maybe event))
   -> indexer event
-  -> m (MVar (indexer event), WorkerM m input (Point event))
-createWorker' hoist name getEvent ix = do
-  workerState <- liftIO $ Con.newMVar ix
-  errorBox <- liftIO Con.newEmptyMVar
+  -> f (MVar (indexer event), WorkerM m input (Point event))
+createWorker' hoist name getEvent ix = liftIO $ do
+  workerState <- Con.newMVar ix
+  errorBox <- Con.newEmptyMVar
   pure (workerState, Worker name workerState getEvent hoist errorBox)
 
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
-  :: (MonadIO m, WorkerIndexer m event indexer)
+  :: (MonadIO f, MonadIO m, WorkerIndexer m event indexer)
   => Text
   -> (input -> m (Maybe event))
   -> indexer event
-  -> m (MVar (indexer event), WorkerM m input (Point event))
+  -> f (MVar (indexer event), WorkerM m input (Point event))
 createWorkerPure = createWorker' lift
 
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
-  :: (MonadIO m, WorkerIndexer (ExceptT IndexerError m) event indexer)
+  :: (MonadIO f, WorkerIndexer (ExceptT IndexerError m) event indexer)
   => Text
   -> (input -> m (Maybe event))
   -> indexer event
-  -> m (MVar (indexer event), WorkerM m input (Point event))
+  -> f (MVar (indexer event), WorkerM m input (Point event))
 createWorker = createWorker' id
 
 mapIndex

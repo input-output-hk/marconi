@@ -11,6 +11,9 @@ module Cardano.Streaming (
   CS.mkConnectInfo,
   CS.mkLocalNodeConnectInfo,
 
+  -- * Issue types
+  BlockEvent (..),
+
   -- * Stream blocks and ledger states
   blocks,
   blocksPipelined,
@@ -56,7 +59,6 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (runExceptT)
 import Data.Foldable (forM_)
 import Data.Function ((&))
-import Data.Functor ((<&>))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Time.Clock.POSIX (POSIXTime)
@@ -113,9 +115,16 @@ withChainSyncEventStream socketPath networkId points consumer =
     -- consumer does not have to know anything about async
     `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
 
+-- | A block, along with some contextual information
+data BlockEvent = BlockEvent
+  { blockInMode :: C.BlockInMode C.CardanoMode
+  , epochNo :: C.EpochNo
+  , blockTime :: POSIXTime
+  }
+
 {- | `withChainSyncEventEpochNoStream` uses the chain-sync mini-protocol to
  connect to a locally running node and fetch blocks from the given
- starting point, along with their @EpochNo@.
+ starting point, along with their @EpochNo@ and creation time.
 -}
 withChainSyncEventEpochNoStream
   :: FilePath
@@ -123,7 +132,7 @@ withChainSyncEventEpochNoStream
   -> C.NetworkId
   -> [C.ChainPoint]
   -- ^ The point on the chain to start streaming from
-  -> (Stream (Of (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r -> IO b)
+  -> (Stream (Of (CS.ChainSyncEvent BlockEvent)) IO r -> IO b)
   -- ^ The stream consumer
   -> IO b
 withChainSyncEventEpochNoStream socketPath networkId points consumer =
@@ -169,10 +178,7 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
         attachEpochAndTime
           :: C.EraHistory C.CardanoMode
           -> CS.ChainSyncEvent (C.BlockInMode C.CardanoMode)
-          -> IO
-              ( CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime)
-              , C.EraHistory C.CardanoMode
-              )
+          -> IO (CS.ChainSyncEvent BlockEvent, C.EraHistory C.CardanoMode)
         attachEpochAndTime h (CS.RollBackward cp ct) = pure (CS.RollBackward cp ct, h)
         attachEpochAndTime h evt@(CS.RollForward (C.BlockInMode block _) _) =
           let C.BlockHeader sn _ _ = C.getBlockHeader block
@@ -184,14 +190,14 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
               buildEpochAndTime
                 :: C.EraHistory C.CardanoMode
                 -> IO
-                    ( CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime)
+                    ( CS.ChainSyncEvent BlockEvent
                     , C.EraHistory C.CardanoMode
                     )
               buildEpochAndTime history = case epochAndTime history of
                 Left _ -> askHistory >>= buildEpochAndTime
-                Right (epoch, time) -> pure (evt <&> (,epoch,time), h)
+                Right (epoch, time) ->
+                  pure ((\b -> BlockEvent b epoch time) <$> evt, h)
            in buildEpochAndTime h
-
         client = chainSyncStreamingClient points nextChainSyncEventVar
 
         -- Compute the next event and upgrade history if needed

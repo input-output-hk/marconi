@@ -4,7 +4,7 @@ module Marconi.Tutorial.Indexers where
 
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
-import Marconi.ChainIndex.Experimental.Indexers qualified as Indexers
+import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Tutorial.CLI qualified as CLI
 import Marconi.Tutorial.Indexers.AddressCount qualified as AddressCount
@@ -26,7 +26,7 @@ runIndexers o = do
             securityParam
       ]
 
-  Indexers.runIndexers
+  Runner.runIndexers
     (CommonCLI.optionsSocketPath $ CLI.commonOptions o)
     (CommonCLI.optionsNetworkId $ CLI.commonOptions o)
     (CommonCLI.optionsChainPoint $ CLI.commonOptions o)

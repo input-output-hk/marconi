@@ -11,10 +11,11 @@ module Marconi.Core.Experiment.Query (
   allEvents,
 ) where
 
-import Control.Lens (filtered, folded, view)
+import Control.Lens qualified as Lens
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError))
+import Data.Maybe (mapMaybe)
 import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events)
 import Marconi.Core.Experiment.Type (
@@ -46,7 +47,7 @@ instance
     when aHeadOfSync $
       throwError $
         AheadOfLastSync Nothing
-    pure $ ix ^? events . folded . filtered (`isAtPoint` p) . event
+    pure $ ix ^? events . Lens.folded . Lens.filtered (`isAtPoint` p) . event
 
 instance
   (MonadError (QueryError (EventAtQuery event)) m)
@@ -61,11 +62,11 @@ instance
 
  The result should return the most recent first
 -}
-newtype EventsMatchingQuery event = EventsMatchingQuery {predicate :: event -> Bool}
+newtype EventsMatchingQuery event = EventsMatchingQuery {predicate :: event -> Maybe event}
 
 -- | Get all the events that are stored in the indexer
 allEvents :: EventsMatchingQuery event
-allEvents = EventsMatchingQuery (const True)
+allEvents = EventsMatchingQuery Just
 
 -- | The result of an @EventMatchingQuery@
 type instance Result (EventsMatchingQuery event) = [Timed (Point event) event]
@@ -77,11 +78,9 @@ instance
   query p q ix = do
     let isBefore p' e = p' >= e ^. point
     let result =
-          ix
-            ^.. events
-              . folded
-              . filtered (isBefore p)
-              . filtered (predicate q . view event)
+          mapMaybe (traverse $ predicate q) $
+            ix ^.. events . Lens.folded . Lens.filtered (isBefore p)
+
     aheadOfSync <- isAheadOfSync p ix
     when aheadOfSync $
       throwError . AheadOfLastSync . Just $
