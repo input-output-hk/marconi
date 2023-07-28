@@ -63,7 +63,7 @@ addressCountWorker
 addressCountWorker dbPath securityParam = do
   let extract = getEventsFromBlock
   ix <- Utils.toException $ mkAddressCountMixedIndexer dbPath securityParam
-  Core.createWorker (pure . extract) ix
+  Core.createWorker "AddressCount" (pure . extract) ix
 
 newtype AddressCountEvent = AddressCountEvent {unAddressCountEvent :: Map C.AddressAny Int}
   deriving (Show)
