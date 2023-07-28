@@ -403,7 +403,6 @@ instance Buffered EpochStateHandle where
     liftSQLError CantInsertEvent $ do
       let eventsList = toList events
 
-      SQL.execute_ c "BEGIN"
       SQL.withTransaction c $ do
         forM_ (concatMap eventToEpochSDDRows $ filter epochStateEventIsFirstEventOfEpoch eventsList) $ \row ->
           SQL.execute
