@@ -50,6 +50,7 @@ module Marconi.Core.Spec.Experiment (
   memorySizeUpdateTest,
   withTransformTest,
   withAggregateTest,
+  withRollbackFailureTest,
 
   -- * Mock chain
   DefaultChain,
@@ -146,6 +147,7 @@ import Control.Monad.Trans.Except (ExceptT)
 import Data.Either (fromRight)
 import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 
+import Control.Applicative (Const (Const))
 import Data.Monoid (Sum (Sum))
 import Database.SQLite.Simple (FromRow)
 import Database.SQLite.Simple qualified as SQL
@@ -1074,6 +1076,9 @@ catchupTestGroup title runner =
         ]
     ]
 
+{- | Check that when when an indexer raises an error,
+the coordinator kills the other indexers
+-}
 stopCoordinatorProperty
   :: (Core.IsIndex (ExceptT Core.IndexerError IO) TestEvent indexer)
   => (Core.IsSync (ExceptT Core.IndexerError IO) TestEvent indexer)
@@ -1333,7 +1338,7 @@ withTransformTest =
     Test.withMaxSuccess 10000 $
       withTransformProperty (view defaultChain <$> Test.arbitrary)
 
--- | A runner for a the 'WithTransform' tranformer
+-- | A runner for a the 'WithAggregate' tranformer
 withAggregateRunner
   :: (Monad m)
   => (input -> output)
@@ -1382,3 +1387,59 @@ withAggregateTest =
   Tasty.testProperty "WithAggregate apply transformation before indexing" $
     Test.withMaxSuccess 10000 $
       withAggregateProperty (view defaultChain <$> Test.arbitrary)
+
+-- | Provide an indexer that fails on rollback
+newtype WithRollbackFailure indexer event = WithRollbackFailure
+  {_withRollbackFailure :: Core.IndexWrapper (Const ()) indexer event}
+
+makeLenses ''WithRollbackFailure
+
+-- | A runner for a the 'WithAggregate' tranformer
+withRollbackFailureRunner
+  :: (Monad m)
+  => IndexerTestRunner m event wrapped
+  -> IndexerTestRunner m event (WithRollbackFailure wrapped)
+withRollbackFailureRunner wRunner =
+  IndexerTestRunner
+    (wRunner ^. indexerRunner)
+    (WithRollbackFailure . Core.IndexWrapper (Const ()) <$> (wRunner ^. indexerGenerator))
+
+instance Core.IndexerTrans WithRollbackFailure where
+  type Config WithRollbackFailure = Const ()
+  wrap cfg = WithRollbackFailure . Core.IndexWrapper cfg
+  unwrap = withRollbackFailure . Core.wrappedIndexer
+
+deriving via
+  (Core.IndexWrapper (Const ()) indexer)
+  instance
+    (Core.IsSync m event indexer) => Core.IsSync m event (WithRollbackFailure indexer)
+
+instance (Core.IsIndex m event indexer) => Core.IsIndex m event (WithRollbackFailure indexer) where
+  index = Core.indexVia Core.unwrap
+
+deriving via
+  (Core.IndexWrapper (Const ()) indexer)
+  instance
+    (Core.Closeable m indexer) => Core.Closeable m (WithRollbackFailure indexer)
+
+instance Core.Rollbackable m event (WithRollbackFailure index) where
+  rollback _ _ = error "STOP"
+
+checkOutOfRollback
+  :: Gen [Item TestEvent]
+  -> Property
+checkOutOfRollback gen =
+  let runner = coordinatorIndexerRunner $ withRollbackFailureRunner listIndexerRunner
+
+      r = runner ^. indexerRunner
+      genIndexer = runner ^. indexerGenerator
+   in Test.within 10000000 $ Test.expectFailure $ Test.forAll gen $ \chain -> r $ do
+        initialIndexer <- GenM.run genIndexer
+        void $ GenM.run $ foldM (flip process) initialIndexer (chain ++ [Rollback 0])
+        GenM.stop True
+
+withRollbackFailureTest :: Tasty.TestTree
+withRollbackFailureTest =
+  Tasty.testProperty "Rollback failure in a worker exit nicely" $
+    Test.withMaxSuccess 10000 $
+      checkOutOfRollback (view defaultChain <$> Test.arbitrary)

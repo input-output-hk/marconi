@@ -3,7 +3,7 @@
 
 module Marconi.ChainIndex.Error where
 
-import Control.Exception (Exception, catch, throw)
+import Control.Exception (Exception, Handler (Handler), catches, throw)
 import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -28,13 +28,11 @@ liftCatch f x = ExceptT $ f (Right <$> x)
 liftSQLError :: (Text -> IndexerError err) -> IO a -> ExceptT (IndexerError err) IO a
 liftSQLError errorWrapper =
   liftCatch
-    ( `catch`
-        \(err0 :: SQL.SQLError) ->
-          pure (Left (errorWrapper $ Text.pack $ show err0))
-            `catch` \(err1 :: SQL.FormatError) ->
-              pure (Left (InvalidIndexer $ Text.pack $ show err1))
-                `catch` \(err2 :: SQL.ResultError) ->
-                  pure (Left (InvalidIndexer $ Text.pack $ show err2))
+    ( `catches`
+        [ Handler $ \(err0 :: SQL.SQLError) -> pure (Left (errorWrapper $ Text.pack $ show err0))
+        , Handler $ \(err1 :: SQL.FormatError) -> pure (Left (InvalidIndexer $ Text.pack $ show err1))
+        , Handler $ \(err2 :: SQL.ResultError) -> pure (Left (InvalidIndexer $ Text.pack $ show err2))
+        ]
     )
 
 -- | Hide an explicit error into an IO @Exception@.

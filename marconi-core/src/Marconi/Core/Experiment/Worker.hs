@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
 
@@ -22,6 +23,7 @@ import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
+import Control.Exception (bracket, onException)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (MonadTrans (lift))
@@ -34,7 +36,7 @@ import Marconi.Core.Experiment.Class (
   IsSync (lastSyncPoint),
   Rollbackable (rollback),
  )
-import Marconi.Core.Experiment.Type (IndexerError, Point, Timed, point)
+import Marconi.Core.Experiment.Type (IndexerError (OtherIndexError), Point, Timed, point)
 
 -- Type alias for the type classes that are required to build a worker for an indexer
 type WorkerIndexer n event indexer =
@@ -123,8 +125,7 @@ startWorker
   -> m ThreadId
 startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
   let unlockCoordinator :: IO ()
-      unlockCoordinator = do
-        Con.signalQSemN tokens 1
+      unlockCoordinator = Con.signalQSemN tokens 1
 
       fresherThan :: (Ord (Point event)) => Timed (Point event) (Maybe event) -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
@@ -152,13 +153,24 @@ startWorker chan tokens (Worker ix transformInput hoistError errorBox) =
         indexer <- Con.readMVar ix
         void $ runExceptT $ hoistError $ close indexer
 
-      loop chan' = forever $ do
-        input <- STM.atomically $ STM.readTChan chan'
-        processedEvent <- mapIndex transformInput input
-        case processedEvent of
-          Rollback p -> handleRollback p
-          Index e -> indexEvent e
-        unlockCoordinator
+      raiseErrorOnException = do
+        indexer <- Con.readMVar ix
+        raiseError indexer $ OtherIndexError "Abnormal termination"
+
+      process = \case
+        Rollback p -> handleRollback p
+        Index e -> indexEvent e
+
+      safeProcessEvent input = do
+        processedInput <- mapIndex transformInput input
+        process processedInput `onException` raiseErrorOnException
+
+      loop chan' =
+        forever $
+          bracket
+            (STM.atomically $ STM.readTChan chan')
+            safeProcessEvent
+            (const unlockCoordinator)
    in liftIO $ do
         chan' <- STM.atomically $ STM.dupTChan chan
         Con.forkFinally (loop chan') (const swallowPill)

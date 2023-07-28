@@ -22,7 +22,7 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
 ) where
 
 import Control.Concurrent.Async qualified as Async
-import Control.Exception (catch)
+import Control.Exception (Handler (Handler), catches)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
@@ -130,9 +130,10 @@ mkSingleInsertSqliteIndexer con extract insert = mkSqliteIndexer con [[SQLInsert
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
 handleSQLErrors value =
   fmap Right value
-    `catch` (\(x :: SQL.FormatError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
-    `catch` (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
-    `catch` (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
+    `catches` [ Handler (\(x :: SQL.FormatError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+              , Handler (\(x :: SQL.ResultError) -> pure . Left . InvalidIndexer . Text.pack $ show x)
+              , Handler (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
+              ]
 
 -- | Run a list of insert queries in one single transaction.
 runIndexQueriesStep
