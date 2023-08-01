@@ -199,6 +199,7 @@ test-suite marconi-sidechain-test
     Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn
     Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo
     Spec.Marconi.Sidechain.CLI
+    Spec.Marconi.Sidechain.Integration
     Spec.Marconi.Sidechain.Routes
     Spec.Marconi.Sidechain.RpcClientAction
 
@@ -218,6 +219,7 @@ test-suite marconi-sidechain-test
     , cardano-crypto-class
     , cardano-ledger-shelley
     , cardano-slotting                ^>=0.1.1.1
+    , hedgehog-extras
     , plutus-tx-plugin
 
   ------------------------
@@ -234,6 +236,7 @@ test-suite marconi-sidechain-test
     , lens
     , mtl
     , optparse-applicative
+    , process
     , servant
     , servant-client
     , servant-server
