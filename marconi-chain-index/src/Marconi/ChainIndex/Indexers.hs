@@ -66,7 +66,7 @@ import Control.Concurrent.STM.TChan (
   readTChan,
   writeTChan,
  )
-import Control.Exception (bracket, catch, finally, onException)
+import Control.Exception (catch, finally, onException)
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators (
@@ -81,7 +81,6 @@ import Control.Monad (
   forever,
   void,
   when,
-  (<=<),
  )
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (
@@ -248,13 +247,11 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
       raiseError =
         tryPutMVar _errorVar $ CantInsertEvent "Utxo raised an uncaught exception"
       loop :: IO ()
-      loop = forever $ do
+      loop = forever $ finally (signalQSemN _barrier 1) $ do
         failWhenFull _errorVar
         readMVar mIndexer >>= callback
-        bracket
-          (atomically . readTChan $ ch)
-          (const $ signalQSemN _barrier 1)
-          (flip onException raiseError . process)
+        event <- atomically . readTChan $ ch
+        process event `onException` raiseError
   cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle ix
   pure (loop, cp)
 
@@ -321,12 +318,10 @@ addressDatumWorker_ onInsert targetAddresses depth Coordinator{_barrier, _errorV
       raiseError =
         tryPutMVar _errorVar $ CantInsertEvent "AddressDatum raised an uncaught exception"
       innerLoop :: IO ()
-      innerLoop = forever $ do
+      innerLoop = forever $ finally (signalQSemN _barrier 1) $ do
         failWhenFull _errorVar
-        bracket
-          (atomically $ readTChan ch)
-          (const $ signalQSemN _barrier 1)
-          (flip onException raiseError . process)
+        event <- atomically . readTChan $ ch
+        process event `onException` raiseError
   cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ index
   pure (innerLoop, cp)
 
@@ -352,12 +347,10 @@ scriptTxWorker_ onInsert depth Coordinator{_barrier, _errorVar} ch path = do
       raiseError =
         tryPutMVar _errorVar $ CantInsertEvent "ScriptTx raised an uncaught exception"
       loop :: IO ()
-      loop = forever $ do
+      loop = forever $ finally (signalQSemN _barrier 1) $ do
         failWhenFull _errorVar
-        bracket
-          (atomically $ readTChan ch)
-          (const $ signalQSemN _barrier 1)
-          (flip onException raiseError . process)
+        event <- atomically . readTChan $ ch
+        process event `onException` raiseError
   cp <- Utils.toException . Storable.resumeFromStorage . view Storable.handle $ indexer
   pure (loop, cp, mIndexer)
 
@@ -483,17 +476,14 @@ epochStateWorker_
           putMVar ledgerStateMVar currentLedgerState
           putMVar epochNoMVar newEpochNo
 
-        loop = forever $ do
+        loop = forever $ finally (signalQSemN _barrier 1) $ do
           currentLedgerState <- takeMVar ledgerStateMVar
           currentEpochNo <- takeMVar epochNoMVar
           failWhenFull _errorVar
           void $ readMVar indexerMVar >>= callback
-          bracket
-            (atomically $ readTChan ch)
-            (const $ signalQSemN _barrier 1)
-            ( flip onException raiseError
-                . (updateLedgerState <=< process currentLedgerState currentEpochNo)
-            )
+          event <- atomically $ readTChan ch
+          (updateLedgerState =<< process currentLedgerState currentEpochNo event)
+            `onException` raiseError
 
     pure (loop, cp, indexerMVar)
 
@@ -540,13 +530,11 @@ mintBurnWorker_ securityParam callback mAssets c ch dbPath = do
           void $ updateWith indexerMVar (c ^. errorVar) $ ignoreQueryError . Storable.rewind cp'
       raiseError =
         tryPutMVar (c ^. errorVar) $ CantInsertEvent "MintBurn raised an uncaught exception"
-      loop = forever $ do
+      loop = forever $ finally (signalQSemN (c ^. barrier) 1) $ do
         failWhenFull (c ^. errorVar)
         void $ readMVar indexerMVar >>= callback
-        bracket
-          (atomically $ readTChan ch)
-          (const $ signalQSemN (c ^. barrier) 1)
-          (flip onException raiseError . process)
+        event <- atomically $ readTChan ch
+        process event `onException` raiseError
   pure (loop, cp)
 
 mintBurnWorker
@@ -589,7 +577,7 @@ mkIndexerStream'
   -> S.Stream (S.Of (ChainSyncEvent a)) IO r
   -> IO ()
 mkIndexerStream' f coordinator =
-  S.foldM_ step initial finish
+  S.foldM_ safeStep initial finish
   where
     initial = pure coordinator
 
@@ -628,6 +616,7 @@ mkIndexerStream' f coordinator =
               else pure (c', Nothing)
       Seq.Empty -> pure (c, Just e)
 
+    -- process a single execution step
     step c@Coordinator{_barrier, _errorVar, _indexerCount, _channel} event = do
       indexersHealthCheck c
       (c', mevent) <- coordinatorHandleEvent c event
@@ -636,6 +625,13 @@ mkIndexerStream' f coordinator =
         Just event' -> atomically $ writeTChan _channel event'
       waitQSemN _barrier _indexerCount
       pure c'
+
+    -- give 3 minutes for a step to finish
+    safeStep c event = do
+      result <- timeout 180_000_000 $ step c event
+      case result of
+        Nothing -> error "At least one indexer is stuck, closing marconi"
+        Just res -> pure res
 
     finish _ = pure ()
 
@@ -662,9 +658,14 @@ runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync
   resumablePoints <-
     getStartingPointsFromIndexers securityParam currentNodeBlockNo indexers coordinator
   let oldestCommonChainPoint = minimum resumablePoints
-  let resumePoint = case cliChainPoint of
+      resumePoint = case cliChainPoint of
         C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
         cliCp -> cliCp -- otherwise use what was provided on CLI.
+      cleanExit :: Trace IO Text -> Coordinator' a -> IO ()
+      cleanExit trace c = do
+        logInfo trace "Marconi is shutting down. Waiting for indexers to finish their work..."
+        void $ timeout 180_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
+        logInfo trace "Done!"
   c <- defaultConfigStdout
   withTrace c traceName $ \trace -> do
     logInfo trace $
@@ -707,12 +708,6 @@ runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync
                       <+> "Please check the slot number and the block hash do belong to the chain."
               signalQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
          in finally (io `catch` handleException) (cleanExit trace coordinator)
-  where
-    cleanExit :: Trace IO Text -> Coordinator' a -> IO ()
-    cleanExit trace c = do
-      logInfo trace "Marconi is shutting down. Waiting for indexers to finish their work..."
-      void $ timeout 180_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
-      logInfo trace "Done!"
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent (BlockInMode CardanoMode, C.EpochNo, POSIXTime))) IO r
