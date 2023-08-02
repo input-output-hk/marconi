@@ -46,9 +46,7 @@ import Control.Concurrent (
   modifyMVar,
   newEmptyMVar,
   newMVar,
-  putMVar,
   readMVar,
-  takeMVar,
   tryPutMVar,
   tryReadMVar,
  )
@@ -409,8 +407,6 @@ epochStateWorker_
 
     cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle indexer
     indexerMVar <- newMVar indexer
-    ledgerStateMVar <- newMVar initialLedgerState
-    epochNoMVar <- newMVar $ EpochState.getEpochNo initialLedgerState
 
     let process currentLedgerState currentEpochNo = \case
           RollForward (blockInMode@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _), _, _) chainTip -> do
@@ -472,20 +468,16 @@ epochStateWorker_
         raiseError =
           tryPutMVar _errorVar $ CantInsertEvent "EpochState raised an uncaught exception"
 
-        updateLedgerState (currentLedgerState, newEpochNo) = do
-          putMVar ledgerStateMVar currentLedgerState
-          putMVar epochNoMVar newEpochNo
-
-        loop = forever $ finally (signalQSemN _barrier 1) $ do
-          currentLedgerState <- takeMVar ledgerStateMVar
-          currentEpochNo <- takeMVar epochNoMVar
+        loop currentLedgerState currentEpochNo = forever $ finally (signalQSemN _barrier 1) $ do
           failWhenFull _errorVar
           void $ readMVar indexerMVar >>= callback
           event <- atomically $ readTChan ch
-          (updateLedgerState =<< process currentLedgerState currentEpochNo event)
-            `onException` raiseError
+          (newLedgerState, newEpochNo) <-
+            process currentLedgerState currentEpochNo event
+              `onException` raiseError
+          loop newLedgerState newEpochNo
 
-    pure (loop, cp, indexerMVar)
+    pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState), cp, indexerMVar)
 
 epochStateWorker
   :: FilePath
@@ -548,7 +540,7 @@ mintBurnWorker callback mAssets securityParam _ coordinator path = do
   void $ forkIO loop
   return cp
 
--- | Initialize the 'Coordinator' which coordinators a list of indexers to index at the same speeds.
+-- | Initialize the 'Coordinator' which coordinates a list of indexers to index at the same speeds.
 initializeCoordinatorFromIndexers
   :: SecurityParam
   -> IndexingDepth
@@ -655,8 +647,13 @@ runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync
   currentNodeBlockNo <- Utils.toException $ Utils.queryCurrentNodeBlockNo @Void networkId socketPath
   let indexers = mapMaybe sequenceA indexerList
   coordinator <- initializeCoordinatorFromIndexers securityParam indexingDepth indexers
+  let indexerDepth =
+        let SecurityParam s = securityParam
+         in case indexingDepth of
+              MinIndexingDepth d -> SecurityParam $ s - d + 1
+              MaxIndexingDepth -> SecurityParam 1
   resumablePoints <-
-    getStartingPointsFromIndexers securityParam currentNodeBlockNo indexers coordinator
+    getStartingPointsFromIndexers indexerDepth currentNodeBlockNo indexers coordinator
   let oldestCommonChainPoint = minimum resumablePoints
       resumePoint = case cliChainPoint of
         C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
