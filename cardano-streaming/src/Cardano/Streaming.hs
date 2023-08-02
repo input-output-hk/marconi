@@ -32,7 +32,7 @@ import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Cardano.Slotting.Time qualified as C
 import Cardano.Streaming.Callbacks qualified as CS
 import Cardano.Streaming.Helpers qualified as CS
-import Control.Concurrent (readMVar)
+import Control.Concurrent (modifyMVar)
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async (ExceptionInLinkedThread (ExceptionInLinkedThread), link, withAsync)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, putMVar, takeMVar)
@@ -44,6 +44,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (runExceptT)
 import Data.Foldable (forM_)
 import Data.Function ((&))
+import Data.Functor ((<&>))
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Time.Clock.POSIX (POSIXTime)
@@ -147,32 +148,37 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
     let queryHistoryInMode :: C.QueryInMode C.CardanoMode (C.EraHistory C.CardanoMode)
         queryHistoryInMode = C.QueryEraHistory C.CardanoModeIsMultiEra
 
-        askHistory :: IO ()
+        askHistory :: IO (C.EraHistory C.CardanoMode)
         askHistory = do
           res <- C.queryNodeLocalState localNodeConnectInfo Nothing queryHistoryInMode
           case res of
             Left err -> fail $ show err
-            Right h -> putMVar eraHistoryVar h
-
-        getHistory = readMVar eraHistoryVar
+            Right h -> pure h
 
         attachEpochAndTime
           :: CS.ChainSyncEvent (C.BlockInMode C.CardanoMode)
           -> IO (CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))
         attachEpochAndTime (CS.RollBackward cp ct) = pure $ CS.RollBackward cp ct
         attachEpochAndTime evt@(CS.RollForward (C.BlockInMode (C.Block (C.BlockHeader sn _ _) _) _) _) = do
-          history <- getHistory
-          let epochAndTime = do
-                (epoch, _, _) <- C.slotToEpoch sn history
-                (relativeTime, _) <- C.getProgress sn history
-                pure (epoch, Time.utcTimeToPOSIXSeconds $ C.fromRelativeTime systemStart relativeTime)
-          case epochAndTime of
-            Left _ -> askHistory *> attachEpochAndTime evt
-            Right (epoch, time) -> pure $ (,epoch,time) <$> evt
+          modifyMVar eraHistoryVar $ \history ->
+            let epochAndTime h = do
+                  (epoch, _, _) <- C.slotToEpoch sn h
+                  (relativeTime, _) <- C.getProgress sn h
+                  pure (epoch, Time.utcTimeToPOSIXSeconds $ C.fromRelativeTime systemStart relativeTime)
+                buildEpochAndTime
+                  :: C.EraHistory C.CardanoMode
+                  -> IO
+                      ( C.EraHistory C.CardanoMode
+                      , CS.ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime)
+                      )
+                buildEpochAndTime h = case epochAndTime h of
+                  Left _ -> askHistory >>= buildEpochAndTime
+                  Right (epoch, time) -> pure (h, evt <&> (,epoch,time))
+             in buildEpochAndTime history
 
         client = chainSyncStreamingClient points nextChainSyncEventVar
 
-    askHistory
+    putMVar eraHistoryVar =<< askHistory
 
     withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a -> do
       -- Make sure all exceptions in the client thread are passed to the consumer thread
@@ -181,7 +187,9 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
       consumer $ S.repeatM $ takeMVar nextChainSyncEventVar >>= attachEpochAndTime
     -- Let's rethrow exceptions from the client thread unwrapped, so that the
     -- consumer does not have to know anything about async
-    `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
+    `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> do
+      putStrLn "error in chainSync"
+      throw e
 
 connectToLocalNodeWithChainSyncClient
   :: C.LocalNodeConnectInfo C.CardanoMode
