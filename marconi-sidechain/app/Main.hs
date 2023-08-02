@@ -17,6 +17,7 @@ import Marconi.Sidechain.CLI (parseCli)
 -}
 main :: IO ()
 main = do
+  putStrLn "DEBUG: 20230802-16:32-UTC"
   cli@CliArgs{httpPort, targetAddresses, targetAssets} <- parseCli
   rpcEnv <- initializeSidechainEnv httpPort targetAddresses targetAssets
 
