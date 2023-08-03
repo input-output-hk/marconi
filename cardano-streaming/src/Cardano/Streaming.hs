@@ -174,11 +174,13 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
               , C.EraHistory C.CardanoMode
               )
         attachEpochAndTime h (CS.RollBackward cp ct) = pure (CS.RollBackward cp ct, h)
-        attachEpochAndTime h evt@(CS.RollForward (C.BlockInMode (C.Block (C.BlockHeader sn _ _) _) _) _) =
-          let epochAndTime history = do
+        attachEpochAndTime h evt@(CS.RollForward (C.BlockInMode block _) _) =
+          let C.BlockHeader sn _ _ = C.getBlockHeader block
+              toEpochTime = Time.utcTimeToPOSIXSeconds . C.fromRelativeTime systemStart
+              epochAndTime history = do
                 (epoch, _, _) <- C.slotToEpoch sn history
                 (relativeTime, _) <- C.getProgress sn history
-                pure (epoch, Time.utcTimeToPOSIXSeconds $ C.fromRelativeTime systemStart relativeTime)
+                pure (epoch, toEpochTime relativeTime)
               buildEpochAndTime
                 :: C.EraHistory C.CardanoMode
                 -> IO
@@ -192,6 +194,7 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
 
         client = chainSyncStreamingClient points nextChainSyncEventVar
 
+        -- Compute the next event and upgrade history if needed
         eventLoop history =
           takeMVar nextChainSyncEventVar >>= fmap Right . attachEpochAndTime history
 
