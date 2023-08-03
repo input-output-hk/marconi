@@ -50,7 +50,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Concurrent.Async (concurrently_)
-import Control.Exception (Exception, bracket_)
+import Control.Exception (Exception)
 import Control.Lens.Combinators (
   Lens',
   Traversal',
@@ -702,12 +702,10 @@ instance Buffered UtxoHandle where
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
           datumRows = fmap (uncurry DatumRow) $ Map.toList $ foldMap ueDatum events
-      bracket_
-        (SQL.execute_ c "BEGIN")
-        (SQL.execute_ c "COMMIT")
-        ( SQL.executeMany
-            c
-            [sql|INSERT
+      SQL.withTransaction c $ do
+        SQL.executeMany
+          c
+          [sql|INSERT
              INTO unspent_transactions (
                address,
                txId,
@@ -720,10 +718,10 @@ instance Buffered UtxoHandle where
                slotNo
             ) VALUES
             (?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-            rows
-            `concurrently_` SQL.executeMany
-              c
-              [sql|INSERT OR IGNORE INTO blockInfo (
+          rows
+          `concurrently_` SQL.executeMany
+            c
+            [sql|INSERT OR IGNORE INTO blockInfo (
                slotNo,
                blockHeaderHash,
                blockNo,
@@ -731,39 +729,40 @@ instance Buffered UtxoHandle where
                epochNo
             ) VALUES
             (?, ?, ?, ?, ?)|]
-              (foldMap (pure . ueBlockInfo) events)
-            `concurrently_` SQL.executeMany
-              c
-              [sql|INSERT INTO spent (txId, txIx, slotNo, spentTxId) VALUES (?, ?, ?, ?)|]
-              spents
-            `concurrently_` SQL.executeMany
-              c
-              [sql|INSERT OR IGNORE INTO datumhash_datum
+            (foldMap (pure . ueBlockInfo) events)
+          `concurrently_` SQL.executeMany
+            c
+            [sql|INSERT INTO spent (txId, txIx, slotNo, spentTxId) VALUES (?, ?, ?, ?)|]
+            spents
+          `concurrently_` SQL.executeMany
+            c
+            [sql|INSERT OR IGNORE INTO datumhash_datum
                    ( datum_hash
                    , datum
                    )
                    VALUES (?, ?)|]
-              datumRows
-        )
-      -- We want to perform vacuum about once every 100
-      when toVacuume $ do
-        rndCheck <- createSystemRandom >>= uniformR (1 :: Int, 100)
-        when (rndCheck == 42) $ do
-          SQL.execute_
-            c
-            [sql|DELETE FROM
-                            unspent_transactions
-                          WHERE
-                            unspent_transactions.rowid IN (
-                              SELECT
-                                unspent_transactions.rowid
-                              FROM
-                                unspent_transactions
-                                JOIN spent ON unspent_transactions.txId = spent.txId
-                                AND unspent_transactions.txIx = spent.txIx
-                            )|]
-          -- remove Spent and release space, see https://www.sqlite.org/lang_vacuum.html
-          SQL.execute_ c "VACUUM"
+            datumRows
+
+        -- We want to perform vacuum about once every 100
+        when toVacuume $ do
+          rndCheck <- createSystemRandom >>= uniformR (1 :: Int, 100)
+          when (rndCheck == 42) $ do
+            SQL.execute_
+              c
+              [sql|DELETE FROM
+                              unspent_transactions
+                            WHERE
+                              unspent_transactions.rowid IN (
+                                SELECT
+                                  unspent_transactions.rowid
+                                FROM
+                                  unspent_transactions
+                                  JOIN spent ON unspent_transactions.txId = spent.txId
+                                  AND unspent_transactions.txIx = spent.txIx
+                              )|]
+            -- remove Spent and release space, see https://www.sqlite.org/lang_vacuum.html
+            SQL.execute_ c "VACUUM"
+
       pure h
 
   getStoredEvents :: UtxoHandle -> StorableMonad UtxoHandle [StorableEvent UtxoHandle]
