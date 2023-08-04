@@ -11,8 +11,7 @@ import Control.Lens ((<&>))
 import Control.Monad (unless, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (isInfixOf)
-import GHC.IO.Exception qualified as IO
-import Hedgehog (Property, assert, failure, (===))
+import Hedgehog (Property, assert)
 import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
 import Helpers qualified as Help
@@ -74,16 +73,16 @@ startMarconiSideChainTest optionalCliArgs description =
 
     let dbDir = tempPath <> "/marconi-databases"
     H.createDirectoryIfMissing_ dbDir
-    nodeEnvPath :: FilePath <- liftIO $ IO.getEnv "CARDANO_NODE_WORKING_DIR"
-    magicId <- liftIO $ IO.readFile $ nodeEnvPath <> "/db/protocolMagicId"
+    nodeWorkingDir :: FilePath <- H.nothingFailM (liftIO $ IO.lookupEnv "CARDANO_NODE_WORKING_DIR")
+    magicId <- liftIO $ IO.readFile $ nodeWorkingDir <> "/db/protocolMagicId"
     cp <-
       H.procFlex
         "marconi-sidechain"
         "MARCONI_SIDECHAIN"
         ( [ "--socket-path"
-          , nodeEnvPath <> "/ipc/node.socket"
+          , nodeWorkingDir <> "/ipc/node.socket"
           , "--node-config-path"
-          , nodeEnvPath <> "/config.json"
+          , nodeWorkingDir <> "/config.json"
           , "--db-dir"
           , dbDir
           , "--testnet-magic"

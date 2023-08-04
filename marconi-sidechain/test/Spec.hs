@@ -13,6 +13,7 @@ import Spec.Marconi.Sidechain.Integration qualified as Integration
 import Spec.Marconi.Sidechain.Routes qualified as Routes
 import Spec.Marconi.Sidechain.RpcClientAction (RpcClientAction, mkRpcClientAction)
 import Test.Tasty (TestTree, defaultMain, localOption, testGroup)
+import Test.Tasty.ExpectedFailure (ignoreTestBecause)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 
 main :: IO ()
@@ -26,7 +27,7 @@ tests :: RpcClientAction -> TestTree
 tests rpcClientAction =
   testGroup
     "marconi-sidechain"
-    [ Integration.tests -- need cardano-node to be run
+    [ ignoreTestBecause "needs local running cardano-node" Integration.tests
     , localOption (HedgehogTestLimit $ Just 200) $
         testGroup
           "marconi-sidechain"

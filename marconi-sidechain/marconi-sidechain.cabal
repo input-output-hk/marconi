@@ -228,7 +228,7 @@ test-suite marconi-sidechain-test
   build-depends:
     , aeson
     , aeson-pretty
-    , base                  >=4.9 && <5
+    , base                    >=4.9 && <5
     , bytestring
     , containers
     , hedgehog
@@ -242,6 +242,7 @@ test-suite marconi-sidechain-test
     , servant-server
     , stm
     , tasty
+    , tasty-expected-failure
     , tasty-golden
     , tasty-hedgehog
     , text
