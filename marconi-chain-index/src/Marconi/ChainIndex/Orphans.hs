@@ -39,6 +39,18 @@ instance Pretty C.ChainTip where
   pretty C.ChainTipAtGenesis = "ChainTipAtGenesis"
   pretty (C.ChainTip sn ha bn) = "ChainTip(" <> pretty sn <> "," <+> pretty ha <> "," <+> pretty bn <> ")"
 
+instance SQL.FromRow C.ChainTip where
+  fromRow = C.ChainTip <$> SQL.field <*> SQL.field <*> SQL.field
+
+instance ToRow C.ChainTip where
+  toRow C.ChainTipAtGenesis = [SQL.SQLNull]
+  toRow (C.ChainTip sn bh bno) = [toField sn, toField bh, toField bno]
+
+instance Ord C.ChainTip where
+  compare C.ChainTipAtGenesis _ = LT
+  compare _ C.ChainTipAtGenesis = GT
+  compare (C.ChainTip snX haX _bnX) (C.ChainTip snY haY _bnY) = compare (snX, haX) (snY, haY)
+
 instance Pretty C.ChainPoint where
   pretty C.ChainPointAtGenesis = "ChainPointAtGenesis"
   pretty (C.ChainPoint sn ha) = "ChainPoint(" <> pretty sn <> "," <+> pretty ha <> ")"

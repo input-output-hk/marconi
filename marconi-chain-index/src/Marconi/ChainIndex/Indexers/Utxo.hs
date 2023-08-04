@@ -79,7 +79,7 @@ import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import Data.Ord (Down (Down), comparing)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -414,7 +414,7 @@ instance ToJSON UtxoRow where
 
 data instance StorableResult UtxoHandle
   = -- | Result of a 'QueryUtxoByAddress' query
-    UtxoByAddressResult {getUtxoByAddressResult :: ![UtxoResult]}
+    UtxoByAddressResult {getUtxoByAddressResult :: !([UtxoResult], C.ChainTip)}
   | -- | Result of a 'LastSyncedBlockInfoQuery'
     LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo)}
   deriving (Eq, Show, Ord)
@@ -424,6 +424,7 @@ data instance StorableEvent UtxoHandle = UtxoEvent
   , ueInputs :: !(Map C.TxIn C.TxId)
   , ueBlockInfo :: !BlockInfo
   , ueDatum :: !(Map (C.Hash C.ScriptData) C.ScriptData)
+  , ueTip :: C.ChainTip
   }
   deriving (Eq, Ord, Show, Generic)
 
@@ -664,6 +665,15 @@ open dbPath (Depth k) isToVacuume = do
   lift $
     SQL.execute_
       c
+      [sql|CREATE TABLE IF NOT EXISTS chainTip
+                    ( slotNo INT NOT NULL
+                    , blockHeaderHash BLOB NOT NULL
+                    , blockNo INT NOT NULL
+                    )|]
+
+  lift $
+    SQL.execute_
+      c
       [sql|CREATE TABLE IF NOT EXISTS datumhash_datum ( datum_hash BLOB PRIMARY KEY , datum BLOB)|]
 
   lift $ SQL.execute_ c [sql|CREATE INDEX IF NOT EXISTS spent_slotNo ON spent (slotNo)|]
@@ -683,7 +693,7 @@ open dbPath (Depth k) isToVacuume = do
   emptyState k (UtxoHandle c k isToVacuume)
 
 getSpentFrom :: StorableEvent UtxoHandle -> [Spent]
-getSpentFrom (UtxoEvent _ txIns bi _) = do
+getSpentFrom (UtxoEvent _ txIns bi _ _) = do
   (txin, spentTxId) <- Map.toList txIns
   pure $ Spent txin (SpentInfo (bi ^. blockInfoSlotNo) spentTxId)
 
@@ -834,7 +844,7 @@ getTxIns c sn = do
  Note: No `unspent` computation is performed
 -}
 eventToRows :: StorableEvent UtxoHandle -> [UtxoRow]
-eventToRows (UtxoEvent utxos _ bi _) =
+eventToRows (UtxoEvent utxos _ bi _ _) =
   let eventToRow u =
         UtxoRow
           { _urUtxo = u
@@ -923,6 +933,9 @@ eventsAtAddress addr snoInterval = foldMap go
         (getBufferSpent event)
         (getBufferFutureSpent event)
 
+sqliteTipQuery :: SQL.Connection -> IO C.ChainTip
+sqliteTipQuery c = fromMaybe C.ChainTipAtGenesis . listToMaybe <$> SQL.query_ c "SELECT * FROM chainTip"
+
 {- | Query the data stored in the indexer
  Queries SQL + buffered data, where buffered data is the data that will be batched to SQL
 -}
@@ -936,8 +949,14 @@ instance Queryable UtxoHandle where
   queryStorage memoryEvents (UtxoHandle c _ _) (QueryUtxoByAddressWrapper (QueryUtxoByAddress addr slotInterval)) =
     liftSQLError CantQueryIndexer $ do
       persistedUtxoResults <- sqliteUtxoByAddressQuery c filters $ Just "ORDER BY u.slotNo ASC"
-      bufferedUtxoResults <- concat <$> mapM bufferEventUtxoResult bufferEvents
-      pure $ UtxoByAddressResult $ mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
+      let composeBufferEvents :: [([UtxoResult], C.ChainTip)] -> ([UtxoResult], Maybe C.ChainTip)
+          composeBufferEvents [] = ([], Nothing)
+          composeBufferEvents xs = (foldMap fst xs, Just $ maximum $ snd <$> xs)
+      bufferedUtxoResults <- composeBufferEvents <$> traverse bufferEventUtxoResult bufferEvents
+      resolvedTip <- maybe (sqliteTipQuery c) pure (snd bufferedUtxoResults)
+      pure $
+        UtxoByAddressResult
+          (mapMaybe filterAddSpent persistedUtxoResults <> fst bufferedUtxoResults, resolvedTip)
     where
       UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent' =
         eventsAtAddress addr slotInterval memoryEvents
@@ -970,9 +989,9 @@ instance Queryable UtxoHandle where
           )
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
-      bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO [UtxoResult]
-      bufferEventUtxoResult (UtxoEvent utxos spents bi datumMap) =
-        catMaybes <$> traverse updateSpent utxos
+      bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO ([UtxoResult], C.ChainTip)
+      bufferEventUtxoResult (UtxoEvent utxos spents bi datumMap tip) =
+        (,tip) . catMaybes <$> traverse updateSpent utxos
         where
           updateSpent :: Utxo -> IO (Maybe UtxoResult)
           updateSpent u =
@@ -1089,12 +1108,13 @@ getUtxoEventsFromBlock
   -> C.Block era
   -> C.EpochNo
   -> POSIXTime
+  -> C.ChainTip
   -> StorableEvent UtxoHandle
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) epochNo posixTime =
+getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) epochNo posixTime tip =
   let (blockTimeStampSeconds, _) = properFraction $ nominalDiffTimeToSeconds posixTime
       blockInfo = BlockInfo slotNo bhh blockNo blockTimeStampSeconds epochNo
-   in getUtxoEvents utxoIndexerConfig txs blockInfo
+   in getUtxoEvents utxoIndexerConfig txs blockInfo tip
 
 -- | Extract UtxoEvents from Cardano Transactions
 getUtxoEvents
@@ -1103,9 +1123,10 @@ getUtxoEvents
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> [C.Tx era]
   -> BlockInfo
+  -> C.ChainTip
   -> StorableEvent UtxoHandle
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs bi =
+getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs bi tip =
   let (TxOutBalance utxos spentTxOuts) =
         foldMap (balanceUtxoFromTx utxoIndexerConfig) $ zip txs [0 ..]
       resolvedUtxos :: [Utxo]
@@ -1118,7 +1139,7 @@ getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs b
           rights $
             map snd $
               Datum.getFilteredAddressDatumsFromTxs (addressesToPredicate maybeTargetAddresses) txs
-   in UtxoEvent resolvedUtxos spentTxOuts bi $ Map.union plutusDatums filteredTxOutDatums
+   in UtxoEvent resolvedUtxos spentTxOuts bi (Map.union plutusDatums filteredTxOutDatums) tip
 
 -- | does the transaction contain a targetAddress
 isAddressInTarget :: Maybe TargetAddresses -> C.AddressAny -> Bool
@@ -1129,9 +1150,10 @@ isAddressInTarget (Just targetAddresses) addr =
     C.AddressShelley addr' -> addr' `elem` targetAddresses
 
 getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]
-getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txScriptValidity} = case txScriptValidityToScriptValidity txScriptValidity of
-  C.ScriptValid -> txOuts -- When transaction is valid, only transaction fee is collected
-  C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
+getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txScriptValidity} =
+  case C.txScriptValidityToScriptValidity txScriptValidity of
+    C.ScriptValid -> txOuts -- When transaction is valid, only transaction fee is collected
+    C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
   where
     collateral C.TxReturnCollateralNone = []
     collateral (C.TxReturnCollateral _ txout) = [txout]
@@ -1231,20 +1253,12 @@ getInputs
           , C.txScriptValidity
           }
       ) =
-    let inputs = case txScriptValidityToScriptValidity txScriptValidity of
+    let inputs = case C.txScriptValidityToScriptValidity txScriptValidity of
           C.ScriptValid -> fst <$> txIns
           C.ScriptInvalid -> case txInsCollateral of
             C.TxInsCollateralNone -> []
             C.TxInsCollateral _ txins -> txins
      in Map.fromList $ (,C.getTxId b) <$> inputs
-
-{- | Duplicated from cardano-api (not exposed in cardano-api)
- This function should be removed when marconi will depend on a cardano-api version that has accepted this PR:
- https://github.com/input-output-hk/cardano-node/pull/4569
--}
-txScriptValidityToScriptValidity :: C.TxScriptValidity era -> C.ScriptValidity
-txScriptValidityToScriptValidity C.TxScriptValidityNone = C.ScriptValid
-txScriptValidityToScriptValidity (C.TxScriptValidity _ scriptValidity) = scriptValidity
 
 -- | does the transaction contain a targetAddress
 isAddressInTarget' :: TargetAddresses -> Utxo -> Bool
