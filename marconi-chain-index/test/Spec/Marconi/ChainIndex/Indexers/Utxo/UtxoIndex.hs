@@ -37,7 +37,7 @@ import Marconi.ChainIndex.Indexers.Utxo (
   BlockInfo (BlockInfo),
   StorableEvent (ueBlockInfo, ueInputs, ueUtxos),
   StorableQuery (LastSyncedBlockInfoQuery),
-  StorableResult (LastSyncedBlockInfoResult),
+  StorableResult,
  )
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (
@@ -182,8 +182,8 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
           $ events
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries
   let getResult = \case
-        Utxo.UtxoByAddressResult rs -> fst rs
-        Utxo.LastSyncedBlockInfoResult _ -> error "Invalid result type"
+        Utxo.UtxoByAddressResult rs -> rs
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       retrievedUtxoResults :: [Utxo.UtxoResult] = concatMap getResult results
       -- Get all the TxIn from quried UtxoRows
       txInsFromRetrievedUtxoRows :: [C.TxIn] =
@@ -227,8 +227,8 @@ propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs = property $ do
           foldMap (fmap (view Utxo.address) . Utxo.ueUtxos) events
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries
   let getResult = \case
-        Utxo.UtxoByAddressResult rs -> fst rs >>= Utxo.utxoResultTxIns
-        Utxo.LastSyncedBlockInfoResult _ -> error "Can't happen"
+        Utxo.UtxoByAddressResult rs -> rs >>= Utxo.utxoResultTxIns
+        Utxo.LastSyncedBlockInfoResult _ _ -> error "Can't happen"
       retrievedTxIns = foldMap getResult results
       txInsFromGeneratedEvents :: [C.TxIn] =
         -- get all the TxIn from quried UtxoRows
@@ -264,8 +264,8 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
         Utxo.open ":memory:" (Utxo.Depth depth) False >>= Storable.insertMany events
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries upperBound
   let getResult = \case
-        Utxo.UtxoByAddressResult rs -> fst rs
-        Utxo.LastSyncedBlockInfoResult _ -> error "Invalid result type"
+        Utxo.UtxoByAddressResult rs -> rs
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       utxoResults :: [Utxo.UtxoResult] = concatMap getResult results
       -- Get all the TxIn from quried UtxoRows
       txInsFromRetrievedUtxoRows :: [C.TxIn] =
@@ -374,8 +374,8 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
       raiseException $
         traverse (Storable.query indexer) qs
   let getResult = \case
-        Utxo.UtxoByAddressResult rs -> fst rs
-        Utxo.LastSyncedBlockInfoResult _ -> error "Invalid result type"
+        Utxo.UtxoByAddressResult rs -> rs
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       actualUtxoResults = concatMap getResult results
       actualDatumHashes = Set.fromList $ mapMaybe Utxo.utxoResultDatumHash actualUtxoResults
       actualDatums = Set.fromList $ mapMaybe Utxo.utxoResultDatum actualUtxoResults
@@ -421,7 +421,7 @@ propTxInWhenPhase2ValidationFails = Hedgehog.property $ do
   let blockInfo = BlockInfo slotNo bhh (C.BlockNo sn) 0 1
       tip = C.ChainTip slotNo bhh (C.BlockNo sn)
       utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
-      event = Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo tip
+      event :: StorableEvent Utxo.UtxoHandle = Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo tip
       computedTxIns :: [C.TxIn] = fmap (view Utxo.sTxIn) $ Utxo.getSpentFrom event
       expectedTxIns :: [C.TxIn] = fmap fst txIns
 
@@ -506,8 +506,8 @@ propSaveAndRetrieveUtxoEvents = Hedgehog.property $ do
       . traverse (Storable.query indexer)
       $ qs
   let getResult = \case
-        Utxo.UtxoByAddressResult rs -> fst rs
-        Utxo.LastSyncedBlockInfoResult _ -> error "Invalid response type"
+        Utxo.UtxoByAddressResult rs -> rs
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       resultsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
       fromStorageTxIns :: Set.Set C.TxIn =
         Set.fromList $ map Utxo.utxoResultTxIn resultsFromStorage
@@ -628,8 +628,8 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
 
             filterResult :: StorableResult Utxo.UtxoHandle -> [Utxo.UtxoResult]
             filterResult = \case
-              Utxo.UtxoByAddressResult rs -> fst rs
-              _other -> error "invalid result type"
+              Utxo.UtxoByAddressResult rs -> rs
+              _other -> []
 
         maxIntervalResult <-
           liftIO $ raiseException $ traverse (Storable.query indexer) maxIntervalQuery
@@ -830,7 +830,7 @@ propTestLastSyncOnFreshIndexer :: Property
 propTestLastSyncOnFreshIndexer = Hedgehog.property $ do
   indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth 50) False
   result <- liftIO $ raiseException $ Storable.query indexer LastSyncedBlockInfoQuery
-  result === LastSyncedBlockInfoResult Origin
+  Utxo.getLastSyncedBlockInfo result === Origin
 
 propLastChainPointOnRunningIndexer :: Property
 propLastChainPointOnRunningIndexer = Hedgehog.property $ do
@@ -841,7 +841,7 @@ propLastChainPointOnRunningIndexer = Hedgehog.property $ do
   result <- liftIO $ raiseException $ Storable.query indexer' LastSyncedBlockInfoQuery
   let beforeLastEvent = last $ init events
   let beforeLastBlockInfo = ueBlockInfo beforeLastEvent
-  result === LastSyncedBlockInfoResult (At beforeLastBlockInfo)
+  Utxo.getLastSyncedBlockInfo result === (At beforeLastBlockInfo)
 
 propLastChainPointOnRewindedIndexer :: Property
 propLastChainPointOnRewindedIndexer = property $ do
@@ -862,7 +862,7 @@ propLastChainPointOnRewindedIndexer = property $ do
   indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
   indexer'' <- liftIO $ raiseException $ Storable.rewind rollbackPoint indexer'
   result <- liftIO $ raiseException $ Storable.query indexer'' LastSyncedBlockInfoQuery
-  result === LastSyncedBlockInfoResult lastestBlockInfoPostRollback
+  Utxo.getLastSyncedBlockInfo result === lastestBlockInfoPostRollback
 
 -- | make unique queries
 mkUtxoQueries

@@ -241,7 +241,10 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
           let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo posixTime ct
            in void $ updateWith mIndexer _errorVar $ ignoreQueryError . Storable.insert utxoEvents
         RollBackward cp _ct ->
-          void $ updateWith mIndexer _errorVar $ ignoreQueryError . Storable.rewind cp
+          void $
+            updateWith mIndexer _errorVar $
+              ignoreQueryError . Storable.rewind cp
+
       raiseError =
         tryPutMVar _errorVar $ CantInsertEvent "Utxo raised an uncaught exception"
       loop :: IO ()

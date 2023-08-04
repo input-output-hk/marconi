@@ -28,6 +28,7 @@ import Marconi.Sidechain.Api.Routes (
   AddressUtxoResult (AddressUtxoResult),
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
+  SidechainTip (SidechainTip),
   SpentInfoResult (SpentInfoResult),
   UtxoTxInput (UtxoTxInput),
  )
@@ -72,8 +73,8 @@ currentSyncedBlock env = do
   indexer <- atomically (readTMVar $ env ^. addressUtxoIndexerEnvIndexer)
   res <- runExceptT $ Storable.query indexer Utxo.LastSyncedBlockInfoQuery
   pure $ case res of
-    Right (Utxo.LastSyncedBlockInfoResult blockInfoM) ->
-      Right $ GetCurrentSyncedBlockResult blockInfoM
+    Right (Utxo.LastSyncedBlockInfoResult blockInfoM tip) ->
+      Right $ GetCurrentSyncedBlockResult blockInfoM (SidechainTip tip)
     Left (InvalidIndexer err) -> Left $ IndexerInternalError err
     _other -> Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
 

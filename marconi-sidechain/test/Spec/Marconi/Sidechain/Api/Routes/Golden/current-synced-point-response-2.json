@@ -3,5 +3,10 @@
     "blockNo": 64903,
     "blockTimestamp": 0,
     "epochNo": 6,
+    "nodeTip": {
+        "blockHeaderHash": "6161616161616161616161616161616161616161616161616161616161616161",
+        "blockNo": 64903,
+        "slotNo": 1
+    },
     "slotNo": 1
 }

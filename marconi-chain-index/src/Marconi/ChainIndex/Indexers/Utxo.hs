@@ -414,9 +414,9 @@ instance ToJSON UtxoRow where
 
 data instance StorableResult UtxoHandle
   = -- | Result of a 'QueryUtxoByAddress' query
-    UtxoByAddressResult {getUtxoByAddressResult :: !([UtxoResult], C.ChainTip)}
+    UtxoByAddressResult {getUtxoByAddressResult :: ![UtxoResult]}
   | -- | Result of a 'LastSyncedBlockInfoQuery'
-    LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo)}
+    LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo), getTip :: !C.ChainTip}
   deriving (Eq, Show, Ord)
 
 data instance StorableEvent UtxoHandle = UtxoEvent
@@ -949,14 +949,10 @@ instance Queryable UtxoHandle where
   queryStorage memoryEvents (UtxoHandle c _ _) (QueryUtxoByAddressWrapper (QueryUtxoByAddress addr slotInterval)) =
     liftSQLError CantQueryIndexer $ do
       persistedUtxoResults <- sqliteUtxoByAddressQuery c filters $ Just "ORDER BY u.slotNo ASC"
-      let composeBufferEvents :: [([UtxoResult], C.ChainTip)] -> ([UtxoResult], Maybe C.ChainTip)
-          composeBufferEvents [] = ([], Nothing)
-          composeBufferEvents xs = (foldMap fst xs, Just $ maximum $ snd <$> xs)
-      bufferedUtxoResults <- composeBufferEvents <$> traverse bufferEventUtxoResult bufferEvents
-      resolvedTip <- maybe (sqliteTipQuery c) pure (snd bufferedUtxoResults)
+      bufferedUtxoResults <- concat <$> traverse bufferEventUtxoResult bufferEvents
       pure $
-        UtxoByAddressResult
-          (mapMaybe filterAddSpent persistedUtxoResults <> fst bufferedUtxoResults, resolvedTip)
+        UtxoByAddressResult $
+          mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
     where
       UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent' =
         eventsAtAddress addr slotInterval memoryEvents
@@ -989,9 +985,9 @@ instance Queryable UtxoHandle where
           )
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
-      bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO ([UtxoResult], C.ChainTip)
-      bufferEventUtxoResult (UtxoEvent utxos spents bi datumMap tip) =
-        (,tip) . catMaybes <$> traverse updateSpent utxos
+      bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO [UtxoResult]
+      bufferEventUtxoResult (UtxoEvent utxos spents bi datumMap _tip) =
+        catMaybes <$> traverse updateSpent utxos
         where
           updateSpent :: Utxo -> IO (Maybe UtxoResult)
           updateSpent u =
@@ -1045,6 +1041,11 @@ instance Queryable UtxoHandle where
              GROUP BY s.slotNo
              ORDER BY s.slotNo DESC
              LIMIT ?|]
+        queryTip =
+          [sql|SELECT c.slotNo, c.blockHeaderHash, c.blockNo
+             FROM chainTip c
+             ORDER BY c.slotNo DESC
+             LIMIT 1|]
      in -- We don't send the last event but the one before, to ensure that every indexers reached this point
         -- It's a hack, which should be removed once we have a proper handling of synchronization events.
         --
@@ -1052,26 +1053,28 @@ instance Queryable UtxoHandle where
         case toList es of
           -- 2+ elements in memory
           (_ : _ : _) -> pure $
-            LastSyncedBlockInfoResult $
+            uncurry LastSyncedBlockInfoResult $
               case sortOn (Down . _blockInfoSlotNo . ueBlockInfo) $ toList es of
-                _ : p : _xs -> At $ ueBlockInfo p
-                _other -> Origin
+                p' : p : _xs -> (At $ ueBlockInfo p, ueTip p')
+                _other -> (Origin, C.ChainTipAtGenesis)
           -- 1 element in memory
-          [_] -> liftSQLError CantQueryIndexer $ do
+          [p] -> liftSQLError CantQueryIndexer $ do
             persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Word64))
             pure $
-              LastSyncedBlockInfoResult $
+              uncurry LastSyncedBlockInfoResult $
                 case persisted of
-                  bi : _ -> At bi
-                  _other -> Origin
+                  bi : _ -> (At bi, ueTip p)
+                  _other -> (Origin, C.ChainTipAtGenesis)
           -- 0 element in memory
           [] -> liftSQLError CantQueryIndexer $ do
             persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Word64))
+            tips <- SQL.query_ c queryTip
             pure $
-              LastSyncedBlockInfoResult $
-                case persisted of
-                  _ : bi : _xs -> At bi
-                  _other -> Origin
+              uncurry LastSyncedBlockInfoResult $
+                case (persisted, tips) of
+                  (_ : bi : _xs, [tip]) -> (At bi, tip)
+                  (_ : bi : _xs, []) -> (At bi, C.ChainTipAtGenesis)
+                  _other -> (Origin, C.ChainTipAtGenesis)
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle
