@@ -33,9 +33,8 @@ import Control.Monad (forever, void)
 import Data.Text (Text)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsIndex (index),
+  IsIndex (index, rollback),
   IsSync (lastSyncPoint),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Type (IndexerError (OtherIndexError), Point, Timed, point)
 
@@ -43,7 +42,6 @@ import Marconi.Core.Experiment.Type (IndexerError (OtherIndexError), Point, Time
 type WorkerIndexer n event indexer =
   ( IsIndex n event indexer
   , IsSync n event indexer
-  , Rollbackable n event indexer
   , Closeable n indexer
   )
 

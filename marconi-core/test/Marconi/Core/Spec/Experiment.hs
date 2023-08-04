@@ -250,7 +250,6 @@ process
   :: (Core.IsIndex m event indexer)
   => (Ord (Core.Point event))
   => (Core.Point event ~ TestPoint)
-  => (Core.Rollbackable m event indexer)
   => Item event
   -> indexer event
   -> m (indexer event)
@@ -345,7 +344,6 @@ compareToModelWith
   => (Show event)
   => (Core.Point event ~ TestPoint)
   => (Core.IsIndex m event indexer)
-  => (Core.Rollbackable m event indexer)
   => Gen [Item event]
   -- ^ the generator used to generate the chain
   -> IndexerTestRunner m event indexer
@@ -375,7 +373,6 @@ behaveLikeModel
   => (Show event)
   => (Core.Point event ~ TestPoint)
   => (Core.IsIndex m event indexer)
-  => (Core.Rollbackable m event indexer)
   => Gen [Item event]
   -- ^ the generator used to generate the chain
   -> IndexerTestRunner m event indexer
@@ -390,8 +387,7 @@ behaveLikeModel genChain' runner modelComputation indexerComputation =
 
 -- | A test tree for the core functionalities of an indexer
 indexingTestGroup
-  :: (Core.Rollbackable m TestEvent indexer)
-  => (Core.IsIndex m TestEvent indexer)
+  :: (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
@@ -426,8 +422,7 @@ indexingTestGroup indexerName runner =
     ]
 
 indexingPerformanceTest
-  :: (Core.Rollbackable m TestEvent indexer)
-  => (Core.IsIndex m TestEvent indexer)
+  :: (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
@@ -445,8 +440,7 @@ indexingPerformanceTest indexerName runner =
         storageBasedModelProperty (genLargeChain 10) runner
 
 storageBasedModelProperty
-  :: (Core.Rollbackable m event indexer)
-  => (Core.IsIndex m event indexer)
+  :: (Core.IsIndex m event indexer)
   => (Core.IsSync m event indexer)
   => (Core.Point event ~ TestPoint)
   => (Show event)
@@ -472,8 +466,7 @@ storageBasedModelProperty gen runner =
         indexerEvents
 
 lastSyncBasedModelProperty
-  :: ( Core.Rollbackable m event indexer
-     , Core.IsIndex m event indexer
+  :: ( Core.IsIndex m event indexer
      , Core.IsSync m event indexer
      , Core.Point event ~ TestPoint
      , Show event
@@ -516,10 +509,8 @@ sqliteModelIndexer con =
     con
     (\t -> (t ^. Core.point, t ^. Core.event))
     "INSERT INTO index_model VALUES (?, ?)"
+    (Core.SQLRollbackPlan "index_model" "point" Just)
     "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
-
-instance (MonadIO m) => Core.Rollbackable m TestEvent Core.SQLiteIndexer where
-  rollback = Core.rollbackSQLiteIndexerWith "DELETE FROM index_model WHERE point > ?"
 
 instance
   ( MonadIO m
@@ -651,15 +642,10 @@ instance
   where
   index = Core.indexVia underCoordinator
   indexAllDescending = Core.indexAllDescendingVia underCoordinator
+  rollback = Core.rollbackVia $ underCoordinator . wrappedIndexer
 
 instance (MonadIO m) => Core.IsSync m event (UnderCoordinator indexer) where
   lastSyncPoint = Core.lastSyncPointVia underCoordinator
-
-instance
-  (Core.HasGenesis (Core.Point event))
-  => Core.Rollbackable (ExceptT Core.IndexerError IO) event (UnderCoordinator indexer)
-  where
-  rollback = Core.rollbackVia $ underCoordinator . wrappedIndexer
 
 instance
   (Core.Closeable (ExceptT Core.IndexerError IO) Core.Coordinator)
@@ -826,7 +812,6 @@ cacheTestGroup =
 -- We ask odd elements, which are cached
 cacheHitProperty
   :: (Core.IsIndex m TestEvent indexer)
-  => (Core.Rollbackable m TestEvent indexer)
   => (Core.Queryable (ExceptT (Core.QueryError ParityQuery) m) TestEvent ParityQuery indexer)
   => (Core.IsSync m TestEvent indexer)
   => Gen [Item TestEvent]
@@ -845,7 +830,6 @@ cacheHitProperty gen indexer =
 -- We ask even elements, which aren't cached
 cacheMissProperty
   :: (Core.IsIndex m TestEvent indexer)
-  => (Core.Rollbackable m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError ParityQuery) m)
         TestEvent
@@ -881,7 +865,6 @@ withDelayRunner delay wRunner =
 delayProperty
   :: (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
-  => (Core.Rollbackable m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
         TestEvent
@@ -917,8 +900,7 @@ delayProperty delay gen runner =
 
 -- | A test tree for the core functionalities of a delayed indexer
 delayTestGroup
-  :: (Core.Rollbackable m TestEvent indexer)
-  => (Core.IsIndex m TestEvent indexer)
+  :: (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
@@ -969,7 +951,6 @@ withCatchupRunner batchSize bypassDistance wRunner =
 catchupProperty
   :: (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
-  => (Core.Rollbackable m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
         TestEvent
@@ -1006,8 +987,7 @@ catchupProperty batchSize bypassDistance gen runner =
 
 -- | A test tree for the core functionalities of a delayed indexer
 catchupTestGroup
-  :: (Core.Rollbackable m TestEvent indexer)
-  => (Core.IsIndex m TestEvent indexer)
+  :: (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
@@ -1083,7 +1063,6 @@ the coordinator kills the other indexers
 stopCoordinatorProperty
   :: (Core.IsIndex (ExceptT Core.IndexerError IO) TestEvent indexer)
   => (Core.IsSync (ExceptT Core.IndexerError IO) TestEvent indexer)
-  => (Core.Rollbackable (ExceptT Core.IndexerError IO) TestEvent indexer)
   => (Core.Closeable (ExceptT Core.IndexerError IO) indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) IO)
@@ -1122,7 +1101,6 @@ stopCoordinatorProperty gen runner =
 stopCoordinatorTest
   :: (Core.IsIndex (ExceptT Core.IndexerError IO) TestEvent indexer)
   => (Core.IsSync (ExceptT Core.IndexerError IO) TestEvent indexer)
-  => (Core.Rollbackable (ExceptT Core.IndexerError IO) TestEvent indexer)
   => (Core.Closeable (ExceptT Core.IndexerError IO) indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) IO)
@@ -1140,7 +1118,6 @@ stopCoordinatorTest runner =
 resumeLastSyncProperty
   :: (Core.IsIndex (ExceptT Core.IndexerError IO) TestEvent indexer)
   => (Core.IsSync (ExceptT Core.IndexerError IO) TestEvent indexer)
-  => (Core.Rollbackable (ExceptT Core.IndexerError IO) TestEvent indexer)
   => (indexer TestEvent -> SQL.Connection)
   -> (SQL.Connection -> ExceptT Core.IndexerError IO (indexer TestEvent))
   -> Gen [Item TestEvent]
@@ -1417,14 +1394,12 @@ deriving via
 
 instance (Core.IsIndex m event indexer) => Core.IsIndex m event (WithRollbackFailure indexer) where
   index = Core.indexVia Core.unwrap
+  rollback _ _ = error "STOP"
 
 deriving via
   (Core.IndexWrapper (Const ()) indexer)
   instance
     (Core.Closeable m indexer) => Core.Closeable m (WithRollbackFailure indexer)
-
-instance Core.Rollbackable m event (WithRollbackFailure index) where
-  rollback _ _ = error "STOP"
 
 checkOutOfRollback
   :: Gen [Item TestEvent]

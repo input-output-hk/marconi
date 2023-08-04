@@ -33,9 +33,8 @@ import Data.Maybe (catMaybes, listToMaybe)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index),
+  IsIndex (index, rollback),
   IsSync (lastSyncPoint),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Type (IndexerError, Point, point)
 import Marconi.Core.Experiment.Worker (
@@ -87,7 +86,6 @@ mkCoordinator workers' =
 step
   :: ( Ord (Point input)
      , IsIndex m input indexer
-     , Rollbackable m input indexer
      )
   => indexer input
   -> ProcessedInput input
@@ -124,16 +122,6 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator w
             Just err -> close coordinator *> throwError err
             Nothing -> pure $ setLastSync timedEvent
 
-instance (MonadIO m) => IsSync m event Coordinator where
-  lastSyncPoint indexer = pure $ indexer ^. lastSync
-
--- | To rollback a coordinator, we try and rollback all the workers.
-instance
-  ( MonadIO m
-  , MonadError IndexerError m
-  )
-  => Rollbackable m event Coordinator
-  where
   rollback p =
     let setLastSync :: Coordinator event -> Coordinator event
         setLastSync c = c & lastSync .~ p
@@ -147,6 +135,9 @@ instance
             Just err -> close c *> throwError err
             Nothing -> pure $ setLastSync c
      in rollbackWorkers
+
+instance (MonadIO m) => IsSync m event Coordinator where
+  lastSyncPoint indexer = pure $ indexer ^. lastSync
 
 instance (MonadIO m) => Closeable m Coordinator where
   close coordinator = liftIO $ do

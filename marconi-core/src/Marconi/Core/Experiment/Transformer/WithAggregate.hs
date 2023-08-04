@@ -25,11 +25,10 @@ import Data.List (scanl', sortOn)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending),
+  IsIndex (index, indexAllDescending, rollback),
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
-  Rollbackable (rollback),
   query',
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (EventAtQuery))
@@ -137,20 +136,13 @@ instance
           asOutputs = scanl' toOutput'
       indexAllDescendingVia unwrapMap (asOutputs firstEvent xs) indexer
 
+  rollback = rollbackVia unwrapMap
+
 instance
   (Point output ~ Point event, IsSync m output indexer)
   => IsSync m event (WithAggregate indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
-
-instance
-  ( Functor m
-  , Point output ~ Point event
-  , Rollbackable m output indexer
-  )
-  => Rollbackable m event (WithAggregate indexer output)
-  where
-  rollback = rollbackVia unwrapMap
 
 instance
   ( Functor m
@@ -173,4 +165,4 @@ instance
   )
   => Queryable m input query (WithAggregate indexer output)
   where
-  query p q indexer = queryVia unwrapMap p q indexer
+  query = queryVia unwrapMap

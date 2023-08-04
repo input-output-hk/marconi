@@ -19,11 +19,10 @@ import Control.Lens.Operators ((^.))
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAllDescending),
+  IsIndex (index, indexAllDescending, rollback),
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
@@ -90,20 +89,13 @@ instance
         asOutputs = toOutput <$> events
     indexAllDescendingVia unwrapMap asOutputs indexer
 
+  rollback = rollbackVia unwrapMap
+
 instance
   (Point output ~ Point event, IsSync m output indexer)
   => IsSync m event (WithTransform indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
-
-instance
-  ( Functor m
-  , Point output ~ Point event
-  , Rollbackable m output indexer
-  )
-  => Rollbackable m event (WithTransform indexer output)
-  where
-  rollback = rollbackVia unwrapMap
 
 instance
   ( Functor m

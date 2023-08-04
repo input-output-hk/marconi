@@ -9,7 +9,6 @@ module Marconi.Core.Experiment.Class (
   indexEither,
   indexAllEither,
   indexAllDescendingEither,
-  Rollbackable (..),
   Resetable (..),
   Queryable (..),
   query',
@@ -65,7 +64,10 @@ class (Monad m) => IsIndex m event indexer where
     -> m (indexer event)
   indexAllDescending = flip $ foldrM index
 
-  {-# MINIMAL index #-}
+  -- | Rollback to a previous point
+  rollback :: (Ord (Point event)) => Point event -> indexer event -> m (indexer event)
+
+  {-# MINIMAL index, rollback #-}
 
 {- | If the event is @Nothing@, just updat the last sync event.
  Otherwise, store the event and update the last sync event.
@@ -119,17 +121,6 @@ indexAllDescendingEither
   -> indexer event
   -> m (Either err (indexer event))
 indexAllDescendingEither evt = runExceptT . indexAllDescending evt
-
--- Rollback
-
-{- | We can rollback an indexer to a previous `Point`
-
-     * @indexer@ is the indexer implementation type
-     * @event@ the indexer events
-     * @m@ the monad in which our indexer operates
--}
-class Rollbackable m event indexer where
-  rollback :: (Ord (Point event)) => Point event -> indexer event -> m (indexer event)
 
 {- | We can reset an indexer, clearing all its content
 
