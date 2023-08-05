@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -249,6 +250,7 @@ genItem = do
   setStateSlot item
   pure item
 
+-- | Apply an item to an indexer
 process
   :: (Core.IsIndex m event indexer)
   => (Ord (Core.Point event))
@@ -260,6 +262,7 @@ process = \case
   Insert ix evt -> Core.index (Core.Timed ix evt)
   Rollback n -> Core.rollback n
 
+-- | Generate a chain using the given configuration
 genChain
   :: (Arbitrary event)
   => GenChainConfig
@@ -271,13 +274,14 @@ genChain cfg = flip evalStateT cfg $ do
 uniformRollBack :: TestPoint -> Gen TestPoint
 uniformRollBack = fmap TestPoint . chooseInt . (,) 0 . unwrapTestPoint
 
+-- | Generate a chain with @1_000_000@ to @1_200_000@ elements, and 5% of empty events
 genLargeChain
   :: (Arbitrary event)
   => Word
   -- ^ Rollback percentage
   -> Gen [Item event]
 genLargeChain p = do
-  let n = Test.chooseInt (1000000, 1200000)
+  let n = Test.chooseInt (1_000_000, 1_200_000)
   genChain $ GenChainConfig n 5 p uniformRollBack 0
 
 -- | Chain events with 10% of rollback
@@ -319,6 +323,7 @@ type instance Core.Point TestEvent = TestPoint
 
 -- * Model
 
+-- | A simple model of a chain follower store the valid event in a list, the most recent first
 newtype IndexerModel e = IndexerModel {_model :: [(TestPoint, Maybe e)]}
   deriving stock (Show, Functor, Foldable, Traversable)
 
@@ -329,8 +334,7 @@ runModel :: [Item event] -> IndexerModel event
 runModel =
   let modelStep :: IndexerModel event -> Item event -> IndexerModel event
       modelStep m (Insert w xs) = m & model %~ ((w, xs) :)
-      modelStep m (Rollback n) =
-        m & model %~ dropWhile ((> n) . fst)
+      modelStep m (Rollback n) = m & model %~ dropWhile ((> n) . fst)
    in foldl' modelStep (IndexerModel [])
 
 -- | Compare an execution on the base model and one on the indexer
@@ -399,23 +403,24 @@ indexingTestGroup indexerName runner =
     [ Tasty.testGroup
         "index"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               storageBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               storageBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "lastSync"
         [ Tasty.testProperty "in a chain without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               lastSyncBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "in a chain with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               lastSyncBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
         ]
     ]
 
+-- | Check performances of an indexer, it should be able to ingest a large chain in 1 second
 indexingPerformanceTest
   :: (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
@@ -431,7 +436,7 @@ indexingPerformanceTest
 indexingPerformanceTest indexerName runner =
   Tasty.testProperty (indexerName <> " performance check") $
     Test.withMaxSuccess 5 $
-      Test.within 10000000 $
+      Test.within 10_000_000 $
         storageBasedModelProperty (genLargeChain 10) runner
 
 storageBasedModelProperty
@@ -460,6 +465,7 @@ storageBasedModelProperty gen runner =
         (catMaybes . views model (fmap snd))
         indexerEvents
 
+-- | The lastSyncPoint of an indexer is correctly set
 lastSyncBasedModelProperty
   :: ( Core.IsIndex m event indexer
      , Core.IsSync m event indexer
@@ -516,9 +522,9 @@ instance
         )
         rowToResult
 
-monadicExceptTIO :: (Tasty.Testable a) => PropertyM (ExceptT err IO) a -> Property
+monadicExceptTIO :: (Test.Testable a) => PropertyM (ExceptT err IO) a -> Property
 monadicExceptTIO =
-  GenM.monadic $ Tasty.ioProperty . fmap (fromRight $ Tasty.property False) . runExceptT
+  GenM.monadic $ Test.ioProperty . fmap (fromRight $ Test.property False) . runExceptT
 
 -- | A runner for a 'SQLiteIndexer'
 mkSqliteIndexerRunner
@@ -573,8 +579,8 @@ mixedModelHighMemoryIndexer = do
   dbIndexer <- sqliteModelIndexer
   pure $
     Core.mkMixedIndexer
-      4096
-      4096
+      4_096
+      4_096
       dbIndexer
       Core.mkListIndexer
 
@@ -774,19 +780,19 @@ cacheTestGroup =
     [ Tasty.testGroup
         "With ListIndexer"
         [ Tasty.testProperty "Hit cache" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               cacheHitProperty (view defaultChain <$> Test.arbitrary) oddCacheRunner
         , Tasty.testProperty "Miss cache" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               cacheMissProperty (view defaultChain <$> Test.arbitrary) oddCacheRunner
         ]
     , Tasty.testGroup
         "With SQLiteIndexer"
         [ Tasty.testProperty "Hit cache" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               cacheHitProperty (view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
         , Tasty.testProperty "Miss cache" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               cacheMissProperty (view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
         ]
     , cacheUpdateTest
@@ -834,7 +840,7 @@ cacheMissProperty gen indexer =
         modelEvents
         indexerEvents
 
--- | A runner for a the 'WithTracer' tranformer
+-- | A runner for a the 'WithDelay' tranformer
 withDelayRunner
   :: (Monad m)
   => Word
@@ -991,56 +997,56 @@ catchupTestGroup title runner =
     [ Tasty.testGroup
         "0 bufferSize, stop on tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               catchupProperty 0 0 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               catchupProperty 0 0 (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "100 bufferSize, stop on tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               catchupProperty 100 0 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               catchupProperty 100 0 (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "1000 bufferSize, stop on tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
-              catchupProperty 1000 0 (view forwardChain <$> Test.arbitrary) runner
+            Test.withMaxSuccess 5_000 $
+              catchupProperty 1_000 0 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
-              catchupProperty 1000 0 (view defaultChain <$> Test.arbitrary) runner
+            Test.withMaxSuccess 10_000 $
+              catchupProperty 1_000 0 (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "0 bufferSize, stop 10 to tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               catchupProperty 0 10 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               catchupProperty 0 10 (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "100 bufferSize, stop 10 to tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               catchupProperty 100 10 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               catchupProperty 100 10 (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "1000 bufferSize, stop 10 to tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
-              catchupProperty 1000 10 (view forwardChain <$> Test.arbitrary) runner
+            Test.withMaxSuccess 5_000 $
+              catchupProperty 1_000 10 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
-              catchupProperty 1000 10 (view defaultChain <$> Test.arbitrary) runner
+            Test.withMaxSuccess 10_000 $
+              catchupProperty 1_000 10 (view defaultChain <$> Test.arbitrary) runner
         ]
     ]
 
@@ -1099,7 +1105,7 @@ stopCoordinatorTest
   -> Tasty.TestTree
 stopCoordinatorTest runner =
   Tasty.testProperty "stops coordinator workers" $
-    Test.withMaxSuccess 1000 $
+    Test.withMaxSuccess 1_000 $
       stopCoordinatorProperty (view defaultChain <$> Test.arbitrary) runner
 
 resumeLastSyncProperty
@@ -1175,7 +1181,7 @@ memorySizeUpdateProperty gen =
 memorySizeUpdateTest :: Tasty.TestTree
 memorySizeUpdateTest =
   Tasty.testProperty "MixedIndexer can change its size while running" $
-    Test.withMaxSuccess 10000 $
+    Test.withMaxSuccess 10_000 $
       memorySizeUpdateProperty (view defaultChain <$> Test.arbitrary)
 
 instance
@@ -1228,7 +1234,7 @@ cacheUpdateProperty gen =
 cacheUpdateTest :: Tasty.TestTree
 cacheUpdateTest =
   Tasty.testProperty "Adding a cache while indexing dont break anything" $
-    Test.withMaxSuccess 10000 $
+    Test.withMaxSuccess 10_000 $
       cacheUpdateProperty (view defaultChain <$> Test.arbitrary)
 
 -- | A runner for a the 'WithTracer' tranformer
@@ -1280,7 +1286,7 @@ withTransformProperty gen =
 withTransformTest :: Tasty.TestTree
 withTransformTest =
   Tasty.testProperty "WithTransform apply transformation before indexing" $
-    Test.withMaxSuccess 10000 $
+    Test.withMaxSuccess 10_000 $
       withTransformProperty (view defaultChain <$> Test.arbitrary)
 
 -- | A runner for a the 'WithAggregate' tranformer
@@ -1330,7 +1336,7 @@ withAggregateProperty gen =
 withAggregateTest :: Tasty.TestTree
 withAggregateTest =
   Tasty.testProperty "WithAggregate apply transformation before indexing" $
-    Test.withMaxSuccess 10000 $
+    Test.withMaxSuccess 10_000 $
       withAggregateProperty (view defaultChain <$> Test.arbitrary)
 
 -- | Provide an indexer that fails on rollback
@@ -1376,7 +1382,7 @@ checkOutOfRollback gen =
 
       r = runner ^. Model.indexerRunner
       genIndexer = runner ^. Model.indexerGenerator
-   in Test.within 10000000 $ Test.expectFailure $ Test.forAll gen $ \chain -> r $ do
+   in Test.within 10_000_000 $ Test.expectFailure $ Test.forAll gen $ \chain -> r $ do
         initialIndexer <- GenM.run genIndexer
         void $ GenM.run $ foldM (flip process) initialIndexer (chain ++ [Rollback 0])
         GenM.stop True
@@ -1384,5 +1390,5 @@ checkOutOfRollback gen =
 withRollbackFailureTest :: Tasty.TestTree
 withRollbackFailureTest =
   Tasty.testProperty "Rollback failure in a worker exit nicely" $
-    Test.withMaxSuccess 10000 $
+    Test.withMaxSuccess 10_000 $
       checkOutOfRollback (view defaultChain <$> Test.arbitrary)

@@ -72,6 +72,8 @@ data IndexerError
     IndexerInternalError Text
   | -- | The indexer is in an invalid state and can't recover
     InvalidIndexer Text
+  | -- | The indexer failed at resuming (likely due to a bug)
+    ResumingFailed Text
   | -- | Any other cause of failure
     OtherIndexError Text
 

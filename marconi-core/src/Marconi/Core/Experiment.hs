@@ -381,6 +381,11 @@ module Marconi.Core.Experiment (
   CatchupConfig (CatchupConfig),
   HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
 
+  -- ** WithResume
+  WithResume,
+  withResume,
+  HasResumePoints (resumePoints),
+
   -- ** Delay
   WithDelay,
   withDelay,
@@ -564,6 +569,11 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
   securityParam,
   stepsBeforeNext,
   withPruning,
+ )
+import Marconi.Core.Experiment.Transformer.WithResume (
+  HasResumePoints (resumePoints),
+  WithResume,
+  withResume,
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (
   HasTracerConfig (tracer),

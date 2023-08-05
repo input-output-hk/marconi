@@ -72,6 +72,7 @@ library
     Marconi.Core.Experiment.Transformer.WithCatchup
     Marconi.Core.Experiment.Transformer.WithDelay
     Marconi.Core.Experiment.Transformer.WithPruning
+    Marconi.Core.Experiment.Transformer.WithResume
     Marconi.Core.Experiment.Transformer.WithTracer
     Marconi.Core.Experiment.Transformer.WithTransform
     Marconi.Core.Experiment.Type
