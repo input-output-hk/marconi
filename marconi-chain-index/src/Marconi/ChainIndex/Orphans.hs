@@ -12,7 +12,7 @@ import Cardano.Binary qualified as CBOR
 import Cardano.Ledger.Shelley.API qualified as Ledger
 import Codec.CBOR.Read qualified as CBOR
 import Codec.Serialise (Serialise (decode, encode))
-import Data.Aeson (FromJSON, ToJSON, (.:))
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce (coerce)
