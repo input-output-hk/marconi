@@ -282,7 +282,7 @@ newtype DefaultChain event = DefaultChain {_defaultChain :: [Item event]}
 
 makeLenses 'DefaultChain
 
--- | Chain events with 10% of rollback (rollbackDepth is)
+-- | Chain events with 10% of rollback
 instance (Arbitrary event) => Arbitrary (DefaultChain event) where
   arbitrary = Test.sized $ \n ->
     DefaultChain <$> genChain (GenChainConfig (pure n) 5 10 uniformRollBack 0)
