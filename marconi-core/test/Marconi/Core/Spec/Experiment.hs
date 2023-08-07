@@ -133,7 +133,7 @@ import Data.Function ((&))
 
 import GHC.Generics (Generic)
 
-import Test.QuickCheck (Arbitrary, Gen, Property, choose, (===), (==>))
+import Test.QuickCheck (Arbitrary, Gen, Property, chooseInt, (===), (==>))
 import Test.QuickCheck qualified as Test
 import Test.QuickCheck.Monadic (PropertyM)
 import Test.QuickCheck.Monadic qualified as GenM
@@ -266,7 +266,7 @@ genChain cfg = flip evalStateT cfg $ do
   replicateM size genItem
 
 uniformRollBack :: TestPoint -> Gen TestPoint
-uniformRollBack = fmap TestPoint . choose . (,) 0 . unwrapTestPoint
+uniformRollBack = fmap TestPoint . chooseInt . (,) 0 . unwrapTestPoint
 
 genLargeChain
   :: (Arbitrary event)
@@ -274,7 +274,7 @@ genLargeChain
   -- ^ Rollback percentage
   -> Gen [Item event]
 genLargeChain p = do
-  let n = Test.choose (1000000, 1200000)
+  let n = Test.chooseInt (1000000, 1200000)
   genChain $ GenChainConfig n 5 p uniformRollBack 0
 
 -- | Chain events with 10% of rollback
