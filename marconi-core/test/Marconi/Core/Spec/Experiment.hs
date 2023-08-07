@@ -505,12 +505,14 @@ initSQLite = do
 
 sqliteModelIndexer :: SQL.Connection -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer con =
-  Core.mkSingleInsertSqliteIndexer
-    con
-    (\t -> (t ^. Core.point, t ^. Core.event))
-    "INSERT INTO index_model VALUES (?, ?)"
-    (Core.SQLRollbackPlan "index_model" "point" Just)
-    "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
+  let extractor 0 = Nothing
+      extractor n = Just n
+   in Core.mkSingleInsertSqliteIndexer
+        con
+        (\t -> (t ^. Core.point, t ^. Core.event))
+        "INSERT INTO index_model VALUES (?, ?)"
+        (Core.SQLRollbackPlan "index_model" "point" extractor)
+        "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
 
 instance
   ( MonadIO m
