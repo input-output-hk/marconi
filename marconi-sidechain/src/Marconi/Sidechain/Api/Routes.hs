@@ -130,16 +130,20 @@ data GetCurrentSyncedBlockResult
 
 instance ToJSON GetCurrentSyncedBlockResult where
   toJSON (GetCurrentSyncedBlockResult blockInfoM tip) =
-    let chainPointObj = case blockInfoM of
-          (At (BlockInfo sn bhh bn bt en)) ->
-            [ "blockNo" .= bn
-            , "blockTimestamp" .= bt
-            , "blockHeaderHash" .= bhh
-            , "slotNo" .= sn
-            , "epochNo" .= en
-            , "nodeTip" .= toJSON tip
-            ]
-          Origin -> ["nodeTip" .= toJSON tip]
+    let nodeTip = case tip of
+          SidechainTip C.ChainTipAtGenesis -> []
+          tip' -> ["nodeTip" .= toJSON tip']
+        chainPointObj =
+          case blockInfoM of
+            (At (BlockInfo sn bhh bn bt en)) ->
+              [ "blockNo" .= bn
+              , "blockTimestamp" .= bt
+              , "blockHeaderHash" .= bhh
+              , "slotNo" .= sn
+              , "epochNo" .= en
+              ]
+                <> nodeTip
+            Origin -> nodeTip
      in Aeson.object chainPointObj
 
 instance FromJSON GetCurrentSyncedBlockResult where

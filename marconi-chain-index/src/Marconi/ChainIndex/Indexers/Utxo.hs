@@ -79,7 +79,7 @@ import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Ord (Down (Down), comparing)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -712,6 +712,7 @@ instance Buffered UtxoHandle where
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
           datumRows = fmap (uncurry DatumRow) $ Map.toList $ foldMap ueDatum events
+          chainTip = maximum $ ueTip <$> toList events
       SQL.withTransaction c $ do
         SQL.executeMany
           c
@@ -752,6 +753,16 @@ instance Buffered UtxoHandle where
                    )
                    VALUES (?, ?)|]
             datumRows
+          `concurrently_` do
+            SQL.execute
+              c
+              [sql|INSERT OR IGNORE INTO chainTip
+                   ( slotNo
+                   , blockHeaderHash
+                   , blockNo
+                   )
+                   VALUES (?, ?, ?)|]
+              chainTip
 
         -- We want to perform vacuum about once every 100
         when toVacuume $ do
@@ -933,9 +944,6 @@ eventsAtAddress addr snoInterval = foldMap go
         (getBufferSpent event)
         (getBufferFutureSpent event)
 
-sqliteTipQuery :: SQL.Connection -> IO C.ChainTip
-sqliteTipQuery c = fromMaybe C.ChainTipAtGenesis . listToMaybe <$> SQL.query_ c "SELECT * FROM chainTip"
-
 {- | Query the data stored in the indexer
  Queries SQL + buffered data, where buffered data is the data that will be batched to SQL
 -}
@@ -1064,7 +1072,7 @@ instance Queryable UtxoHandle where
               uncurry LastSyncedBlockInfoResult $
                 case persisted of
                   bi : _ -> (At bi, ueTip p)
-                  _other -> (Origin, C.ChainTipAtGenesis)
+                  _other -> (Origin, ueTip p)
           -- 0 element in memory
           [] -> liftSQLError CantQueryIndexer $ do
             persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Word64))
