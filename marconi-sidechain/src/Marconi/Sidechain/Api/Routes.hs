@@ -66,7 +66,7 @@ type RpcTargetAddressesMethod = JsonRpc "getTargetAddresses" String String [Text
 type RpcCurrentSyncedBlockMethod =
   JsonRpc
     "getCurrentSyncedBlock"
-    String
+    GetCurrentSyncedBlockParams
     String
     GetCurrentSyncedBlockResult
 
@@ -123,6 +123,14 @@ instance FromJSON SidechainTip where
           bn <- v .: "blockNo"
           pure $ SidechainTip $ C.ChainTip slotNo bhh bn
      in Aeson.withObject "ChainTip" parseTip obj
+
+data GetCurrentSyncedBlockParams = GetCurrentSyncedBlockParams
+
+instance FromJSON GetCurrentSyncedBlockParams where
+  parseJSON (Aeson.String "") = pure GetCurrentSyncedBlockParams
+  parseJSON Aeson.Null = pure GetCurrentSyncedBlockParams
+  parseJSON (Aeson.Object o) | null o = pure GetCurrentSyncedBlockParams
+  parseJSON _ = fail "The param value must be empty (use '{}', 'null', empty string"
 
 data GetCurrentSyncedBlockResult
   = GetCurrentSyncedBlockResult (WithOrigin BlockInfo) SidechainTip

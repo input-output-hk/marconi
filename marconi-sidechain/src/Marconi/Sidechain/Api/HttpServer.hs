@@ -27,6 +27,7 @@ import Marconi.Sidechain.Api.Routes (
   API,
   GetBurnTokenEventsParams (afterTx, assetName, beforeSlotNo, policyId),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
+  GetCurrentSyncedBlockParams,
   GetCurrentSyncedBlockResult,
   GetEpochActiveStakePoolDelegationResult,
   GetEpochNonceResult,
@@ -133,7 +134,7 @@ getTargetAddressesQueryHandler env _ =
 getCurrentSyncedBlockHandler
   :: SidechainEnv
   -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-  -> String
+  -> GetCurrentSyncedBlockParams
   -- ^ Will always be an empty string as we are ignoring this param, and returning everything
   -> Handler (Either (JsonRpcErr String) GetCurrentSyncedBlockResult)
 getCurrentSyncedBlockHandler env _ =
