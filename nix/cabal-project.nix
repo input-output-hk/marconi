@@ -1,6 +1,3 @@
-# This file is part of the IOGX template and is documented at the link below:
-# https://www.github.com/input-output-hk/iogx#33-nixhaskell-projectnix
-
 { inputs, inputs', meta, config, pkgs, lib }:
 
 let
@@ -77,8 +74,8 @@ let
     # Else, we'll get the error
     # `/nix/store/ls0ky8x6zi3fkxrv7n4vs4x9czcqh1pb-marconi/marconi/test/configuration.yaml: openFile: does not exist (No such file or directory)`
     marconi-chain-index.preCheck = "
-      export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
-      export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
+      export CARDANO_CLI=${inputs'.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
+      export CARDANO_NODE=${inputs'.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
       export CARDANO_NODE_SRC=${../.}
     ";
 

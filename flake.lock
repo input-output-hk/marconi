@@ -3,11 +3,11 @@
     "CHaP": {
       "flake": false,
       "locked": {
-        "lastModified": 1689478915,
-        "narHash": "sha256-zXSRZ+xP1edVSC4eWXRV2CJQ+NAsnNDP3edOgYBTD/s=",
+        "lastModified": 1691169578,
+        "narHash": "sha256-XtSSU0RI4c/BbUM80Z/3qZCOMriSqUwvJvjBU+g7YdI=",
         "owner": "input-output-hk",
         "repo": "cardano-haskell-packages",
-        "rev": "d4981b111a1485879a53104342136612837f6bcb",
+        "rev": "3615dfca0ee10cb5e66f0524725c4c775a2b7f83",
         "type": "github"
       },
       "original": {
@@ -20,11 +20,11 @@
     "CHaP_2": {
       "flake": false,
       "locked": {
-        "lastModified": 1689851177,
-        "narHash": "sha256-ZSJyqKQAN+AXQ1xE9hgDmtqoKUf6mtB0Ukd9f+8Zabs=",
+        "lastModified": 1689478915,
+        "narHash": "sha256-zXSRZ+xP1edVSC4eWXRV2CJQ+NAsnNDP3edOgYBTD/s=",
         "owner": "input-output-hk",
         "repo": "cardano-haskell-packages",
-        "rev": "a557e8b56e150e9d51e57a48b0c5de94c96f085c",
+        "rev": "d4981b111a1485879a53104342136612837f6bcb",
         "type": "github"
       },
       "original": {
@@ -280,7 +280,7 @@
     },
     "cardano-node": {
       "inputs": {
-        "CHaP": "CHaP",
+        "CHaP": "CHaP_2",
         "cardano-automation": "cardano-automation",
         "cardano-mainnet-mirror": "cardano-mainnet-mirror",
         "customConfig": "customConfig",
@@ -1327,7 +1327,7 @@
     "iogx": {
       "inputs": {
         "CHaP": [
-          "CHaP_2"
+          "CHaP"
         ],
         "flake-utils": "flake-utils_8",
         "hackage": "hackage",
@@ -1344,16 +1344,13 @@
         "sphinxcontrib-haddock": "sphinxcontrib-haddock"
       },
       "locked": {
-        "lastModified": 1689884194,
-        "narHash": "sha256-TfYO/mXgli/tEfo/JewivryTeIOTl2cb9dgKahoiPVo=",
-        "owner": "input-output-hk",
-        "repo": "iogx",
-        "rev": "3c51a56691a7bf440763ec298c27f3af28785cc0",
-        "type": "github"
+        "lastModified": 1691430491,
+        "narHash": "sha256-xijrEWX1YTgPQALyoEphqf7O7hNTiOpfifDsbPtVvDU=",
+        "type": "git",
+        "url": "file:///Users/zeme/Repos/iogx"
       },
       "original": {
         "owner": "input-output-hk",
-        "ref": "remove-list-binaries",
         "repo": "iogx",
         "type": "github"
       }
@@ -2474,7 +2471,7 @@
     },
     "root": {
       "inputs": {
-        "CHaP_2": "CHaP_2",
+        "CHaP": "CHaP",
         "cardano-node": "cardano-node",
         "iogx": "iogx",
         "mithril": "mithril"
