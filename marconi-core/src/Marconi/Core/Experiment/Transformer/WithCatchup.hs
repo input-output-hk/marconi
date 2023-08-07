@@ -18,11 +18,10 @@ import Control.Lens.Operators ((%~), (+~), (.~), (^.))
 import Data.Function ((&))
 import Marconi.Core.Experiment.Class (
   Closeable,
-  IsIndex (index),
+  IsIndex (index, rollback),
   IsSync,
   Queryable,
   Resetable (reset),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
@@ -159,7 +158,6 @@ instance (IsIndex m event indexer) => IsIndex m event (WithCatchup indexer) wher
               then sendBatch indexer'
               else pure indexer'
 
-instance (Monad m, Rollbackable m event indexer) => Rollbackable m event (WithCatchup indexer) where
   rollback p indexer =
     let updateBuffer ix = ix & catchupBuffer %~ dropWhile ((> p) . Lens.view point)
         setBufferSize ix = ix & catchupBufferLength .~ (fromIntegral $ length $ ix ^. catchupBuffer)

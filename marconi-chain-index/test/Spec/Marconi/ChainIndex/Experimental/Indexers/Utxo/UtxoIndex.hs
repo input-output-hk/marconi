@@ -542,7 +542,7 @@ propLastChainPointOnRewindIndexer = property $ do
     evalChainPoint $ mixedIndexer ^. Core.inDatabase . Core.dbLastSync
 
   let rewindTo :: C.ChainPoint = C.ChainPoint (dbLastSyncSlotNo - 1) b -- rewind by 1 slot
-  rewoundMixedIndexer <- Core.rollback rewindTo mixedIndexer
+  rewoundMixedIndexer <- Hedgehog.evalExceptT $ Core.rollback rewindTo mixedIndexer
   fromDbSlotNosAfter <-
     liftIO
       ( SQL.query_ conn "SELECT DISTINCT slotNo from unspent_transactions ORDER by slotNo DESC"

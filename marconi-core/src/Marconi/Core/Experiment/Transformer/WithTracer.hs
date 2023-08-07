@@ -20,19 +20,21 @@ import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Tracer (Tracer)
 import Control.Tracer qualified as Tracer
 
+import Data.Foldable (Foldable (toList), traverse_)
 import Marconi.Core.Experiment.Class (
   Closeable,
   HasGenesis,
-  IsIndex (index),
+  IsIndex (index, indexAll, indexAllDescending, rollback),
   IsSync,
   Queryable,
   Resetable (reset),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   IndexWrapper (IndexWrapper),
   IndexerTrans (Config, unwrap, wrap),
+  indexAllDescendingVia,
+  indexAllVia,
   indexVia,
   resetVia,
   rollbackVia,
@@ -125,21 +127,16 @@ instance
     Tracer.traceWith (indexer ^. tracer) $ Index timedEvent
     pure res
 
-instance
-  (MonadTrans t, Monad m, Monad (t m), IsIndex (t m) event index)
-  => IsIndex (t m) event (WithTracer m index)
-  where
-  index timedEvent indexer = do
-    res <- indexVia unwrap timedEvent indexer
-    lift $ Tracer.traceWith (indexer ^. tracer) $ Index timedEvent
+  indexAll timedEvents indexer = do
+    res <- indexAllVia unwrap timedEvents indexer
+    traverse_ (Tracer.traceWith (indexer ^. tracer) . Index) timedEvents
     pure res
 
-instance
-  ( Monad m
-  , Rollbackable m event index
-  )
-  => Rollbackable m event (WithTracer m index)
-  where
+  indexAllDescending timedEvents indexer = do
+    res <- indexAllDescendingVia unwrap timedEvents indexer
+    traverse_ (Tracer.traceWith (indexer ^. tracer) . Index) $ reverse $ toList timedEvents
+    pure res
+
   rollback p indexer =
     let rollbackWrappedIndexer p' =
           rollbackVia unwrap p' indexer
@@ -152,13 +149,14 @@ instance
           rollbackWrappedIndexer p
 
 instance
-  ( MonadTrans t
-  , Monad m
-  , Monad (t m)
-  , Rollbackable (t m) event index
-  )
-  => Rollbackable (t m) event (WithTracer m index)
+  (MonadTrans t, Monad m, Monad (t m), IsIndex (t m) event index)
+  => IsIndex (t m) event (WithTracer m index)
   where
+  index timedEvent indexer = do
+    res <- indexVia unwrap timedEvent indexer
+    lift $ Tracer.traceWith (indexer ^. tracer) $ Index timedEvent
+    pure res
+
   rollback p indexer =
     let rollbackWrappedIndexer p' =
           rollbackVia unwrap p' indexer

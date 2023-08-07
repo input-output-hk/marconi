@@ -26,6 +26,7 @@ import Marconi.Core.Experiment (
   Result,
   SQLiteIndexer,
   Timed (Timed),
+  ToRow,
   event,
   index,
   indexAll,
@@ -84,6 +85,7 @@ mkPropertyListIndexerAndSqliteIndexerReturnSameQueryResult
      , Eq (Result q)
      , Queryable IO e q ListIndexer
      , Queryable IO e q SQLiteIndexer
+     , ToRow (Point e)
      )
   => Gen [Timed (Point e) (Maybe e)]
   -> ExceptT IndexerError IO (SQLiteIndexer e)

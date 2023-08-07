@@ -20,7 +20,7 @@ module Marconi.Tutorial.Indexers.AddressCount where
 
 import Cardano.Api qualified as C
 import Control.Concurrent (MVar)
-import Control.Lens (at, folded, sumOf, to, (&), (.~), (^.))
+import Control.Lens (at, folded, sumOf, to, (^.))
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map (Map)
@@ -42,6 +42,7 @@ import Marconi.Core.Experiment (
   Queryable (query),
   Result,
   SQLInsertPlan (SQLInsertPlan),
+  SQLRollbackPlan (SQLRollbackPlan),
   SQLiteIndexer (SQLiteIndexer),
   Timed (Timed),
   event,
@@ -126,7 +127,7 @@ instance (MonadIO m) => Queryable m AddressCountEvent AddressCountQuery SQLiteIn
     -> SQLiteIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
   query C.ChainPointAtGenesis _ _ = pure 0
-  query (C.ChainPoint _ _) (AddressCountQuery addr) (SQLiteIndexer c _ _) = do
+  query (C.ChainPoint _ _) (AddressCountQuery addr) (SQLiteIndexer c _ _ _) = do
     (results :: [[Int]]) <-
       liftIO $
         SQL.query
@@ -192,6 +193,7 @@ mkAddressCountSqliteIndexer dbPath = do
       [ SQLInsertPlan eventToRows addressCountInsertQuery
       ]
     ]
+    [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
     lastSyncQuery
   where
     addressCountInsertQuery :: SQL.Query -- Utxo table SQL statement
@@ -237,13 +239,3 @@ mkAddressCountMixedIndexer'
 mkAddressCountMixedIndexer' dbPath keep flush = do
   sqliteIndexer <- mkAddressCountSqliteIndexer dbPath
   pure $ mkMixedIndexer keep flush sqliteIndexer mkListIndexer
-
-instance (MonadIO m) => Core.Rollbackable m AddressCountEvent Core.SQLiteIndexer where
-  rollback C.ChainPointAtGenesis ix = do
-    let c = ix ^. Core.handle
-    liftIO $ SQL.execute_ c "DELETE FROM address_count"
-    pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
-  rollback p@(C.ChainPoint sno _) ix = do
-    let c = ix ^. Core.handle
-    liftIO $ SQL.execute c "DELETE FROM address_count WHERE slotNo > ?" (SQL.Only sno)
-    pure $ ix & Core.dbLastSync .~ p

@@ -27,11 +27,10 @@ import Control.Monad.Except (MonadError)
 import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsIndex (index, indexAllDescending),
+  IsIndex (index, indexAllDescending, rollback),
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
-  Rollbackable (rollback),
   indexAll,
   queryLatest,
  )
@@ -100,6 +99,9 @@ instance
   => IsIndex m event (IndexWrapper config indexer)
   where
   index = indexVia wrappedIndexer
+  indexAll = indexAllVia wrappedIndexer
+  indexAllDescending = indexAllDescendingVia wrappedIndexer
+  rollback = rollbackVia wrappedIndexer
 
 {- | Helper to implement the @lastSyncPoint@ functon of 'IsSync' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.
@@ -170,7 +172,7 @@ instance
  Unfortunately, as @m@ must have a functor instance, we can't use @deriving via@ directly.
 -}
 rollbackVia
-  :: (Functor m, Rollbackable m event indexer, Ord (Point event))
+  :: (IsIndex m event indexer, Ord (Point event))
   => Lens' s (indexer event)
   -> Point event
   -> s

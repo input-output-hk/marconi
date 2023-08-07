@@ -17,9 +17,8 @@ import Control.Lens.Operators ((^.))
 import Data.Foldable (Foldable (toList))
 import Marconi.Core.Experiment.Class (
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending),
+  IsIndex (index, indexAllDescending, rollback),
   IsSync (lastSyncPoint),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Type (Point, point)
 
@@ -48,8 +47,7 @@ instance
     [] -> pure $ LastPointIndexer genesis
     (evt : _) -> pure $ LastPointIndexer $ evt ^. point
 
+  rollback p _ = pure $ LastPointIndexer p
+
 instance (Applicative m) => IsSync m event LastPointIndexer where
   lastSyncPoint = pure . view lastPoint
-
-instance (Applicative m) => Rollbackable m event LastPointIndexer where
-  rollback p _ = pure $ LastPointIndexer p

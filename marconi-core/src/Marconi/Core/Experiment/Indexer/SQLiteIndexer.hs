@@ -1,3 +1,4 @@
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -14,11 +15,14 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   dbLastSync,
   mkSqliteIndexer,
   mkSingleInsertSqliteIndexer,
-  rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
   SQLInsertPlan (SQLInsertPlan, planInsert, planExtractor),
+  SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
+
+  -- * Reexport from SQLite
+  SQL.ToRow (..),
 ) where
 
 import Control.Concurrent.Async qualified as Async
@@ -34,10 +38,12 @@ import Database.SQLite.Simple qualified as SQL
 
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Maybe (catMaybes)
+import Database.SQLite.Simple.QQ (sql)
+import Database.SQLite.Simple.ToField qualified as SQL
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending),
+  IsIndex (index, indexAllDescending, rollback),
   IsSync (lastSyncPoint),
   indexIfJust,
  )
@@ -60,6 +66,18 @@ data SQLInsertPlan event = forall a.
   -- ^ The insert statement for the extracted data
   }
 
+-- | A 'SQLRollbackPlan' provides a piece information about how an event should be inserted in the database
+data SQLRollbackPlan point = forall a.
+  (SQL.ToField a) =>
+  SQLRollbackPlan
+  { tableName :: String
+  -- ^ the table to rollback
+  , pointName :: String
+  -- ^ The name of the point field in the table
+  , pointExtractor :: point -> Maybe a
+  -- ^ How we transform the data to the point field
+  }
+
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
 data SQLiteIndexer event = SQLiteIndexer
   { _handle :: SQL.Connection
@@ -67,6 +85,8 @@ data SQLiteIndexer event = SQLiteIndexer
   , _insertPlan :: [[SQLInsertPlan event]]
   -- ^ A plan is a list of lists : each 'SQLInsertPlan' in a list is executed concurrently.
   -- The different @[SQLInsertPlan]@ are executed in sequence.
+  , _rollbackPlan :: [SQLRollbackPlan (Point event)]
+  -- ^ The list of tables we update on rollback, with the information required to update them
   , _dbLastSync :: Point event
   -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
   }
@@ -86,10 +106,12 @@ mkSqliteIndexer
   => SQL.Connection
   -> [[SQLInsertPlan event]]
   -- ^ extract @param@ out of a 'Timed'
+  -> [SQLRollbackPlan (Point event)]
+  -- ^ the rollbackQuery
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-mkSqliteIndexer _handle _insertPlan lastSyncQuery =
+mkSqliteIndexer _handle _insertPlan _rollbackPlan lastSyncQuery =
   let getLastSync = do
         res <- runLastSyncQuery _handle lastSyncQuery
         case res of
@@ -102,6 +124,7 @@ mkSqliteIndexer _handle _insertPlan lastSyncQuery =
           SQLiteIndexer
             { _handle
             , _insertPlan
+            , _rollbackPlan
             , _dbLastSync
             }
 
@@ -122,10 +145,13 @@ mkSingleInsertSqliteIndexer
   -- ^ extract @param@ out of a 'Timed'
   -> SQL.Query
   -- ^ the insert query
+  -> SQLRollbackPlan (Point event)
+  -- ^ the rollback query
   -> SQL.Query
   -- ^ the lastSyncQuery
   -> m (SQLiteIndexer event)
-mkSingleInsertSqliteIndexer con extract insert = mkSqliteIndexer con [[SQLInsertPlan (pure . extract) insert]]
+mkSingleInsertSqliteIndexer con extract insert rollback' =
+  mkSqliteIndexer con [[SQLInsertPlan (pure . extract) insert]] [rollback']
 
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
 handleSQLErrors value =
@@ -176,7 +202,7 @@ runLastSyncQuery connection lastSyncQuery =
     handleSQLErrors (SQL.query connection lastSyncQuery ())
 
 instance
-  (MonadIO m, MonadError IndexerError m)
+  (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))
   => IsIndex m event SQLiteIndexer
   where
   index =
@@ -196,30 +222,36 @@ instance
       (indexer ^. insertPlan)
     pure $ updateLastSync indexer
 
+  rollback p indexer = do
+    let c = indexer ^. handle
+        deleteAll tName =
+          SQL.executeNamed
+            c
+            [sql|DELETE FROM tableName"|]
+            [":tableName" SQL.:= tName]
+        deleteUntilQuery tName pName =
+          "DELETE FROM " <> tName <> " WHERE " <> pName <> " > :point"
+        deleteUntil :: (SQL.ToField a) => String -> String -> a -> IO ()
+        deleteUntil tName pName pt =
+          SQL.executeNamed
+            c
+            (deleteUntilQuery (SQL.Query $ Text.pack tName) (SQL.Query $ Text.pack pName))
+            [":point" SQL.:= pt]
+        rollbackTable (SQLRollbackPlan tableName pointName extractor) =
+          case extractor p of
+            Nothing -> deleteAll tableName
+            Just pt -> deleteUntil tableName pointName pt
+    liftIO $
+      SQL.withTransaction c $
+        traverse_ rollbackTable (indexer ^. rollbackPlan)
+    pure $ indexer & dbLastSync .~ p
+
 instance (MonadIO m) => IsSync m event SQLiteIndexer where
   lastSyncPoint indexer =
     pure $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
   close indexer = liftIO $ SQL.close $ indexer ^. handle
-
--- | A helper for the definition of the 'Rollbackable' typeclass for 'SQLiteIndexer'
-rollbackSQLiteIndexerWith
-  :: (MonadIO m, SQL.ToRow (Point event))
-  => SQL.Query
-  -- ^ The rollback statement
-  -> Point event
-  -- ^ Point will be passed as a parameter to the query
-  -> SQLiteIndexer event
-  -- ^ We're just using the connection
-  -> m (SQLiteIndexer event)
-rollbackSQLiteIndexerWith q p indexer = do
-  let c = indexer ^. handle
-  liftIO $
-    SQL.withTransaction
-      c
-      (SQL.execute c q p)
-  pure $ indexer & dbLastSync .~ p
 
 {- | A helper for the definition of the 'Queryable' typeclass for 'SQLiteIndexer'
 

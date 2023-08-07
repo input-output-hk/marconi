@@ -32,11 +32,10 @@ import Data.Sequence qualified as Seq
 import Marconi.Core.Experiment.Class (
   Closeable,
   HasGenesis,
-  IsIndex (index),
+  IsIndex (index, rollback),
   IsSync,
   Queryable,
   Resetable (reset),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Indexer.MixedIndexer (MixedIndexer, inDatabase)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
@@ -237,7 +236,12 @@ tick p indexer =
    in maybe (Nothing, indexer') (first Just) $ pruneAt indexer'
 
 instance
-  (Monad m, Ord (Point event), Prunable m event indexer, IsIndex m event indexer)
+  ( MonadError IndexerError m
+  , Ord (Point event)
+  , Prunable m event indexer
+  , IsIndex m event indexer
+  , HasGenesis (Point event)
+  )
   => IsIndex m event (WithPruning indexer)
   where
   index timedEvent indexer = do
@@ -248,20 +252,10 @@ instance
       (\p -> pruneVia unwrap p indexer)
       mp
 
-{- | The rollbackable instance for `WithPruning` is a defensive heuristic
- that may provide a non optimal behaviour but ensure that we don't
- mess up with the rollbackable events.
--}
-instance
-  ( Monad m
-  , MonadError IndexerError m
-  , Prunable m event indexer
-  , Rollbackable m event indexer
-  , HasGenesis (Point event)
-  , Ord (Point event)
-  )
-  => Rollbackable m event (WithPruning indexer)
-  where
+  {-- The rollbackable instance for `WithPruning` is a defensive heuristic
+   that may provide a non optimal behaviour but ensure that we don't
+   mess up with the rollbackable events.
+  -}
   rollback p indexer = do
     let resetStep :: WithPruning indexer event -> WithPruning indexer event
         resetStep = do

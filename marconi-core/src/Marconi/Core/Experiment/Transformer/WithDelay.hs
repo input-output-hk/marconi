@@ -23,11 +23,10 @@ import Data.Sequence qualified as Seq
 
 import Marconi.Core.Experiment.Class (
   Closeable,
-  IsIndex (index),
+  IsIndex (index, rollback),
   IsSync,
   Queryable,
   Resetable (reset),
-  Rollbackable (rollback),
  )
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
@@ -143,15 +142,6 @@ instance
               res <- indexVia delayedIndexer oldest indexer
               pure $ res & delayBuffer .~ buffer'
 
-resetBuffer :: WithDelay indexer event -> WithDelay indexer event
-resetBuffer = (delayLength .~ 0) . (delayBuffer .~ Seq.empty)
-
-instance
-  ( Monad m
-  , Rollbackable m event indexer
-  )
-  => Rollbackable m event (WithDelay indexer)
-  where
   rollback p indexer =
     let rollbackWrappedIndexer p' = rollbackVia delayedIndexer p' indexer
 
@@ -165,6 +155,9 @@ instance
               indexer
                 & delayBuffer .~ before
                 & delayLength .~ fromIntegral (Seq.length before)
+
+resetBuffer :: WithDelay indexer event -> WithDelay indexer event
+resetBuffer = (delayLength .~ 0) . (delayBuffer .~ Seq.empty)
 
 instance
   ( Applicative m

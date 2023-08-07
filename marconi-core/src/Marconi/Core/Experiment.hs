@@ -130,7 +130,7 @@
         A simple one, where you only need one insert query to index your event,
         And a more complex one, where several inserts are needed.
 
-            In the simple case, you can use 'singleInsertSQLiteIndexr' to create your indexer.
+            In the simple case, you can use 'singleInsertSQLiteIndexer' to create your indexer.
             It requires the definition of a @param@ type, a data representation of the Timed
             that SQLite can process (it should have a @ToRow@ instance).
             You also need to declare a 'InsertRecord' type instance that is a list of this @param@.
@@ -138,9 +138,8 @@
             In the complex case, you need to define a custom 'InsertRecord' type instance.
             And your own insertion function. This case is not covered yet in this tutorial.
 
-        4. At this stage, your indexer should be able to index event in the SQLite indexer.
-        We now need to enable rollback events, with the 'Rollbackable' instance.
-        'rollbackSQLiteIndexerWith' can save you from a bit of boilerplate.
+            We also need to enable rollback events,
+            'rollbackSQLiteIndexerWith' can save you from a bit of boilerplate.
 
         5. Define a @query@ type and the corresponding 'Result' type.
         If you plan to use a 'MixedIndexer' you probably want to reuse the query
@@ -163,7 +162,6 @@
 
         * 'IsSync'
         * 'IsIndex'
-        * 'Rollbackable'
         * 'AppendResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
         * 'Queryable'
         * 'Closeable' (if you plan to use it in a worker, and you probably plan to)
@@ -203,7 +201,6 @@ module Marconi.Core.Experiment (
   indexEither,
   indexAllEither,
   indexAllDescendingEither,
-  Rollbackable (..),
   Resetable (..),
   resumeFrom,
   IsSync (..),
@@ -273,8 +270,11 @@ module Marconi.Core.Experiment (
   mkSingleInsertSqliteIndexer,
   handle,
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
+  SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
+
+  -- *** Reexport from SQLite
+  ToRow (..),
   dbLastSync,
-  rollbackSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
@@ -455,7 +455,6 @@ import Marconi.Core.Experiment.Class (
   IsSync (..),
   Queryable (..),
   Resetable (..),
-  Rollbackable (..),
   indexAllDescendingEither,
   indexAllEither,
   indexEither,
@@ -488,7 +487,9 @@ import Marconi.Core.Experiment.Indexer.MixedIndexer (
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   SQLInsertPlan (..),
+  SQLRollbackPlan (..),
   SQLiteIndexer (..),
+  ToRow (..),
   dbLastSync,
   handle,
   handleSQLErrors,
@@ -496,7 +497,6 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   mkSqliteIndexer,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
-  rollbackSQLiteIndexerWith,
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
@@ -586,9 +586,9 @@ import Marconi.Core.Experiment.Worker (
  or we don't and we throw an error.
 -}
 resumeFrom
-  :: (Rollbackable m event indexer)
-  => (MonadError IndexerError m)
+  :: (MonadError IndexerError m)
   => (Resetable m event indexer)
+  => (IsIndex m event indexer)
   => (IsSync m event indexer)
   => (HasGenesis (Point event))
   => (Ord (Point event))

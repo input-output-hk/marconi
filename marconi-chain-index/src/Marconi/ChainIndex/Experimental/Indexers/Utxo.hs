@@ -27,8 +27,6 @@ import Control.Lens (
   makeLenses,
   toListOf,
   view,
-  (&),
-  (.~),
   (^.),
   (^..),
  )
@@ -217,6 +215,9 @@ mkSqliteIndexer conn =
           , Core.SQLInsertPlan timedSpentsFromTimedUtxoEvent spentInsertQuery
           ]
         ]
+        [ Core.SQLRollbackPlan "unspent_transactions" "slotNo" C.chainPointToSlotNo
+        , Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo
+        ]
         Core.genesis
 
 -- | combine UtxoEvents and balance
@@ -402,7 +403,7 @@ instance
   --   -> QueryUtxoByAddress
   --   -> Core.SQLiteIndexer UtxoEvent
   --   -> m (Core.Result QueryUtxoByAddress)
-  query cp q (Core.SQLiteIndexer conn _ _) =
+  query cp q (Core.SQLiteIndexer conn _ _ _) =
     let action :: SQL.Connection -> IO (Core.Result QueryUtxoByAddress)
         action = mkUtxoAddressQueryAction cp q
      in liftIO $ action conn
@@ -455,19 +456,6 @@ mkUtxoAddressQueryAction (C.ChainPoint futureSpentSlotNo _) (QueryUtxoByAddress 
                     u.slotNo ASC |]
          in \conn -> liftIO $ SQL.queryNamed conn builtQuery params
    in uncurry mkUtxoAddressQueryAction' filterPairs
-
-instance (MonadIO m) => Core.Rollbackable m UtxoEvent Core.SQLiteIndexer where
-  rollback C.ChainPointAtGenesis ix = do
-    let c = ix ^. Core.handle
-    liftIO $ SQL.execute_ c "DELETE FROM unspent_transactions"
-    liftIO $ SQL.execute_ c "DELETE FROM spent"
-
-    pure $ ix & Core.dbLastSync .~ C.ChainPointAtGenesis
-  rollback p@(C.ChainPoint sno _) ix = do
-    let c = ix ^. Core.handle
-    liftIO $ SQL.execute c "DELETE FROM unspent_transactions WHERE slotNo > ?" (SQL.Only sno)
-    liftIO $ SQL.execute c "DELETE FROM spent WHERE slotNo > ?" (SQL.Only sno)
-    pure $ ix & Core.dbLastSync .~ p
 
 -----------------------------------------------------------------------
 -- copy paste from Marconi.ChainIndex.Indexers.Utxo

@@ -35,11 +35,10 @@ import Data.Map qualified as Map
 import Marconi.Core.Experiment.Class (
   Closeable,
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending),
+  IsIndex (index, indexAllDescending, rollback),
   IsSync,
   Queryable (query),
   Resetable (reset),
-  Rollbackable (rollback),
   queryLatest,
  )
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
@@ -183,21 +182,6 @@ instance IndexerTrans (WithCache query) where
 
   unwrap = cacheWrapper . wrappedIndexer
 
-{- | This instances update all the cached queries with the incoming event
- and then pass this event to the underlying indexer.
--}
-instance
-  (Applicative m, IsIndex m event index)
-  => IsIndex m event (WithCache query index)
-  where
-  index timedEvent indexer = do
-    indexer' <- indexVia unwrap timedEvent indexer
-    pure $ indexer' & cacheEntries %~ (indexer' ^. onForward) timedEvent
-
-  indexAllDescending evts indexer = do
-    indexer' <- indexAllDescendingVia unwrap evts indexer
-    pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
-
 rollbackCache
   :: (Applicative f)
   => (Ord (Point event))
@@ -211,17 +195,23 @@ rollbackCache p indexer =
     (\q -> const $ queryVia unwrap p q indexer)
     indexer
 
-{- | Rollback the underlying indexer, clear the cache,
- repopulate it with queries to the underlying indexer.
+{- | This instances update all the cached queries with the incoming event
+ and then pass this event to the underlying indexer.
 -}
 instance
-  ( Monad m
-  , Rollbackable m event index
-  , HasGenesis (Point event)
-  , Queryable m event query index
-  )
-  => Rollbackable m event (WithCache query index)
+  (Applicative m, IsIndex m event index, Queryable m event query index)
+  => IsIndex m event (WithCache query index)
   where
+  index timedEvent indexer = do
+    indexer' <- indexVia unwrap timedEvent indexer
+    pure $ indexer' & cacheEntries %~ (indexer' ^. onForward) timedEvent
+
+  indexAllDescending evts indexer = do
+    indexer' <- indexAllDescendingVia unwrap evts indexer
+    pure $ indexer' & cacheEntries %~ flip (foldl' (flip $ indexer' ^. onForward)) evts
+
+  -- Rollback the underlying indexer, clear the cache,
+  -- repopulate it with queries to the underlying indexer.
   rollback p indexer = do
     res <- rollbackVia unwrap p indexer
     rollbackCache p res
