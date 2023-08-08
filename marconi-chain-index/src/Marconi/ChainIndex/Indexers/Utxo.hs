@@ -757,7 +757,7 @@ instance Buffered UtxoHandle where
           `concurrently_` do
             SQL.execute
               c
-              [sql|INSERT OR UPDATE INTO nodeTip
+              [sql|INSERT OR REPLACE INTO nodeTip
                    ( isUnique
                    , slotNo
                    , blockHeaderHash
