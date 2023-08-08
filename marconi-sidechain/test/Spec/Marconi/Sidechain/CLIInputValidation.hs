@@ -1,18 +1,17 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Spec.Marconi.Sidechain.CLIInputValidation where
 
-import Control.Monad.IO.Class (liftIO)
+import Data.ByteString.Lazy qualified as BSL
 import Data.Functor ((<&>))
-import Hedgehog (Property, (===))
-import Hedgehog qualified as H
-import Hedgehog.Extras qualified as H
+import Data.Maybe (fromJust)
 import Spec.Marconi.Sidechain.Utils qualified as U
-import System.IO qualified as IO
+import System.FilePath.Posix ((</>))
 import System.Process qualified as IO
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.Hedgehog (testPropertyNamed)
+import Test.Tasty.Golden (goldenVsString)
 
 tests :: TestTree
 tests =
@@ -21,9 +20,9 @@ tests =
     [ testGroup "check input validation when starting marconi-sidechain with invalid cli flags" $
         invalidOptionalCliFlagsWithExpectedErrors
           <&> ( \testInput ->
-                  testPropertyNamed
+                  goldenVsString
                     (testDescription testInput)
-                    "invalidCliArgWhenStartIngMarconiSideChainTest"
+                    (goldenFile testInput)
                     (invalidCliArgWhenStartIngMarconiSideChainTest testInput)
               )
     ]
@@ -32,17 +31,11 @@ data InvalidArgTestInput = InvalidArgTestInput
   { testDescription :: String
   , invalidFlag :: String
   , invalidArg :: String
-  , expectedErrors :: [String]
+  , goldenFile :: FilePath
   }
 
-invalidAddressError :: [String]
-invalidAddressError = ["Invalid address (not a valid Bech32 address representation)"]
-
-invalidBytestringSizeError :: [String]
-invalidBytestringSizeError = ["RawBytesHexErrorBase16DecodeFail", "invalid bytestring size"]
-
-invalidCharAtOffsetError :: Int -> [String]
-invalidCharAtOffsetError n = ["RawBytesHexErrorBase16DecodeFail", "invalid character at offset: " ++ show n]
+goldenFileDir :: FilePath
+goldenFileDir = "test/Spec/Marconi/Sidechain/CLIInputValidation/Golden"
 
 invalidOptionalCliFlagsWithExpectedErrors :: [InvalidArgTestInput]
 invalidOptionalCliFlagsWithExpectedErrors =
@@ -50,95 +43,86 @@ invalidOptionalCliFlagsWithExpectedErrors =
       { testDescription = "address-to-index 1 char short"
       , invalidFlag = "--addresses-to-index"
       , invalidArg =
-          "addr1x8phkx6acpnf78fuvxn0mkew3l0fd058hzquvz7w36x4gt7r0vd4msrxnuwnccdxlhdjar77j6lg0wypcc9uar5d2shskhj42"
-      , expectedErrors = invalidAddressError
+          "addr1x8phkx6acpnf78fuvxn0mkew3l0fd058hzquvz7w36x4gt"
+            ++ "7r0vd4msrxnuwnccdxlhdjar77j6lg0wypcc9uar5d2shskhj42"
+      , goldenFile = goldenFileDir </> "invalidAddress_1CharShort.golden"
       }
   , InvalidArgTestInput
       "address-to-index missing Bech32 prefix"
       "--addresses-to-index"
-      "x8phkx6acpnf78fuvxn0mkew3l0fd058hzquvz7w36x4gt7r0vd4msrxnuwnccdxlhdjar77j6lg0wypcc9uar5d2shskhj42g"
-      invalidAddressError
+      ( "x8phkx6acpnf78fuvxn0mkew3l0fd058hzquvz7w36x4gt7r0"
+          ++ "vd4msrxnuwnccdxlhdjar77j6lg0wypcc9uar5d2shskhj42g"
+      )
+      (goldenFileDir </> "invalidAddress-MissingBech32Prefix.golden")
   , InvalidArgTestInput
       "address-to-index not address format"
       "--addresses-to-index"
       "notAnAddress"
-      invalidAddressError
+      (goldenFileDir </> "invalidAddress-badFormat.golden")
   , InvalidArgTestInput
       "address-to-index using stake_test prefix"
       "--addresses-to-index"
       "stake_test17rphkx6acpnf78fuvxn0mkew3l0fd058hzquvz7w36x4gtcljw6kf"
-      invalidAddressError
+      (goldenFileDir </> "invalidAddressPrefix-stake_test.golden")
   , InvalidArgTestInput
       "address-to-index using stake1 prefix"
       "--addresses-to-index"
       "stake1uyehkck0lajq8gr28t9uxnuvgcqrc6070x3k9r8048z8y5gh6ffgw"
-      invalidAddressError
+      (goldenFileDir </> "invalidAddressPrefix-stake1.golden")
   , InvalidArgTestInput
       "match-asset-id policyId is 1 byte short"
       "--match-asset-id"
       "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810"
-      [ "RawBytesHexErrorRawBytesDecodeFail"
-      , "unSerialiseAsRawBytesError = \"Enable to deserialise ScriptHash\"" -- error could be improved because is also "invalid bytestring size"
-      ]
+      (goldenFileDir </> "invalidAssetId-policyId-1ByteShort.golden") -- error could be improved because is also "invalid bytestring size"
   , InvalidArgTestInput
       "match-asset-id policyId is 1 byte long"
       "--match-asset-id"
       "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2f2"
-      [ "RawBytesHexErrorRawBytesDecodeFail"
-      , "unSerialiseAsRawBytesError = \"Enable to deserialise ScriptHash\"" -- error could be improved because is also "invalid bytestring size"
-      ]
+      (goldenFileDir </> "invalidAssetId-policyId-1ByteLong.golden") -- error could be improved because is also "invalid bytestring size"
   , InvalidArgTestInput
       "match-asset-id policy id is invalid hex, 1 char short"
       "--match-asset-id"
       "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f"
-      invalidBytestringSizeError
+      (goldenFileDir </> "invalidAssetId-policyId-1HexCharShort.golden")
   , InvalidArgTestInput
       "match-asset-id policy id is invalid hex, 1 char long"
       "--match-asset-id"
       "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2f"
-      invalidBytestringSizeError
+      (goldenFileDir </> "invalidAssetId-policyId-1HexCharLong.golden")
   , InvalidArgTestInput
       "match-asset-id policy id is not Base16 format but correct length"
       "--match-asset-id"
       "00aPolicyIdOfCorrectLength000000000000000000000000000000000000"
-      (invalidCharAtOffsetError 3)
+      (goldenFileDir </> "invalidAssetId-policyId-badBase16Format.golden")
   , InvalidArgTestInput
-      "match-asset-id asset id is too long"
+      "match-asset-id asset name is too long"
       "--match-asset-id"
-      "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2.deadbeef0000000000000000000000000000000000000000000000000000000000"
-      [ "RawBytesHexErrorRawBytesDecodeFail"
-      , "unSerialiseAsRawBytesError = \"Unable to deserialise AssetName (the bytestring should be no longer than 32 bytes long which corresponds to a hex representation of 64 characters)\""
-      ]
+      ( "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2."
+          ++ "deadbeef0000000000000000000000000000000000000000000000000000000000"
+      )
+      (goldenFileDir </> "invalidAssetId-assetName-tooLong.golden")
   , InvalidArgTestInput
-      "match-asset-id asset id is not valid Base16 length"
+      "match-asset-id asset name is not valid Base16 length"
       "--match-asset-id"
-      "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2.deadbeefy"
-      invalidBytestringSizeError
+      "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2.deadbeeef"
+      (goldenFileDir </> "invalidAssetId-assetName-invalidBase16Length.golden")
   , InvalidArgTestInput
-      "match-asset-id asset id is not Base16 format"
+      "match-asset-id asset name is not Base16 format"
       "--match-asset-id"
       "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2.0000notAToken0"
-      (invalidCharAtOffsetError 4)
+      (goldenFileDir </> "invalidAssetId-assetName-invalidBase16Format.golden")
   ]
 
-invalidCliArgWhenStartIngMarconiSideChainTest :: InvalidArgTestInput -> Property
-invalidCliArgWhenStartIngMarconiSideChainTest InvalidArgTestInput{..} =
-  U.integrationTest $ H.workspace "marconi-sidechain-input-validation" $ \tempPath -> do
-    stdoutFile <- H.noteTempFile tempPath "marconi-sidechain.stdout.log"
-    stderrFile <- H.noteTempFile tempPath "marconi-sidechain.stderr.log"
-    hStdout <- H.openFile stdoutFile IO.WriteMode
-    hStderr <- H.openFile stderrFile IO.WriteMode
-    _ <-
-      H.createProcess
-        . ( \cp ->
-              cp
-                { IO.std_out = IO.UseHandle hStdout
-                , IO.std_err = IO.UseHandle hStderr
-                }
-          )
-        =<< H.procFlex "marconi-sidechain" "MARCONI_SIDECHAIN" [invalidFlag, invalidArg]
+invalidCliArgWhenStartIngMarconiSideChainTest :: InvalidArgTestInput -> IO BSL.ByteString
+invalidCliArgWhenStartIngMarconiSideChainTest InvalidArgTestInput{..} = do
+  (_mStdin, _mStdout, mStderr, _processHandle) <-
+    IO.createProcess
+      . ( \cp ->
+            cp
+              { IO.std_out = IO.CreatePipe
+              , IO.std_err = IO.CreatePipe
+              }
+        )
+      =<< U.procFlex "marconi-sidechain" "MARCONI_SIDECHAIN" [invalidFlag, invalidArg]
 
-    validationErrorsOccurred <- H.evalIO $ U.waitForLog stderrFile 1 expectedErrors
-    H.annotate "stdout content: " >> liftIO (IO.readFile stdoutFile) >>= H.annotate
-    H.annotate "stderr content: " >> liftIO (IO.readFile stderrFile) >>= H.annotate
-    validationErrorsOccurred === True
+  U.captureHandleContents (fromJust mStderr)

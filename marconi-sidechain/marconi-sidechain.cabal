@@ -233,7 +233,9 @@ test-suite marconi-sidechain-test
     , base                    >=4.9 && <5
     , bytestring
     , containers
+    , directory
     , exceptions
+    , filepath
     , hedgehog
     , http-client
     , lens

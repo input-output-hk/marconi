@@ -1,0 +1,12 @@
+option --match-asset-id: RawBytesHexErrorBase16DecodeFail "0000notAToken0" "invalid character at offset: 4"
+
+Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
+                         --node-config-path ARG (-d|--db-dir DIR) 
+                         [--http-port HTTP-PORT] 
+                         (--mainnet | --testnet-magic NATURAL) 
+                         [--max-indexing-depth | --min-indexing-depth NATURAL] 
+                         [(-a|--addresses-to-index BECH32-ADDRESS)] 
+                         [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
+                         [--fail-if-resyncing-from-genesis]
+
+  marconi-sidechain
