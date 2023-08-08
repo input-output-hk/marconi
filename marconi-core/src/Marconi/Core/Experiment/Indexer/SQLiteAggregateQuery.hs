@@ -44,8 +44,7 @@ instance HasDatabasePath SQLiteIndexer where
 -- | Alias to gather typeclasses required to be a source provider
 type IsSourceProvider m event indexer = (IsSync m event indexer, HasDatabasePath indexer)
 
-{- | A wrapper that provides a @SQLiteAggregateQuery@ access to
-one of the indexers it requires to answer its query.
+{- | A wrapper around indexers.
 
 Its purpose is mainly to allow the use of a heterogenerous lists of indexers as a source for a
 @SQLiteAggregateQuery@.
@@ -57,7 +56,9 @@ data SQLiteSourceProvider m point
 
 data SQLiteAggregateQuery m point event = SQLiteAggregateQuery
   { _databases :: [SQLiteSourceProvider m point]
+  -- ^ The indexers that provides database access to this query
   , _aggregateHandle :: SQL.Connection
+  -- ^ The connection that provides a read access accross the different databases
   }
 
 Lens.makeLenses ''SQLiteAggregateQuery
