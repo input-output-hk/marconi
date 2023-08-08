@@ -73,12 +73,12 @@ invalidOptionalCliFlagsWithExpectedErrors =
       "match-asset-id policyId is 1 byte short"
       "--match-asset-id"
       "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810"
-      (goldenFileDir </> "invalidAssetId-policyId-1ByteShort.golden") -- error could be improved because is also "invalid bytestring size"
+      (goldenFileDir </> "invalidAssetId-policyId-1ByteShort.golden") -- PLT-7086
   , InvalidArgTestInput
       "match-asset-id policyId is 1 byte long"
       "--match-asset-id"
       "1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2f2"
-      (goldenFileDir </> "invalidAssetId-policyId-1ByteLong.golden") -- error could be improved because is also "invalid bytestring size"
+      (goldenFileDir </> "invalidAssetId-policyId-1ByteLong.golden") -- PLT-7086
   , InvalidArgTestInput
       "match-asset-id policy id is invalid hex, 1 char short"
       "--match-asset-id"
