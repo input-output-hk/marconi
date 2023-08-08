@@ -75,9 +75,10 @@ genUtxoEventsWithTxs' genTxBodyContent = do
           plutusDatums = Datum.getPlutusDatumsFromTxs txs
           filteredTxOutDatums :: Map (C.Hash C.ScriptData) C.ScriptData
           filteredTxOutDatums = Datum.getFilteredTxOutDatumsFromTxs Nothing txs
-       in -- We don't care about the timestamp or the epochNo, so we put default values.
-          UtxoEvent resolvedUtxos spentTxOuts (BlockInfo slotNo blockHeaderHash blockNo 0 1) $
-            Map.union plutusDatums filteredTxOutDatums
+          -- We don't care about the timestamp or the epochNo, so we put default values.
+          blockInfo = BlockInfo slotNo blockHeaderHash blockNo 0 1
+          tip = C.ChainTip slotNo blockHeaderHash blockNo
+       in UtxoEvent resolvedUtxos spentTxOuts blockInfo (Map.union plutusDatums filteredTxOutDatums) tip
 
     getUtxosFromTx :: (C.Tx C.BabbageEra, TxIndexInBlock) -> Map C.TxIn Utxo
     getUtxosFromTx (C.Tx txBody@(C.TxBody txBodyContent) _, txIndexInBlock) =

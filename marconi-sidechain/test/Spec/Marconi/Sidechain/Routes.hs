@@ -39,6 +39,7 @@ import Marconi.Sidechain.Api.Routes (
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   NonceResult (NonceResult),
+  SidechainTip (SidechainTip),
   SidechainValue (SidechainValue),
   SpentInfoResult (SpentInfoResult),
   UtxoTxInput (UtxoTxInput),
@@ -55,6 +56,10 @@ tests =
     [ testGroup
         "ToJSON/FromJSON rountrip"
         [ testPropertyNamed
+            "SidechainTip"
+            "propJSONRountripSidechainTip"
+            propJSONRountripSidechainTip
+        , testPropertyNamed
             "GetCurrentSyncedBlockResult"
             "propJSONRountripCurrentSyncedBlockResult"
             propJSONRountripCurrentSyncedBlockResult
@@ -122,6 +127,16 @@ tests =
         ]
     ]
 
+propJSONRountripSidechainTip :: Property
+propJSONRountripSidechainTip = property $ do
+  let genChainTip =
+        C.ChainTip
+          <$> Gen.genSlotNo
+          <*> Gen.genHashBlockHeader
+          <*> Gen.genBlockNo
+  tip <- forAll $ SidechainTip <$> Gen.choice [pure C.ChainTipAtGenesis, genChainTip]
+  tripping tip Aeson.encode Aeson.eitherDecode
+
 propJSONRountripCurrentSyncedBlockResult :: Property
 propJSONRountripCurrentSyncedBlockResult = property $ do
   let genBlockInfo =
@@ -131,13 +146,14 @@ propJSONRountripCurrentSyncedBlockResult = property $ do
           <*> Gen.genBlockNo
           <*> pure 0
           <*> Gen.genEpochNo
-  blockInfo <-
-    forAll $
-      Gen.choice
-        [ pure Origin
-        , At <$> genBlockInfo
-        ]
-  tripping (GetCurrentSyncedBlockResult blockInfo) Aeson.encode Aeson.eitherDecode
+  let genChainTip =
+        C.ChainTip
+          <$> Gen.genSlotNo
+          <*> Gen.genHashBlockHeader
+          <*> Gen.genBlockNo
+  blockInfo <- forAll $ Gen.choice [pure Origin, At <$> genBlockInfo]
+  tip <- forAll $ SidechainTip <$> Gen.choice [pure C.ChainTipAtGenesis, genChainTip]
+  tripping (GetCurrentSyncedBlockResult blockInfo tip) Aeson.encode Aeson.eitherDecode
 
 propJSONRountripGetUtxosFromAddressParams :: Property
 propJSONRountripGetUtxosFromAddressParams = property $ do
@@ -231,7 +247,7 @@ propJSONRountripSidechainValue = property $ do
 
 goldenCurrentChainPointGenesisResult :: IO ByteString
 goldenCurrentChainPointGenesisResult = do
-  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult Origin
+  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult Origin (SidechainTip C.ChainTipAtGenesis)
 
 goldenCurrentChainPointResult :: IO ByteString
 goldenCurrentChainPointResult = do
@@ -249,9 +265,9 @@ goldenCurrentChainPointResult = do
 
   pure $
     Aeson.encodePretty $
-      GetCurrentSyncedBlockResult $
-        At $
-          BlockInfo (C.SlotNo 1) blockHeaderHash blockNo blockTimestamp epochNo
+      GetCurrentSyncedBlockResult
+        (At $ BlockInfo (C.SlotNo 1) blockHeaderHash blockNo blockTimestamp epochNo)
+        (SidechainTip $ C.ChainTip (C.SlotNo 1) blockHeaderHash blockNo)
 
 goldenAddressUtxoResult :: IO ByteString
 goldenAddressUtxoResult = do

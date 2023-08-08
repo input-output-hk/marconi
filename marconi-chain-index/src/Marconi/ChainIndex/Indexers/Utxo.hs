@@ -416,7 +416,7 @@ data instance StorableResult UtxoHandle
   = -- | Result of a 'QueryUtxoByAddress' query
     UtxoByAddressResult {getUtxoByAddressResult :: ![UtxoResult]}
   | -- | Result of a 'LastSyncedBlockInfoQuery'
-    LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo)}
+    LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo), getTip :: !C.ChainTip}
   deriving (Eq, Show, Ord)
 
 data instance StorableEvent UtxoHandle = UtxoEvent
@@ -424,6 +424,7 @@ data instance StorableEvent UtxoHandle = UtxoEvent
   , ueInputs :: !(Map C.TxIn C.TxId)
   , ueBlockInfo :: !BlockInfo
   , ueDatum :: !(Map (C.Hash C.ScriptData) C.ScriptData)
+  , ueTip :: C.ChainTip
   }
   deriving (Eq, Ord, Show, Generic)
 
@@ -664,6 +665,16 @@ open dbPath (Depth k) isToVacuume = do
   lift $
     SQL.execute_
       c
+      [sql|CREATE TABLE IF NOT EXISTS nodeTip
+                    ( isUnique CHAR PRIMARY KEY CHECK (isUnique == 'x')
+                    , slotNo INT NOT NULL
+                    , blockHeaderHash BLOB NOT NULL
+                    , blockNo INT NOT NULL
+                    )|]
+
+  lift $
+    SQL.execute_
+      c
       [sql|CREATE TABLE IF NOT EXISTS datumhash_datum ( datum_hash BLOB PRIMARY KEY , datum BLOB)|]
 
   lift $ SQL.execute_ c [sql|CREATE INDEX IF NOT EXISTS spent_slotNo ON spent (slotNo)|]
@@ -683,7 +694,7 @@ open dbPath (Depth k) isToVacuume = do
   emptyState k (UtxoHandle c k isToVacuume)
 
 getSpentFrom :: StorableEvent UtxoHandle -> [Spent]
-getSpentFrom (UtxoEvent _ txIns bi _) = do
+getSpentFrom (UtxoEvent _ txIns bi _ _) = do
   (txin, spentTxId) <- Map.toList txIns
   pure $ Spent txin (SpentInfo (bi ^. blockInfoSlotNo) spentTxId)
 
@@ -702,6 +713,7 @@ instance Buffered UtxoHandle where
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
           datumRows = fmap (uncurry DatumRow) $ Map.toList $ foldMap ueDatum events
+          nodeTip = maximum $ ueTip <$> toList events
       SQL.withTransaction c $ do
         SQL.executeMany
           c
@@ -742,6 +754,17 @@ instance Buffered UtxoHandle where
                    )
                    VALUES (?, ?)|]
             datumRows
+          `concurrently_` do
+            SQL.execute
+              c
+              [sql|INSERT OR REPLACE INTO nodeTip
+                   ( isUnique
+                   , slotNo
+                   , blockHeaderHash
+                   , blockNo
+                   )
+                   VALUES ('x', ?, ?, ?)|]
+              nodeTip
 
         -- We want to perform vacuum about once every 100
         when toVacuume $ do
@@ -834,7 +857,7 @@ getTxIns c sn = do
  Note: No `unspent` computation is performed
 -}
 eventToRows :: StorableEvent UtxoHandle -> [UtxoRow]
-eventToRows (UtxoEvent utxos _ bi _) =
+eventToRows (UtxoEvent utxos _ bi _ _) =
   let eventToRow u =
         UtxoRow
           { _urUtxo = u
@@ -936,8 +959,10 @@ instance Queryable UtxoHandle where
   queryStorage memoryEvents (UtxoHandle c _ _) (QueryUtxoByAddressWrapper (QueryUtxoByAddress addr slotInterval)) =
     liftSQLError CantQueryIndexer $ do
       persistedUtxoResults <- sqliteUtxoByAddressQuery c filters $ Just "ORDER BY u.slotNo ASC"
-      bufferedUtxoResults <- concat <$> mapM bufferEventUtxoResult bufferEvents
-      pure $ UtxoByAddressResult $ mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
+      bufferedUtxoResults <- concat <$> traverse bufferEventUtxoResult bufferEvents
+      pure $
+        UtxoByAddressResult $
+          mapMaybe filterAddSpent persistedUtxoResults <> bufferedUtxoResults
     where
       UtxoByAddressBufferEvents bufferEvents bufferSpent' bufferFutureSpent' =
         eventsAtAddress addr slotInterval memoryEvents
@@ -971,7 +996,7 @@ instance Queryable UtxoHandle where
       filters = addressFilter <> lowerBoundFilter <> upperBoundFilter
 
       bufferEventUtxoResult :: StorableEvent UtxoHandle -> IO [UtxoResult]
-      bufferEventUtxoResult (UtxoEvent utxos spents bi datumMap) =
+      bufferEventUtxoResult (UtxoEvent utxos spents bi datumMap _tip) =
         catMaybes <$> traverse updateSpent utxos
         where
           updateSpent :: Utxo -> IO (Maybe UtxoResult)
@@ -1026,6 +1051,10 @@ instance Queryable UtxoHandle where
              GROUP BY s.slotNo
              ORDER BY s.slotNo DESC
              LIMIT ?|]
+        queryTip =
+          [sql|SELECT c.slotNo, c.blockHeaderHash, c.blockNo
+             FROM nodeTip c
+             ORDER BY c.slotNo DESC|]
      in -- We don't send the last event but the one before, to ensure that every indexers reached this point
         -- It's a hack, which should be removed once we have a proper handling of synchronization events.
         --
@@ -1033,26 +1062,28 @@ instance Queryable UtxoHandle where
         case toList es of
           -- 2+ elements in memory
           (_ : _ : _) -> pure $
-            LastSyncedBlockInfoResult $
+            uncurry LastSyncedBlockInfoResult $
               case sortOn (Down . _blockInfoSlotNo . ueBlockInfo) $ toList es of
-                _ : p : _xs -> At $ ueBlockInfo p
-                _other -> Origin
+                p' : p : _xs -> (At $ ueBlockInfo p, ueTip p')
+                _other -> (Origin, C.ChainTipAtGenesis)
           -- 1 element in memory
-          [_] -> liftSQLError CantQueryIndexer $ do
+          [p] -> liftSQLError CantQueryIndexer $ do
             persisted <- SQL.query c queryLastSlot (SQL.Only (1 :: Word64))
             pure $
-              LastSyncedBlockInfoResult $
+              uncurry LastSyncedBlockInfoResult $
                 case persisted of
-                  bi : _ -> At bi
-                  _other -> Origin
+                  bi : _ -> (At bi, ueTip p)
+                  _other -> (Origin, ueTip p)
           -- 0 element in memory
           [] -> liftSQLError CantQueryIndexer $ do
             persisted <- SQL.query c queryLastSlot (SQL.Only (2 :: Word64))
+            tips <- SQL.query_ c queryTip
             pure $
-              LastSyncedBlockInfoResult $
-                case persisted of
-                  _ : bi : _xs -> At bi
-                  _other -> Origin
+              uncurry LastSyncedBlockInfoResult $
+                case (persisted, tips) of
+                  (_ : bi : _xs, [tip]) -> (At bi, tip)
+                  (_ : bi : _xs, []) -> (At bi, C.ChainTipAtGenesis)
+                  _other -> (Origin, C.ChainTipAtGenesis)
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle
@@ -1089,12 +1120,13 @@ getUtxoEventsFromBlock
   -> C.Block era
   -> C.EpochNo
   -> POSIXTime
+  -> C.ChainTip
   -> StorableEvent UtxoHandle
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) epochNo posixTime =
+getUtxoEventsFromBlock utxoIndexerConfig (C.Block (C.BlockHeader slotNo bhh blockNo) txs) epochNo posixTime tip =
   let (blockTimeStampSeconds, _) = properFraction $ nominalDiffTimeToSeconds posixTime
       blockInfo = BlockInfo slotNo bhh blockNo blockTimeStampSeconds epochNo
-   in getUtxoEvents utxoIndexerConfig txs blockInfo
+   in getUtxoEvents utxoIndexerConfig txs blockInfo tip
 
 -- | Extract UtxoEvents from Cardano Transactions
 getUtxoEvents
@@ -1103,9 +1135,10 @@ getUtxoEvents
   -- ^ Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   -> [C.Tx era]
   -> BlockInfo
+  -> C.ChainTip
   -> StorableEvent UtxoHandle
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs bi =
+getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs bi tip =
   let (TxOutBalance utxos spentTxOuts) =
         foldMap (balanceUtxoFromTx utxoIndexerConfig) $ zip txs [0 ..]
       resolvedUtxos :: [Utxo]
@@ -1118,7 +1151,7 @@ getUtxoEvents utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) txs b
           rights $
             map snd $
               Datum.getFilteredAddressDatumsFromTxs (addressesToPredicate maybeTargetAddresses) txs
-   in UtxoEvent resolvedUtxos spentTxOuts bi $ Map.union plutusDatums filteredTxOutDatums
+   in UtxoEvent resolvedUtxos spentTxOuts bi (Map.union plutusDatums filteredTxOutDatums) tip
 
 -- | does the transaction contain a targetAddress
 isAddressInTarget :: Maybe TargetAddresses -> C.AddressAny -> Bool
@@ -1129,9 +1162,10 @@ isAddressInTarget (Just targetAddresses) addr =
     C.AddressShelley addr' -> addr' `elem` targetAddresses
 
 getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]
-getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txScriptValidity} = case txScriptValidityToScriptValidity txScriptValidity of
-  C.ScriptValid -> txOuts -- When transaction is valid, only transaction fee is collected
-  C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
+getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txScriptValidity} =
+  case C.txScriptValidityToScriptValidity txScriptValidity of
+    C.ScriptValid -> txOuts -- When transaction is valid, only transaction fee is collected
+    C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
   where
     collateral C.TxReturnCollateralNone = []
     collateral (C.TxReturnCollateral _ txout) = [txout]
@@ -1231,20 +1265,12 @@ getInputs
           , C.txScriptValidity
           }
       ) =
-    let inputs = case txScriptValidityToScriptValidity txScriptValidity of
+    let inputs = case C.txScriptValidityToScriptValidity txScriptValidity of
           C.ScriptValid -> fst <$> txIns
           C.ScriptInvalid -> case txInsCollateral of
             C.TxInsCollateralNone -> []
             C.TxInsCollateral _ txins -> txins
      in Map.fromList $ (,C.getTxId b) <$> inputs
-
-{- | Duplicated from cardano-api (not exposed in cardano-api)
- This function should be removed when marconi will depend on a cardano-api version that has accepted this PR:
- https://github.com/input-output-hk/cardano-node/pull/4569
--}
-txScriptValidityToScriptValidity :: C.TxScriptValidity era -> C.ScriptValidity
-txScriptValidityToScriptValidity C.TxScriptValidityNone = C.ScriptValid
-txScriptValidityToScriptValidity (C.TxScriptValidity _ scriptValidity) = scriptValidity
 
 -- | does the transaction contain a targetAddress
 isAddressInTarget' :: TargetAddresses -> Utxo -> Bool

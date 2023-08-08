@@ -76,7 +76,7 @@ instance
       pxa = Proxy @api
       pxh = Proxy @Handler
 
-  hoistServerWithContext _ _ f x = hoistRpcRouter (Proxy @api) f x
+  hoistServerWithContext _ _ = hoistRpcRouter (Proxy @api)
 
 -- | This internal class is how we accumulate a map of handlers for dispatch
 class RouteJsonRpc a where

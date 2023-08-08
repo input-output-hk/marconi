@@ -237,11 +237,14 @@ utxoWorker_ callback depth utxoIndexerConfig Coordinator{_barrier, _errorVar} ch
   -- TODO consider adding a CLI param to allow user to perfomr Vaccum or not.
   mIndexer <- newMVar ix
   let process = \case
-        RollForward (BlockInMode block _, epochNo, posixTime) _ct ->
-          let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo posixTime
+        RollForward (BlockInMode block _, epochNo, posixTime) ct ->
+          let utxoEvents = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block epochNo posixTime ct
            in void $ updateWith mIndexer _errorVar $ ignoreQueryError . Storable.insert utxoEvents
         RollBackward cp _ct ->
-          void $ updateWith mIndexer _errorVar $ ignoreQueryError . Storable.rewind cp
+          void $
+            updateWith mIndexer _errorVar $
+              ignoreQueryError . Storable.rewind cp
+
       raiseError =
         tryPutMVar _errorVar $ CantInsertEvent "Utxo raised an uncaught exception"
       loop :: IO ()

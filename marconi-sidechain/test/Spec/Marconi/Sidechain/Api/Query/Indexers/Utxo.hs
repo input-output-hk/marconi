@@ -162,7 +162,7 @@ propUtxoEventInsertionAndJsonRpcCurrentSlotQuery action = property $ do
   -- Now, we are storing the events in the index
   liftIO $ insertUtxoEventsAction action events
 
-  Result _ (GetCurrentSyncedBlockResult resp) <- liftIO $ querySyncedBlockAction action
+  Result _ (GetCurrentSyncedBlockResult resp _tip) <- liftIO $ querySyncedBlockAction action
   Hedgehog.cover 40 "Should have some significant non genesis chainpoints results" $
     resp /= Origin && fmap _blockInfoSlotNo resp > At (C.SlotNo 0)
   assert $ getBlockInfoChainPoint resp `elem` chainPoints

@@ -25,7 +25,7 @@ import Data.Function (on)
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -66,7 +66,7 @@ type RpcTargetAddressesMethod = JsonRpc "getTargetAddresses" String String [Text
 type RpcCurrentSyncedBlockMethod =
   JsonRpc
     "getCurrentSyncedBlock"
-    String
+    GetCurrentSyncedBlockParams
     String
     GetCurrentSyncedBlockResult
 
@@ -102,21 +102,59 @@ type RpcEpochNonceMethod =
 -- Query and Result types
 --------------------------
 
-newtype GetCurrentSyncedBlockResult
-  = GetCurrentSyncedBlockResult (WithOrigin BlockInfo)
+newtype SidechainTip = SidechainTip {getTip :: C.ChainTip}
+  deriving (Eq, Ord, Generic, Show)
+
+instance ToJSON SidechainTip where
+  toJSON (SidechainTip C.ChainTipAtGenesis) = Aeson.Null
+  toJSON (SidechainTip (C.ChainTip sn bhh bn)) =
+    Aeson.object
+      [ "blockNo" .= bn
+      , "blockHeaderHash" .= bhh
+      , "slotNo" .= sn
+      ]
+
+instance FromJSON SidechainTip where
+  parseJSON Aeson.Null = pure $ SidechainTip C.ChainTipAtGenesis
+  parseJSON obj =
+    let parseTip v = do
+          slotNo <- v .: "slotNo"
+          bhh <- v .: "blockHeaderHash"
+          bn <- v .: "blockNo"
+          pure $ SidechainTip $ C.ChainTip slotNo bhh bn
+     in Aeson.withObject "ChainTip" parseTip obj
+
+data GetCurrentSyncedBlockParams = GetCurrentSyncedBlockParams
+
+instance FromJSON GetCurrentSyncedBlockParams where
+  parseJSON (Aeson.String "") = pure GetCurrentSyncedBlockParams
+  parseJSON Aeson.Null = pure GetCurrentSyncedBlockParams
+  parseJSON (Aeson.Object o) | null o = pure GetCurrentSyncedBlockParams
+  parseJSON _ = fail "The param value must be empty (use '{}', 'null', empty string"
+
+instance ToJSON GetCurrentSyncedBlockParams where
+  toJSON = const Aeson.Null
+
+data GetCurrentSyncedBlockResult
+  = GetCurrentSyncedBlockResult (WithOrigin BlockInfo) SidechainTip
   deriving (Eq, Ord, Generic, Show)
 
 instance ToJSON GetCurrentSyncedBlockResult where
-  toJSON (GetCurrentSyncedBlockResult blockInfoM) =
-    let chainPointObj = case blockInfoM of
-          (At (BlockInfo sn bhh bn bt en)) ->
-            [ "blockNo" .= bn
-            , "blockTimestamp" .= bt
-            , "blockHeaderHash" .= bhh
-            , "slotNo" .= sn
-            , "epochNo" .= en
-            ]
-          Origin -> []
+  toJSON (GetCurrentSyncedBlockResult blockInfoM tip) =
+    let nodeTip = case tip of
+          SidechainTip C.ChainTipAtGenesis -> []
+          tip' -> ["nodeTip" .= toJSON tip']
+        chainPointObj =
+          case blockInfoM of
+            (At (BlockInfo sn bhh bn bt en)) ->
+              [ "blockNo" .= bn
+              , "blockTimestamp" .= bt
+              , "blockHeaderHash" .= bhh
+              , "slotNo" .= sn
+              , "epochNo" .= en
+              ]
+                <> nodeTip
+            Origin -> nodeTip
      in Aeson.object chainPointObj
 
 instance FromJSON GetCurrentSyncedBlockResult where
@@ -127,8 +165,9 @@ instance FromJSON GetCurrentSyncedBlockResult where
           bnM <- v .:? "blockNo"
           blockTimestampM <- v .:? "blockTimestamp"
           epochNoM <- v .:? "epochNo"
+          tip <- v .:? "nodeTip"
           let blockInfoM = withOriginFromMaybe $ BlockInfo <$> slotNoM <*> bhhM <*> bnM <*> blockTimestampM <*> epochNoM
-          pure $ GetCurrentSyncedBlockResult blockInfoM
+          pure $ GetCurrentSyncedBlockResult blockInfoM (fromMaybe (SidechainTip C.ChainTipAtGenesis) tip)
      in Aeson.withObject "BlockResult" parseBlock
 
 data GetUtxosFromAddressParams = GetUtxosFromAddressParams

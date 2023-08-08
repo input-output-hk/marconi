@@ -37,7 +37,7 @@ import Marconi.ChainIndex.Indexers.Utxo (
   BlockInfo (BlockInfo),
   StorableEvent (ueBlockInfo, ueInputs, ueUtxos),
   StorableQuery (LastSyncedBlockInfoQuery),
-  StorableResult (LastSyncedBlockInfoResult),
+  StorableResult,
  )
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Types (
@@ -183,14 +183,14 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
-        Utxo.LastSyncedBlockInfoResult _ -> []
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       retrievedUtxoResults :: [Utxo.UtxoResult] = concatMap getResult results
       -- Get all the TxIn from quried UtxoRows
       txInsFromRetrievedUtxoRows :: [C.TxIn] =
         fmap Utxo.utxoResultTxIn retrievedUtxoResults
       -- Get all the TxIn from quried UtxoRows
       txInsFromGeneratedEvents :: [C.TxIn] =
-        concatMap (\(Utxo.UtxoEvent _ ins _ _) -> Map.keys ins) events
+        concatMap (\(Utxo.UtxoEvent _ ins _ _ _) -> Map.keys ins) events
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
@@ -228,7 +228,7 @@ propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs = property $ do
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs >>= Utxo.utxoResultTxIns
-        Utxo.LastSyncedBlockInfoResult _ -> error "Can't happen"
+        Utxo.LastSyncedBlockInfoResult _ _ -> error "Can't happen"
       retrievedTxIns = foldMap getResult results
       txInsFromGeneratedEvents :: [C.TxIn] =
         -- get all the TxIn from quried UtxoRows
@@ -265,14 +265,14 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
   results <- liftIO . raiseException . traverse (Storable.query indexer) $ addressQueries upperBound
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
-        Utxo.LastSyncedBlockInfoResult _ -> []
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       utxoResults :: [Utxo.UtxoResult] = concatMap getResult results
       -- Get all the TxIn from quried UtxoRows
       txInsFromRetrievedUtxoRows :: [C.TxIn] =
         fmap Utxo.utxoResultTxIn utxoResults
 
       getAlreadySpent :: StorableEvent Utxo.UtxoHandle -> [C.TxIn]
-      getAlreadySpent (Utxo.UtxoEvent _ ins bi _) =
+      getAlreadySpent (Utxo.UtxoEvent _ ins bi _ _) =
         if upperBound >= Utxo._blockInfoSlotNo bi
           then Map.keys ins
           else []
@@ -281,7 +281,7 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
       txInsFromGeneratedEvents :: [C.TxIn]
       txInsFromGeneratedEvents =
         foldMap getAlreadySpent $
-          filter (\(Utxo.UtxoEvent _ _ bi _) -> upperBound < Utxo._blockInfoSlotNo bi) events
+          filter (\(Utxo.UtxoEvent _ _ bi _ _) -> upperBound < Utxo._blockInfoSlotNo bi) events
 
   -- A property of the generator is that there is at least one unspent transaction
   -- this property also ensures that the next test will not succeed for the trivila case
@@ -293,7 +293,7 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
   -- No retrieved utxo should be spent by upperBound if it's spent after that
   traverse_ (Hedgehog.assert . flip notElem txInsFromGeneratedEvents) txInsFromRetrievedUtxoRows
 
-  let allSpent = flip map events $ \(Utxo.UtxoEvent _ ins bi _) ->
+  let allSpent = flip map events $ \(Utxo.UtxoEvent _ ins bi _ _) ->
         if Utxo._blockInfoSlotNo bi > upperBound
           then Left $ Map.keysSet ins
           else Right $ Map.keysSet ins
@@ -331,6 +331,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
   bhh <- forAll Gen.genHashBlockHeader
   let blockInfo = BlockInfo slotNo bhh (C.BlockNo sn) 0 1
       blockInfo2 = BlockInfo slotNo bhh (C.BlockNo (sn + 1)) 0 1
+      tip = C.ChainTip slotNo bhh (C.BlockNo (sn + 2))
       utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
 
   -- Generated UtxoEvents that contain only resolved datums
@@ -342,7 +343,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
           , fmap (\d -> Gen.TxOutDatumInlineLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
           ]
   txs1 <- forAll $ Gen.genTxsWithAddresses addrsWithResolvedDatum
-  let utxoEventsResolvedDatums = Utxo.getUtxoEvents utxoIndexerConfig txs1 blockInfo
+  let utxoEventsResolvedDatums = Utxo.getUtxoEvents utxoIndexerConfig txs1 blockInfo tip
 
   -- Generated UtxoEvents that contain only unresolved datums
   addrsWithUnresolvedDatum <-
@@ -352,7 +353,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
           [ fmap (\d -> Gen.TxOutDatumHashLocation (C.hashScriptDataBytes d) d) CGen.genHashableScriptData
           ]
   txs2 <- forAll $ Gen.genTxsWithAddresses addrsWithUnresolvedDatum
-  let utxoEventsUnresolvedDatums = Utxo.getUtxoEvents utxoIndexerConfig txs2 blockInfo2
+  let utxoEventsUnresolvedDatums = Utxo.getUtxoEvents utxoIndexerConfig txs2 blockInfo2 tip
 
   let utxoEvents = [utxoEventsResolvedDatums, utxoEventsUnresolvedDatums]
   Hedgehog.annotateShow utxoEvents
@@ -374,7 +375,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
         traverse (Storable.query indexer) qs
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
-        Utxo.LastSyncedBlockInfoResult _ -> []
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       actualUtxoResults = concatMap getResult results
       actualDatumHashes = Set.fromList $ mapMaybe Utxo.utxoResultDatumHash actualUtxoResults
       actualDatums = Set.fromList $ mapMaybe Utxo.utxoResultDatum actualUtxoResults
@@ -418,8 +419,9 @@ propTxInWhenPhase2ValidationFails = Hedgehog.property $ do
   slotNo@(C.SlotNo sn) <- forAll Gen.genSlotNo
   bhh <- forAll Gen.genHashBlockHeader
   let blockInfo = BlockInfo slotNo bhh (C.BlockNo sn) 0 1
+      tip = C.ChainTip slotNo bhh (C.BlockNo sn)
       utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
-      event :: StorableEvent Utxo.UtxoHandle = Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo
+      event :: StorableEvent Utxo.UtxoHandle = Utxo.getUtxoEvents utxoIndexerConfig [tx] blockInfo tip
       computedTxIns :: [C.TxIn] = fmap (view Utxo.sTxIn) $ Utxo.getSpentFrom event
       expectedTxIns :: [C.TxIn] = fmap fst txIns
 
@@ -505,11 +507,11 @@ propSaveAndRetrieveUtxoEvents = Hedgehog.property $ do
       $ qs
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
-        Utxo.LastSyncedBlockInfoResult _ -> []
+        Utxo.LastSyncedBlockInfoResult _ _ -> []
       resultsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
       fromStorageTxIns :: Set.Set C.TxIn =
         Set.fromList $ map Utxo.utxoResultTxIn resultsFromStorage
-      maybeSpentThusFar (Utxo.UtxoEvent _ ins bi _) =
+      maybeSpentThusFar (Utxo.UtxoEvent _ ins bi _ _) =
         if Utxo._blockInfoSlotNo bi <= upperBound
           then Just $ Map.keysSet ins
           else Nothing
@@ -697,12 +699,14 @@ propSupressSavingInlineScriptAndInlineScriptHash = property $ do
               saveRefUtxoIndexerConfig
               txs
               (Utxo.ueBlockInfo expectedUtxoEvent)
+              (Utxo.ueTip expectedUtxoEvent)
         withNoSaveScriptRef =
           Utxo.ueUtxos $
             Utxo.getUtxoEvents
               noSaveRefUtxoIndexerConfig
               txs
               (Utxo.ueBlockInfo expectedUtxoEvent)
+              (Utxo.ueTip expectedUtxoEvent)
 
     -- There should be some inlineScripts
     Hedgehog.annotateShow withSaveScriptRef
@@ -739,6 +743,7 @@ propUsingAllAddressesOfTxsAsTargetAddressesShouldReturnUtxosAsIfNoFilterWasAppli
             utxoIndexerConfig
             txs
             (Utxo.ueBlockInfo expectedUtxoEvent)
+            (Utxo.ueTip expectedUtxoEvent)
         filteredExpectedUtxoEvent =
           expectedUtxoEvent
             { Utxo.ueUtxos =
@@ -809,8 +814,9 @@ propGetUtxoEventFromBlock = Hedgehog.property $ do
     let (C.BlockHeader sno bhh bn) = mockBlockChainPoint block
         txs = mockBlockTxs block
         bi = BlockInfo sno bhh bn 0 1
+        tip = C.ChainTip sno bhh bn
         utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
-        computedEvent = Utxo.getUtxoEvents utxoIndexerConfig txs bi
+        computedEvent = Utxo.getUtxoEvents utxoIndexerConfig txs bi tip
     length (Utxo.ueUtxos computedEvent) === length (Utxo.ueUtxos expectedUtxoEvent)
     length (Utxo.ueInputs computedEvent) === length (Utxo.ueInputs expectedUtxoEvent)
     computedEvent === expectedUtxoEvent
@@ -824,7 +830,7 @@ propTestLastSyncOnFreshIndexer :: Property
 propTestLastSyncOnFreshIndexer = Hedgehog.property $ do
   indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth 50) False
   result <- liftIO $ raiseException $ Storable.query indexer LastSyncedBlockInfoQuery
-  result === LastSyncedBlockInfoResult Origin
+  Utxo.getLastSyncedBlockInfo result === Origin
 
 propLastChainPointOnRunningIndexer :: Property
 propLastChainPointOnRunningIndexer = Hedgehog.property $ do
@@ -835,7 +841,7 @@ propLastChainPointOnRunningIndexer = Hedgehog.property $ do
   result <- liftIO $ raiseException $ Storable.query indexer' LastSyncedBlockInfoQuery
   let beforeLastEvent = last $ init events
   let beforeLastBlockInfo = ueBlockInfo beforeLastEvent
-  result === LastSyncedBlockInfoResult (At beforeLastBlockInfo)
+  Utxo.getLastSyncedBlockInfo result === (At beforeLastBlockInfo)
 
 propLastChainPointOnRewindedIndexer :: Property
 propLastChainPointOnRewindedIndexer = property $ do
@@ -856,7 +862,7 @@ propLastChainPointOnRewindedIndexer = property $ do
   indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
   indexer'' <- liftIO $ raiseException $ Storable.rewind rollbackPoint indexer'
   result <- liftIO $ raiseException $ Storable.query indexer'' LastSyncedBlockInfoQuery
-  result === LastSyncedBlockInfoResult lastestBlockInfoPostRollback
+  Utxo.getLastSyncedBlockInfo result === lastestBlockInfoPostRollback
 
 -- | make unique queries
 mkUtxoQueries
@@ -868,6 +874,6 @@ mkUtxoQueries events slotInterval =
       qAddresses =
         Set.toList
           . Set.fromList
-          . concatMap (\(Utxo.UtxoEvent utxoSet _ _ _) -> map Utxo._address utxoSet)
+          . concatMap (\(Utxo.UtxoEvent utxoSet _ _ _ _) -> map Utxo._address utxoSet)
           $ events
    in fmap (Utxo.QueryUtxoByAddressWrapper . flip Utxo.QueryUtxoByAddress slotInterval) qAddresses
