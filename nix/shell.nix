@@ -4,8 +4,8 @@
 { inputs, inputs', pkgs, project }:
 
 let
-  cardano-cli = inputs.cardano-node.legacyPackages.cardano-cli;
-  cardano-node = inputs.cardano-node.legacyPackages.cardano-node;
+  cardano-cli = inputs'.cardano-node.legacyPackages.cardano-cli;
+  cardano-node = inputs'.cardano-node.legacyPackages.cardano-node;
 in
 {
   name = "marconi";

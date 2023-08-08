@@ -1,7 +1,5 @@
 { inputs, pkgs, project, enable }:
 let
-  nixpkgs = inputs.nixpkgs;
-
   mithril-client = inputs.mithril.packages.${pkgs.system}.mithril-client;
 
   baseVmModule = { lib, modulesPath, ... }: {
