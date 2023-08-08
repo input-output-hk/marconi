@@ -21,5 +21,5 @@ coordinatorWorker
   -> [Core.Worker b (Core.Point b)]
   -> m (MVar (Core.Coordinator b), Core.Worker (WithDistance a) (Core.Point b))
 coordinatorWorker name extract workers = liftIO $ do
-  txBodyCoordinator <- Core.mkCoordinator workers
-  Core.createWorker name extract txBodyCoordinator
+  coordinator <- Core.mkCoordinator workers
+  Core.createWorker name extract coordinator
