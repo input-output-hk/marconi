@@ -13,7 +13,7 @@ in
   packages = [
     cardano-cli
     cardano-node
-    inputs.mithril.packages.${pkgs.system}.mithril-client
+    inputs'.mithril.packages.mithril-client
   ];
 
   scripts = {
