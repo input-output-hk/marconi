@@ -38,7 +38,6 @@ import Database.SQLite.Simple qualified as SQL
 
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Maybe (catMaybes)
-import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import Marconi.Core.Experiment.Class (
   Closeable (close),
@@ -224,13 +223,10 @@ instance
 
   rollback p indexer = do
     let c = indexer ^. handle
-        deleteAll tName =
-          SQL.executeNamed
-            c
-            [sql|DELETE FROM tableName"|]
-            [":tableName" SQL.:= tName]
+        deleteAllQuery tName = "DELETE FROM " <> tName
+        deleteAll = SQL.execute_ c . deleteAllQuery . SQL.Query . Text.pack
         deleteUntilQuery tName pName =
-          "DELETE FROM " <> tName <> " WHERE " <> pName <> " > :point"
+          deleteAllQuery tName <> " WHERE " <> pName <> " > :point"
         deleteUntil :: (SQL.ToField a) => String -> String -> a -> IO ()
         deleteUntil tName pName pt =
           SQL.executeNamed

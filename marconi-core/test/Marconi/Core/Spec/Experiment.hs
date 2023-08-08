@@ -133,7 +133,7 @@ import Data.Function ((&))
 
 import GHC.Generics (Generic)
 
-import Test.QuickCheck (Arbitrary, Gen, Property, choose, (===), (==>))
+import Test.QuickCheck (Arbitrary, Gen, Property, chooseInt, (===), (==>))
 import Test.QuickCheck qualified as Test
 import Test.QuickCheck.Monadic (PropertyM)
 import Test.QuickCheck.Monadic qualified as GenM
@@ -266,7 +266,7 @@ genChain cfg = flip evalStateT cfg $ do
   replicateM size genItem
 
 uniformRollBack :: TestPoint -> Gen TestPoint
-uniformRollBack = fmap TestPoint . choose . (,) 0 . unwrapTestPoint
+uniformRollBack = fmap TestPoint . chooseInt . (,) 0 . unwrapTestPoint
 
 genLargeChain
   :: (Arbitrary event)
@@ -274,7 +274,7 @@ genLargeChain
   -- ^ Rollback percentage
   -> Gen [Item event]
 genLargeChain p = do
-  let n = Test.choose (1000000, 1200000)
+  let n = Test.chooseInt (1000000, 1200000)
   genChain $ GenChainConfig n 5 p uniformRollBack 0
 
 -- | Chain events with 10% of rollback
@@ -282,7 +282,7 @@ newtype DefaultChain event = DefaultChain {_defaultChain :: [Item event]}
 
 makeLenses 'DefaultChain
 
--- | Chain events with 10% of rollback (rollbackDepth is)
+-- | Chain events with 10% of rollback
 instance (Arbitrary event) => Arbitrary (DefaultChain event) where
   arbitrary = Test.sized $ \n ->
     DefaultChain <$> genChain (GenChainConfig (pure n) 5 10 uniformRollBack 0)
@@ -505,12 +505,14 @@ initSQLite = do
 
 sqliteModelIndexer :: SQL.Connection -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer con =
-  Core.mkSingleInsertSqliteIndexer
-    con
-    (\t -> (t ^. Core.point, t ^. Core.event))
-    "INSERT INTO index_model VALUES (?, ?)"
-    (Core.SQLRollbackPlan "index_model" "point" Just)
-    "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
+  let extractor 0 = Nothing
+      extractor n = Just n
+   in Core.mkSingleInsertSqliteIndexer
+        con
+        (\t -> (t ^. Core.point, t ^. Core.event))
+        "INSERT INTO index_model VALUES (?, ?)"
+        (Core.SQLRollbackPlan "index_model" "point" extractor)
+        "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
 
 instance
   ( MonadIO m
