@@ -665,8 +665,9 @@ open dbPath (Depth k) isToVacuume = do
   lift $
     SQL.execute_
       c
-      [sql|CREATE TABLE IF NOT EXISTS chainTip
-                    ( slotNo INT NOT NULL
+      [sql|CREATE TABLE IF NOT EXISTS nodeTip
+                    ( isUnique CHAR PRIMARY KEY CHECK (isUnique == 'x')
+                    , slotNo INT NOT NULL
                     , blockHeaderHash BLOB NOT NULL
                     , blockNo INT NOT NULL
                     )|]
@@ -712,7 +713,7 @@ instance Buffered UtxoHandle where
       let rows = concatMap eventToRows events
           spents = concatMap getSpentFrom events
           datumRows = fmap (uncurry DatumRow) $ Map.toList $ foldMap ueDatum events
-          chainTip = maximum $ ueTip <$> toList events
+          nodeTip = maximum $ ueTip <$> toList events
       SQL.withTransaction c $ do
         SQL.executeMany
           c
@@ -756,13 +757,14 @@ instance Buffered UtxoHandle where
           `concurrently_` do
             SQL.execute
               c
-              [sql|INSERT OR IGNORE INTO chainTip
-                   ( slotNo
+              [sql|INSERT OR UPDATE INTO nodeTip
+                   ( isUnique
+                   , slotNo
                    , blockHeaderHash
                    , blockNo
                    )
-                   VALUES (?, ?, ?)|]
-              chainTip
+                   VALUES ('x', ?, ?, ?)|]
+              nodeTip
 
         -- We want to perform vacuum about once every 100
         when toVacuume $ do
@@ -1051,9 +1053,8 @@ instance Queryable UtxoHandle where
              LIMIT ?|]
         queryTip =
           [sql|SELECT c.slotNo, c.blockHeaderHash, c.blockNo
-             FROM chainTip c
-             ORDER BY c.slotNo DESC
-             LIMIT 1|]
+             FROM nodeTip c
+             ORDER BY c.slotNo DESC|]
      in -- We don't send the last event but the one before, to ensure that every indexers reached this point
         -- It's a hack, which should be removed once we have a proper handling of synchronization events.
         --
