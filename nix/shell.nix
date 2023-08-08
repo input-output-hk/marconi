@@ -18,7 +18,7 @@ in
 
   scripts = {
     start-benchmark-machine = import ./scripts/start-benchmarking-machine.nix {
-      inherit inputs pkgs project;
+      inherit inputs' pkgs project;
       enable = false;
     };
   };
