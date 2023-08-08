@@ -65,7 +65,9 @@ data SQLInsertPlan event = forall a.
   -- ^ The insert statement for the extracted data
   }
 
--- | A 'SQLRollbackPlan' provides a piece information about how an event should be inserted in the database
+{- | A 'SQLRollbackPlan' provides a piece of information on how to perform a rollback on the data
+ inserted in the database.
+-}
 data SQLRollbackPlan point = forall a.
   (SQL.ToField a) =>
   SQLRollbackPlan
@@ -74,7 +76,9 @@ data SQLRollbackPlan point = forall a.
   , pointName :: String
   -- ^ The name of the point field in the table
   , pointExtractor :: point -> Maybe a
-  -- ^ How we transform the data to the point field
+  -- ^ How we transform the data to the point field. Returning 'Nothing' essentially means that we
+  -- delete all information from the database. Returning 'Just a' means that we will delete all
+  -- rows with a point higher than 'point'.
   }
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.

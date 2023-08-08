@@ -4,9 +4,9 @@
 {-# LANGUAGE StrictData #-}
 
 {- |
-    Workers are wrapper around indexers that hide there type parameters..
+    Workers are wrapper around indexers that hide there type parameters.
 
-    See "Marconi.Core.Experiment" for documentation.
+    See 'Marconi.Core.Experiment' for documentation.
 -}
 module Marconi.Core.Experiment.Worker (
   WorkerIndexer,
@@ -23,14 +23,14 @@ import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (bracket, onException)
+import Control.Exception (SomeException, bracket, catch)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (MonadTrans (lift))
 
 import Control.Lens.Operators ((^.))
 import Control.Monad (forever, void)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index, rollback),
@@ -156,9 +156,9 @@ startWorker chan tokens (Worker name ix transformInput hoistError errorBox) =
         indexer <- Con.readMVar ix
         void $ runExceptT $ hoistError $ close indexer
 
-      notifyCoordinatorOnError = do
+      notifyCoordinatorOnError e = do
         indexer <- Con.readMVar ix
-        raiseError indexer $ OtherIndexError $ name <> ": Abnormal termination"
+        raiseError indexer $ OtherIndexError $ name <> ": " <> pack (show e)
 
       process = \case
         Rollback p -> handleRollback p
@@ -166,7 +166,7 @@ startWorker chan tokens (Worker name ix transformInput hoistError errorBox) =
 
       safeProcessEvent input = do
         processedInput <- mapIndex transformInput input
-        process processedInput `onException` notifyCoordinatorOnError
+        process processedInput `catch` \(e :: SomeException) -> void $ notifyCoordinatorOnError e
 
       loop chan' =
         forever $

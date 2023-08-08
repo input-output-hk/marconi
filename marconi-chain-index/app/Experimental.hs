@@ -3,6 +3,7 @@
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Experimental.Indexers qualified as Indexers
+import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as Mint
 import Marconi.ChainIndex.Utils qualified as Utils
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -18,6 +19,7 @@ main = do
   indexers <-
     sequence
       [ fmap snd $ Indexers.utxoWorker (Cli.optionsDbPath o </> "utxo.db") securityParam
+      , fmap snd $ Mint.mintBurnTokenEventWorker (Cli.optionsDbPath o </> "minttokenevent.db")
       ]
 
   Indexers.runIndexers
