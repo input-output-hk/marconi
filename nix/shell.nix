@@ -1,7 +1,7 @@
 # This file is part of the IOGX template and is documented at the link below:
 # https://www.github.com/input-output-hk/iogx#34-nixshellnix
 
-{ inputs, inputs', pkgs, project, ... }:
+{ nix, inputs, inputs', pkgs, project, ... }:
 
 let
   cardano-cli = inputs'.cardano-node.legacyPackages.cardano-cli;
@@ -17,8 +17,8 @@ in
   ];
 
   scripts = {
-    start-benchmark-machine = import ./scripts/start-benchmarking-machine.nix {
-      inherit inputs' pkgs project;
+    start-benchmark-machine = nix.scripts.start-benchmarking-machine {
+      inherit project;
       enable = false;
     };
   };

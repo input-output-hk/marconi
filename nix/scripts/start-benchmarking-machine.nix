@@ -1,4 +1,7 @@
-{ inputs', pkgs, project, enable }:
+{ inputs', pkgs, ... }:
+
+{ project, enable }:
+
 let
   mithril-client = inputs'.mithril.packages.mithril-client;
 
