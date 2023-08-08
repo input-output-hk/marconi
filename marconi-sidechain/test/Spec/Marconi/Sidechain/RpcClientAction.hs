@@ -14,6 +14,7 @@ import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
 import Marconi.Sidechain.Api.Routes (
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult,
+  GetCurrentSyncedBlockParams (GetCurrentSyncedBlockParams),
   GetCurrentSyncedBlockResult,
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult,
@@ -65,7 +66,7 @@ mkRpcClientAction env port = do
       (mkInsertUtxoEventsCallback env)
       (mkInsertMintBurnEventsCallback env)
       (\a -> rpcUtxos $ GetUtxosFromAddressParams a (Utxo.lessThanOrEqual maxBound))
-      (rpcSyncPoint "")
+      (rpcSyncPoint GetCurrentSyncedBlockParams)
       (\(p, a) -> rpcMinting $ GetBurnTokenEventsParams p a Nothing Nothing)
 
 baseUrl :: Warp.Port -> BaseUrl

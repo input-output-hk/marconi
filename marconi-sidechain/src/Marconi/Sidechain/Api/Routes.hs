@@ -132,6 +132,9 @@ instance FromJSON GetCurrentSyncedBlockParams where
   parseJSON (Aeson.Object o) | null o = pure GetCurrentSyncedBlockParams
   parseJSON _ = fail "The param value must be empty (use '{}', 'null', empty string"
 
+instance ToJSON GetCurrentSyncedBlockParams where
+  toJSON = const Aeson.Null
+
 data GetCurrentSyncedBlockResult
   = GetCurrentSyncedBlockResult (WithOrigin BlockInfo) SidechainTip
   deriving (Eq, Ord, Generic, Show)
