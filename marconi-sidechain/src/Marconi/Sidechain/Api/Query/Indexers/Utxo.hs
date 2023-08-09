@@ -1,6 +1,7 @@
 module Marconi.Sidechain.Api.Query.Indexers.Utxo (
-  initializeEnv,
-  currentSyncedBlock,
+  queryCurrentSyncedBlock,
+  queryBlockNoAtSlotNo,
+  queryCurrentNodeBlockNo,
   findByAddress,
   findByBech32AddressAtSlot,
   Utxo.UtxoIndexer,
@@ -11,7 +12,8 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
 
 import Cardano.Api qualified as C
 import Control.Concurrent.STM (atomically)
-import Control.Concurrent.STM.TMVar (newEmptyTMVarIO, readTMVar)
+import Control.Concurrent.STM.TMVar (readTMVar)
+import Control.Exception (throwIO)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
@@ -20,9 +22,10 @@ import Data.Functor ((<&>))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text, pack)
 import Marconi.ChainIndex.Error (IndexerError (InvalidIndexer))
+import Marconi.ChainIndex.Error qualified as CI
 import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Types (TargetAddresses)
+import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (
   AddressUtxoResult (AddressUtxoResult),
@@ -32,26 +35,15 @@ import Marconi.Sidechain.Api.Routes (
   SpentInfoResult (SpentInfoResult),
   UtxoTxInput (UtxoTxInput),
  )
-import Marconi.Sidechain.Api.Types (
+import Marconi.Sidechain.Env (
   AddressUtxoIndexerEnv (AddressUtxoIndexerEnv),
-  QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult),
   addressUtxoIndexerEnvIndexer,
   addressUtxoIndexerEnvTargetAddresses,
  )
+import Marconi.Sidechain.Error (
+  QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult),
+ )
 import Marconi.Sidechain.Utils (writeTMVar)
-
-{- | Bootstraps the utxo query environment.
- The module is responsible for accessing SQLite for quries.
- The main issue we try to avoid here is mixing inserts and quries in SQLite to avoid locking the database
--}
-initializeEnv
-  :: Maybe TargetAddresses
-  -- ^ user provided target addresses
-  -> IO AddressUtxoIndexerEnv
-  -- ^ returns Query runtime environment
-initializeEnv targetAddresses = do
-  ix <- newEmptyTMVarIO
-  pure $ AddressUtxoIndexerEnv targetAddresses ix
 
 {- | Query utxos by Address
   Address conversion error from Bech32 may occur
@@ -64,12 +56,12 @@ findByAddress
 findByAddress env = withQueryAction env . Utxo.QueryUtxoByAddressWrapper
 
 -- | Retrieve the current synced point of the utxo indexer
-currentSyncedBlock
+queryCurrentSyncedBlock
   :: AddressUtxoIndexerEnv
   -- ^ Query run time environment
   -> IO (Either QueryExceptions GetCurrentSyncedBlockResult)
   -- ^ Wrong result type are unlikely but must be handled
-currentSyncedBlock env = do
+queryCurrentSyncedBlock env = do
   indexer <- atomically (readTMVar $ env ^. addressUtxoIndexerEnvIndexer)
   res <- runExceptT $ Storable.query indexer Utxo.LastSyncedBlockInfoQuery
   pure $ case res of
@@ -77,6 +69,27 @@ currentSyncedBlock env = do
       Right $ GetCurrentSyncedBlockResult blockInfoM (SidechainTip tip)
     Left (InvalidIndexer err) -> Left $ IndexerInternalError err
     _other -> Left $ UnexpectedQueryResult Utxo.LastSyncedBlockInfoQuery
+
+queryCurrentNodeBlockNo :: AddressUtxoIndexerEnv -> IO (Either QueryExceptions C.BlockNo)
+queryCurrentNodeBlockNo env = do
+  currentSyncedBlock <- queryCurrentSyncedBlock env
+  pure $
+    fmap
+      ( \(GetCurrentSyncedBlockResult _ (SidechainTip chainTip)) ->
+          Utils.getBlockNoFromChainTip chainTip
+      )
+      currentSyncedBlock
+
+queryBlockNoAtSlotNo :: AddressUtxoIndexerEnv -> C.SlotNo -> IO C.BlockNo
+queryBlockNoAtSlotNo env slotNo = do
+  indexer <- atomically $ readTMVar $ env ^. addressUtxoIndexerEnvIndexer
+  let q = Utxo.BlockNoFromSlotNoQuery slotNo
+  res <- runExceptT $ Storable.query indexer q
+  case res of
+    Right (Utxo.BlockNoFromSlotNoResult (Just blockNo)) ->
+      pure blockNo
+    Left (CI.InvalidIndexer err) -> throwIO $ IndexerInternalError err
+    _other -> throwIO $ UnexpectedQueryResult q
 
 {- | Retrieve Utxos associated with the given address
  We return an empty list if no address is not found

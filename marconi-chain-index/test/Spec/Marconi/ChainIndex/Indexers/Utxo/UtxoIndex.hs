@@ -134,6 +134,13 @@ tests =
             "propLastChainPointOnRewindedIndexer"
             propLastChainPointOnRewindedIndexer
         ]
+    , testGroup
+        "BlockNoFromSlotNo query"
+        [ testPropertyNamed
+            "queryLastSyncedBlockInfo >>= \\(slotNo, blockNo) -> queryBlockNoFromSlotNo slotNo === blockNo"
+            "propQueryBlockNoFromSlotNoShouldReturnWorkWithBlockInfoFromLastSyncedBlockInfoQuery"
+            propQueryBlockNoFromSlotNoShouldReturnWorkWithBlockInfoFromLastSyncedBlockInfoQuery
+        ]
     ]
 
 {- |
@@ -184,6 +191,7 @@ propAllQueryUtxosShouldBeUnspent = Hedgehog.property $ do
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
         Utxo.LastSyncedBlockInfoResult _ _ -> []
+        Utxo.BlockNoFromSlotNoResult _ -> []
       retrievedUtxoResults :: [Utxo.UtxoResult] = concatMap getResult results
       -- Get all the TxIn from quried UtxoRows
       txInsFromRetrievedUtxoRows :: [C.TxIn] =
@@ -229,6 +237,7 @@ propReturnedInputsArePartOfTheOfTheGeneratedSpentOutputs = property $ do
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs >>= Utxo.utxoResultTxIns
         Utxo.LastSyncedBlockInfoResult _ _ -> error "Can't happen"
+        Utxo.BlockNoFromSlotNoResult _ -> error "Can't happen"
       retrievedTxIns = foldMap getResult results
       txInsFromGeneratedEvents :: [C.TxIn] =
         -- get all the TxIn from quried UtxoRows
@@ -266,6 +275,7 @@ propAllQueryUtxosSpentInTheFutureHaveASpentTxId = Hedgehog.property $ do
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
         Utxo.LastSyncedBlockInfoResult _ _ -> []
+        Utxo.BlockNoFromSlotNoResult _ -> []
       utxoResults :: [Utxo.UtxoResult] = concatMap getResult results
       -- Get all the TxIn from quried UtxoRows
       txInsFromRetrievedUtxoRows :: [C.TxIn] =
@@ -376,6 +386,7 @@ propUtxoQueryShouldRespondWithResolvedDatums = Hedgehog.property $ do
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
         Utxo.LastSyncedBlockInfoResult _ _ -> []
+        Utxo.BlockNoFromSlotNoResult _ -> []
       actualUtxoResults = concatMap getResult results
       actualDatumHashes = Set.fromList $ mapMaybe Utxo.utxoResultDatumHash actualUtxoResults
       actualDatums = Set.fromList $ mapMaybe Utxo.utxoResultDatum actualUtxoResults
@@ -508,6 +519,7 @@ propSaveAndRetrieveUtxoEvents = Hedgehog.property $ do
   let getResult = \case
         Utxo.UtxoByAddressResult rs -> rs
         Utxo.LastSyncedBlockInfoResult _ _ -> []
+        Utxo.BlockNoFromSlotNoResult _ -> []
       resultsFromStorage :: [Utxo.UtxoResult] = concatMap getResult results
       fromStorageTxIns :: Set.Set C.TxIn =
         Set.fromList $ map Utxo.utxoResultTxIn resultsFromStorage
@@ -841,7 +853,7 @@ propLastChainPointOnRunningIndexer = Hedgehog.property $ do
   result <- liftIO $ raiseException $ Storable.query indexer' LastSyncedBlockInfoQuery
   let beforeLastEvent = last $ init events
   let beforeLastBlockInfo = ueBlockInfo beforeLastEvent
-  Utxo.getLastSyncedBlockInfo result === (At beforeLastBlockInfo)
+  Utxo.getLastSyncedBlockInfo result === At beforeLastBlockInfo
 
 propLastChainPointOnRewindedIndexer :: Property
 propLastChainPointOnRewindedIndexer = property $ do
@@ -863,6 +875,33 @@ propLastChainPointOnRewindedIndexer = property $ do
   indexer'' <- liftIO $ raiseException $ Storable.rewind rollbackPoint indexer'
   result <- liftIO $ raiseException $ Storable.query indexer'' LastSyncedBlockInfoQuery
   Utxo.getLastSyncedBlockInfo result === lastestBlockInfoPostRollback
+
+{- | Once `(slotNo, blockNo)` is gotten after querying the last synced block, we verify that calling
+the BlockNoFromSlotNoQuery with the initial `slotNo` returns the same block number.
+-}
+propQueryBlockNoFromSlotNoShouldReturnWorkWithBlockInfoFromLastSyncedBlockInfoQuery :: Property
+propQueryBlockNoFromSlotNoShouldReturnWorkWithBlockInfoFromLastSyncedBlockInfoQuery = property $ do
+  events <- Hedgehog.forAll UtxoGen.genUtxoEvents
+  depth <- Hedgehog.forAll $ Gen.int (Range.linear 1 $ length events)
+  indexer <- liftIO $ raiseException $ Utxo.open ":memory:" (Utxo.Depth depth) False
+  indexer' <- liftIO $ raiseException $ Storable.insertMany events indexer
+
+  result <- liftIO $ raiseException $ Storable.query indexer' LastSyncedBlockInfoQuery
+  let blockNoSlotPairM =
+        case Utxo.getLastSyncedBlockInfo result of
+          Origin -> Nothing
+          At (BlockInfo slotNo _ blockNo _ _) -> Just (slotNo, blockNo)
+
+  Hedgehog.cover 80 "Check that most last sync block queries return non-genesis blocks" $
+    isJust blockNoSlotPairM
+
+  case blockNoSlotPairM of
+    Nothing -> pure ()
+    Just (slotNo, blockNo) -> do
+      blockNoFromSlotNoResult <-
+        liftIO $ raiseException $ Storable.query indexer' (Utxo.BlockNoFromSlotNoQuery slotNo)
+      let actualBlockNo = Utxo.getBlockNoFromSlotNoResult blockNoFromSlotNoResult
+      actualBlockNo === Just blockNo
 
 -- | make unique queries
 mkUtxoQueries

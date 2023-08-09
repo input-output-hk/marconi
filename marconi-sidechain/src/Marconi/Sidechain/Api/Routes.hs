@@ -372,12 +372,12 @@ instance ToJSON GetBurnTokenEventsParams where
         ]
 
 newtype GetBurnTokenEventsResult
-  = GetBurnTokenEventsResult [AssetIdTxResult]
+  = GetBurnTokenEventsResult [BurnTokenEventResult]
   deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
 
-data AssetIdTxResult
-  = -- | Burn amount only, so this is always a positive number
-    AssetIdTxResult
+-- | The quantity represents a burn amount only, so this is always a positive number.
+data BurnTokenEventResult
+  = BurnTokenEventResult
       !C.SlotNo
       !(C.Hash C.BlockHeader)
       !C.BlockNo
@@ -386,10 +386,11 @@ data AssetIdTxResult
       !(Maybe C.ScriptData)
       !C.AssetName
       !C.Quantity
+      !Bool
   deriving (Eq, Ord, Show, Generic)
 
-instance ToJSON AssetIdTxResult where
-  toJSON (AssetIdTxResult slotNo bhh bn txId redh red an qty) =
+instance ToJSON BurnTokenEventResult where
+  toJSON (BurnTokenEventResult slotNo bhh bn txId redh red an qty isStable) =
     Aeson.object
       [ "slotNo" .= slotNo
       , "blockHeaderHash" .= bhh
@@ -399,12 +400,13 @@ instance ToJSON AssetIdTxResult where
       , "redeemer" .= red
       , "assetName" .= an
       , "burnAmount" .= qty
+      , "isStable" .= isStable
       ]
 
-instance FromJSON AssetIdTxResult where
+instance FromJSON BurnTokenEventResult where
   parseJSON =
     let parseAssetIdTxResult v =
-          AssetIdTxResult
+          BurnTokenEventResult
             <$> v .: "slotNo"
             <*> v .: "blockHeaderHash"
             <*> v .: "blockNo"
@@ -413,6 +415,7 @@ instance FromJSON AssetIdTxResult where
             <*> v .: "redeemer"
             <*> v .: "assetName"
             <*> v .: "burnAmount"
+            <*> v .: "isStable"
      in Aeson.withObject "AssetIdTxResult" parseAssetIdTxResult
 
 newtype GetEpochActiveStakePoolDelegationResult

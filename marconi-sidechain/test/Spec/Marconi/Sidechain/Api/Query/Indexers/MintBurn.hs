@@ -24,23 +24,24 @@ import Marconi.ChainIndex.Indexers.MintBurn (MintAsset (mintAssetAssetName, mint
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn (queryByPolicyAndAssetId)
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurnIndexer
+import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Utxo
 import Marconi.Sidechain.Api.Routes (
-  AssetIdTxResult,
+  BurnTokenEventResult,
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-import Marconi.Sidechain.Api.Types (
-  QueryExceptions (QueryError, UntrackedPolicy),
+import Marconi.Sidechain.Env (
   mintBurnIndexerEnvIndexer,
-  sidechainEnvIndexers,
   sidechainMintBurnIndexer,
  )
-import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
+import Marconi.Sidechain.Env qualified as Env
+import Marconi.Sidechain.Error (QueryExceptions (QueryError, UntrackedPolicy))
 import Network.JsonRpc.Client.Types ()
 import Network.JsonRpc.Types (JsonRpcResponse (Result))
 import Spec.Marconi.Sidechain.RpcClientAction (
-  RpcClientAction,
+  RpcClientAction (insertUtxoEventsAction),
   insertMintBurnEventsAction,
   mocMintBurnWorker,
+  mocUtxoWorker,
   queryMintBurnAction,
  )
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -84,20 +85,28 @@ tests rpcClientAction =
 -- | generate some MintBurn events, store and fetch the AssetTxResults, then make sure JSON conversion is idempotent
 queryMintingPolicyTest :: Property
 queryMintingPolicyTest = property $ do
-  (events, _) <- forAll genMintEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
+  (events, (securityParam, _)) <- forAll genMintEvents
+  env <-
+    liftIO $
+      Env.SidechainIndexersEnv
+        <$> Env.mkAddressUtxoIndexerEnv Nothing
+        <*> Env.mkMintEventIndexerEnv Nothing
+        <*> Env.mkEpochStateEnv
   let callback :: MintBurn.MintBurnIndexer -> IO ()
       callback =
         atomically
           . MintBurnIndexer.updateEnvState
-            (env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+            (env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+  liftIO $
+    mocUtxoWorker (atomically . Utxo.updateEnvState (env ^. Env.sidechainAddressUtxoIndexer)) []
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
   fetchedRows <-
     liftIO
       . fmap (fmap (concatMap pure))
       . traverse
         ( \params ->
-            MintBurnIndexer.findByAssetIdAtSlot
+            MintBurnIndexer.queryByAssetIdAtSlot
+              securityParam
               env
               (mintAssetPolicyId params)
               (Just $ mintAssetAssetName params)
@@ -119,19 +128,26 @@ queryMintingPolicyTest = property $ do
 -- | make sure we throw an error if the given txId in the query doesn't exist
 propUnmatchedTxIdIsRjected :: Property
 propUnmatchedTxIdIsRjected = property $ do
-  (events, _) <- forAll genMintEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
+  (events, (securityParam, _)) <- forAll genMintEvents
+  env <-
+    liftIO $
+      Env.SidechainIndexersEnv
+        <$> Env.mkAddressUtxoIndexerEnv Nothing
+        <*> Env.mkMintEventIndexerEnv Nothing
+        <*> Env.mkEpochStateEnv
   let callback :: MintBurn.MintBurnIndexer -> IO ()
       callback =
         atomically
           . MintBurnIndexer.updateEnvState
-            (env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+            (env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
       txIds = events >>= fmap MintBurn.txMintTxId . MintBurn.txMintEventTxAssets
   txId <- forAll CGen.genTxId
   when (txId `elem` txIds) Hedgehog.discard
   pId <- forAll Gen.genPolicyId
+  liftIO $
+    mocUtxoWorker (atomically . Utxo.updateEnvState (env ^. Env.sidechainAddressUtxoIndexer)) []
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
-  result <- liftIO $ queryByPolicyAndAssetId env pId Nothing Nothing (Just txId)
+  result <- liftIO $ queryByPolicyAndAssetId securityParam env pId Nothing Nothing (Just txId)
   case result of
     Left (QueryError _) -> Hedgehog.success
     _other -> fail "Invalid txId wasn't caught"
@@ -139,18 +155,25 @@ propUnmatchedTxIdIsRjected = property $ do
 -- | make sure we throw an error if the given policyId isn't tracked
 propUnmatchedPolicyId :: Property
 propUnmatchedPolicyId = property $ do
-  (events, _) <- forAll genMintEvents
+  (events, (securityParam, _)) <- forAll genMintEvents
   pId <- forAll Gen.genPolicyId
   pId2 <- forAll Gen.genPolicyId
   when (pId == pId2) Hedgehog.discard
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing (Just $ pure (pId, Nothing))
+  env <-
+    liftIO $
+      Env.SidechainIndexersEnv
+        <$> Env.mkAddressUtxoIndexerEnv Nothing
+        <*> Env.mkMintEventIndexerEnv (Just $ pure (pId, Nothing))
+        <*> Env.mkEpochStateEnv
   let callback :: MintBurn.MintBurnIndexer -> IO ()
       callback =
         atomically
           . MintBurnIndexer.updateEnvState
-            (env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+            (env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+  liftIO $
+    mocUtxoWorker (atomically . Utxo.updateEnvState (env ^. Env.sidechainAddressUtxoIndexer)) []
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
-  result <- liftIO $ queryByPolicyAndAssetId env pId2 Nothing Nothing Nothing
+  result <- liftIO $ queryByPolicyAndAssetId securityParam env pId2 Nothing Nothing Nothing
   case result of
     Left (UntrackedPolicy _ _) -> Hedgehog.success
     _other -> fail "Unmatched policyId wasn't caught"
@@ -158,19 +181,26 @@ propUnmatchedPolicyId = property $ do
 -- | make sure we throw an error if the given policyId isn't tracked
 propUnmatchedAssetName :: Property
 propUnmatchedAssetName = property $ do
-  (events, _) <- forAll genMintEvents
+  (events, (securityParam, _)) <- forAll genMintEvents
   pId <- forAll Gen.genPolicyId
   assetName <- forAll Gen.genAssetName
   assetName2 <- forAll Gen.genAssetName
   when (assetName == assetName2) Hedgehog.discard
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing (Just $ pure (pId, Just assetName))
+  env <-
+    liftIO $
+      Env.SidechainIndexersEnv
+        <$> Env.mkAddressUtxoIndexerEnv Nothing
+        <*> Env.mkMintEventIndexerEnv (Just $ pure (pId, Just assetName))
+        <*> Env.mkEpochStateEnv
   let callback :: MintBurn.MintBurnIndexer -> IO ()
       callback =
         atomically
           . MintBurnIndexer.updateEnvState
-            (env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+            (env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+  liftIO $
+    mocUtxoWorker (atomically . Utxo.updateEnvState (env ^. Env.sidechainAddressUtxoIndexer)) []
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
-  result <- liftIO $ queryByPolicyAndAssetId env pId (Just assetName2) Nothing Nothing
+  result <- liftIO $ queryByPolicyAndAssetId securityParam env pId (Just assetName2) Nothing Nothing
   case result of
     Left (UntrackedPolicy _ _) -> Hedgehog.success
     _other -> fail "Unmatched assetName wasn't caught"
@@ -189,6 +219,7 @@ propInvalidInterval = property $ do
           . MintBurnIndexer.updateEnvState
             (env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
   txId <- forAll $ Hedgehog.Gen.element txIds
+  liftIO $ mocUtxoWorker (atomically . Utxo.updateEnvState (env ^. Env.sidechainAddressUtxoIndexer)) []
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
   pId <- forAll Gen.genPolicyId
   result <- liftIO $ queryByPolicyAndAssetId env pId Nothing (Just 0) (Just txId)
@@ -209,6 +240,7 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip
 propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
   (events, _) <- forAll genMintEvents
   liftIO $ insertMintBurnEventsAction action $ MintBurn.MintBurnEvent <$> events
+  liftIO $ insertUtxoEventsAction action []
   let (qParams :: [(PolicyId, Maybe AssetName)]) =
         Set.toList $
           Set.fromList $
@@ -221,6 +253,6 @@ propMintBurnEventInsertionAndJsonRpcQueryRoundTrip action = property $ do
   (Set.fromList $ mapMaybe (Aeson.decode . Aeson.encode) fetchedBurnEventRows)
     === Set.fromList fetchedBurnEventRows
 
-fromQueryResult :: JsonRpcResponse e GetBurnTokenEventsResult -> [AssetIdTxResult]
+fromQueryResult :: JsonRpcResponse e GetBurnTokenEventsResult -> [BurnTokenEventResult]
 fromQueryResult (Result _ (GetBurnTokenEventsResult rows)) = rows
 fromQueryResult _otherResponses = []

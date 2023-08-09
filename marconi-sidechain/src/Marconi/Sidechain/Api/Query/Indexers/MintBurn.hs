@@ -1,17 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Marconi.Sidechain.Api.Query.Indexers.MintBurn (
-  initializeEnv,
   queryByPolicyAndAssetId,
   updateEnvState,
-  findByAssetIdAtSlot,
+  queryByAssetIdAtSlot,
 ) where
 
 import Cardano.Api qualified as C
-import Control.Concurrent.STM (STM, TMVar, atomically, newEmptyTMVarIO, readTMVar)
+import Control.Concurrent.STM (STM, TMVar, atomically, readTMVar)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
-import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word64)
 import Marconi.ChainIndex.Error qualified as CI
@@ -21,56 +19,52 @@ import Marconi.ChainIndex.Indexers.MintBurn (
   TxMintRow,
  )
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
+import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
-import Marconi.Sidechain.Api.Routes (AssetIdTxResult (AssetIdTxResult))
-import Marconi.Sidechain.Api.Types (
-  MintBurnIndexerEnv (MintBurnIndexerEnv),
-  QueryExceptions (IndexerInternalError, QueryError, UntrackedPolicy),
-  SidechainEnv,
+import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Utxo
+import Marconi.Sidechain.Api.Routes (
+  BurnTokenEventResult (BurnTokenEventResult),
+ )
+import Marconi.Sidechain.Env (
+  SidechainIndexersEnv,
   mintBurnIndexerEnvIndexer,
   mintBurnIndexerEnvTargetAssets,
-  sidechainEnvIndexers,
+  sidechainAddressUtxoIndexer,
   sidechainMintBurnIndexer,
  )
+import Marconi.Sidechain.Error (
+  QueryExceptions (IndexerInternalError, QueryError, UntrackedPolicy),
+ )
 import Marconi.Sidechain.Utils (writeTMVar)
-
-{- | Bootstraps the utxo query environment.
- The module is responsible for accessing SQLite for quries.
- The main issue we try to avoid here is mixing inserts and quries in SQLite to avoid locking the database
--}
-initializeEnv
-  :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
-  -> IO MintBurnIndexerEnv
-  -- ^ returns Query runtime environment
-initializeEnv targets = do
-  ix <- newEmptyTMVarIO
-  pure $ MintBurnIndexerEnv targets ix
 
 updateEnvState :: TMVar (State MintBurnHandle) -> State MintBurnHandle -> STM ()
 updateEnvState = writeTMVar
 
-findByAssetIdAtSlot
-  :: SidechainEnv
+queryByAssetIdAtSlot
+  :: SecurityParam
+  -> SidechainIndexersEnv
   -> C.PolicyId
   -> Maybe C.AssetName
   -> Maybe Word64
   -> Maybe C.TxId
-  -> IO (Either QueryExceptions [AssetIdTxResult])
-findByAssetIdAtSlot env policy asset slotWord =
-  queryByPolicyAndAssetId env policy asset (fromIntegral <$> slotWord)
+  -> IO (Either QueryExceptions [BurnTokenEventResult])
+queryByAssetIdAtSlot securityParam env policy asset slotWord =
+  queryByPolicyAndAssetId securityParam env policy asset (fromIntegral <$> slotWord)
 
 queryByPolicyAndAssetId
-  :: SidechainEnv
+  :: SecurityParam
+  -> SidechainIndexersEnv
   -> C.PolicyId
   -> Maybe C.AssetName
   -> Maybe C.SlotNo
   -> Maybe C.TxId
-  -> IO (Either QueryExceptions [AssetIdTxResult])
-queryByPolicyAndAssetId env policyId assetId slotNo txId = do
-  let mintBurnEnv = env ^. sidechainEnvIndexers . sidechainMintBurnIndexer
-  let trackedAssets = mintBurnEnv ^. mintBurnIndexerEnvTargetAssets
-  mintBurnIndexer <- atomically $ readTMVar $ mintBurnEnv ^. mintBurnIndexerEnvIndexer
+  -> IO (Either QueryExceptions [BurnTokenEventResult])
+queryByPolicyAndAssetId securityParam env policyId assetId slotNo txId = do
+  let trackedAssets = env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvTargetAssets
+  mintBurnIndexer <-
+    atomically $ readTMVar $ env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer
   if isTracked trackedAssets
     then query mintBurnIndexer
     else pure $ Left $ UntrackedPolicy policyId assetId
@@ -79,7 +73,21 @@ queryByPolicyAndAssetId env policyId assetId slotNo txId = do
       let q = MintBurn.QueryBurnByAssetId policyId assetId slotNo txId
       res <- runExceptT $ Storable.query indexer q
       case res of
-        Right (MintBurnResult mintBurnRows) -> pure $ Right $ toAssetIdTxResult <$> mintBurnRows
+        Right (MintBurnResult mintBurnRows) -> do
+          case slotNo of
+            Nothing -> do
+              -- The user didn't provide an upper bound slot number. Therefore, we query the latest
+              -- block number of the local node.
+              blockNoE <- Utxo.queryCurrentNodeBlockNo $ env ^. sidechainAddressUtxoIndexer
+              pure $ do
+                blockNo <- blockNoE
+                pure $ toAssetIdTxResult blockNo <$> mintBurnRows
+            Just s -> do
+              -- The user provided an upper bound slot number. Therefore, we convert the provided
+              -- slot number to a block number by using the indexer which indexes that information.
+              let addressUtxoIndexerEnv = env ^. sidechainAddressUtxoIndexer
+              blockNo <- Utxo.queryBlockNoAtSlotNo addressUtxoIndexerEnv s
+              pure $ Right $ toAssetIdTxResult blockNo <$> mintBurnRows
         Left (CI.QueryError MintBurn.InvalidInterval{}) ->
           pure $
             Left $
@@ -102,9 +110,9 @@ queryByPolicyAndAssetId env policyId assetId slotNo txId = do
       Nothing -> True
       Just trackedAssets -> any (\(pid, name) -> pid == policyId && validAssetName name) trackedAssets
 
-    toAssetIdTxResult :: TxMintRow -> AssetIdTxResult
-    toAssetIdTxResult x =
-      AssetIdTxResult
+    toAssetIdTxResult :: C.BlockNo -> TxMintRow -> BurnTokenEventResult
+    toAssetIdTxResult nodeTipBlockNo x =
+      BurnTokenEventResult
         (x ^. MintBurn.txMintRowSlotNo)
         (x ^. MintBurn.txMintRowBlockHeaderHash)
         (x ^. MintBurn.txMintRowBlockNo)
@@ -113,3 +121,8 @@ queryByPolicyAndAssetId env policyId assetId slotNo txId = do
         (MintBurn.mintAssetRedeemerData <$> x ^. MintBurn.txMintRowRedeemer)
         (x ^. MintBurn.txMintRowAssetName)
         (negate $ x ^. MintBurn.txMintRowQuantity)
+        (isTxMintRowStable securityParam x nodeTipBlockNo)
+
+isTxMintRowStable :: SecurityParam -> TxMintRow -> C.BlockNo -> Bool
+isTxMintRowStable securityParam txMintRow blockNo =
+  not $ Utils.isBlockRollbackable securityParam (txMintRow ^. MintBurn.txMintRowBlockNo) blockNo

@@ -4,7 +4,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Marconi.Sidechain.Api.HttpServer where
 
@@ -14,7 +13,6 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.ByteString qualified as BS
 import Data.Proxy (Proxy (Proxy))
-import Data.String (fromString)
 import Data.Text (Text, pack, unpack)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -36,17 +34,20 @@ import Marconi.Sidechain.Api.Routes (
   JsonRpcAPI,
   RestAPI,
  )
-import Marconi.Sidechain.Api.Types (
-  QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult, UntrackedPolicy),
+import Marconi.Sidechain.Env (
   SidechainEnv,
   sidechainAddressUtxoIndexer,
-  sidechainEnvHttpSettings,
-  sidechainEnvIndexers,
+  sidechainIndexersEnv,
+  sidechainQueryEnv,
+  sidechainQueryEnvHttpSettings,
+  sidechainQueryEnvSecurityParam,
+ )
+import Marconi.Sidechain.Error (
+  QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult, UntrackedPolicy),
  )
 import Network.JsonRpc.Server.Types ()
 import Network.JsonRpc.Types (
-  JsonRpcErr (JsonRpcErr, errorCode, errorData, errorMessage),
-  mkJsonRpcInvalidRequestErr,
+  JsonRpcErr (JsonRpcErr),
   mkJsonRpcParseErr,
  )
 import Network.Wai.Handler.Warp (runSettings)
@@ -55,10 +56,10 @@ import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler, Server, serve)
 
 -- | Bootstraps the HTTP server
-bootstrap :: SidechainEnv -> IO ()
-bootstrap env =
+runHttpServer :: SidechainEnv -> IO ()
+runHttpServer env =
   runSettings
-    (env ^. sidechainEnvHttpSettings)
+    (env ^. sidechainQueryEnv . sidechainQueryEnvHttpSettings)
     (marconiApp env)
 
 marconiApp :: SidechainEnv -> Application
@@ -113,12 +114,12 @@ getTargetAddressesHandler
 getTargetAddressesHandler env =
   pure $
     Q.Utxo.reportBech32Addresses $
-      env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer
+      env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer
 
 getMetricsHandler :: Handler Text
 getMetricsHandler = liftIO $ Text.decodeUtf8 . BS.toStrict <$> P.exportMetricsAsText
 
--- | prints TargetAddresses Bech32 representation as thru JsonRpc
+-- | Prints TargetAddresses Bech32 representation as thru JsonRpc
 getTargetAddressesQueryHandler
   :: SidechainEnv
   -- ^ database configuration
@@ -128,7 +129,7 @@ getTargetAddressesQueryHandler
 getTargetAddressesQueryHandler env _ =
   pure $
     Right $
-      Q.Utxo.reportBech32Addresses (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
+      Q.Utxo.reportBech32Addresses (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
 
 -- | Handler for retrieving current synced chain point.
 getCurrentSyncedBlockHandler
@@ -140,8 +141,8 @@ getCurrentSyncedBlockHandler
 getCurrentSyncedBlockHandler env _ =
   liftIO $
     first toRpcErr
-      <$> Q.Utxo.currentSyncedBlock
-        (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
+      <$> Q.Utxo.queryCurrentSyncedBlock
+        (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
 
 -- | Handler for retrieving UTXOs by Address
 getAddressUtxoHandler
@@ -154,7 +155,7 @@ getAddressUtxoHandler env query =
   liftIO $
     first toRpcErr <$> do
       Q.Utxo.findByBech32AddressAtSlot
-        (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
+        (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
         (pack $ queryAddress query)
         (querySearchInterval query)
 
@@ -167,8 +168,9 @@ getMintingPolicyHashTxHandler
 getMintingPolicyHashTxHandler env query =
   liftIO $
     bimap toRpcErr GetBurnTokenEventsResult <$> do
-      Q.Mint.findByAssetIdAtSlot
-        env
+      Q.Mint.queryByAssetIdAtSlot
+        (env ^. sidechainQueryEnv . sidechainQueryEnvSecurityParam)
+        (env ^. sidechainIndexersEnv)
         (policyId query)
         (assetName query)
         (beforeSlotNo query)

@@ -103,8 +103,7 @@ queryCurrentEra networkId socketPath = do
 
 -- | Query security param from the local node given a Shelley based era.
 querySecurityParamEra
-  :: forall era
-   . forall err
+  :: forall era err
    . C.ShelleyBasedEra era
   -> C.NetworkId
   -> FilePath
