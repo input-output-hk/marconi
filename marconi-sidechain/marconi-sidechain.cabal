@@ -199,8 +199,11 @@ test-suite marconi-sidechain-test
     Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn
     Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo
     Spec.Marconi.Sidechain.CLI
+    Spec.Marconi.Sidechain.CLIInputValidation
+    Spec.Marconi.Sidechain.Integration
     Spec.Marconi.Sidechain.Routes
     Spec.Marconi.Sidechain.RpcClientAction
+    Spec.Marconi.Sidechain.Utils
 
   --------------------
   -- Local components
@@ -218,6 +221,7 @@ test-suite marconi-sidechain-test
     , cardano-crypto-class
     , cardano-ledger-shelley
     , cardano-slotting                ^>=0.1.1.1
+    , hedgehog-extras
     , plutus-tx-plugin
 
   ------------------------
@@ -226,19 +230,25 @@ test-suite marconi-sidechain-test
   build-depends:
     , aeson
     , aeson-pretty
-    , base                  >=4.9 && <5
+    , base                    >=4.9 && <5
     , bytestring
     , containers
+    , directory
+    , exceptions
+    , filepath
     , hedgehog
     , http-client
     , lens
     , mtl
     , optparse-applicative
+    , process
+    , resourcet
     , servant
     , servant-client
     , servant-server
     , stm
     , tasty
+    , tasty-expected-failure
     , tasty-golden
     , tasty-hedgehog
     , text
