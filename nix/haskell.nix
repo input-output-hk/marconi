@@ -7,9 +7,10 @@
   enableCrossCompilation = true;
 
   defaultChangelogPackages = [
-    "cardano-straming"
+    "cardano-streaming"
     "marconi-chain-index"
     "marconi-core"
     "marconi-sidechain"
+    "marconi-tutorial"
   ];
 }
