@@ -8,13 +8,12 @@ import Control.Applicative (optional, some)
 import Data.ByteString.Char8 qualified as C8
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
+import Data.Version (showVersion)
 import Options.Applicative qualified as Opt
-import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 
 import Cardano.Api (ChainPoint, NetworkId)
@@ -31,6 +30,8 @@ import Marconi.ChainIndex.Types (
   scriptTxDbName,
   utxoDbName,
  )
+import Marconi.Git.Rev (gitRev)
+import Paths_marconi_chain_index (version)
 
 {- | Allow the user to set a starting point for indexing the user needs to provide both
  a @BlockHeaderHash@ (encoded in RawBytesHex) and a @SlotNo@ (a natural number).
@@ -147,12 +148,15 @@ data Options = Options
   deriving (Show)
 
 parseOptions :: IO Options
-parseOptions = getGitSha >>= Opt.execParser . programParser
+parseOptions = Opt.execParser programParser
 
-programParser :: String -> Opt.ParserInfo Options
-programParser gitSha =
+getVersion :: String
+getVersion = showVersion version <> "-" <> Text.unpack gitRev
+
+programParser :: Opt.ParserInfo Options
+programParser =
   Opt.info
-    (Opt.helper <*> commonVersionOptionParser gitSha <*> optionsParser)
+    (Opt.helper <*> commonVersionOptionParser <*> optionsParser)
     (marconiDescr "marconi")
 
 commonOptionsParser :: Opt.Parser CommonOptions
@@ -258,11 +262,8 @@ commonDbDirParser =
       <> Opt.metavar "DIR"
       <> Opt.help "Directory path where all Marconi-related SQLite databases are located."
 
-commonVersionOptionParser :: String -> Opt.Parser (a -> a)
-commonVersionOptionParser sha = Opt.infoOption sha $ Opt.long "version" <> Opt.help "Show git SHA"
-
-getGitSha :: IO String
-getGitSha = fromMaybe "GIHUB_SHA environment variable not set!" <$> lookupEnv "GITHUB_SHA"
+commonVersionOptionParser :: Opt.Parser (a -> a)
+commonVersionOptionParser = Opt.infoOption getVersion $ Opt.long "version" <> Opt.help "Show marconi version"
 
 marconiDescr :: String -> Opt.InfoMod a
 marconiDescr programName =

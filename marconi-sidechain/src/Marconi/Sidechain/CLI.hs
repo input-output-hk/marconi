@@ -1,4 +1,8 @@
-module Marconi.Sidechain.CLI where
+module Marconi.Sidechain.CLI (
+  parseCli,
+  Cli.getVersion,
+  programParser,
+) where
 
 import Cardano.Api qualified as C
 import Data.List.NonEmpty (NonEmpty)
@@ -35,12 +39,12 @@ data CliArgs = CliArgs
   deriving (Show)
 
 parseCli :: IO CliArgs
-parseCli = Opt.execParser . programParser =<< Cli.getGitSha
+parseCli = Opt.execParser programParser
 
-programParser :: String -> Opt.ParserInfo CliArgs
-programParser gitSha =
+programParser :: Opt.ParserInfo CliArgs
+programParser =
   Opt.info
-    (Opt.helper <*> Cli.commonVersionOptionParser gitSha <*> parserCliArgs)
+    (Opt.helper <*> Cli.commonVersionOptionParser <*> parserCliArgs)
     (Cli.marconiDescr "marconi-sidechain")
 
 parserCliArgs :: Opt.Parser CliArgs

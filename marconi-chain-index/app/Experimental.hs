@@ -10,6 +10,7 @@ import System.Directory (createDirectoryIfMissing)
 
 main :: IO ()
 main = do
+  putStrLn $ "marconi-chain-index-experimental " <> Cli.getVersion
   o <- Cli.parseOptions
   let batchSize = 5000
       stopCatchupDistance = 100
