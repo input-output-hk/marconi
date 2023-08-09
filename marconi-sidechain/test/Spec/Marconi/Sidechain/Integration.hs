@@ -59,12 +59,12 @@ validOptionalCliFlags =
 
 startMarconiSideChainTest :: [String] -> String -> Property
 startMarconiSideChainTest optionalCliArgs description =
-  U.integrationTest $ H.workspace ("start-marconi-sidechain-" <> description) $ \tempPath -> do
+  U.runIntegrationTest $ H.workspace ("start-marconi-sidechain-" <> description) $ \tempPath -> do
     (nodeDbDir, nodeStdoutFile, nodeStderrFile, nodePHandle) <-
       startMarconiSidechain optionalCliArgs tempPath
 
     -- wait for stdout log to show successful synchronising or fail after 30 seconds
-    logsSynchronising <- liftIO $ U.waitForLog nodeStdoutFile 30 ["Synchronising"]
+    logsSynchronising <- liftIO $ U.waitForExpectedContentInLogFile nodeStdoutFile 30 ["Synchronising"]
     unless logsSynchronising H.failure
 
     -- check that each db file exists and ledgerStates dir is not empty
@@ -83,11 +83,11 @@ startMarconiSideChainTest optionalCliArgs description =
     -- check correct log output on shutdown
     stopLogContainsShuttingDown <-
       H.evalIO $
-        U.waitForLog
+        U.waitForExpectedContentInLogFile
           nodeStdoutFile
           5
           ["Marconi is shutting down. Waiting for indexers to finish their work..."]
-    stopLogContainsDone <- H.evalIO $ U.waitForLog nodeStdoutFile 15 ["Done!"]
+    stopLogContainsDone <- H.evalIO $ U.waitForExpectedContentInLogFile nodeStdoutFile 15 ["Done!"]
     H.annotate =<< liftIO (IO.readFile nodeStdoutFile)
     assert $ all (== True) [stopLogContainsShuttingDown, stopLogContainsDone]
 
