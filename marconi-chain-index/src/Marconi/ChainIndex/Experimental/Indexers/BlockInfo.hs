@@ -29,7 +29,6 @@ import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
-import Control.Monad.Trans.Except (ExceptT)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Text (Text)
@@ -46,7 +45,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.Worker (catchupWorker)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
-import Marconi.Core.Experiment.Indexer.SQLiteIndexer (SQLiteIndexer)
 
 data BlockInfo = BlockInfo
   { _blockNo :: !C.BlockNo
@@ -122,7 +120,6 @@ blockInfoWorker
   :: ( MonadIO n
      , MonadError Core.IndexerError n
      , MonadIO m
-     , Core.WorkerIndexer (ExceptT Core.IndexerError m) BlockInfo SQLiteIndexer
      )
   => Text
   -- ^ Name of the indexer (mostly for logging purpose)

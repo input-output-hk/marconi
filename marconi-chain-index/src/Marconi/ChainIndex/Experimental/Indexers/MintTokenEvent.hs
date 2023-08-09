@@ -79,7 +79,7 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
-import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardIndexer, catchupWorker)
+import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardSQLiteIndexer, catchupWorker)
 import Marconi.ChainIndex.Types (
   TxIndexInBlock,
  )
@@ -89,7 +89,7 @@ import Marconi.Core.Experiment qualified as Core
 type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenEvents
 
 -- | A SQLite Spent indexer with Catchup
-type StandardMintTokenEventIndexer = StandardIndexer MintTokenEvents
+type StandardMintTokenEventIndexer = StandardSQLiteIndexer MintTokenEvents
 
 -- | Minting events given for each block.
 newtype MintTokenEvents = MintTokenEvents
@@ -164,18 +164,12 @@ type instance Core.Point MintTokenEvents = C.ChainPoint
 
 -- | Create a worker for the MintTokenEvent indexer
 mintTokenEventWorker
-  :: ( MonadIO n
-     , MonadError Core.IndexerError n
-     , MonadIO m
-     )
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => Text
   -> Core.CatchupConfig
   -> (input -> Maybe MintTokenEvents)
   -> FilePath
-  -> n
-      ( MVar StandardMintTokenEventIndexer
-      , Core.WorkerM m (WithDistance input) C.ChainPoint
-      )
+  -> n (MVar StandardMintTokenEventIndexer, Core.WorkerM m (WithDistance input) C.ChainPoint)
 mintTokenEventWorker name catchupConfig extractor dbPath = do
   sqliteIndexer <- mkMintTokenIndexer dbPath
   catchupWorker name catchupConfig (pure . extractor) sqliteIndexer

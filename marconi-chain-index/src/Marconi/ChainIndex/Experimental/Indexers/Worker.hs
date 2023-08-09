@@ -5,6 +5,7 @@
 -- | Common worker configuration and creation
 module Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardIndexer,
+  StandardSQLiteIndexer,
   catchupWorker,
   catchupWorkerWithFilter,
 ) where
@@ -20,9 +21,12 @@ import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 
--- | An alias for an SQLiteWorker with catchup and transformation from a given type
-type StandardIndexer event =
-  Core.WithCatchup (Core.WithTransform Core.SQLiteIndexer event) (WithDistance event)
+-- | An alias for an indexer with catchup and transformation to perform filtering
+type StandardIndexer indexer event =
+  Core.WithCatchup (Core.WithTransform indexer event) (WithDistance event)
+
+-- | An alias for an SQLiteWorker with catchup and transformation to perform filtering
+type StandardSQLiteIndexer event = StandardIndexer Core.SQLiteIndexer event
 
 -- | Create a worker for the given indexer with some standard catchup values
 catchupWorker
@@ -35,10 +39,7 @@ catchupWorker
   -> Core.CatchupConfig
   -> (input -> m (Maybe event))
   -> indexer event
-  -> n
-      ( MVar (Core.WithCatchup (Core.WithTransform indexer event) (WithDistance event))
-      , Core.WorkerM m (WithDistance input) (Core.Point event)
-      )
+  -> n (MVar (StandardIndexer indexer event), Core.WorkerM m (WithDistance input) (Core.Point event))
 catchupWorker name = catchupWorkerWithFilter name Just
 
 -- | Create a worker for the given indexer with some standard catchup values with extra filtering
@@ -53,10 +54,7 @@ catchupWorkerWithFilter
   -> Core.CatchupConfig
   -> (input -> m (Maybe event))
   -> indexer event
-  -> n
-      ( MVar (Core.WithCatchup (Core.WithTransform indexer event) (WithDistance event))
-      , Core.WorkerM m (WithDistance input) (Core.Point event)
-      )
+  -> n (MVar (StandardIndexer indexer event), Core.WorkerM m (WithDistance input) (Core.Point event))
 catchupWorkerWithFilter workerName eventFilter catchupConfig extract indexer =
   let chainPointDistance :: Core.Point (WithDistance a) -> WithDistance a -> Word64
       chainPointDistance _ = Distance.chainDistance

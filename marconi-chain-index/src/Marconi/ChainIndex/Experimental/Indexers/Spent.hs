@@ -8,6 +8,7 @@
 module Marconi.ChainIndex.Experimental.Indexers.Spent (
   -- * Event
   SpentInfo (SpentInfo),
+  SpentInfoEvent,
   spent,
   spentAt,
 
@@ -26,7 +27,7 @@ import Control.Concurrent (MVar)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
-import Control.Monad.Except (ExceptT, MonadError)
+import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
 import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -41,15 +42,20 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
-import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardIndexer, catchupWorker)
+import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardSQLiteIndexer, catchupWorker)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
 
 data SpentInfo = SpentInfo
   { _spent :: C.TxIn
+  -- ^ The Spent tx output
   , _spentAt :: C.TxId
+  -- ^ The transaction that spent this tx output
   }
   deriving (Show, Eq, Ord, Generic)
+
+-- | An alias for a non-empty list of @SpentInfo@, it's the event potentially produced on each block
+type SpentInfoEvent = NonEmpty SpentInfo
 
 -- we use deriveJSON to drop the underscore prefix
 Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = tail} ''SpentInfo
@@ -70,11 +76,7 @@ instance SQL.FromRow SpentInfo where
     txId <- SQL.field
     txIx <- SQL.field
     _spentAt <- SQL.field
-    pure $
-      SpentInfo
-        { _spent = C.TxIn txId txIx
-        , _spentAt
-        }
+    pure $ SpentInfo{_spent = C.TxIn txId txIx, _spentAt}
 
 instance SQL.FromRow (Core.Timed C.ChainPoint SpentInfo) where
   fromRow = do
@@ -82,18 +84,18 @@ instance SQL.FromRow (Core.Timed C.ChainPoint SpentInfo) where
     point <- SQL.fromRow
     pure $ Core.Timed point spentInfo
 
-type instance Core.Point (NonEmpty SpentInfo) = C.ChainPoint
+type instance Core.Point SpentInfoEvent = C.ChainPoint
 
 -- | A raw SQLite indexer for Spent
-type SpentIndexer = Core.SQLiteIndexer (NonEmpty SpentInfo)
+type SpentIndexer = Core.SQLiteIndexer SpentInfoEvent
 
 -- | A SQLite Spent indexer with Catchup
-type StandardSpentIndexer = StandardIndexer (NonEmpty SpentInfo)
+type StandardSpentIndexer = StandardSQLiteIndexer SpentInfoEvent
 
 mkSpentIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath
-  -> m (Core.SQLiteIndexer (NonEmpty SpentInfo))
+  -> m (Core.SQLiteIndexer SpentInfoEvent)
 mkSpentIndexer path = do
   let createSpent =
         [sql|CREATE TABLE IF NOT EXISTS spent
@@ -132,29 +134,22 @@ mkSpentIndexer path = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
-  :: ( MonadIO n
-     , MonadError Core.IndexerError n
-     , MonadIO m
-     , Core.WorkerIndexer (ExceptT Core.IndexerError m) (NonEmpty SpentInfo) Core.SQLiteIndexer
-     )
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => Text
   -- ^ Name of the indexer (mostly for logging purpose)
   -> Core.CatchupConfig
-  -> (input -> Maybe (NonEmpty SpentInfo))
+  -> (input -> Maybe SpentInfoEvent)
   -- ^ event extractor
   -> FilePath
   -- ^ SQLite database location
-  -> n
-      ( MVar StandardSpentIndexer
-      , Core.WorkerM m (WithDistance input) (Core.Point (NonEmpty SpentInfo))
-      )
+  -> n (MVar StandardSpentIndexer, Core.WorkerM m (WithDistance input) (Core.Point SpentInfoEvent))
 spentWorker name catchupConfig extractor path = do
   indexer <- mkSpentIndexer path
   catchupWorker name catchupConfig (pure . extractor) indexer
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery (NonEmpty SpentInfo))) m)
-  => Core.Queryable m (NonEmpty SpentInfo) (Core.EventAtQuery (NonEmpty SpentInfo)) Core.SQLiteIndexer
+  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery SpentInfoEvent)) m)
+  => Core.Queryable m SpentInfoEvent (Core.EventAtQuery SpentInfoEvent) Core.SQLiteIndexer
   where
   query =
     let spentInfoQuery :: SQL.Query
@@ -170,11 +165,11 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery (NonEmpty SpentInfo))) m)
+  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery SpentInfoEvent)) m)
   => Core.Queryable
       m
-      (NonEmpty SpentInfo)
-      (Core.EventsMatchingQuery (NonEmpty SpentInfo))
+      SpentInfoEvent
+      (Core.EventsMatchingQuery SpentInfoEvent)
       Core.SQLiteIndexer
   where
   query =

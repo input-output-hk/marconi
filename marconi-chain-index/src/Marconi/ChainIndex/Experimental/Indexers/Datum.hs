@@ -9,6 +9,7 @@
 module Marconi.ChainIndex.Experimental.Indexers.Datum (
   -- * Event
   DatumInfo (DatumInfo),
+  DatumEvent,
   datumHash,
   datum,
 
@@ -33,7 +34,7 @@ import Control.Concurrent (MVar)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
-import Control.Monad.Except (ExceptT, MonadError)
+import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
 import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -61,6 +62,9 @@ data DatumInfo = DatumInfo
   }
   deriving (Generic, Show, Eq, SQL.FromRow, SQL.ToRow)
 
+-- | An alias for a non-empty list of @DatumInfo@, it's the event potentially produced on each block
+type DatumEvent = NonEmpty DatumInfo
+
 -- we use deriveJSON to drop the underscore prefix
 Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = tail} ''DatumInfo
 Lens.makeLenses ''DatumInfo
@@ -76,16 +80,16 @@ instance SQL.ToRow (Core.Timed C.ChainPoint DatumInfo) where
           , snoField
           ]
 
-type instance Core.Point (NonEmpty DatumInfo) = C.ChainPoint
+type instance Core.Point DatumEvent = C.ChainPoint
 
 -- | A raw SQLite indexer for Datum
-type DatumIndexer = Core.SQLiteIndexer (NonEmpty DatumInfo)
+type DatumIndexer = Core.SQLiteIndexer DatumEvent
 
 -- | A SQLite Datum indexer with Catchup
 type StandardDatumIndexer =
   Core.WithCatchup
-    (Core.WithTransform Core.SQLiteIndexer (NonEmpty DatumInfo))
-    (WithDistance (NonEmpty DatumInfo))
+    (Core.WithTransform Core.SQLiteIndexer DatumEvent)
+    (WithDistance DatumEvent)
 
 instance SQL.FromRow (Core.Timed C.ChainPoint DatumInfo) where
   fromRow = do
@@ -97,7 +101,7 @@ instance SQL.FromRow (Core.Timed C.ChainPoint DatumInfo) where
 mkDatumIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath
-  -> m (Core.SQLiteIndexer (NonEmpty DatumInfo))
+  -> m (Core.SQLiteIndexer DatumEvent)
 mkDatumIndexer path = do
   let createDatum =
         [sql|CREATE TABLE IF NOT EXISTS datum (datumHash BLOB PRIMARY KEY, datum BLOB, slotNo Int)|]
@@ -119,29 +123,22 @@ mkDatumIndexer path = do
 
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker
-  :: ( MonadIO m
-     , MonadIO n
-     , MonadError Core.IndexerError n
-     , Core.WorkerIndexer (ExceptT Core.IndexerError m) (NonEmpty DatumInfo) Core.SQLiteIndexer
-     )
+  :: (MonadIO m, MonadIO n, MonadError Core.IndexerError n)
   => Text
   -- ^ Name of the indexer (mostly for logging purpose)
   -> Core.CatchupConfig
-  -> (input -> Maybe (NonEmpty DatumInfo))
+  -> (input -> Maybe DatumEvent)
   -- ^ event extractor
   -> FilePath
   -- ^ SQLite database location
-  -> n
-      ( MVar StandardDatumIndexer
-      , Core.WorkerM m (WithDistance input) (Core.Point (NonEmpty DatumInfo))
-      )
+  -> n (MVar StandardDatumIndexer, Core.WorkerM m (WithDistance input) (Core.Point DatumEvent))
 datumWorker name catchupConfig extractor path = do
   indexer <- mkDatumIndexer path
   catchupWorker name catchupConfig (pure . extractor) indexer
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery (NonEmpty DatumInfo))) m)
-  => Core.Queryable m (NonEmpty DatumInfo) (Core.EventAtQuery (NonEmpty DatumInfo)) Core.SQLiteIndexer
+  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery DatumEvent)) m)
+  => Core.Queryable m DatumEvent (Core.EventAtQuery DatumEvent) Core.SQLiteIndexer
   where
   query =
     let datumQuery :: SQL.Query
@@ -157,11 +154,11 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery (NonEmpty DatumInfo))) m)
+  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery DatumEvent)) m)
   => Core.Queryable
       m
-      (NonEmpty DatumInfo)
-      (Core.EventsMatchingQuery (NonEmpty DatumInfo))
+      DatumEvent
+      (Core.EventsMatchingQuery DatumEvent)
       Core.SQLiteIndexer
   where
   query =
@@ -201,7 +198,7 @@ type instance Core.Result ResolveDatumQuery = Maybe C.ScriptData
 
 instance
   (MonadIO m, MonadError (Core.QueryError ResolveDatumQuery) m)
-  => Core.Queryable m (NonEmpty DatumInfo) ResolveDatumQuery Core.SQLiteIndexer
+  => Core.Queryable m DatumEvent ResolveDatumQuery Core.SQLiteIndexer
   where
   query =
     let utxoQuery :: SQL.Query

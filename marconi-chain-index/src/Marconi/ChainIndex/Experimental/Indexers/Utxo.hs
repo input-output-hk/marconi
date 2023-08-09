@@ -21,6 +21,7 @@
 module Marconi.ChainIndex.Experimental.Indexers.Utxo (
   -- * Event
   Utxo (Utxo),
+  UtxoEvent,
   address,
   txIndex,
   txIn,
@@ -62,7 +63,6 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Concurrent (MVar)
 import Control.Monad.Except (MonadError, guard)
-import Control.Monad.Trans.Except (ExceptT)
 import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
@@ -72,7 +72,10 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
-import Marconi.ChainIndex.Experimental.Indexers.Worker (catchupWorkerWithFilter)
+import Marconi.ChainIndex.Experimental.Indexers.Worker (
+  StandardSQLiteIndexer,
+  catchupWorkerWithFilter,
+ )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
 import Marconi.Core.Experiment (CatchupConfig)
@@ -90,6 +93,9 @@ data Utxo = Utxo
   }
   deriving (Show, Eq, Generic)
 
+-- | An alias for a non-empty list of @Utxo@, it's the event potentially produced on each block
+type UtxoEvent = NonEmpty Utxo
+
 -- we use deriveJSON to drop the underscore prefix
 Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = tail} ''Utxo
 
@@ -102,12 +108,9 @@ data UtxoIndexerConfig = UtxoIndexerConfig
 
 Lens.makeLenses ''UtxoIndexerConfig
 
-type instance Core.Point (NonEmpty Utxo) = C.ChainPoint
-type UtxoIndexer = Core.SQLiteIndexer (NonEmpty Utxo)
-type StandardUtxoIndexer =
-  Core.WithCatchup
-    (Core.WithTransform Core.SQLiteIndexer (NonEmpty Utxo))
-    (WithDistance (NonEmpty Utxo))
+type instance Core.Point UtxoEvent = C.ChainPoint
+type UtxoIndexer = Core.SQLiteIndexer UtxoEvent
+type StandardUtxoIndexer = StandardSQLiteIndexer UtxoEvent
 
 -- | Make a SQLiteIndexer for Utxos
 mkUtxoIndexer
@@ -163,21 +166,16 @@ mkUtxoIndexer path = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
-  :: ( MonadIO n
-     , MonadError Core.IndexerError n
-     , MonadIO m
-     , Core.WorkerIndexer (ExceptT Core.IndexerError m) (NonEmpty Utxo) Core.SQLiteIndexer
-     )
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => Text
   -- ^ Name of the indexer (mostly for logging purpose)
   -> CatchupConfig
   -> UtxoIndexerConfig
-  -> (input -> Maybe (NonEmpty Utxo))
+  -> (input -> Maybe UtxoEvent)
   -- ^ event extractor
   -> FilePath
   -- ^ SQLite database location
-  -> n
-      (MVar StandardUtxoIndexer, Core.WorkerM m (WithDistance input) (Core.Point (NonEmpty Utxo)))
+  -> n (MVar StandardUtxoIndexer, Core.WorkerM m (WithDistance input) (Core.Point UtxoEvent))
 utxoWorker name catchupConfig utxoConfig extractor path = do
   indexer <- mkUtxoIndexer path
   -- A helper to filter the provided utxos
@@ -195,7 +193,7 @@ utxoWorker name catchupConfig utxoConfig extractor path = do
                     & inlineScriptHash .~ Nothing
         addressFilter
         pure scriptFilter
-      filtering :: NonEmpty Utxo -> Maybe (NonEmpty Utxo)
+      filtering :: UtxoEvent -> Maybe UtxoEvent
       filtering =
         NonEmpty.nonEmpty
           . mapMaybe (utxoTransform utxoConfig)
@@ -248,8 +246,8 @@ instance SQL.FromRow (Core.Timed C.ChainPoint Utxo) where
     pure $ Core.Timed point utxo
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery (NonEmpty Utxo))) m)
-  => Core.Queryable m (NonEmpty Utxo) (Core.EventAtQuery (NonEmpty Utxo)) Core.SQLiteIndexer
+  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery UtxoEvent)) m)
+  => Core.Queryable m UtxoEvent (Core.EventAtQuery UtxoEvent) Core.SQLiteIndexer
   where
   query =
     let utxoQuery :: SQL.Query
@@ -265,8 +263,8 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery (NonEmpty Utxo))) m)
-  => Core.Queryable m (NonEmpty Utxo) (Core.EventsMatchingQuery (NonEmpty Utxo)) Core.SQLiteIndexer
+  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery UtxoEvent)) m)
+  => Core.Queryable m UtxoEvent (Core.EventsMatchingQuery UtxoEvent) Core.SQLiteIndexer
   where
   query =
     let utxoQuery :: SQL.Query
