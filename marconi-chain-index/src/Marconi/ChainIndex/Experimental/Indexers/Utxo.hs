@@ -367,19 +367,19 @@ getUtxoFromTxOut _txIndex _txIn (C.TxOut addr val datum refScript) =
     }
   where
     addrAny = toAddr addr
-    _datumHash = snd <$> getScriptDataAndHash datum
+    _datumHash = getScriptHash datum
     (_inlineScript, _inlineScriptHash) = case getRefScriptAndHash refScript of
       Nothing -> (Nothing, Nothing)
       Just (is, ish) -> (Just is, Just ish)
 
 -- | Get the datum hash and datum or a transaction output.
-getScriptDataAndHash
+getScriptHash
   :: C.TxOutDatum C.CtxTx era
-  -> Maybe (Maybe C.ScriptData, C.Hash C.ScriptData)
-getScriptDataAndHash C.TxOutDatumNone = Nothing
-getScriptDataAndHash (C.TxOutDatumHash _ h) = Just (Nothing, h)
-getScriptDataAndHash (C.TxOutDatumInTx _ d) = Just (Just $ C.getScriptData d, C.hashScriptDataBytes d)
-getScriptDataAndHash (C.TxOutDatumInline _ d) = Just (Just $ C.getScriptData d, C.hashScriptDataBytes d)
+  -> Maybe (C.Hash C.ScriptData)
+getScriptHash C.TxOutDatumNone = Nothing
+getScriptHash (C.TxOutDatumHash _ h) = Just h
+getScriptHash (C.TxOutDatumInTx _ d) = Just (C.hashScriptDataBytes d)
+getScriptHash (C.TxOutDatumInline _ d) = Just (C.hashScriptDataBytes d)
 
 -- | get the inlineScript and inlineScriptHash
 getRefScriptAndHash

@@ -807,7 +807,6 @@ propJsonRoundtripUtxoRow = Hedgehog.property $ do
   forM_ utxoRows $ \utxoRow -> Hedgehog.tripping utxoRow Aeson.encode Aeson.eitherDecode
 
 {- |
-  TODO useful?
   getUtxoEvens should compute the same event as the event generator
   This test should prove the getUtxoEvent is correctly computing Unspent Transactions
 -}

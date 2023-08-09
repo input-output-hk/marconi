@@ -82,7 +82,7 @@ propAllUnspent = Hedgehog.property $ do
     liftIO $
       runExceptT $
         withIndexer events $
-          Core.query point (UtxoQuery.SidechainUtxoQuery address Nothing Nothing)
+          Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
   Hedgehog.assert $
     all (> point) (res ^.. Lens.folded . UtxoQuery.spentInfo . Lens.folded . Core.point)
 
@@ -91,6 +91,7 @@ propResolvedDatum :: Property
 propResolvedDatum = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchainWithInfo
   let utxoEvents = Test.Utxo.getTimedUtxosEvents $ Gen.mockchainWithInfoAsMockchain events
+      datumEvents = Test.Datum.getDatumsEvents $ Gen.mockchainWithInfoAsMockchain events
   event <- Hedgehog.forAll $ Hedgehog.Gen.element utxoEvents
   let point = event ^. Core.point
   address <-
@@ -101,8 +102,13 @@ propResolvedDatum = Hedgehog.property $ do
     liftIO $
       runExceptT $
         withIndexer events $
-          Core.query point (UtxoQuery.SidechainUtxoQuery address Nothing Nothing)
+          Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
   let storedData = Test.Datum.getDatumsEvents $ Gen.mockchainWithInfoAsMockchain events
+      notInDatumEvents :: C.Hash C.ScriptData -> Either String String
+      notInDatumEvents hash =
+        if hash `elem` datumEvents ^.. traverse . Core.event . traverse . traverse . Datum.datumHash
+          then Left $ "Hash " <> show hash <> " is unresolved but present in the events"
+          else Right "Hash unresolved because it's unknown"
       findByTxIn :: C.TxIn -> Maybe Utxo.Utxo
       findByTxIn txin =
         List.find ((== txin) . Lens.view Utxo.txIn) $
@@ -113,8 +119,7 @@ propResolvedDatum = Hedgehog.property $ do
           (Nothing, Nothing) -> Right "NoDatum"
           (Just originalDh, Just resolvedDh) | originalDh == resolvedDh -> do
             case resolved ^. UtxoQuery.datum of
-              -- TODO fix (add configuration) the generator such that the nothing case becomes an error
-              Nothing -> Right $ "No Datum for " <> show resolvedDh
+              Nothing -> notInDatumEvents resolvedDh
               Just d ->
                 let dh = C.hashScriptDataBytes $ C.unsafeHashableScriptData d
                  in if dh == resolvedDh
@@ -154,7 +159,7 @@ propFutureSpentAreTxIn = Hedgehog.property $ do
     liftIO $
       runExceptT $
         withIndexer events $
-          Core.query point (UtxoQuery.SidechainUtxoQuery address Nothing Nothing)
+          Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
   let findSpentInUtxos = flip elem txIds
       findUTxo utxoRes = fromMaybe True $ do
         spendTxId <- utxoRes ^? UtxoQuery.spentInfo . traverse . Core.event . Lens._2

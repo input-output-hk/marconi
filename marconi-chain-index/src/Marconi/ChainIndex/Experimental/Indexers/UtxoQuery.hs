@@ -16,7 +16,7 @@ module Marconi.ChainIndex.Experimental.Indexers.UtxoQuery (
   mkUtxoSQLiteQuery,
 
   -- * Query
-  SidechainUtxoQuery (..),
+  UtxoQueryInput (..),
   address,
   lowerBound,
   upperBound,
@@ -222,7 +222,7 @@ instance SQL.FromRow UtxoResult where
           pure $ Core.Timed spentChainPoint' (spentBlockInfo', spentAt')
     pure $ UtxoResult utxo' datum' blockInfo' spentInfo' txIns
 
-data SidechainUtxoQuery = SidechainUtxoQuery
+data UtxoQueryInput = UtxoQueryInput
   { _address :: C.AddressAny
   , _lowerBound :: Maybe C.SlotNo
   -- ^ Inclusive lowerBound
@@ -230,9 +230,9 @@ data SidechainUtxoQuery = SidechainUtxoQuery
   -- ^ Inclusive upperBound (utxo spent after this point displaed with their spent information)
   }
 
-Lens.makeLenses ''SidechainUtxoQuery
+Lens.makeLenses ''UtxoQueryInput
 
-type instance Core.Result SidechainUtxoQuery = [UtxoResult]
+type instance Core.Result UtxoQueryInput = [UtxoResult]
 
 baseQuery :: SQL.Query
 baseQuery =
@@ -285,7 +285,7 @@ baseQuery =
 
 instance
   (MonadIO m, MonadError (Core.QueryError UtxoQueryEvent) m)
-  => Core.Queryable m UtxoQueryEvent SidechainUtxoQuery (Core.SQLiteAggregateQuery m C.ChainPoint)
+  => Core.Queryable m UtxoQueryEvent UtxoQueryInput (Core.SQLiteAggregateQuery m C.ChainPoint)
   where
   query point q indexer =
     let addressFilter = (["u.address = :address"], [":address" := q ^. address])
