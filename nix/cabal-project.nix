@@ -81,7 +81,7 @@ let
 
     # Needed for running the marconi-sidechain integration tests in CI
     marconi-sidechain.preCheck = "
-      export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain-exe-marconi-sidechain-ghc927}/bin/marconi-sidechain
+      export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
     ";
 
     # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
