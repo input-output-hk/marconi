@@ -71,6 +71,8 @@ library
     Marconi.ChainIndex.Experimental.Indexers.Worker
     Marconi.ChainIndex.Experimental.Runner
     Marconi.ChainIndex.Extract.Datum
+    Marconi.ChainIndex.Git.Rev
+    Marconi.ChainIndex.Git.RevFromGit
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
     Marconi.ChainIndex.Indexers.EpochState
@@ -83,8 +85,6 @@ library
     Marconi.ChainIndex.Orphans
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
-    Marconi.Git.Rev
-    Marconi.Git.RevFromGit
 
   other-modules:   Paths_marconi_chain_index
   autogen-modules: Paths_marconi_chain_index

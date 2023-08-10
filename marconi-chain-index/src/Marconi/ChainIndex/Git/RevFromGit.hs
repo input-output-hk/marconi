@@ -1,4 +1,4 @@
-module Marconi.Git.RevFromGit (
+module Marconi.ChainIndex.Git.RevFromGit (
   gitRevFromGit,
 ) where
 

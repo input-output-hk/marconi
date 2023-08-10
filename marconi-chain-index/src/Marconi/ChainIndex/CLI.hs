@@ -19,6 +19,7 @@ import System.FilePath ((</>))
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
 import Data.List.NonEmpty qualified as NonEmpty
+import Marconi.ChainIndex.Git.Rev (gitRev)
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   ShouldFailIfResync (ShouldFailIfResync),
@@ -30,7 +31,6 @@ import Marconi.ChainIndex.Types (
   scriptTxDbName,
   utxoDbName,
  )
-import Marconi.Git.Rev (gitRev)
 import Paths_marconi_chain_index (version)
 
 {- | Allow the user to set a starting point for indexing the user needs to provide both

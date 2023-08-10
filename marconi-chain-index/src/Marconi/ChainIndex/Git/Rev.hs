@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.Git.Rev (
+module Marconi.ChainIndex.Git.Rev (
   gitRev,
 ) where
 
@@ -12,7 +12,7 @@ import Data.Text qualified as T
 
 import Foreign.C.String (CString)
 import GHC.Foreign (peekCStringLen)
-import Marconi.Git.RevFromGit (gitRevFromGit)
+import Marconi.ChainIndex.Git.RevFromGit (gitRevFromGit)
 import System.IO (utf8)
 import System.IO.Unsafe (unsafeDupablePerformIO)
 
