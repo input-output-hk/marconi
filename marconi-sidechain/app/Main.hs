@@ -1,17 +1,10 @@
 module Main where
 
 import Control.Concurrent.Async (race_)
-<<<<<<< HEAD
 import Marconi.Sidechain.Api.HttpServer (runHttpServer)
 import Marconi.Sidechain.Bootstrap (runSidechainIndexers)
-import Marconi.Sidechain.CLI (parseCli)
-import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
-=======
-import Marconi.Sidechain.Api.HttpServer qualified as Http
-import Marconi.Sidechain.Api.Types (CliArgs (CliArgs, httpPort, targetAddresses, targetAssets))
-import Marconi.Sidechain.Bootstrap (bootstrapIndexers, initializeSidechainEnv)
 import Marconi.Sidechain.CLI (getVersion, parseCli)
->>>>>>> 32ba4a9b4 (Version works locally)
+import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 
 {- | Concurrently start:
 

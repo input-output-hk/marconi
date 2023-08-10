@@ -1,4 +1,5 @@
 module Marconi.Sidechain.CLI (
+  CliArgs (..),
   parseCli,
   Cli.getVersion,
   programParser,
