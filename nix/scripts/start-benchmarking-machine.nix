@@ -1,8 +1,9 @@
-{ inputs, pkgs, project, enable }:
-let
-  nixpkgs = inputs.nixpkgs;
+{ inputs', pkgs, ... }:
 
-  mithril-client = inputs.mithril.packages.${pkgs.system}.mithril-client;
+{ project, enable }:
+
+let
+  mithril-client = inputs'.mithril.packages.mithril-client;
 
   baseVmModule = { lib, modulesPath, ... }: {
     imports = [
@@ -121,7 +122,7 @@ let
 
     environment.etc = {
       "grafana-dashboards/marconi-dashboard.json" = {
-        source = inputs.self + /benchmark/marconi-dashboard.json;
+        source = inputs'.self + /benchmark/marconi-dashboard.json;
         group = "grafana";
         user = "grafana";
       };
@@ -171,7 +172,7 @@ let
     };
 
     imports = [
-      inputs.cardano-node.nixosModules.cardano-node
+      inputs'.cardano-node.nixosModules.cardano-node
     ];
 
     services.cardano-node = {

@@ -1,12 +1,9 @@
 # This file is part of the IOGX template and is documented at the link below:
-# https://www.github.com/input-output-hk/iogx#33-nixhaskell-projectnix
+# https://www.github.com/input-output-hk/iogx#33-nixcabal-projectnix
 
-{ inputs, inputs', meta, config, pkgs, lib }:
+{ inputs, inputs', meta, config, pkgs, l, ... }:
 
 let
-
-  lib = pkgs.lib;
-
 
   # Only a limited subset of components can be cross-compiled on windows.
   # When `isCross` is `true`, it means that we are cross-compiling the project.
@@ -20,8 +17,8 @@ let
 
   packages = {
     # These rely on the plutus-tx-plugin, so they don't cross-compile.
-    marconi-chain-index.components.tests.marconi-chain-index-test.buildable = lib.mkForce (!isCross);
-    marconi-chain-index.components.sublibs.marconi-chain-index-test-lib.buildable = lib.mkForce (!isCross);
+    marconi-chain-index.components.tests.marconi-chain-index-test.buildable = l.mkForce (!isCross);
+    marconi-chain-index.components.sublibs.marconi-chain-index-test-lib.buildable = l.mkForce (!isCross);
 
     # These don't cross-compile anymore after updating hackage.
     # There was an error with wai-app-static (a transitive dependency).
@@ -49,7 +46,7 @@ let
     # ghc: ghc-iserv terminated (1)
     # The error is here: https://ci.iog.io/build/265023/nixlog/2
     # ```
-    marconi-chain-index.components.sublibs.json-rpc.buildable = lib.mkForce (!isCross);
+    marconi-chain-index.components.sublibs.json-rpc.buildable = l.mkForce (!isCross);
     marconi-sidechain.package.buildable = !isCross;
     marconi-tutorial.package.buildable = !isCross;
 
@@ -77,14 +74,14 @@ let
     # Else, we'll get the error
     # `/nix/store/ls0ky8x6zi3fkxrv7n4vs4x9czcqh1pb-marconi/marconi/test/configuration.yaml: openFile: does not exist (No such file or directory)`
     marconi-chain-index.preCheck = "
-      export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
-      export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
+      export CARDANO_CLI=${inputs'.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
+      export CARDANO_NODE=${inputs'.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
       export CARDANO_NODE_SRC=${../.}
     ";
 
     # Needed for running the marconi-sidechain integration tests in CI
     marconi-sidechain.preCheck = "
-      export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain-exe-marconi-sidechain-ghc927}/bin/marconi-sidechain
+      export MARCONI_SIDECHAIN=${inputs'.self.packages.marconi-sidechain}/bin/marconi-sidechain
     ";
 
     # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519

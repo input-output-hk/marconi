@@ -7,12 +7,10 @@
 
   inputs = {
 
-    # TODO The `?ref=remove-list-binaries` is a temporary solution to solve a CI error.
-    # Probably an # edge case in IOGX.
-    iogx.url = "github:input-output-hk/iogx?ref=remove-list-binaries";
-    iogx.inputs.CHaP.follows = "CHaP_2";
+    iogx.url = "github:input-output-hk/iogx";
+    iogx.inputs.CHaP.follows = "CHaP";
 
-    CHaP_2 = {
+    CHaP = {
       url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
       flake = false;
     };
@@ -27,7 +25,10 @@
   };
 
 
-  outputs = inputs: inputs.iogx.lib.mkFlake inputs ./.;
+  outputs = inputs: inputs.iogx.lib.mkFlake {
+    inherit inputs;
+    repoRoot = ./.;
+  };
 
 
   nixConfig = {
