@@ -70,7 +70,6 @@ library
     , servant
     , servant-server
     , sqlite-simple
-    , time
     , warp
 
 executable marconi-tutorial

@@ -26,7 +26,7 @@ module Gen.Marconi.ChainIndex.Types (
   genAssetId,
   genPolicyId,
   genQuantity,
-  genEpochNo,
+  CGen.genEpochNo,
   genPoolId,
 ) where
 
@@ -404,7 +404,7 @@ genProtocolParametersForPlutusScripts =
     <*> CGen.genLovelace
     <*> CGen.genLovelace
     <*> CGen.genLovelace
-    <*> genEpochNo
+    <*> CGen.genEpochNo
     <*> genNat
     <*> genRationalInt64
     <*> CGen.genRational
@@ -474,10 +474,6 @@ genPolicyId =
 -- TODO Copied from cardano-api. Delete once reexported
 genQuantity :: Range Integer -> Gen C.Quantity
 genQuantity range = fromInteger <$> Gen.integral range
-
--- TODO Copied from cardano-api. Delete once reexported
-genEpochNo :: Gen C.EpochNo
-genEpochNo = C.EpochNo <$> Gen.word64 (Range.linear 0 10)
 
 genPoolId :: Gen (C.Hash C.StakePoolKey)
 genPoolId = C.StakePoolKeyHash . KeyHash . mkDummyHash <$> Gen.int (Range.linear 0 10)

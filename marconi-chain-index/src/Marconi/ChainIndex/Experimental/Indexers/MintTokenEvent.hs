@@ -11,8 +11,6 @@ table 'minting_policy_events' with the following fields:
 
 @
 ( slotNo INT NOT NULL
-, blockHeaderHash INT NOT NULL
-, blockNo INT NOT NULL
 , txId BLOB NOT NULL
 , txIndexInBlock BLOB NOT NULL
 , policyId BLOB NOT NULL
@@ -23,18 +21,37 @@ table 'minting_policy_events' with the following fields:
 )
 @
 -}
-module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent where
+module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
+  -- * Events
+  MintTokenEvents (MintTokenEvents),
+  mintTokenEventsAssets,
+  MintTokenEvent,
+  mintTokenEventLocation,
+  mintTokenEventAsset,
+  MintTokenEventLocation,
+  mintTokenEventIndexInBlock,
+  mintTokenEventTxId,
+  MintAssetRedeemer,
+  mintAssetRedeemerData,
+  mintAssetRedeemerHash,
+
+  -- * Indexer and worker
+  MintTokenEventIndexer,
+  StandardMintTokenEventIndexer,
+  mkMintTokenIndexer,
+  mintTokenEventWorker,
+
+  -- * Extract events
+  extractEventsFromTx,
+) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Alonzo.Tx qualified as LA
 import Cardano.Ledger.Api (
-  EraCrypto,
   RdmrPtr (RdmrPtr),
   Redeemers (Redeemers),
   StandardCrypto,
-  getPlutusData,
-  hashData,
  )
 import Cardano.Ledger.Api qualified as Ledger
 import Cardano.Ledger.Babbage.Tx qualified as LB
@@ -46,39 +63,49 @@ import Cardano.Ledger.Mary.Value (
   flattenMultiAsset,
  )
 import Control.Concurrent (MVar)
-import Control.Lens (folded, makeLenses, toListOf, (^.), (^?))
+import Control.Lens (folded, toListOf, (^.), (^?))
+import Control.Lens qualified as Lens
+import Control.Monad.Cont (MonadIO)
+import Control.Monad.Except (MonadError)
 import Data.ByteString.Short qualified as Short
 import Data.List qualified as List
+import Data.List.NonEmpty (NonEmpty)
 import Data.Map qualified as Map
-import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Text (Text)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Indexers.LastSync (createLastSyncTable)
+import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
+import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
+import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
+import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardSQLiteIndexer, catchupWorker)
 import Marconi.ChainIndex.Types (
   TxIndexInBlock,
  )
 import Marconi.Core.Experiment qualified as Core
 
+-- | A raw SQLite indexer for 'MintTokenEvents'
 type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenEvents
+
+-- | A SQLite Spent indexer with Catchup
+type StandardMintTokenEventIndexer = StandardSQLiteIndexer MintTokenEvents
 
 -- | Minting events given for each block.
 newtype MintTokenEvents = MintTokenEvents
-  { _mintTokenEventsAssets :: [MintTokenEvent]
+  { _mintTokenEventsAssets :: NonEmpty MintTokenEvent
   }
   deriving (Show, Eq, Ord)
 
 data MintTokenEvent = MintTokenEvent
-  { _mintBurnTokenEventLocation :: !MintTokenEventLocation
-  , _mintBurnTokenEventAsset :: !MintAsset
+  { _mintTokenEventLocation :: !MintTokenEventLocation
+  , _mintTokenEventAsset :: !MintAsset
   }
   deriving (Show, Eq, Ord, Generic)
 
 data MintTokenEventLocation = MintTokenEventLocation
-  { _mintBurnTokenEventBlockNo :: !C.BlockNo
-  , _mintBurnTokenEventIndexInBlock :: !TxIndexInBlock
-  , _mintBurnTokenEventTxId :: !C.TxId
+  { _mintTokenEventIndexInBlock :: !TxIndexInBlock
+  , _mintTokenEventTxId :: !C.TxId
   }
   deriving (Show, Eq, Ord, Generic)
 
@@ -98,26 +125,29 @@ data MintAssetRedeemer = MintAssetRedeemer
   }
   deriving (Eq, Ord, Show)
 
-$(makeLenses ''MintTokenEvents)
-$(makeLenses ''MintTokenEvent)
-$(makeLenses ''MintTokenEventLocation)
-$(makeLenses ''MintAsset)
-$(makeLenses ''MintAssetRedeemer)
+Lens.makeLenses ''MintTokenEvents
+Lens.makeLenses ''MintTokenEvent
+Lens.makeLenses ''MintTokenEventLocation
+Lens.makeLenses ''MintAsset
+Lens.makeLenses ''MintAssetRedeemer
 
 instance SQL.ToRow (Core.Timed C.ChainPoint MintTokenEvent) where
-  toRow te = SQL.toRow (te ^. Core.point) ++ SQL.toRow (te ^. Core.event)
+  toRow te =
+    let snoField = case te ^. Core.point of
+          C.ChainPointAtGenesis -> SQL.SQLNull
+          C.ChainPoint sno _ -> SQL.toField sno
+     in snoField : SQL.toRow (te ^. Core.event)
 
 instance SQL.ToRow MintTokenEvent where
   toRow e =
-    SQL.toRow (e ^. mintBurnTokenEventLocation)
-      ++ SQL.toRow (e ^. mintBurnTokenEventAsset)
+    SQL.toRow (e ^. mintTokenEventLocation)
+      ++ SQL.toRow (e ^. mintTokenEventAsset)
 
 instance SQL.ToRow MintTokenEventLocation where
   toRow l =
     SQL.toRow
-      [ SQL.toField $ l ^. mintBurnTokenEventBlockNo
-      , SQL.toField $ l ^. mintBurnTokenEventIndexInBlock
-      , SQL.toField $ l ^. mintBurnTokenEventTxId
+      [ SQL.toField $ l ^. mintTokenEventIndexInBlock
+      , SQL.toField $ l ^. mintTokenEventTxId
       ]
 
 instance SQL.ToRow MintAsset where
@@ -130,49 +160,41 @@ instance SQL.ToRow MintAsset where
       , SQL.toField $ ma ^? mintAssetRedeemer . traverse . mintAssetRedeemerData
       ]
 
-type instance Core.Point (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) = C.ChainPoint
-
 type instance Core.Point MintTokenEvents = C.ChainPoint
 
--- TODO Move to 'marconi-cardano'. This is repetitive between indexers.
-instance Core.HasGenesis C.ChainPoint where
-  genesis = C.ChainPointAtGenesis
-
 -- | Create a worker for the MintTokenEvent indexer
-mintBurnTokenEventWorker
-  :: FilePath
-  -> IO
-      ( MVar MintTokenEventIndexer
-      , Core.Worker (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) C.ChainPoint
-      )
-mintBurnTokenEventWorker dbPath = do
-  sqliteIndexer <- mkSqliteIndexer dbPath -- TODO handle error
-  Core.createWorker "MintTokenEvent" extractEvents sqliteIndexer
+mintTokenEventWorker
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => Text
+  -> Core.CatchupConfig
+  -> (input -> Maybe MintTokenEvents)
+  -> FilePath
+  -> n (MVar StandardMintTokenEventIndexer, Core.WorkerM m (WithDistance input) C.ChainPoint)
+mintTokenEventWorker name catchupConfig extractor dbPath = do
+  sqliteIndexer <- mkMintTokenIndexer dbPath
+  catchupWorker name catchupConfig (pure . extractor) sqliteIndexer
 
-extractEvents :: (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) -> IO (Maybe MintTokenEvents)
-extractEvents (C.BlockInMode (C.Block (C.BlockHeader _slotNo _bhh blockNo) txs) _, _, _) = do
-  pure $ Just $ MintTokenEvents $ concatMap (uncurry extractEventsFromTx) $ zip [0 ..] txs
-  where
-    extractEventsFromTx :: TxIndexInBlock -> C.Tx era -> [MintTokenEvent]
-    extractEventsFromTx txIndexInBlock (C.Tx txb _) =
-      let mintEventLocation = MintTokenEventLocation blockNo txIndexInBlock (C.getTxId txb)
-       in fmap (MintTokenEvent mintEventLocation) $ extactMintEventsFromTxBody txb
+-- Events extraction
 
-    extactMintEventsFromTxBody :: C.TxBody era -> [MintAsset]
-    extactMintEventsFromTxBody txb = case txb of
-      C.ShelleyTxBody era shelleyTx _ _ _ _ -> case era of
-        C.ShelleyBasedEraShelley -> []
-        C.ShelleyBasedEraAllegra -> []
-        C.ShelleyBasedEraMary -> []
-        C.ShelleyBasedEraAlonzo -> getPolicyData txb $ LA.atbMint shelleyTx
-        C.ShelleyBasedEraBabbage -> getPolicyData txb $ LB.btbMint shelleyTx
-        C.ShelleyBasedEraConway -> getPolicyData txb $ LC.ctbMint shelleyTx
-      _byronTxBody -> [] -- ByronTxBody is not exported but as it's the only other data constructor then _ matches it.
+extractEventsFromTx :: TxIndexInBlock -> C.TxBody era -> [MintTokenEvent]
+extractEventsFromTx txIndexInBlock txb =
+  let mintEventLocation = MintTokenEventLocation txIndexInBlock (C.getTxId txb)
+
+      extactMintEventsFromTxBody :: [MintAsset]
+      extactMintEventsFromTxBody = case txb of
+        C.ShelleyTxBody era shelleyTx _ _ _ _ -> case era of
+          C.ShelleyBasedEraShelley -> []
+          C.ShelleyBasedEraAllegra -> []
+          C.ShelleyBasedEraMary -> []
+          C.ShelleyBasedEraAlonzo -> getPolicyData txb $ LA.atbMint shelleyTx
+          C.ShelleyBasedEraBabbage -> getPolicyData txb $ LB.btbMint shelleyTx
+          C.ShelleyBasedEraConway -> getPolicyData txb $ LC.ctbMint shelleyTx
+        _byronTxBody -> [] -- ByronTxBody is not exported but as it's the only other data constructor then _ matches it.
+   in MintTokenEvent mintEventLocation <$> extactMintEventsFromTxBody
 
 getPolicyData
   :: forall era
    . ( Ledger.Era (C.ShelleyLedgerEra era)
-     , EraCrypto (C.ShelleyLedgerEra era) ~ StandardCrypto
      )
   => C.TxBody era
   -> MultiAsset StandardCrypto
@@ -185,8 +207,7 @@ getPolicyData txb m = do
       txRedeemers _ = mempty
       findRedeemerByIndex ix (RdmrPtr _ w, _) = w == ix
       findRedeemer ix = snd <$> List.find (findRedeemerByIndex ix) (txRedeemers txb)
-      redeemerHash = C.ScriptDataHash . hashData
-      toAssetRedeemer r = MintAssetRedeemer (fromAlonzoData r) (redeemerHash r)
+      toAssetRedeemer r = MintAssetRedeemer (C.getScriptData r) (C.hashScriptDataBytes r)
   (ix, (policyId', assetName, quantity)) <- zip [0 ..] $ flattenMultiAsset m
   let redeemer = findRedeemer ix
   pure $
@@ -194,7 +215,7 @@ getPolicyData txb m = do
       (fromMaryPolicyID policyId')
       (fromMaryAssetName assetName)
       (C.Quantity quantity)
-      (toAssetRedeemer <$> redeemer)
+      (toAssetRedeemer . C.fromAlonzoData <$> redeemer)
 
 fromMaryPolicyID :: PolicyID StandardCrypto -> C.PolicyId
 fromMaryPolicyID (PolicyID sh) = C.PolicyId (C.fromShelleyScriptHash sh) -- from cardano-api:src/Cardano/Api/Value.hs
@@ -202,46 +223,33 @@ fromMaryPolicyID (PolicyID sh) = C.PolicyId (C.fromShelleyScriptHash sh) -- from
 fromMaryAssetName :: AssetName -> C.AssetName
 fromMaryAssetName (AssetName n) = C.AssetName $ Short.fromShort n -- from cardano-api:src/Cardano/Api/Value.hs
 
-fromAlonzoData :: LA.Data ledgerera -> C.ScriptData
-fromAlonzoData = C.fromPlutusData . getPlutusData -- from cardano-api:src/Cardano/Api/ScriptData.hs
-
-mkSqliteIndexer :: FilePath -> IO MintTokenEventIndexer
-mkSqliteIndexer dbPath = do
-  c <- SQL.open dbPath
-
-  SQL.execute_ c "PRAGMA journal_mode=WAL"
-
-  SQL.execute_
-    c
-    [sql|CREATE TABLE IF NOT EXISTS
-          minting_policy_events
-          ( slotNo INT NOT NULL
-          , blockHeaderHash INT NOT NULL
-          , blockNo INT NOT NULL
-          , txId BLOB NOT NULL
-          , txIndexInBlock BLOB NOT NULL
-          , policyId BLOB NOT NULL
-          , assetName TEXT NOT NULL
-          , quantity INT NOT NULL
-          , redeemerHash BLOB
-          , redeemerData BLOB
-          )|]
-
-  SQL.execute_
-    c
-    [sql|CREATE INDEX IF NOT EXISTS
-         minting_policy_events__txId_policyId
-         ON minting_policy_events (txId, policyId)|]
-
-  createLastSyncTable c
+mkMintTokenIndexer
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => FilePath
+  -> m MintTokenEventIndexer
+mkMintTokenIndexer dbPath = do
+  let createMintPolicyEvent =
+        [sql|CREATE TABLE IF NOT EXISTS
+              minting_policy_events
+              ( slotNo INT NOT NULL
+              , txId BLOB NOT NULL
+              , txIndexInBlock BLOB NOT NULL
+              , policyId BLOB NOT NULL
+              , assetName TEXT NOT NULL
+              , quantity INT NOT NULL
+              , redeemerHash BLOB
+              , redeemerData BLOB
+              )|]
+      createMintPolicyIdIndex =
+        [sql|CREATE INDEX IF NOT EXISTS
+             minting_policy_events__txId_policyId
+             ON minting_policy_events (txId, policyId)|]
 
   let mintEventInsertQuery :: SQL.Query -- Utxo table SQL statement
       mintEventInsertQuery =
         [sql|INSERT
                INTO minting_policy_events (
                  slotNo,
-                 blockHeaderHash,
-                 blockNo,
                  txIndexInBlock,
                  txId,
                  policyId,
@@ -250,18 +258,20 @@ mkSqliteIndexer dbPath = do
                  redeemerHash,
                  redeemerData
               ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+              (?, ?, ?, ?, ?, ?, ?, ?)|]
 
-  pure $
-    Core.SQLiteIndexer
-      c
-      [
-        [ Core.SQLInsertPlan timedMintEventsToTimedMintEventList mintEventInsertQuery
-        ]
+  Core.mkSqliteIndexer
+    dbPath
+    [createMintPolicyEvent, createMintPolicyIdIndex, Sync.syncTableCreation]
+    [
+      [ Core.SQLInsertPlan timedMintEventsToTimedMintEventList mintEventInsertQuery
+      , Sync.syncInsertPlan
       ]
-      [ Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo
-      ]
-      Core.genesis
+    ]
+    [ Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo
+    , Sync.syncRollbackPlan
+    ]
+    Sync.syncLastPointQuery
 
 timedMintEventsToTimedMintEventList
   :: Core.Timed point MintTokenEvents

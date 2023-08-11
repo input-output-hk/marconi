@@ -11,9 +11,9 @@ module Marconi.Core.Experiment.Class (
   indexAllDescendingEither,
   Resetable (..),
   Queryable (..),
-  query',
+  queryEither,
   queryLatest,
-  queryLatest',
+  queryLatestEither,
   AppendResult (..),
   Closeable (..),
   IsSync (..),
@@ -161,15 +161,15 @@ class Queryable m event query indexer where
     -> indexer event
     -> m (Result query)
 
--- | Like 'query', but internalise @QueryError@ in the result.
-query'
+-- | Like 'queryEither, but internalise @QueryError@ in the result.
+queryEither
   :: (Queryable (ExceptT (QueryError query) m) event query indexer)
   => (Ord (Point event))
   => Point event
   -> query
   -> indexer event
   -> m (Either (QueryError query) (Result query))
-query' p q = runExceptT . query p q
+queryEither p q = runExceptT . query p q
 
 -- | Like 'query', but use the latest point of the indexer instead of a provided one
 queryLatest
@@ -184,8 +184,8 @@ queryLatest q indexer = do
   p <- lastSyncPoint indexer
   query p q indexer
 
--- | Like 'query\'', but use the latest point of the indexer instead of a provided one
-queryLatest'
+-- | Like 'queryEither', but use the latest point of the indexer instead of a provided one
+queryLatestEither
   :: (Queryable (ExceptT (QueryError query) m) event query indexer)
   => (IsSync m event indexer)
   => (Monad m)
@@ -193,9 +193,9 @@ queryLatest'
   => query
   -> indexer event
   -> m (Either (QueryError query) (Result query))
-queryLatest' q indexer = do
+queryLatestEither q indexer = do
   p <- lastSyncPoint indexer
-  query' p q indexer
+  queryEither p q indexer
 
 -- | The indexer can take a result and complete it with its events
 class AppendResult m event query indexer where

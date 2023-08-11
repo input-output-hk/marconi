@@ -1,28 +1,33 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import Data.Void (Void)
+import Control.Monad.Except (runExceptT)
 import Marconi.ChainIndex.CLI qualified as Cli
-import Marconi.ChainIndex.Experimental.Indexers qualified as Indexers
-import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as Mint
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Experimental.Indexers (buildIndexers)
+import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Experimental.Runner qualified as Runner
+import Marconi.Core.Experiment qualified as Core
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath ((</>))
 
 main :: IO ()
 main = do
   o <- Cli.parseOptions
-  createDirectoryIfMissing True (Cli.optionsDbPath o)
-
-  let socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
+  let batchSize = 5000
+      stopCatchupDistance = 100
+      filteredAddresses = []
+      includeScript = True
+      socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
       networkId = Cli.optionsNetworkId $ Cli.commonOptions o
-  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
-  indexers <-
-    sequence
-      [ fmap snd $ Indexers.utxoWorker (Cli.optionsDbPath o </> "utxo.db") securityParam
-      , fmap snd $ Mint.mintBurnTokenEventWorker (Cli.optionsDbPath o </> "minttokenevent.db")
-      ]
-
-  Indexers.runIndexers
+  createDirectoryIfMissing True (Cli.optionsDbPath o)
+  mindexers <-
+    runExceptT $
+      buildIndexers
+        (Core.CatchupConfig batchSize stopCatchupDistance)
+        (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
+        (Cli.optionsDbPath o)
+  let (_utxoQueryIndexer, indexers) = case mindexers of
+        Left err -> error $ show err
+        Right result -> result
+  Runner.runIndexer
     socketPath
     networkId
     (Cli.optionsChainPoint $ Cli.commonOptions o)

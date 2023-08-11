@@ -18,6 +18,7 @@ module Marconi.Core.Experiment.Transformer.IndexWrapper (
   indexAllVia,
   lastSyncPointVia,
   closeVia,
+  getDatabasePathVia,
   queryVia,
   queryLatestVia,
 ) where
@@ -34,6 +35,7 @@ import Marconi.Core.Experiment.Class (
   indexAll,
   queryLatest,
  )
+import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
 
 data IndexWrapper config indexer event = IndexWrapper
@@ -119,7 +121,7 @@ instance
   where
   lastSyncPoint = lastSyncPointVia wrappedIndexer
 
-{- | Helper to implement the @lastSyncPoint@ functon of 'IsSync' when we use a wrapper.
+{- | Helper to implement the @close@ functon of 'Closeable' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.
 -}
 closeVia
@@ -134,6 +136,22 @@ instance
   => Closeable m (IndexWrapper config index)
   where
   close = closeVia wrappedIndexer
+
+{- | Helper to implement the @close@ functon of 'Closeable' when we use a wrapper.
+ If you don't want to perform any other side logic, use @deriving via@ instead.
+-}
+getDatabasePathVia
+  :: (HasDatabasePath indexer)
+  => Getter s (indexer event)
+  -> s
+  -> FilePath
+getDatabasePathVia l = getDatabasePath . view l
+
+instance
+  (HasDatabasePath index)
+  => HasDatabasePath (IndexWrapper config index)
+  where
+  getDatabasePath = getDatabasePathVia wrappedIndexer
 
 {- | Helper to implement the @query@ functon of 'Queryable' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.

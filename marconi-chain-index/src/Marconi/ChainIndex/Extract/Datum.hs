@@ -84,6 +84,6 @@ getTxOutDatumOrHash
   :: C.TxOutDatum C.CtxTx era -> Maybe (Either (C.Hash C.ScriptData) (C.Hash C.ScriptData, C.ScriptData))
 getTxOutDatumOrHash = \case
   C.TxOutDatumHash _ dh -> Just $ Left dh
-  C.TxOutDatumInTx _ d -> Just $ Right (C.hashScriptDataBytes d, C.getScriptData d)
+  C.TxOutDatumInTx _ d -> Just $ Left (C.hashScriptDataBytes d)
   C.TxOutDatumInline _ d -> Just $ Right (C.hashScriptDataBytes d, C.getScriptData d)
   C.TxOutDatumNone -> Nothing

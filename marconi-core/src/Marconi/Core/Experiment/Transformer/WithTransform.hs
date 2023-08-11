@@ -24,9 +24,11 @@ import Marconi.Core.Experiment.Class (
   Queryable (query),
   Resetable (reset),
  )
+import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
 import Marconi.Core.Experiment.Transformer.IndexWrapper (
   closeVia,
+  getDatabasePathVia,
   indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
@@ -36,8 +38,9 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
  )
 import Marconi.Core.Experiment.Type (Point, Timed (Timed), event, point)
 
-newtype TransformConfig output input = TransformConfig
-  { _transformEventConfig :: input -> Maybe output
+data TransformConfig output input = TransformConfig
+  { _transformPointConfig :: Point input -> Point output
+  , _transformEventConfig :: input -> Maybe output
   }
 
 makeLenses ''TransformConfig
@@ -52,12 +55,13 @@ makeLenses ''WithTransform
 
 -- | A smart constructor for 'WithTransform'
 withTransform
-  :: (input -> Maybe output)
+  :: (Point input -> Point output)
+  -> (input -> Maybe output)
   -> indexer output
   -> WithTransform indexer output input
-withTransform f _transformedIndexer =
+withTransform f g _transformedIndexer =
   WithTransform
-    { _config = TransformConfig f
+    { _config = TransformConfig f g
     , _transformedIndexer
     }
 
@@ -67,6 +71,9 @@ class HasTransformConfig input output indexer where
 instance HasTransformConfig input output (WithTransform indexer output) where
   transformEvent = config . transformEventConfig
 
+transformPoint :: Lens' (WithTransform indexer output input) (Point input -> Point output)
+transformPoint = config . transformPointConfig
+
 instance IndexerMapTrans WithTransform where
   type ConfigMap WithTransform = TransformConfig
 
@@ -75,17 +82,20 @@ instance IndexerMapTrans WithTransform where
   unwrapMap = transformedIndexer
 
 instance
-  (Point input ~ Point output, IsIndex m output indexer, Ord (Point output))
+  (Point output ~ Point input, IsIndex m output indexer, Ord (Point output))
   => IsIndex m input (WithTransform indexer output)
   where
   index timedEvent indexer = do
-    let point' = timedEvent ^. point
+    let point' = indexer ^. transformPoint $ timedEvent ^. point
         event' = indexer ^. transformEvent =<< timedEvent ^. event
         asOutput = Timed point' event'
     indexVia unwrapMap asOutput indexer
 
   indexAllDescending events indexer = do
-    let toOutput te = Timed (te ^. point) (indexer ^. transformEvent =<< te ^. event)
+    let toOutput te =
+          Timed
+            (indexer ^. transformPoint $ te ^. point)
+            (indexer ^. transformEvent =<< te ^. event)
         asOutputs = toOutput <$> events
     indexAllDescendingVia unwrapMap asOutputs indexer
 
@@ -96,6 +106,9 @@ instance
   => IsSync m event (WithTransform indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
+
+instance (HasDatabasePath indexer) => HasDatabasePath (WithTransform indexer output) where
+  getDatabasePath = getDatabasePathVia unwrapMap
 
 instance
   ( Functor m
@@ -113,9 +126,7 @@ instance
   close = closeVia unwrapMap
 
 instance
-  ( Queryable m output query indexer
-  , Point input ~ Point output
-  )
+  (Queryable m output query indexer, Point output ~ Point input)
   => Queryable m input query (WithTransform indexer output)
   where
-  query p q indexer = queryVia unwrapMap p q indexer
+  query = queryVia unwrapMap

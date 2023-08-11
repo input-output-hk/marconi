@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -90,10 +91,9 @@ step
   => indexer input
   -> ProcessedInput input
   -> m (indexer input)
-step coordinator input = do
-  case input of
-    Index e -> index e coordinator
-    Rollback p -> rollback p coordinator
+step indexer = \case
+  Index e -> index e indexer
+  Rollback p -> rollback p indexer
 
 waitWorkers :: Coordinator input -> IO ()
 waitWorkers coordinator = Con.waitQSemN (coordinator ^. tokens) (coordinator ^. nbWorkers)

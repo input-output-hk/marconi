@@ -29,7 +29,7 @@ import Marconi.Core.Experiment.Class (
   IsSync (lastSyncPoint),
   Queryable (query),
   Resetable (reset),
-  query',
+  queryEither,
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (EventAtQuery))
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
@@ -112,7 +112,7 @@ instance
       if lSync == genesis
         then pure asAggregate
         else do
-          lastAggregateOrError <- query' lSync EventAtQuery indexer
+          lastAggregateOrError <- queryEither lSync EventAtQuery indexer
           case lastAggregateOrError of
             Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
             Right agg -> pure $ (agg <>) <$> asAggregate
@@ -128,7 +128,7 @@ instance
         if lSync == genesis
           then pure asAggregate
           else do
-            lastAggregateOrError <- query' lSync EventAtQuery indexer
+            lastAggregateOrError <- queryEither lSync EventAtQuery indexer
             case lastAggregateOrError of
               Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
               Right agg -> pure $ (agg <>) <$> asAggregate

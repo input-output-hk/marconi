@@ -1,113 +1,108 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Experimental.Indexers where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Configuration.Static (defaultConfigStdout)
-import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Trace (logError)
 import Cardano.Streaming (
-  ChainSyncEvent (RollBackward, RollForward),
-  ChainSyncEventException (NoIntersectionFound),
-  withChainSyncEventEpochNoStream,
+  BlockEvent (BlockEvent),
  )
-import Control.Concurrent (MVar, modifyMVar_, newMVar)
-import Control.Concurrent.Async (concurrently_)
-import Control.Concurrent.STM (TBQueue, atomically, newTBQueueIO, readTBQueue, writeTBQueue)
-import Control.Exception (catch)
-import Control.Monad (forever)
-import Data.Text qualified as Text
-import Data.Time.Clock.POSIX (POSIXTime)
-import Data.Void (Void)
+import Control.Monad.Except (ExceptT, MonadTrans (lift))
+import Data.List.NonEmpty qualified as NonEmpty
+import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
+import Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as Block
+import Marconi.ChainIndex.Experimental.Indexers.Coordinator (coordinatorWorker)
+import Marconi.ChainIndex.Experimental.Indexers.Datum qualified as Datum
+import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintToken
+import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
-import Marconi.ChainIndex.Types (
-  SecurityParam,
-  UtxoIndexerConfig (UtxoIndexerConfig),
-  ucEnableUtxoTxOutRef,
-  ucTargetAddresses,
- )
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Experimental.Indexers.UtxoQuery qualified as UtxoQuery
+import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Marconi.Core.Experiment qualified as Core
-import Prettyprinter (defaultLayoutOptions, layoutPretty)
-import Prettyprinter.Render.Text (renderStrict)
-import Streaming.Prelude qualified as S
+import System.FilePath ((</>))
 
-type instance Core.Point (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) = C.ChainPoint
+data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody TxIndexInBlock (C.TxBody era)
+type instance Core.Point [AnyTxBody] = C.ChainPoint
 
-type UtxoIndexer = Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer Utxo.UtxoEvent
+{- | Build all the indexers of marconi-chain-index
+(all those which are available with the new implementation)
+and expose a single coordinator to operate them
+-}
+buildIndexers
+  :: Core.CatchupConfig
+  -> Utxo.UtxoIndexerConfig
+  -> FilePath
+  -> ExceptT
+      Core.IndexerError
+      IO
+      -- Query part (should probably be wrapped in a more complex object later)
+      ( UtxoQuery.UtxoQueryIndexer IO
+      , -- Indexing part
+        Core.Coordinator (WithDistance BlockEvent)
+      )
+buildIndexers catchupConfig utxoConfig path = do
+  let extractBlockInfo :: BlockEvent -> Block.BlockInfo
+      extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = Block.fromBlockEratoBlockInfo b eno t
+  (blockInfoMVar, blockInfoWorker) <-
+    Block.blockInfoWorker "BlockInfo" catchupConfig extractBlockInfo (path </> "blockInfo.db")
 
--- | Extract the timed information from a block
-blockTimed
-  :: (C.BlockInMode C.CardanoMode, a, t)
-  -> Core.Timed C.ChainPoint (C.BlockInMode C.CardanoMode, a, t)
-blockTimed b@(C.BlockInMode (C.Block (C.BlockHeader slotNo hsh _) _) _, _, _) =
-  Core.Timed (C.ChainPoint slotNo hsh) b
+  let extractUtxos :: AnyTxBody -> [Utxo.Utxo]
+      extractUtxos (AnyTxBody indexInBlock txb) = Utxo.getUtxosFromTxBody indexInBlock txb
+  (utxoMVar, utxoWorker) <-
+    Utxo.utxoWorker
+      "Utxo"
+      catchupConfig
+      utxoConfig
+      (NonEmpty.nonEmpty . (>>= extractUtxos))
+      (path </> "utxo.db")
 
--- | Create a worker for the utxo indexer
-utxoWorker -- Should go in Utxo module?
-  :: FilePath
-  -> SecurityParam
-  -> IO (MVar UtxoIndexer, Core.Worker (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) C.ChainPoint)
-utxoWorker dbPath depth = do
-  c <- Utxo.initSQLite dbPath -- TODO handle error
-  let utxoIndexerConfig =
-        -- TODO We forgot the TargetAddress filtering logic for now for the Experimental Indexers.Utxo module
-        UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
-      extract (C.BlockInMode block _, _, _) = Utxo.getUtxoEventsFromBlock utxoIndexerConfig block
-  Core.createWorker "Utxo" (pure . extract) $ Utxo.mkMixedIndexer c depth
+  let extractSpent :: AnyTxBody -> [Spent.SpentInfo]
+      extractSpent (AnyTxBody _ txb) = Spent.getInputs txb
+  (spentMVar, spentWorker) <-
+    Spent.spentWorker
+      "Spent"
+      catchupConfig
+      (NonEmpty.nonEmpty . (>>= extractSpent))
+      (path </> "spent.db")
 
--- | Process the next event in the queue with the coordinator
-readEvent
-  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))
-  -> MVar (Core.Coordinator (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))
-  -> IO r
-readEvent q cBox = forever $ do
-  e <- atomically $ readTBQueue q
-  modifyMVar_ cBox $ \c -> Utils.toException $ Core.step c e
+  let extractDatum :: AnyTxBody -> [Datum.DatumInfo]
+      extractDatum (AnyTxBody _ txb) = Datum.getDataFromTxBody txb
+  (datumMVar, datumWorker) <-
+    Datum.datumWorker
+      "Datum"
+      catchupConfig
+      (NonEmpty.nonEmpty . (>>= extractDatum))
+      (path </> "datum.db")
 
--- | Event preprocessing, to ease the coordinator work
-mkEventStream
-  :: TBQueue (Core.ProcessedInput (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))
-  -> S.Stream (S.Of (ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime))) IO r
-  -> IO r
-mkEventStream q =
-  let processEvent
-        :: ChainSyncEvent (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime)
-        -> Core.ProcessedInput (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime)
-      processEvent (RollForward x _) = Core.Index $ Just <$> blockTimed x
-      processEvent (RollBackward x _) = Core.Rollback x
-   in S.mapM_ $ atomically . writeTBQueue q . processEvent
+  let extractMint :: AnyTxBody -> [MintToken.MintTokenEvent]
+      extractMint (AnyTxBody ix txb) = MintToken.extractEventsFromTx ix txb
+  (_mintTokenMVar, mintTokenWorker) <-
+    MintToken.mintTokenEventWorker
+      "MintTokenEvent"
+      catchupConfig
+      (fmap MintToken.MintTokenEvents . NonEmpty.nonEmpty . (>>= extractMint))
+      (path </> "mint.db")
 
--- | Start the utxo indexer (the only one we have so far)
-runIndexers
-  :: FilePath
-  -> C.NetworkId
-  -> C.ChainPoint
-  -> Text.Text
-  -> [Core.Worker (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) C.ChainPoint]
-  -- ^ base dir for indexers
-  -> IO ()
-runIndexers socketPath networkId _startingPoint traceName workers = do
-  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
-  eventQueue <- newTBQueueIO $ fromIntegral securityParam
-  coordinator <- Core.mkCoordinator workers
-  cBox <- newMVar coordinator
-  c <- defaultConfigStdout
-  concurrently_
-    ( withTrace c traceName $ \trace ->
-        let io =
-              withChainSyncEventEpochNoStream
-                socketPath
-                networkId
-                [Core.genesis]
-                (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
-            handleException NoIntersectionFound =
-              logError trace $
-                renderStrict $
-                  layoutPretty
-                    defaultLayoutOptions
-                    "No intersection found"
-         in io `catch` handleException
-    )
-    (readEvent eventQueue cBox)
+  let getTxBody :: (C.IsCardanoEra era) => TxIndexInBlock -> C.Tx era -> AnyTxBody
+      getTxBody ix tx = AnyTxBody ix (C.getTxBody tx)
+      toTxBodys :: BlockEvent -> [AnyTxBody]
+      toTxBodys (BlockEvent (C.BlockInMode (C.Block _ txs) _) _ _) = zipWith getTxBody [0 ..] txs
+
+  -- Coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
+  coordinatorTxBodyWorkers <-
+    snd
+      <$> coordinatorWorker
+        "TxBody coordinator"
+        (pure . Just . fmap toTxBodys)
+        [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
+
+  queryIndexer <-
+    lift $
+      UtxoQuery.mkUtxoSQLiteQuery $
+        UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
+
+  mainCoordinator <- lift $ Core.mkCoordinator [blockInfoWorker, coordinatorTxBodyWorkers]
+
+  pure (queryIndexer, mainCoordinator)

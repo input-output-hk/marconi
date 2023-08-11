@@ -665,6 +665,7 @@ propUtxoQueryByAddressAndSlotInterval = property $ do
     )
 
 {- |
+  TODO: test it in the event extraction logic, not in the indexer
   TargetAddresses are the addresses in UTXO that we filter for.
   Puporse of this test is to filter out Utxos that have a different address than those in the TargetAddress list.
 -}
@@ -731,6 +732,7 @@ propSupressSavingInlineScriptAndInlineScriptHash = property $ do
     filter (isJust . Utxo._inlineScriptHash) withNoSaveScriptRef === mempty
 
 {- |
+  TODO: test it in the event extraction logic, not in the indexer
   Calling 'Utxo.getUtxoEventos' with target addresses that are extracted from all tx outputs from
   the initial generated txs should return the same 'UtxoEvent's as if there was no provided target
   addresses.
@@ -781,6 +783,7 @@ mkTargetAddressFromTxOuts txOuts =
   nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
 
 {- |
+  TODO: Refactor/review
   The property verifies that the 'Storable.resumeFromStorage' call returns at least a point which
   is not 'C.ChainPointAtGenesis' when some events are inserted on disk.
 -}
@@ -844,6 +847,7 @@ propTestLastSyncOnFreshIndexer = Hedgehog.property $ do
   result <- liftIO $ raiseException $ Storable.query indexer LastSyncedBlockInfoQuery
   Utxo.getLastSyncedBlockInfo result === Origin
 
+-- TODO remove
 propLastChainPointOnRunningIndexer :: Property
 propLastChainPointOnRunningIndexer = Hedgehog.property $ do
   events <- Hedgehog.forAll UtxoGen.genUtxoEvents
@@ -855,6 +859,7 @@ propLastChainPointOnRunningIndexer = Hedgehog.property $ do
   let beforeLastBlockInfo = ueBlockInfo beforeLastEvent
   Utxo.getLastSyncedBlockInfo result === At beforeLastBlockInfo
 
+-- TODO remove
 propLastChainPointOnRewindedIndexer :: Property
 propLastChainPointOnRewindedIndexer = property $ do
   events <- forAll UtxoGen.genUtxoEvents

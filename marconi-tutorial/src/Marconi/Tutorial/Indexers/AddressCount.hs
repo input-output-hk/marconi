@@ -25,13 +25,13 @@ import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Time.Clock.POSIX (POSIXTime)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
+import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment (
   HasGenesis (genesis),
@@ -59,7 +59,7 @@ addressCountWorker
   -> SecurityParam
   -> IO
       ( MVar (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer AddressCountEvent)
-      , Core.Worker (C.BlockInMode C.CardanoMode, C.EpochNo, POSIXTime) C.ChainPoint
+      , Core.Worker (WithDistance BlockEvent) C.ChainPoint
       )
 addressCountWorker dbPath securityParam = do
   let extract = getEventsFromBlock
@@ -78,8 +78,8 @@ type instance Result AddressCountQuery = Int
 
 -- Note that for Marconi, it is more optimal to return `Nothing` instead of
 -- `Just $ AddressCountEvent mempty`.
-getEventsFromBlock :: (C.BlockInMode era, C.EpochNo, POSIXTime) -> Maybe AddressCountEvent
-getEventsFromBlock (C.BlockInMode (C.Block _ txs) _, _, _) =
+getEventsFromBlock :: WithDistance BlockEvent -> Maybe AddressCountEvent
+getEventsFromBlock (WithDistance _ (BlockEvent (C.BlockInMode (C.Block _ txs) _) _ _)) =
   let addrCounts = Map.fromListWith (+) $ concatMap getEventsFromTx txs
    in if Map.null addrCounts
         then Nothing
@@ -127,7 +127,7 @@ instance (MonadIO m) => Queryable m AddressCountEvent AddressCountQuery SQLiteIn
     -> SQLiteIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
   query C.ChainPointAtGenesis _ _ = pure 0
-  query (C.ChainPoint _ _) (AddressCountQuery addr) (SQLiteIndexer c _ _ _) = do
+  query (C.ChainPoint _ _) (AddressCountQuery addr) (SQLiteIndexer _ c _ _ _) = do
     (results :: [[Int]]) <-
       liftIO $
         SQL.query
@@ -175,27 +175,23 @@ mkAddressCountSqliteIndexer
   => FilePath
   -> m (SQLiteIndexer AddressCountEvent)
 mkAddressCountSqliteIndexer dbPath = do
-  c <- liftIO $ SQL.open dbPath
-
-  liftIO $
-    SQL.execute_
-      c
+  mkSqliteIndexer
+    dbPath
+    [dbCreation] -- request launched when the indexer is created
+    [
+      [ SQLInsertPlan eventToRows addressCountInsertQuery
+      ]
+    ] -- requests launched when an event is stored
+    [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
+    lastSyncQuery
+  where
+    dbCreation =
       [sql|CREATE TABLE IF NOT EXISTS address_count
                  ( address BLOB NOT NULL
                  , count INT NOT NULL
                  , slotNo INT NOT NULL
                  , blockHeaderHash BLOB
                  )|]
-
-  mkSqliteIndexer
-    c
-    [
-      [ SQLInsertPlan eventToRows addressCountInsertQuery
-      ]
-    ]
-    [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
-    lastSyncQuery
-  where
     addressCountInsertQuery :: SQL.Query -- Utxo table SQL statement
     addressCountInsertQuery =
       [sql|INSERT

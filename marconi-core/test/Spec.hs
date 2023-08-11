@@ -60,8 +60,8 @@ experimentTests =
         ]
     , testGroup
         "Resuming"
-        [ E.resumeSQLiteLastSyncTest E.mkSqliteIndexerRunner
-        , E.resumeMixedLastSyncTest E.mixedNoMemoryIndexerRunner
+        [ E.resumeSQLiteLastSyncTest
+        , E.resumeMixedLastSyncTest
         ]
     , testGroup
         "Configuration"

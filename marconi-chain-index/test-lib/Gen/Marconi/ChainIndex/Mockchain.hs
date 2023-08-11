@@ -5,10 +5,14 @@
 
 module Gen.Marconi.ChainIndex.Mockchain (
   Mockchain,
-  C.BlockHeader (..),
-  MockBlock (..),
   genMockchain,
+  MockBlock (..),
+  MockchainWithInfo,
+  genMockchainWithInfo,
+  MockBlockWithInfo (..),
+  C.BlockHeader (..),
   genMockchainWithTxBodyGen,
+  mockchainWithInfoAsMockchain,
   genTxBodyContentFromTxIns,
   genTxBodyContentFromTxInsWithPhase2Validation,
   DatumLocation (..),
@@ -23,13 +27,17 @@ module Gen.Marconi.ChainIndex.Mockchain (
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Monad (foldM, forM)
+import Control.Monad.State (MonadState (get), MonadTrans (lift), StateT, evalStateT, put)
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Time.Clock.POSIX (POSIXTime)
 import Gen.Marconi.ChainIndex.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
 import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified as Gen
+import Hedgehog.Internal.Gen qualified as Hedgehog.Gen
+import Hedgehog.Range qualified
 import Hedgehog.Range qualified as Range
 import Helpers (emptyTxBodyContent)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -44,9 +52,53 @@ data MockBlock era = MockBlock
   }
   deriving (Show)
 
+type MockchainWithInfo era = [MockBlockWithInfo era]
+
+data MockBlockWithInfo era = MockBlockWithInfo
+  { mockBlockWithInfoChainPoint :: !C.BlockHeader
+  , mockBlockithInfoEpochNo :: !C.EpochNo
+  , mockBlocWithInfoTime :: !POSIXTime
+  , mockBlockWithInfoTxs :: ![C.Tx era]
+  }
+  deriving (Show)
+
+mockchainWithInfoAsMockchain :: MockchainWithInfo era -> Mockchain era
+mockchainWithInfoAsMockchain = fmap mockBlockWithInfoAsMockBlock
+
+mockBlockWithInfoAsMockBlock :: MockBlockWithInfo era -> MockBlock era
+mockBlockWithInfoAsMockBlock block =
+  MockBlock (mockBlockWithInfoChainPoint block) (mockBlockWithInfoTxs block)
+
 -- | Generate a Mockchain
 genMockchain :: Gen (Mockchain C.BabbageEra)
 genMockchain = genMockchainWithTxBodyGen genTxBodyContentFromTxIns
+
+data MockChainInfo = MockChainInfo {_epochNo :: C.EpochNo, _timestamp :: POSIXTime}
+
+-- | Generate a MockchainWithInfo
+genMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
+genMockchainWithInfo =
+  let startEpochNo = 0
+
+      attachInfoToBlock :: MockBlock era -> StateT MockChainInfo Gen (MockBlockWithInfo era)
+      attachInfoToBlock (MockBlock blockHeader txs) = do
+        MockChainInfo epochNo timestamp <- get
+        newEpoch <- lift $ Hedgehog.Gen.frequency [(80, pure epochNo), (20, pure $ epochNo + 1)]
+        newTimestamp :: POSIXTime <-
+          lift $
+            (timestamp +) . fromIntegral
+              <$> Hedgehog.Gen.word
+                (Hedgehog.Range.linear 10000 100000)
+        put $ MockChainInfo newEpoch newTimestamp
+        pure $ MockBlockWithInfo blockHeader epochNo timestamp txs
+
+      attachInfoToChain :: Mockchain era -> Gen (MockchainWithInfo era)
+      attachInfoToChain chain = do
+        startTime :: POSIXTime <-
+          fromIntegral <$> Hedgehog.Gen.word (Hedgehog.Range.constant 10000 10000000)
+        let startInfo = MockChainInfo startEpochNo startTime
+        traverse attachInfoToBlock chain `evalStateT` startInfo
+   in genMockchain >>= attachInfoToChain
 
 -- | Generate a Mockchain
 genMockchainWithTxBodyGen
@@ -116,9 +168,9 @@ genTxBodyContentFromTxInsWithPhase2Validation
   -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentFromTxInsWithPhase2Validation inputs = do
   initialTxBodyContent <- genTxBodyContentFromTxIns inputs
-  txInsCollateral <- genTxInsCollateral C.BabbageEra
-  txReturnCollateral <- genTxReturnCollateral C.BabbageEra
-  txScriptValidity <- genTxScriptValidity C.BabbageEra
+  txInsCollateral <- CGen.genTxInsCollateral C.BabbageEra
+  txReturnCollateral <- CGen.genTxReturnCollateral C.BabbageEra
+  txScriptValidity <- CGen.genTxScriptValidity C.BabbageEra
   pure $
     initialTxBodyContent
       { C.txInsCollateral = txInsCollateral
@@ -229,31 +281,3 @@ genTxBodyContentWithAddresses addressesDatumLocation = do
       { C.txIns = C.txIns txBody <> scriptTxIns
       , C.txOuts = concat txOuts
       }
-
--------------------------------------------------------------------------------------
------ The following are whole sale copy/paste from https://github.com/input-output-hk/cardano-node/blob/master/cardano-api/gen/Test/Gen/Cardano/Api/Typed.hs
------ TODO remove when we upgrade to newer version of cardano-api as the generators below are exposed in later version of cardano-api
--------------------------------------------------------------------------------------
-genTxInsCollateral :: C.CardanoEra era -> Gen (C.TxInsCollateral era)
-genTxInsCollateral era =
-  case C.collateralSupportedInEra era of
-    Nothing -> pure C.TxInsCollateralNone
-    Just supported ->
-      Gen.choice
-        [ pure C.TxInsCollateralNone
-        , C.TxInsCollateral supported <$> Gen.list (Range.linear 0 10) CGen.genTxIn
-        ]
-genTxReturnCollateral :: C.CardanoEra era -> Gen (C.TxReturnCollateral C.CtxTx era)
-genTxReturnCollateral era =
-  case C.totalAndReturnCollateralSupportedInEra era of
-    Nothing -> return C.TxReturnCollateralNone
-    Just supp ->
-      C.TxReturnCollateral supp <$> genTxOutTxContext era
-
-genTxScriptValidity :: C.CardanoEra era -> Gen (C.TxScriptValidity era)
-genTxScriptValidity era = case C.txScriptValiditySupportedInCardanoEra era of
-  Nothing -> pure C.TxScriptValidityNone
-  Just witness -> C.TxScriptValidity witness <$> genScriptValidity
-
-genScriptValidity :: Gen C.ScriptValidity
-genScriptValidity = Gen.element [C.ScriptInvalid, C.ScriptValid]
