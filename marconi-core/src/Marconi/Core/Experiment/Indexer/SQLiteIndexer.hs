@@ -105,10 +105,11 @@ makeLenses 'SQLiteIndexer
  that we set 'dbLastSync' thanks to the provided query
 -}
 mkSqliteIndexer
-  :: (MonadIO m)
-  => (MonadError IndexerError m)
-  => (HasGenesis (Point event))
-  => (SQL.FromRow (Point event))
+  :: ( MonadIO m
+     , MonadError IndexerError m
+     , HasGenesis (Point event)
+     , SQL.FromRow (Point event)
+     )
   => FilePath
   -> [SQL.Query]
   -- ^ cration statement
