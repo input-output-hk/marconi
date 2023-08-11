@@ -65,11 +65,13 @@ syncLastPointQuery = syncHistoryQuery 1
 {- | Query the last sync point up to the first immutable event
 
 Used to find resuming points on restart.
+
+Note that if you want to get one stable point, you need to pass @securityParam + 1@
 -}
 syncHistoryQuery :: SecurityParam -> SQL.Query
 syncHistoryQuery securityParam =
   [sql|SELECT * FROM sync ORDER BY slotNo DESC LIMIT |]
-    <> SQL.Query (Text.pack $ show $ securityParam + 1)
+    <> SQL.Query (Text.pack $ show securityParam)
 
 -- | Standard rollback plan for the sync table
 syncRollbackPlan :: Core.SQLRollbackPlan C.ChainPoint
