@@ -5,8 +5,12 @@
 module Marconi.Sidechain.Bootstrap where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Trace (
+  Trace,
+ )
 import Control.Concurrent.STM (atomically)
 import Control.Lens ((^.))
+import Data.Text (Text)
 import Marconi.ChainIndex.Indexers (epochStateWorker, mintBurnWorker, runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
@@ -40,10 +44,11 @@ import System.FilePath ((</>))
 
 -- | Run Sidechain indexers
 runSidechainIndexers
-  :: CliArgs
+  :: Trace IO Text
+  -> CliArgs
   -> SidechainEnv
   -> IO ()
-runSidechainIndexers cliArgs env = do
+runSidechainIndexers trace cliArgs env = do
   let addressUtxoCallback :: State UtxoHandle -> IO ()
       addressUtxoCallback =
         atomically
@@ -79,10 +84,11 @@ runSidechainIndexers cliArgs env = do
           )
         ]
   runIndexers
+    trace
+    (CLI.optionsRetryConfig cliArgs)
     (CLI.socketFilePath cliArgs)
     (CLI.networkId cliArgs)
     C.ChainPointAtGenesis
     (CLI.minIndexingDepth cliArgs)
     (CLI.optionsFailsIfResync cliArgs)
-    "marconi-sidechain"
     indexers

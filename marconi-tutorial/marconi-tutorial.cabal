@@ -53,7 +53,9 @@ library
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:   cardano-api
+  build-depends:
+    , cardano-api
+    , iohk-monitoring
 
   ------------------------
   -- Non-IOG dependencies
@@ -70,6 +72,7 @@ library
     , servant
     , servant-server
     , sqlite-simple
+    , text
     , warp
 
 executable marconi-tutorial

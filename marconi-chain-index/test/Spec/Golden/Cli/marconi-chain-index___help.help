@@ -6,6 +6,8 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
                            [(-n|--slot-no SLOT-NO)
                              (-b|--block-header-hash BLOCK-HEADER-HASH)] 
                            [--max-indexing-depth | --min-indexing-depth NATURAL]
+                           [--initial-retry-time NATURAL] 
+                           [--no-max-retry-time | --max-retry-time NATURAL]
                            (-d|--db-dir DIR) [--enable-txoutref] 
                            [--disable-utxo] [--disable-address-datum] 
                            [--disable-script-tx] 
@@ -28,6 +30,12 @@ Available options:
   --min-indexing-depth NATURAL
                            Depth of a block before it is indexed in relation to
                            the tip of the local connected node
+  --initial-retry-time NATURAL
+                           Initial time (in seconds) before retry after a failed
+                           node connection. Defaults to 30s.
+  --no-max-retry-time      Unlimited retries.
+  --max-retry-time NATURAL Max time (in seconds) allowed after startup for
+                           retries. Defaults to 30min.
   -d,--db-dir DIR          Directory path where all Marconi-related SQLite
                            databases are located.
   --enable-txoutref        enable txout ref storage.

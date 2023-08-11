@@ -8,9 +8,10 @@ module Marconi.Sidechain.CLI (
 import Cardano.Api qualified as C
 import Data.List.NonEmpty (NonEmpty)
 import Marconi.ChainIndex.CLI qualified as Cli
+import Marconi.ChainIndex.Node.Client.Retry (RetryConfig)
 import Marconi.ChainIndex.Types (
   IndexingDepth,
-  ShouldFailIfResync (ShouldFailIfResync),
+  ShouldFailIfResync,
   TargetAddresses,
  )
 import Options.Applicative qualified as Opt
@@ -36,6 +37,7 @@ data CliArgs = CliArgs
   , optionsFailsIfResync :: !ShouldFailIfResync
   -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
   -- synced point.
+  , optionsRetryConfig :: !RetryConfig
   }
   deriving (Show)
 
@@ -52,20 +54,12 @@ parserCliArgs :: Opt.Parser CliArgs
 parserCliArgs =
   CliArgs
     <$> Cli.commonSocketPathParser
-    <*> Opt.strOption
-      ( Opt.long "node-config-path"
-          <> Opt.help "Path to node configuration which you are connecting to."
-      )
+    <*> Cli.commonNodeConfigPathParser
     <*> Cli.commonDbDirParser
     <*> Cli.commonMaybePortParser
-    <*> Cli.pNetworkIdParser
+    <*> Cli.commonNetworkIdParser
     <*> Cli.commonMinIndexingDepthParser
     <*> Cli.commonMaybeTargetAddressParser
     <*> Cli.commonMaybeTargetAssetParser
-    <*> ( ShouldFailIfResync
-            <$> Opt.switch
-              ( Opt.long "fail-if-resyncing-from-genesis"
-                  <> Opt.help
-                    "Fails resuming if one indexer must resync from genesis when it can resume from a later point."
-              )
-        )
+    <*> Cli.commonShouldFailIfResyncParser
+    <*> Cli.commonRetryConfigParser

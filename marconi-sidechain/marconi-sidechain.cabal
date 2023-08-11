@@ -53,6 +53,7 @@ library
     Marconi.Sidechain.CLI
     Marconi.Sidechain.Env
     Marconi.Sidechain.Error
+    Marconi.Sidechain.Run
     Marconi.Sidechain.Utils
 
   --------------------
@@ -69,12 +70,14 @@ library
     , cardano-api          ^>=8.8
     , cardano-ledger-core
     , cardano-slotting     ^>=0.1.1.1
+    , iohk-monitoring
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
   build-depends:
     , aeson
+    , async
     , base                  >=4.9 && <5
     , bytestring
     , filepath
@@ -103,9 +106,7 @@ executable marconi-sidechain
   ------------------------
   -- Non-IOG dependencies
   ------------------------
-  build-depends:
-    , async
-    , base   >=4.9 && <5
+  build-depends:  base >=4.9 && <5
 
 executable examples-json-rpc-client
   import:         lang

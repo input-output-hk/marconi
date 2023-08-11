@@ -7,6 +7,8 @@ Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
                          [--max-indexing-depth | --min-indexing-depth NATURAL] 
                          [(-a|--addresses-to-index BECH32-ADDRESS)] 
                          [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
-                         [--fail-if-resyncing-from-genesis]
+                         [--fail-if-resyncing-from-genesis] 
+                         [--initial-retry-time NATURAL] 
+                         [--no-max-retry-time | --max-retry-time NATURAL]
 
   marconi-sidechain

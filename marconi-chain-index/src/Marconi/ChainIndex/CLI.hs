@@ -1,3 +1,4 @@
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TupleSections #-}
@@ -19,7 +20,9 @@ import System.FilePath ((</>))
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
 import Data.List.NonEmpty qualified as NonEmpty
+import Data.Word (Word64)
 import Marconi.ChainIndex.Git.Rev (gitRev)
+import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig))
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   ShouldFailIfResync (ShouldFailIfResync),
@@ -65,8 +68,8 @@ chainPointParser =
 -- TODO: `pNetworkId` and `pTestnetMagic` are copied from
 -- https://github.com/input-output-hk/cardano-node/blob/988c93085022ed3e2aea5d70132b778cd3e622b9/cardano-cli/src/Cardano/CLI/Shelley/Parsers.hs#L2009-L2027
 -- Use them from there whenever they are exported.
-pNetworkIdParser :: Opt.Parser C.NetworkId
-pNetworkIdParser = pMainnetParser Opt.<|> fmap C.Testnet pTestnetMagicParser
+commonNetworkIdParser :: Opt.Parser C.NetworkId
+commonNetworkIdParser = pMainnetParser Opt.<|> fmap C.Testnet pTestnetMagicParser
 
 pMainnetParser :: Opt.Parser C.NetworkId
 pMainnetParser = Opt.flag' C.Mainnet (Opt.long "mainnet" <> Opt.help "Use the mainnet magic id.")
@@ -117,6 +120,7 @@ data CommonOptions = CommonOptions
   -- ^ Required depth of a block before it is indexed
   , optionsMinIndexingDepth :: !IndexingDepth
   -- ^ Required depth of a block before it is indexed
+  , optionsRetryConfig :: !RetryConfig
   }
   deriving (Show)
 
@@ -163,9 +167,10 @@ commonOptionsParser :: Opt.Parser CommonOptions
 commonOptionsParser =
   CommonOptions
     <$> commonSocketPathParser
-    <*> pNetworkIdParser
+    <*> commonNetworkIdParser
     <*> chainPointParser
     <*> commonMinIndexingDepthParser
+    <*> commonRetryConfigParser
 
 optionsParser :: Opt.Parser Options
 optionsParser =
@@ -198,18 +203,8 @@ optionsParser =
       )
     <*> commonMaybeTargetAddressParser
     <*> commonMaybeTargetAssetParser
-    <*> ( optional $
-            Opt.strOption $
-              Opt.long "node-config-path"
-                <> Opt.help "Path to node configuration which you are connecting to."
-        )
-    <*> ( ShouldFailIfResync
-            <$> Opt.switch
-              ( Opt.long "fail-if-resyncing-from-genesis"
-                  <> Opt.help
-                    "Fails resuming if one indexer must resync from genesis when it can resume from a later point."
-              )
-        )
+    <*> optional commonNodeConfigPathParser
+    <*> commonShouldFailIfResyncParser
 
 -- * Database paths
 
@@ -280,7 +275,7 @@ commonMaybePortParser =
     Opt.option Opt.auto $
       Opt.long "http-port"
         <> Opt.metavar "HTTP-PORT"
-        <> Opt.help "JSON-RPC http port number, default is port 3000."
+        <> Opt.help "JSON-RPC http port number. Defaults to 3000."
 
 {- | Parse the addresses to index. Addresses should be given in Bech32 format
  Several addresses can be given in a single string, if they are separated by a space
@@ -351,6 +346,51 @@ commonMinIndexingDepthParser =
                 <> Opt.value 0
             )
    in maxIndexingDepth Opt.<|> givenIndexingDepth
+
+commonNodeConfigPathParser :: Opt.Parser FilePath
+commonNodeConfigPathParser =
+  Opt.strOption $
+    Opt.long "node-config-path"
+      <> Opt.help "Path to node configuration which you are connecting to."
+
+commonShouldFailIfResyncParser :: Opt.Parser ShouldFailIfResync
+commonShouldFailIfResyncParser =
+  ShouldFailIfResync
+    <$> Opt.switch
+      ( Opt.long "fail-if-resyncing-from-genesis"
+          <> Opt.help
+            "Fails resuming if one indexer must resync from genesis when it can resume from a later point."
+      )
+
+-- | Allow the user to specify the retry config when the connection to the node is lost.
+commonRetryConfigParser :: Opt.Parser RetryConfig
+commonRetryConfigParser =
+  RetryConfig <$> initialRetryTimeParser <*> (noMaxRetryTimeParser Opt.<|> maxRetryTimeParser)
+  where
+    initialRetryTimeParser :: Opt.Parser Word64
+    initialRetryTimeParser =
+      Opt.option
+        Opt.auto
+        ( Opt.long "initial-retry-time"
+            <> Opt.metavar "NATURAL"
+            <> Opt.help "Initial time (in seconds) before retry after a failed node connection. Defaults to 30s."
+            <> Opt.value 30
+        )
+
+    noMaxRetryTimeParser :: Opt.Parser (Maybe Word64)
+    noMaxRetryTimeParser =
+      Opt.flag' Nothing (Opt.long "no-max-retry-time" <> Opt.help "Unlimited retries.")
+
+    maxRetryTimeParser :: Opt.Parser (Maybe Word64)
+    maxRetryTimeParser =
+      Just
+        <$> Opt.option
+          Opt.auto
+          ( Opt.long "max-retry-time"
+              <> Opt.metavar "NATURAL"
+              <> Opt.help "Max time (in seconds) allowed after startup for retries. Defaults to 30min."
+              <> Opt.value 1_800
+          )
 
 -- | Extract UtxoIndexerConfig from CLI Options
 mkUtxoIndexerConfig :: Options -> UtxoIndexerConfig

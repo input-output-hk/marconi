@@ -69,6 +69,7 @@ library
     Marconi.ChainIndex.Experimental.Indexers.Utxo
     Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
     Marconi.ChainIndex.Experimental.Indexers.Worker
+    Marconi.ChainIndex.Experimental.Run
     Marconi.ChainIndex.Experimental.Runner
     Marconi.ChainIndex.Extract.Datum
     Marconi.ChainIndex.Git.Rev
@@ -82,7 +83,9 @@ library
     Marconi.ChainIndex.Indexers.Utxo
     Marconi.ChainIndex.Logging
     Marconi.ChainIndex.Node.Client.GenesisConfig
+    Marconi.ChainIndex.Node.Client.Retry
     Marconi.ChainIndex.Orphans
+    Marconi.ChainIndex.Run
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
 
@@ -116,6 +119,7 @@ library
     , cardano-protocol-tpraos        ^>=1.0
     , cardano-slotting               ^>=0.1.1.1
     , iohk-monitoring
+    , network-mux
     , ouroboros-consensus
     , ouroboros-consensus-cardano
     , ouroboros-consensus-diffusion
@@ -189,9 +193,7 @@ executable marconi-chain-index
   ------------------------
   -- Non-IOG dependencies
   ------------------------
-  build-depends:
-    , base       >=4.9 && <5
-    , directory
+  build-depends:  base >=4.9 && <5
 
 executable marconi-chain-index-experimental
   import:         lang
@@ -202,17 +204,12 @@ executable marconi-chain-index-experimental
   --------------------
   -- Local components
   --------------------
-  build-depends:
-    , marconi-chain-index  >=1.2.0
-    , marconi-core         >=1.2.0
+  build-depends:  marconi-chain-index >=1.2.0
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
-  build-depends:
-    , base       >=4.9 && <5
-    , directory
-    , mtl
+  build-depends:  base >=4.9 && <5
 
 library marconi-chain-index-test-lib
   import:          lang
@@ -295,6 +292,7 @@ benchmark marconi-chain-index-bench
   build-depends:
     , cardano-api           ^>=8.8
     , cardano-ledger-byron
+    , iohk-monitoring
 
   ------------------------
   -- Non-IOG dependencies
