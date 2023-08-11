@@ -71,7 +71,7 @@ tests =
         propTrippingUtxoJSON
     ]
 
--- | We can retrieve events at a given slot
+-- | We can retrieve the event at a given slot
 propRoundTripAtSlotUtxo :: Hedgehog.Property
 propRoundTripAtSlotUtxo = Hedgehog.property $ do
   events <- Hedgehog.forAll $ getTimedUtxosEvents <$> Gen.genMockchain

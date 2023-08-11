@@ -52,7 +52,7 @@ tests =
         propTrippingSpentJSON
     ]
 
--- | We can retrieve events at a given slot
+-- | We can retrieve the event at a given slot
 propRoundTripAtSlotSpent :: Hedgehog.Property
 propRoundTripAtSlotSpent = Hedgehog.property $ do
   events <- Hedgehog.forAll $ getSpentsEvents <$> Gen.genMockchain

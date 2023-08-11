@@ -9,15 +9,11 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo (
   genBlockInfo,
 ) where
 
+import Cardano.Api qualified as C
 import Control.Lens ((^.))
+import Data.Aeson qualified as Aeson
 import Data.Maybe (mapMaybe)
 import Data.Time qualified as Time
-
-import Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.Core.Experiment qualified as Core
-
-import Cardano.Api qualified as C
-import Data.Aeson qualified as Aeson
 import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Gen.Marconi.ChainIndex.Types qualified as CGen
 import Hedgehog ((===))
@@ -25,6 +21,8 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
 import Marconi.ChainIndex.Experimental.Indexers.BlockInfo (BlockInfo (BlockInfo))
+import Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Core.Experiment qualified as Core
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -35,7 +33,7 @@ tests =
     [ testGroup
         "Indexer"
         [ testPropertyNamed
-            "EventAt query works for datum"
+            "EventAt query works for blockInfo"
             "propRoundTripAtSlotBlockInfo"
             propRoundTripAtSlotBlockInfo
         , testPropertyNamed
@@ -53,13 +51,12 @@ tests =
         propTrippingBlockInfoJSON
     ]
 
--- | We can retrieve events at a given slot
+-- | We can retrieve the event at a given slot
 propRoundTripAtSlotBlockInfo :: Hedgehog.Property
 propRoundTripAtSlotBlockInfo = Hedgehog.property $ do
   events <- Hedgehog.forAll $ getBlockInfoEvents <$> Gen.genMockchainWithInfo
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
-  emptyIndexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer ":memory:"
-  indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
+  indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
   retrievedEvents <-
     Hedgehog.evalExceptT $ Core.query (event ^. Core.point) Core.EventAtQuery indexer
   event ^. Core.event === retrievedEvents
@@ -69,8 +66,7 @@ propRoundTripBlockInfo :: Hedgehog.Property
 propRoundTripBlockInfo = Hedgehog.property $ do
   events <- Hedgehog.forAll $ getBlockInfoEvents <$> Gen.genMockchainWithInfo
   let nonEmptyEvents = mapMaybe sequenceA events
-  emptyIndexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer ":memory:"
-  indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
+  indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
   retrievedEvents <- Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
   nonEmptyEvents === retrievedEvents
 
@@ -78,8 +74,7 @@ propRoundTripBlockInfo = Hedgehog.property $ do
 propActLikeListIndexerOnEventAt :: Hedgehog.Property
 propActLikeListIndexerOnEventAt = Hedgehog.property $ do
   events <- Hedgehog.forAll $ getBlockInfoEvents <$> Gen.genMockchainWithInfo
-  testedEmptyIndexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer ":memory:"
-  indexer <- Hedgehog.evalExceptT $ Core.indexAll events testedEmptyIndexer
+  indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
   referenceIndexer <- Core.indexAll events Core.mkListIndexer
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
   (testedResult :: Maybe BlockInfo) <-
