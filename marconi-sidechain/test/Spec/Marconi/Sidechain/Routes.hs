@@ -30,7 +30,7 @@ import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Sidechain.Api.Routes (
   ActiveSDDResult (ActiveSDDResult),
   AddressUtxoResult (AddressUtxoResult),
-  AssetIdTxResult (AssetIdTxResult),
+  BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
@@ -208,7 +208,7 @@ propJSONRountripGetBurnTokenEventsResult :: Property
 propJSONRountripGetBurnTokenEventsResult = property $ do
   r <- fmap GetBurnTokenEventsResult $ forAll $ Gen.list (Range.linear 0 10) $ do
     hsd <- Gen.maybe CGen.genHashableScriptData
-    AssetIdTxResult
+    BurnTokenEventResult
       <$> Gen.genSlotNo
       <*> Gen.genHashBlockHeader
       <*> Gen.genBlockNo
@@ -217,6 +217,7 @@ propJSONRountripGetBurnTokenEventsResult = property $ do
       <*> pure (fmap C.getScriptData hsd)
       <*> CGen.genAssetName
       <*> Gen.genQuantity (Range.linear 0 10)
+      <*> pure True
   tripping r Aeson.encode Aeson.eitherDecode
 
 propJSONRountripEpochStakePoolDelegationResult :: Property
@@ -349,7 +350,7 @@ goldenMintingPolicyHashTxResult = do
         blockHeaderHashRawBytes
 
   let mints =
-        [ AssetIdTxResult
+        [ BurnTokenEventResult
             (C.SlotNo 1)
             blockHeaderHash
             (C.BlockNo 1047)
@@ -358,6 +359,7 @@ goldenMintingPolicyHashTxResult = do
             (Just redeemerData)
             (C.AssetName "")
             (C.Quantity 10)
+            True
         ]
       result = GetBurnTokenEventsResult mints
   pure $ Aeson.encodePretty result

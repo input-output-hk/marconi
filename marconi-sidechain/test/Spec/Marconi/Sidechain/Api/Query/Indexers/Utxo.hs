@@ -7,7 +7,6 @@ module Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo (tests) where
 import Cardano.Api qualified as C
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Concurrent.STM (atomically)
-import Control.Lens.Operators ((^.))
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.List qualified as List
@@ -29,8 +28,7 @@ import Marconi.Sidechain.Api.Routes (
   GetUtxosFromAddressResult (GetUtxosFromAddressResult, unAddressUtxosResult),
  )
 import Marconi.Sidechain.Api.Routes qualified as Routes
-import Marconi.Sidechain.Api.Types (sidechainAddressUtxoIndexer, sidechainEnvIndexers)
-import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
+import Marconi.Sidechain.Env qualified as Env
 import Network.JsonRpc.Client.Types ()
 import Network.JsonRpc.Types (JsonRpcResponse (Result))
 import Spec.Marconi.Sidechain.RpcClientAction (
@@ -65,12 +63,9 @@ tests rpcClientAction =
 queryTargetAddressTest :: Property
 queryTargetAddressTest = property $ do
   events <- forAll genShelleyEraUtxoEvents
-  env <- liftIO $ initializeSidechainEnv Nothing Nothing Nothing
+  env <- liftIO $ Env.mkAddressUtxoIndexerEnv Nothing
   let callback :: Utxo.UtxoIndexer -> IO ()
-      callback =
-        atomically
-          . AddressUtxoIndexer.updateEnvState
-            (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer) -- update the indexer
+      callback = atomically . AddressUtxoIndexer.updateEnvState env
   liftIO $ mocUtxoWorker callback events
   fetchedRows <-
     liftIO
@@ -79,7 +74,7 @@ queryTargetAddressTest = property $ do
         ( \addr ->
             fmap unAddressUtxosResult
               <$> AddressUtxoIndexer.findByAddress
-                (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
+                env
                 (Utxo.QueryUtxoByAddress addr (Utxo.lessThanOrEqual $ C.SlotNo maxBound))
         )
       . Set.toList

@@ -3,7 +3,7 @@
 module Main (main) where
 
 import Marconi.Sidechain.Api.HttpServer (marconiApp)
-import Marconi.Sidechain.Bootstrap (initializeSidechainEnv)
+import Marconi.Sidechain.Env (mkSidechainEnv)
 import Network.JsonRpc.Client.Types ()
 import Network.Wai.Handler.Warp qualified as Warp
 import Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Api.Query.Indexers.MintBurn
@@ -19,7 +19,7 @@ import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 
 main :: IO ()
 main = do
-  env <- initializeSidechainEnv Nothing Nothing Nothing
+  env <- mkSidechainEnv 2160 Nothing Nothing Nothing
   Warp.testWithApplication (pure $ marconiApp env) $ \port -> do
     rpcClientAction <- mkRpcClientAction env port
     defaultMain $ tests rpcClientAction

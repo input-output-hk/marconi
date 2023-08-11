@@ -1,12 +1,10 @@
-{-# LANGUAGE NamedFieldPuns #-}
-
 module Main where
 
 import Control.Concurrent.Async (race_)
-import Marconi.Sidechain.Api.HttpServer qualified as Http
-import Marconi.Sidechain.Api.Types (CliArgs (CliArgs, httpPort, targetAddresses, targetAssets))
-import Marconi.Sidechain.Bootstrap (bootstrapIndexers, initializeSidechainEnv)
+import Marconi.Sidechain.Api.HttpServer (runHttpServer)
+import Marconi.Sidechain.Bootstrap (runSidechainIndexers)
 import Marconi.Sidechain.CLI (parseCli)
+import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 
 {- | Concurrently start:
 
@@ -17,9 +15,9 @@ import Marconi.Sidechain.CLI (parseCli)
 -}
 main :: IO ()
 main = do
-  cli@CliArgs{httpPort, targetAddresses, targetAssets} <- parseCli
-  rpcEnv <- initializeSidechainEnv httpPort targetAddresses targetAssets
+  cliArgs <- parseCli
+  rpcEnv <- mkSidechainEnvFromCliArgs cliArgs
 
   race_
-    (Http.bootstrap rpcEnv) -- Start HTTP server
-    (bootstrapIndexers cli rpcEnv) -- Start the Sidechain indexers
+    (runHttpServer rpcEnv) -- Start HTTP server
+    (runSidechainIndexers cliArgs rpcEnv) -- Start the Sidechain indexers

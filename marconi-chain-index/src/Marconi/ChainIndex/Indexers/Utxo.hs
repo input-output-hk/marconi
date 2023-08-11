@@ -76,6 +76,7 @@ import Data.Aeson (
 import Data.Either (fromRight, rights)
 import Data.Foldable (toList)
 import Data.List (sortOn)
+import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -218,6 +219,7 @@ data QueryUtxoByAddress = QueryUtxoByAddress !C.AddressAny !(Interval C.SlotNo)
 data instance StorableQuery UtxoHandle
   = QueryUtxoByAddressWrapper QueryUtxoByAddress
   | LastSyncedBlockInfoQuery
+  | BlockNoFromSlotNoQuery C.SlotNo
   deriving (Show, Eq)
 
 data UtxoIndexerError = InvalidInterval C.SlotNo C.SlotNo
@@ -417,6 +419,7 @@ data instance StorableResult UtxoHandle
     UtxoByAddressResult {getUtxoByAddressResult :: ![UtxoResult]}
   | -- | Result of a 'LastSyncedBlockInfoQuery'
     LastSyncedBlockInfoResult {getLastSyncedBlockInfo :: !(WithOrigin BlockInfo), getTip :: !C.ChainTip}
+  | BlockNoFromSlotNoResult {getBlockNoFromSlotNoResult :: !(Maybe C.BlockNo)}
   deriving (Eq, Show, Ord)
 
 data instance StorableEvent UtxoHandle = UtxoEvent
@@ -1084,6 +1087,24 @@ instance Queryable UtxoHandle where
                   (_ : bi : _xs, [tip]) -> (At bi, tip)
                   (_ : bi : _xs, []) -> (At bi, C.ChainTipAtGenesis)
                   _other -> (Origin, C.ChainTipAtGenesis)
+  queryStorage es (UtxoHandle c _ _) (BlockNoFromSlotNoQuery slotNo@(C.SlotNo slotNoWord)) = liftSQLError CantQueryIndexer $ do
+    let isSlotNoOfEventSameAsInputSlotNo
+          UtxoEvent{ueBlockInfo = BlockInfo{_blockInfoSlotNo}} =
+            slotNo == _blockInfoSlotNo
+    case List.find isSlotNoOfEventSameAsInputSlotNo $ toList es of
+      Just UtxoEvent{ueBlockInfo = BlockInfo{_blockInfoBlockNo}} ->
+        pure $ BlockNoFromSlotNoResult $ Just _blockInfoBlockNo
+      Nothing -> do
+        blockNoM <-
+          listToMaybe
+            <$> SQL.query
+              c
+              [sql|SELECT s.blockNo
+                 FROM blockInfo s
+                 WHERE s.slotNo = ?
+                 LIMIT 1|]
+              (SQL.Only slotNoWord)
+        pure $ BlockNoFromSlotNoResult blockNoM
 
 instance Rewindable UtxoHandle where
   rewindStorage :: C.ChainPoint -> UtxoHandle -> StorableMonad UtxoHandle UtxoHandle

@@ -20,11 +20,11 @@ import Marconi.Sidechain.Api.Routes (
   GetUtxosFromAddressResult,
   JsonRpcAPI,
  )
-import Marconi.Sidechain.Api.Types (
+import Marconi.Sidechain.Env (
   SidechainEnv,
   mintBurnIndexerEnvIndexer,
   sidechainAddressUtxoIndexer,
-  sidechainEnvIndexers,
+  sidechainIndexersEnv,
   sidechainMintBurnIndexer,
  )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
@@ -81,7 +81,7 @@ type InsertMintBurnEventsCallback = [Utxo.StorableEvent MintBurn.MintBurnHandle]
 mkInsertUtxoEventsCallback :: SidechainEnv -> InsertUtxoEventsCallback
 mkInsertUtxoEventsCallback env =
   let cb :: Utxo.UtxoIndexer -> IO ()
-      cb = atomically . UIQ.updateEnvState (env ^. sidechainEnvIndexers . sidechainAddressUtxoIndexer)
+      cb = atomically . UIQ.updateEnvState (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
    in mocUtxoWorker cb
 
 mkInsertMintBurnEventsCallback :: SidechainEnv -> InsertMintBurnEventsCallback
@@ -90,7 +90,7 @@ mkInsertMintBurnEventsCallback env =
       cb =
         atomically
           . MIQ.updateEnvState
-            (env ^. sidechainEnvIndexers . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+            (env ^. sidechainIndexersEnv . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
    in mocMintBurnWorker cb
 
 {- | Insert events, and perform the callback.

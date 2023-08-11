@@ -49,9 +49,10 @@ library
     Marconi.Sidechain.Api.Query.Indexers.MintBurn
     Marconi.Sidechain.Api.Query.Indexers.Utxo
     Marconi.Sidechain.Api.Routes
-    Marconi.Sidechain.Api.Types
     Marconi.Sidechain.Bootstrap
     Marconi.Sidechain.CLI
+    Marconi.Sidechain.Env
+    Marconi.Sidechain.Error
     Marconi.Sidechain.Utils
 
   --------------------
@@ -105,30 +106,6 @@ executable marconi-sidechain
   build-depends:
     , async
     , base   >=4.9 && <5
-
-executable examples-json-rpc-server
-  import:         lang
-  hs-source-dirs: examples/json-rpc-server/src
-  main-is:        Main.hs
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:
-    , marconi-chain-index  >=1.2.0
-    , marconi-sidechain    >=1.2.0
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , async
-    , base                  >=4.9 && <5
-    , filepath
-    , lens
-    , mtl
-    , optparse-applicative
-    , stm
 
 executable examples-json-rpc-client
   import:         lang

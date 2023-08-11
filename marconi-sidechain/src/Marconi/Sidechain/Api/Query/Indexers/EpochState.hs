@@ -1,12 +1,11 @@
 module Marconi.Sidechain.Api.Query.Indexers.EpochState (
-  initializeEnv,
   updateEnvState,
   queryActiveSDDByEpochNo,
   queryNonceByEpochNo,
 ) where
 
 import Cardano.Api qualified as C
-import Control.Concurrent.STM.TMVar (TMVar, newEmptyTMVarIO, readTMVar)
+import Control.Concurrent.STM.TMVar (TMVar, readTMVar)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM, atomically)
@@ -27,24 +26,14 @@ import Marconi.Sidechain.Api.Routes (
   GetEpochNonceResult (GetEpochNonceResult),
   NonceResult (NonceResult),
  )
-import Marconi.Sidechain.Api.Types (
-  EpochStateIndexerEnv (EpochStateIndexerEnv),
-  QueryExceptions (IndexerInternalError, QueryError),
+import Marconi.Sidechain.Env (
   SidechainEnv,
   epochStateIndexerEnvIndexer,
-  sidechainEnvIndexers,
   sidechainEpochStateIndexer,
+  sidechainIndexersEnv,
  )
+import Marconi.Sidechain.Error (QueryExceptions (IndexerInternalError, QueryError))
 import Marconi.Sidechain.Utils (writeTMVar)
-
-{- | Bootstraps the EpochState query environment.
- The module is responsible for accessing SQLite for queries.
- The main issue we try to avoid here is mixing inserts and quries in SQLite to avoid locking the database
--}
-initializeEnv
-  :: IO EpochStateIndexerEnv
-  -- ^ returns Query runtime environment
-initializeEnv = EpochStateIndexerEnv <$> newEmptyTMVarIO
 
 updateEnvState :: TMVar (State EpochStateHandle) -> State EpochStateHandle -> STM ()
 updateEnvState = writeTMVar
@@ -63,7 +52,7 @@ queryActiveSDDByEpochNo env epochNo = do
   epochStateIndexer <-
     atomically $
       readTMVar $
-        env ^. sidechainEnvIndexers . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer
+        env ^. sidechainIndexersEnv . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer
   query epochStateIndexer
   where
     query indexer = do
@@ -98,7 +87,7 @@ queryNonceByEpochNo env epochNo = do
   epochStateIndexer <-
     atomically $
       readTMVar $
-        env ^. sidechainEnvIndexers . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer
+        env ^. sidechainIndexersEnv . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer
   query epochStateIndexer
   where
     query indexer = do
