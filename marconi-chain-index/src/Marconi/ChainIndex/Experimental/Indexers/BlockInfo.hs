@@ -139,16 +139,17 @@ instance
   => Core.Queryable m BlockInfo (Core.EventAtQuery BlockInfo) Core.SQLiteIndexer
   where
   query =
-    let blockInfoQuery :: SQL.Query
-        blockInfoQuery =
+    let blockInfoBySlotNoQuery :: SQL.Query
+        blockInfoBySlotNoQuery =
           [sql|
           SELECT blockNo, blockTimestamp, epochNo
           FROM blockInfo
           WHERE slotNo == :slotNo
+          LIMIT 1
           |]
      in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const blockInfoQuery)
+          (const blockInfoBySlotNoQuery)
           (const listToMaybe)
 
 instance
@@ -156,8 +157,8 @@ instance
   => Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
   where
   query =
-    let utxoQuery :: SQL.Query
-        utxoQuery =
+    let blockInfoBeforeOrAtSlotNoQuery :: SQL.Query
+        blockInfoBeforeOrAtSlotNoQuery =
           [sql|
           SELECT blockNo, blockTimestamp, epochNo,
                  slotNo, blockHeaderHash
@@ -172,7 +173,7 @@ instance
         parseResult = mapMaybe . traverse
      in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const utxoQuery)
+          (const blockInfoBeforeOrAtSlotNoQuery)
           (\(Core.EventsMatchingQuery p) -> parseResult p)
 
 fromBlockEratoBlockInfo

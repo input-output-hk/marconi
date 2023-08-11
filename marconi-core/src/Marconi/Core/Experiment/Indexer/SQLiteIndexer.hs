@@ -302,7 +302,7 @@ querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
       throwError (AheadOfLastSync $ Just $ fromRows q res)
     pure $ fromRows q res
 
-{- | A helper for the definition of the 'Queryable' typeclass for 'SQLiteIndexer'
+{- | A helper for the definition of the 'Queryable' typeclass for 'SQLiteIndexer'.
 
  The helper just remove a bit of the boilerplate needed to transform data
  to query the database.
