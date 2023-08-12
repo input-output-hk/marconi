@@ -30,8 +30,8 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (IndexWrapper),
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (IndexTransformer),
   IndexerTrans (Config, unwrap, wrap),
   indexAllDescendingVia,
   indexVia,
@@ -42,6 +42,9 @@ import Marconi.Core.Experiment.Transformer.IndexWrapper (
  )
 import Marconi.Core.Experiment.Type (Point, Timed (Timed), point)
 
+{- | The visible part of the catchup configuration, it allows you to configure the size of the batch
+and to control when the batch mecanism stops
+-}
 data CatchupConfig = CatchupConfig
   { _configCatchupBatchSize :: Word64
   -- ^ Maximal number of events in one batch
@@ -70,7 +73,13 @@ contextCatchupBypassDistance = contextCatchupConfig . configCatchupBypassDistanc
 contextCatchupBatchSize :: Lens.Lens' (CatchupContext event) Word64
 contextCatchupBatchSize = contextCatchupConfig . configCatchupBatchSize
 
-newtype WithCatchup indexer event = WithCatchup {_catchupWrapper :: IndexWrapper CatchupContext indexer event}
+{-- | WithCatchup is used to speed up the synchronisation of indexers by preparing batches of events
+ - that will be submitted via `indexAll` to the underlying indexer.
+ -
+ - Once the indexer is close enough to the tip, the transformer stops the batch to insert element
+ - one by one.
+ -}
+newtype WithCatchup indexer event = WithCatchup {_catchupWrapper :: IndexTransformer CatchupContext indexer event}
 
 Lens.makeLenses 'WithCatchup
 
@@ -84,25 +93,25 @@ withCatchup
   -- ^ the underlying indexer
   -> WithCatchup indexer event
 withCatchup computeDistance config =
-  WithCatchup . IndexWrapper (CatchupContext computeDistance config 0 [])
+  WithCatchup . IndexTransformer (CatchupContext computeDistance config 0 [])
 
 deriving via
-  (IndexWrapper CatchupContext indexer)
+  (IndexTransformer CatchupContext indexer)
   instance
     (IsSync m event indexer) => IsSync m event (WithCatchup indexer)
 
 deriving via
-  (IndexWrapper CatchupContext indexer)
+  (IndexTransformer CatchupContext indexer)
   instance
     (HasDatabasePath indexer) => HasDatabasePath (WithCatchup indexer)
 
 deriving via
-  (IndexWrapper CatchupContext indexer)
+  (IndexTransformer CatchupContext indexer)
   instance
     (Closeable m indexer) => Closeable m (WithCatchup indexer)
 
 deriving via
-  (IndexWrapper CatchupContext indexer)
+  (IndexTransformer CatchupContext indexer)
   instance
     (Queryable m event query indexer) => Queryable m event query (WithCatchup indexer)
 
@@ -112,7 +121,7 @@ caughtUpIndexer = catchupWrapper . wrappedIndexer
 instance IndexerTrans WithCatchup where
   type Config WithCatchup = CatchupContext
 
-  wrap cfg = WithCatchup . IndexWrapper cfg
+  wrap cfg = WithCatchup . IndexTransformer cfg
 
   unwrap = caughtUpIndexer
 

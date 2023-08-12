@@ -314,4 +314,4 @@ instance
                 <> " GROUP BY u.txId, u.txIx"
                 <> " ORDER BY u.slotNo ASC"
      in do
-          liftIO $ SQL.queryNamed (indexer ^. Core.aggregateHandle) query params
+          liftIO $ SQL.queryNamed (indexer ^. Core.aggregateConnection) query params

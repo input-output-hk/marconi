@@ -30,8 +30,8 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (IndexWrapper),
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (IndexTransformer),
   IndexerTrans (Config, unwrap, wrap),
   indexVia,
   resetVia,
@@ -58,7 +58,7 @@ makeLenses 'DelayConfig
 
  As a consequence, 'WithDelay' is preferably used at the top of the hierarchy.
 -}
-newtype WithDelay indexer event = WithDelay {_delayWrapper :: IndexWrapper DelayConfig indexer event}
+newtype WithDelay indexer event = WithDelay {_delayWrapper :: IndexTransformer DelayConfig indexer event}
 
 -- | A smart constructor for 'WithDelay'
 withDelay
@@ -66,40 +66,44 @@ withDelay
   -- ^ capacity
   -> indexer event
   -> WithDelay indexer event
-withDelay c = WithDelay . IndexWrapper (DelayConfig c 0 Seq.empty)
+withDelay c = WithDelay . IndexTransformer (DelayConfig c 0 Seq.empty)
 
 makeLenses 'WithDelay
 
 deriving via
-  (IndexWrapper DelayConfig indexer)
+  (IndexTransformer DelayConfig indexer)
   instance
     (IsSync m event indexer) => IsSync m event (WithDelay indexer)
 
 deriving via
-  (IndexWrapper DelayConfig indexer)
+  (IndexTransformer DelayConfig indexer)
   instance
     (HasDatabasePath indexer) => HasDatabasePath (WithDelay indexer)
 
 deriving via
-  (IndexWrapper DelayConfig indexer)
+  (IndexTransformer DelayConfig indexer)
   instance
     (Closeable m indexer) => Closeable m (WithDelay indexer)
 
 deriving via
-  (IndexWrapper DelayConfig indexer)
+  (IndexTransformer DelayConfig indexer)
   instance
     (Queryable m event query indexer) => Queryable m event query (WithDelay indexer)
 
 instance IndexerTrans WithDelay where
   type Config WithDelay = DelayConfig
 
-  wrap cfg = WithDelay . IndexWrapper cfg
+  wrap cfg = WithDelay . IndexTransformer cfg
 
   unwrap = delayedIndexer
 
 delayedIndexer :: Lens' (WithDelay indexer event) (indexer event)
 delayedIndexer = delayWrapper . wrappedIndexer
 
+{- | Provide accces to the delay size of a 'WithDelay' transformer.
+The provided instance ensure that access is granted even if other indexer transformers are used
+on top of this one
+-}
 class HasDelayConfig indexer where
   delayCapacity :: Lens' (indexer event) Word
 
@@ -139,14 +143,16 @@ instance
         pushAndGetOldest = \case
           Empty -> (timedEvent, Empty)
           (buffer' :|> e') -> (e', timedEvent <| buffer')
+
+        doWhenFull = do
+          let b = indexer ^. delayBuffer
+              (oldest, buffer') = pushAndGetOldest b
+          res <- indexVia delayedIndexer oldest indexer
+          pure $ res & delayBuffer .~ buffer'
      in do
-          if not $ bufferIsFull indexer
-            then pure $ bufferEvent indexer
-            else do
-              let b = indexer ^. delayBuffer
-                  (oldest, buffer') = pushAndGetOldest b
-              res <- indexVia delayedIndexer oldest indexer
-              pure $ res & delayBuffer .~ buffer'
+          if bufferIsFull indexer
+            then doWhenFull
+            else pure $ bufferEvent indexer
 
   rollback p indexer =
     let rollbackWrappedIndexer p' = rollbackVia delayedIndexer p' indexer

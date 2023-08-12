@@ -612,7 +612,7 @@ newtype IndexerMVar indexer event = IndexerMVar {getMVar :: MVar (indexer event)
 
 -- | Provide a coordinator and a way to inspect the coordinated
 newtype UnderCoordinator indexer event = UnderCoordinator
-  {_underCoordinator :: Core.IndexWrapper (IndexerMVar indexer) Core.Coordinator event}
+  {_underCoordinator :: Core.IndexTransformer (IndexerMVar indexer) Core.Coordinator event}
 
 makeLenses ''UnderCoordinator
 
@@ -662,7 +662,7 @@ coordinatorIndexerRunner wRunner =
             "TestWorker"
             (pure . pure)
             wrapped
-      UnderCoordinator . Core.IndexWrapper (IndexerMVar t) <$> lift (Core.mkCoordinator [run])
+      UnderCoordinator . Core.IndexTransformer (IndexerMVar t) <$> lift (Core.mkCoordinator [run])
 
 data ParityQuery = OddTestEvent | EvenTestEvent
   deriving (Eq, Ord, Show)
@@ -1332,7 +1332,7 @@ withAggregateTest =
 
 -- | Provide an indexer that fails on rollback
 newtype WithRollbackFailure indexer event = WithRollbackFailure
-  {_withRollbackFailure :: Core.IndexWrapper (Const ()) indexer event}
+  {_withRollbackFailure :: Core.IndexTransformer (Const ()) indexer event}
 
 makeLenses ''WithRollbackFailure
 
@@ -1344,15 +1344,15 @@ withRollbackFailureRunner
 withRollbackFailureRunner wRunner =
   Model.IndexerTestRunner
     (wRunner ^. Model.indexerRunner)
-    (WithRollbackFailure . Core.IndexWrapper (Const ()) <$> (wRunner ^. Model.indexerGenerator))
+    (WithRollbackFailure . Core.IndexTransformer (Const ()) <$> (wRunner ^. Model.indexerGenerator))
 
 instance Core.IndexerTrans WithRollbackFailure where
   type Config WithRollbackFailure = Const ()
-  wrap cfg = WithRollbackFailure . Core.IndexWrapper cfg
+  wrap cfg = WithRollbackFailure . Core.IndexTransformer cfg
   unwrap = withRollbackFailure . Core.wrappedIndexer
 
 deriving via
-  (Core.IndexWrapper (Const ()) indexer)
+  (Core.IndexTransformer (Const ()) indexer)
   instance
     (Core.IsSync m event indexer) => Core.IsSync m event (WithRollbackFailure indexer)
 
@@ -1361,7 +1361,7 @@ instance (Core.IsIndex m event indexer) => Core.IsIndex m event (WithRollbackFai
   rollback _ _ = error "STOP"
 
 deriving via
-  (Core.IndexWrapper (Const ()) indexer)
+  (Core.IndexTransformer (Const ()) indexer)
   instance
     (Core.Closeable m indexer) => Core.Closeable m (WithRollbackFailure indexer)
 

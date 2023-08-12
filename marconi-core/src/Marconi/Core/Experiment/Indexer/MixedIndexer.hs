@@ -43,8 +43,8 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (IndexWrapper),
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (IndexTransformer),
   IndexerTrans (unwrap),
   indexVia,
   wrappedIndexer,
@@ -115,9 +115,10 @@ makeLenses ''MixedIndexerProperties
  @store@ the indexer that handle the most recent events
 -}
 newtype MixedIndexer store mem event = MixedIndexer
-  { _mixedWrapper :: IndexWrapper (MixedIndexerProperties store) mem event
+  { _mixedWrapper :: IndexTransformer (MixedIndexerProperties store) mem event
   }
 
+-- | A smart constructor for a 'MixedIndexer' that sets only the relevant parameters
 mkMixedIndexer
   :: Word
   -- ^ how many events are kept in memory after a flush
@@ -131,8 +132,9 @@ mkMixedIndexer keepNb flushNb db =
         MixedIndexerProperties
           (MixedIndexerState mempty flushNb 0 db)
           (MixedIndexerConfig keepNb flushNb)
-   in MixedIndexer . IndexWrapper properties
+   in MixedIndexer . IndexTransformer properties
 
+-- | Create a  mixed indexer that initialised it's last sync point from the inMemory indexer
 standardMixedIndexer
   :: (IsSync m event store)
   => (Monad m)
@@ -162,13 +164,18 @@ stepsBeforeNextFlushPointCreation =
 currentMemorySize :: Lens' (MixedIndexer store mem event) Word
 currentMemorySize = mixedWrapper . wrapperConfig . stateProperties . configCurrentMemorySize
 
+{- | Provide access to the mixed indexer configuration, an indexer transformer has to implement it
+if you want to access the configuration option of the mixed indexer below the transformer
+-}
 class HasMixedConfig indexer where
   flushEvery :: Lens' (indexer event) Word
   keepInMemory :: Lens' (indexer event) Word
 
+-- | Ease the implementation of 'flushEvery' for an indexer transformer
 flushEveryVia :: (HasMixedConfig indexer) => Lens' s (indexer event) -> Lens' s Word
 flushEveryVia l = l . flushEvery
 
+-- | Ease the implementation of 'keepInMemory' for an indexer transformer
 keepInMemoryVia :: (HasMixedConfig indexer) => Lens' s (indexer event) -> Lens' s Word
 keepInMemoryVia l = l . keepInMemory
 

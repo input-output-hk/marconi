@@ -30,8 +30,8 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
  )
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (IndexWrapper),
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (IndexTransformer),
   IndexerTrans (Config, unwrap, wrap),
   indexAllDescendingVia,
   indexAllVia,
@@ -48,45 +48,46 @@ newtype ProcessedInputTracer m event = ProcessedInputTracer {_unwrapTracer :: Tr
 makeLenses 'ProcessedInputTracer
 
 -- | A tracer modifier that adds tracing to an existing indexer
-newtype WithTracer m indexer event = WithTracer {_tracerWrapper :: IndexWrapper (ProcessedInputTracer m) indexer event}
+newtype WithTracer m indexer event = WithTracer {_tracerWrapper :: IndexTransformer (ProcessedInputTracer m) indexer event}
 
+-- | A smart consructor for @WithTracer@
 withTracer :: Tracer m (ProcessedInput event) -> indexer event -> WithTracer m indexer event
-withTracer tr = WithTracer . IndexWrapper (ProcessedInputTracer tr)
+withTracer tr = WithTracer . IndexTransformer (ProcessedInputTracer tr)
 
 makeLenses 'WithTracer
 
 deriving via
-  (IndexWrapper (ProcessedInputTracer m) indexer)
+  (IndexTransformer (ProcessedInputTracer m) indexer)
   instance
     (IsSync m event indexer)
     => IsSync m event (WithTracer m indexer)
 
 deriving via
-  (IndexWrapper (ProcessedInputTracer m) indexer)
+  (IndexTransformer (ProcessedInputTracer m) indexer)
   instance
     (MonadTrans t, IsSync (t m) event indexer)
     => IsSync (t m) event (WithTracer m indexer)
 
 deriving via
-  (IndexWrapper (ProcessedInputTracer m) indexer)
+  (IndexTransformer (ProcessedInputTracer m) indexer)
   instance
     (Closeable m indexer)
     => Closeable m (WithTracer m indexer)
 
 deriving via
-  (IndexWrapper (ProcessedInputTracer m) indexer)
+  (IndexTransformer (ProcessedInputTracer m) indexer)
   instance
     (MonadTrans t, Closeable (t m) indexer)
     => Closeable (t m) (WithTracer m indexer)
 
 deriving via
-  (IndexWrapper (ProcessedInputTracer m) indexer)
+  (IndexTransformer (ProcessedInputTracer m) indexer)
   instance
     (Queryable m event query indexer)
     => Queryable m event query (WithTracer m indexer)
 
 deriving via
-  (IndexWrapper (ProcessedInputTracer m) indexer)
+  (IndexTransformer (ProcessedInputTracer m) indexer)
   instance
     (MonadTrans t, Queryable (t m) event query indexer)
     => Queryable (t m) event query (WithTracer m indexer)
@@ -94,10 +95,13 @@ deriving via
 instance IndexerTrans (WithTracer m) where
   type Config (WithTracer m) = ProcessedInputTracer m
 
-  wrap cfg = WithTracer . IndexWrapper cfg
+  wrap cfg = WithTracer . IndexTransformer cfg
 
   unwrap = tracerWrapper . unwrap
 
+{- | It gives access to the tracer. The provided instances allows access to the tracer event below
+an indexer transformer.
+-}
 class HasTracerConfig m event indexer where
   tracer :: Lens' (indexer event) (Tracer m (ProcessedInput event))
 
