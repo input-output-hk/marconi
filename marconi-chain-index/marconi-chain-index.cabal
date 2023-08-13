@@ -53,6 +53,7 @@ common lang
 library
   import:          lang
   hs-source-dirs:  src
+  c-sources:       cbits/rev.c
   exposed-modules:
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
@@ -70,6 +71,8 @@ library
     Marconi.ChainIndex.Experimental.Indexers.Worker
     Marconi.ChainIndex.Experimental.Runner
     Marconi.ChainIndex.Extract.Datum
+    Marconi.ChainIndex.Git.Rev
+    Marconi.ChainIndex.Git.RevFromGit
     Marconi.ChainIndex.Indexers
     Marconi.ChainIndex.Indexers.AddressDatum
     Marconi.ChainIndex.Indexers.EpochState
@@ -82,6 +85,9 @@ library
     Marconi.ChainIndex.Orphans
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
+
+  other-modules:   Paths_marconi_chain_index
+  autogen-modules: Paths_marconi_chain_index
 
   --------------------
   -- Local components
@@ -133,11 +139,13 @@ library
     , mwc-random
     , optparse-applicative
     , prettyprinter
+    , process
     , prometheus-client
     , serialise
     , sqlite-simple
     , stm
     , streaming
+    , template-haskell
     , text
     , time
     , transformers

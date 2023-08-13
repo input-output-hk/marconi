@@ -95,6 +95,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Data.Word (Word64)
+import Marconi.ChainIndex.CLI qualified as CLI
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantRollback, CantStartIndexer),
   ignoreQueryError,
@@ -681,6 +682,7 @@ runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync
         logInfo trace "Done!"
   c <- defaultConfigStdout
   withTrace c traceName $ \trace -> do
+    logInfo trace $ Text.pack $ "marconi " <> CLI.getVersion
     logInfo trace $
       renderStrict $
         layoutPretty defaultLayoutOptions $

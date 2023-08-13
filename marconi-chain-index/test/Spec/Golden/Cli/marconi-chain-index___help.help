@@ -19,7 +19,7 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
 
 Available options:
   -h,--help                Show this help text
-  --version                Show git SHA
+  --version                Show marconi version
   -s,--socket-path FILE-PATH
                            Path to node socket.
   --mainnet                Use the mainnet magic id.

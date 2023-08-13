@@ -3,7 +3,7 @@ module Main where
 import Control.Concurrent.Async (race_)
 import Marconi.Sidechain.Api.HttpServer (runHttpServer)
 import Marconi.Sidechain.Bootstrap (runSidechainIndexers)
-import Marconi.Sidechain.CLI (parseCli)
+import Marconi.Sidechain.CLI (getVersion, parseCli)
 import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 
 {- | Concurrently start:
@@ -15,6 +15,7 @@ import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 -}
 main :: IO ()
 main = do
+  putStrLn $ "marconi-sidechain " <> getVersion
   cliArgs <- parseCli
   rpcEnv <- mkSidechainEnvFromCliArgs cliArgs
 

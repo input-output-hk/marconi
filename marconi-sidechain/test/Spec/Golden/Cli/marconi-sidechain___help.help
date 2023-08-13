@@ -14,7 +14,7 @@ Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
 
 Available options:
   -h,--help                Show this help text
-  --version                Show git SHA
+  --version                Show marconi version
   -s,--socket-path FILE-PATH
                            Path to node socket.
   --node-config-path ARG   Path to node configuration which you are connecting

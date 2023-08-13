@@ -49,7 +49,7 @@ genTest commands = do
 -}
 generateHelpScreen :: [T.Text] -> IO ByteString
 generateHelpScreen commands = do
-  let parser = programParser "fake-sha" -- parameter is ignored in this test
+  let parser = programParser
       text = case execParserPure defaultPrefs parser (T.unpack <$> commands) of
         Failure failure -> failure
         Success _ -> error "Parser expected to fail"
