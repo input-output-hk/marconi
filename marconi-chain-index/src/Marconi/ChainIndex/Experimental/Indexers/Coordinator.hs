@@ -15,7 +15,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.Core.Experiment qualified as Core
 
 coordinatorWorker
-  :: (MonadIO m, Ord (Core.Point b), Core.HasGenesis (Core.Point b))
+  :: (MonadIO m, Ord (Core.Point b))
   => Text
   -> (WithDistance a -> IO (Maybe b))
   -> [Core.Worker b (Core.Point b)]
