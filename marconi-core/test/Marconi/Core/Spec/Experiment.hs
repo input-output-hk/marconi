@@ -624,7 +624,10 @@ instance
   indexAllDescending = Core.indexAllDescendingVia underCoordinator
   rollback = Core.rollbackVia $ underCoordinator . wrappedIndexer
 
-instance (MonadIO m) => Core.IsSync m event (UnderCoordinator indexer) where
+instance
+  (MonadIO m, MonadError Core.IndexerError m, Ord (Core.Point event))
+  => Core.IsSync m event (UnderCoordinator indexer)
+  where
   lastSyncPoint = Core.lastSyncPointVia underCoordinator
 
 instance
