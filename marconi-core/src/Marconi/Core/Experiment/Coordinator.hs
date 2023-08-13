@@ -9,7 +9,6 @@
 -}
 module Marconi.Core.Experiment.Coordinator (
   Coordinator,
-  lastSync,
   workers,
   threadIds,
   tokens,
@@ -24,8 +23,8 @@ import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
 import Control.Lens (makeLenses)
-import Control.Lens.Operators ((&), (.~), (^.))
-import Control.Monad.Except (MonadError (throwError))
+import Control.Lens.Operators ((^.))
+import Control.Monad.Except (MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 
 import Data.Foldable (traverse_)
@@ -33,15 +32,14 @@ import Data.Maybe (catMaybes, listToMaybe)
 
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  HasGenesis (genesis),
   IsIndex (index, rollback),
   IsSync (lastSyncPoint),
  )
-import Marconi.Core.Experiment.Type (IndexerError, Point, point)
+import Marconi.Core.Experiment.Type (IndexerError, Point)
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (Index, Rollback),
   Worker,
-  WorkerM (errorBox),
+  WorkerM (Worker, errorBox),
   startWorker,
  )
 
@@ -51,9 +49,7 @@ import Marconi.Core.Experiment.Worker (
  and with concrete indexers at the leaves.
 -}
 data Coordinator input = Coordinator
-  { _lastSync :: Point input
-  -- ^ the last common sync point for the workers
-  , _workers :: [Worker input (Point input)]
+  { _workers :: [Worker input (Point input)]
   -- ^ the list of workers managed by this coordinator
   , _threadIds :: [ThreadId]
   -- ^ the thread ids of the workers
@@ -70,8 +66,7 @@ makeLenses 'Coordinator
 
 -- | create a coordinator and starts its workers
 mkCoordinator
-  :: (HasGenesis (Point input))
-  => (Ord (Point input))
+  :: (Ord (Point input))
   => [Worker input (Point input)]
   -> IO (Coordinator input)
 mkCoordinator workers' =
@@ -81,9 +76,11 @@ mkCoordinator workers' =
         tokens' <- Con.newQSemN 0 -- starts empty, will be filled when the workers will start
         channel' <- STM.newBroadcastTChanIO
         threadIds' <- startWorkers channel' tokens'
-        pure $ Coordinator genesis workers' threadIds' tokens' channel' nb
+        pure $ Coordinator workers' threadIds' tokens' channel' nb
 
--- | A coordinator step (send an input to its workers, wait for an ack of every worker before listening again)
+{- | A coordinator step
+(send an input to its workers, wait for an ack of every worker before listening again)
+-}
 step
   :: ( Ord (Point input)
      , IsIndex m input indexer
@@ -112,32 +109,38 @@ healthCheck c = do
 
 -- A coordinator can be consider as an indexer that forwards the input to its worker
 instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator where
-  index timedEvent coordinator =
-    let setLastSync e = coordinator & lastSync .~ (e ^. point)
-     in do
-          liftIO $ dispatchNewInput coordinator $ Index timedEvent
-          liftIO $ waitWorkers coordinator
-          errors <- healthCheck coordinator
-          case errors of
-            Just err -> close coordinator *> throwError err
-            Nothing -> pure $ setLastSync timedEvent
+  index timedEvent coordinator = do
+    liftIO $ dispatchNewInput coordinator $ Index timedEvent
+    liftIO $ waitWorkers coordinator
+    errors <- healthCheck coordinator
+    case errors of
+      Just err -> close coordinator *> throwError err
+      Nothing -> pure coordinator
 
   rollback p =
-    let setLastSync :: Coordinator event -> Coordinator event
-        setLastSync c = c & lastSync .~ p
-
-        rollbackWorkers :: Coordinator event -> m (Coordinator event)
+    let rollbackWorkers :: Coordinator event -> m (Coordinator event)
         rollbackWorkers c = do
           liftIO $ dispatchNewInput c $ Rollback p
           liftIO $ waitWorkers c
           errors <- healthCheck c
           case errors of
             Just err -> close c *> throwError err
-            Nothing -> pure $ setLastSync c
+            Nothing -> pure c
      in rollbackWorkers
 
-instance (MonadIO m) => IsSync m event Coordinator where
-  lastSyncPoint indexer = pure $ indexer ^. lastSync
+instance
+  (Ord (Point event), MonadIO m, MonadError IndexerError m)
+  => IsSync m event Coordinator
+  where
+  lastSyncPoint indexer =
+    let workerLastSyncPoint :: Worker event (Point event) -> m (Point event)
+        workerLastSyncPoint (Worker _name state _f hoistError _err) = do
+          ix <- liftIO $ Con.readMVar state
+          res <- liftIO $ runExceptT $ hoistError $ lastSyncPoint ix
+          case res of
+            Left err -> throwError err
+            Right res' -> pure res'
+     in minimum <$> traverse workerLastSyncPoint (indexer ^. workers)
 
 instance (MonadIO m) => Closeable m Coordinator where
   close coordinator = liftIO $ do
