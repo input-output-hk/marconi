@@ -345,7 +345,6 @@ module Marconi.Core.Experiment (
 
   -- ** Coordinator
   Coordinator,
-  lastSync,
   workers,
   threadIds,
   tokens,
@@ -468,7 +467,6 @@ import Marconi.Core.Experiment.Class (
 import Marconi.Core.Experiment.Coordinator (
   Coordinator,
   channel,
-  lastSync,
   mkCoordinator,
   nbWorkers,
   step,
