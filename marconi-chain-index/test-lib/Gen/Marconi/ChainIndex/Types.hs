@@ -21,6 +21,7 @@ module Gen.Marconi.ChainIndex.Types (
   genAddressInEra,
   genTxOutValue,
   genSimpleScriptData,
+  genSimpleHashableScriptData,
   genProtocolParametersForPlutusScripts,
   genHashScriptData,
   genAssetId,
@@ -343,6 +344,13 @@ genSimpleScriptData =
         <$> Gen.list
           (Range.linear 0 64)
           (Gen.word8 Range.constantBounded)
+
+genSimpleHashableScriptData :: Gen C.HashableScriptData
+genSimpleHashableScriptData = do
+  sd <- genSimpleScriptData
+  case C.deserialiseFromCBOR C.AsHashableScriptData $ C.serialiseToCBOR sd of
+    Left e -> error $ "genHashableScriptData: " <> show e
+    Right r -> return r
 
 constantReferenceScript :: C.CardanoEra era -> Gen (C.ReferenceScript era)
 constantReferenceScript era =

@@ -302,6 +302,9 @@ instance (MonadIO m) => IsSync m event SQLiteIndexer where
   lastSyncPoint indexer =
     pure $ indexer ^. dbLastSync
 
+-- TODO This often results in the runtime error:
+-- SQLite3 returned ErrorBusy while attempting to perform close: unable to close due to unfinalized statements or unfinished backups
+-- Should use 'withConnection' instead.
 instance (MonadIO m) => Closeable m SQLiteIndexer where
   close indexer = liftIO $ SQL.close $ indexer ^. connection
 

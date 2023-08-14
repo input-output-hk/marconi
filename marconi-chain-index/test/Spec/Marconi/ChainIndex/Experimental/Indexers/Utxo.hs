@@ -9,20 +9,16 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo (
 ) where
 
 import Cardano.Api qualified as C
+import Control.Concurrent qualified as Concurrent
 import Control.Lens ((^.), (^..))
+import Control.Lens qualified as Lens
 import Control.Monad (join, void)
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
+import Data.List ((\\))
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
-
-import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
-import Marconi.Core.Experiment qualified as Core
-
-import Control.Concurrent qualified as Concurrent
-import Control.Lens qualified as Lens
-import Control.Monad.Trans.Class (MonadTrans (lift))
-import Data.List ((\\))
 import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Hedgehog ((===))
 import Hedgehog qualified
@@ -30,9 +26,11 @@ import Hedgehog.Gen qualified
 import Hedgehog.Gen qualified as Hedgehog
 import Hedgehog.Range qualified
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardWorkerConfig (StandardWorkerConfig))
 import Marconi.ChainIndex.Experimental.Logger (nullTracer)
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
+import Marconi.Core.Experiment qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
@@ -110,7 +108,10 @@ propActLikeListIndexerOnEventAt = Hedgehog.property $ do
     Hedgehog.evalExceptT $ Core.query (event ^. Core.point) Core.EventAtQuery referenceIndexer
   refResult === testedResult
 
--- | Check that an 'utxoWorker' tracks the given address
+{- | Check that an 'utxoWorker' tracks the given address
+TODO Change to look like the 'propRunnerTracksSelectedAssetId' of the MintBurnEvent test (much
+shorter test).
+-}
 propRunnerTracksSelectedAddress :: Hedgehog.Property
 propRunnerTracksSelectedAddress = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchain
@@ -129,7 +130,7 @@ propRunnerTracksSelectedAddress = Hedgehog.property $ do
       eventAtAddress addr =
         mapMaybe (traverse $ resultAtAddress addr)
           . mapMaybe sequence
-  -- we take a subsett of the chain addresses to track them
+  -- we take a subset of the chain addresses to track them
   followedAddresses <-
     Hedgehog.forAll $
       Hedgehog.filter (not . null) $
@@ -146,16 +147,18 @@ propRunnerTracksSelectedAddress = Hedgehog.property $ do
         (Utxo.UtxoIndexerConfig followedAddresses True)
         ":memory:"
   -- we create a coordinator to perform indexing through the worker
-  coordinator <- lift $ Core.mkCoordinator [w]
+  coordinator <- liftIO $ Core.mkCoordinator [w]
   void $ Hedgehog.evalExceptT $ Core.indexAllDescending eventsWithDistance coordinator
   -- and we read through the indexer reference in the mvar
-  indexer <- lift $ Concurrent.readMVar ix
+  indexer <- liftIO $ Concurrent.readMVar ix
   res <-
     Hedgehog.evalExceptT $
       Core.queryLatest (Core.EventsMatchingQuery $ resultAtAddress addr) indexer
   eventAtAddress addr utxoEvents === res
 
--- | Check that an 'utxoWorker' doesn't track other addresses
+{- | Check that an 'utxoWorker' doesn't track other addresses
+TODO Change to look like the 'propRunnerTracksSelectedAssetId' of the MintBurnEvent test.
+-}
 propRunnerDoesntTrackUnselectedAddress :: Hedgehog.Property
 propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchain
@@ -174,7 +177,7 @@ propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
     Hedgehog.forAll $
       Hedgehog.filter notAllAddresses $
         Hedgehog.subsequence chainAddresses
-  -- we choose one of the untracked
+  -- We choose one of the untracked
   let untrackedAddresses = chainAddresses \\ followedAddresses
   addr <-
     Hedgehog.forAll $ Hedgehog.element untrackedAddresses
@@ -185,10 +188,10 @@ propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
         (Utxo.UtxoIndexerConfig followedAddresses True)
         ":memory:"
   -- we create a coordinator to perform indexing through the worker
-  coordinator <- lift $ Core.mkCoordinator [w]
+  coordinator <- liftIO $ Core.mkCoordinator [w]
   void $ Hedgehog.evalExceptT $ Core.indexAllDescending eventsWithDistance coordinator
   -- and we read through the indexer reference in the mvar
-  indexer <- lift $ Concurrent.readMVar ix
+  indexer <- liftIO $ Concurrent.readMVar ix
   res <-
     Hedgehog.evalExceptT $
       Core.queryLatest (Core.EventsMatchingQuery $ resultAtAddress addr) indexer

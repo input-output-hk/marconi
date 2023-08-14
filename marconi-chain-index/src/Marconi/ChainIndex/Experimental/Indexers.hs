@@ -20,7 +20,7 @@ import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as Block
 import Marconi.ChainIndex.Experimental.Indexers.Coordinator (coordinatorWorker, standardCoordinator)
 import Marconi.ChainIndex.Experimental.Indexers.Datum qualified as Datum
-import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintToken
+import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Indexers.UtxoQuery qualified as UtxoQuery
@@ -39,6 +39,7 @@ and expose a single coordinator to operate them
 buildIndexers
   :: Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
+  -> MintTokenEvent.MintTokenEventConfig
   -> BM.Trace IO Text
   -> FilePath
   -> ExceptT
@@ -49,7 +50,7 @@ buildIndexers
       , -- Indexing part
         Core.WithTrace IO Core.Coordinator (WithDistance BlockEvent)
       )
-buildIndexers catchupConfig utxoConfig logger path = do
+buildIndexers catchupConfig utxoConfig mintEventConfig logger path = do
   let mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) logger
       txBodyCoordinatorLogger = BM.appendName "txBody" mainLogger
 
@@ -58,7 +59,8 @@ buildIndexers catchupConfig utxoConfig logger path = do
   (utxoMVar, utxoWorker) <- utxoBuilder catchupConfig utxoConfig txBodyCoordinatorLogger path
   (spentMVar, spentWorker) <- spentBuilder catchupConfig txBodyCoordinatorLogger path
   (datumMVar, datumWorker) <- datumBuilder catchupConfig txBodyCoordinatorLogger path
-  (_mintTokenMVar, mintTokenWorker) <- mintBuilder catchupConfig txBodyCoordinatorLogger path
+  (_mintTokenMVar, mintTokenWorker) <-
+    mintBuilder catchupConfig mintEventConfig txBodyCoordinatorLogger path
 
   let getTxBody :: (C.IsCardanoEra era) => TxIndexInBlock -> C.Tx era -> AnyTxBody
       getTxBody ix tx = AnyTxBody ix (C.getTxBody tx)
@@ -180,19 +182,20 @@ datumBuilder catchupConfig logger path =
 mintBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => Core.CatchupConfig
+  -> MintTokenEvent.MintTokenEventConfig
   -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
   -> FilePath
   -> n
-      ( MVar (MintToken.StandardMintTokenEventIndexer m)
+      ( MVar (MintTokenEvent.StandardMintTokenEventIndexer m)
       , Core.WorkerM m (WithDistance [AnyTxBody]) (Core.Point Datum.DatumEvent)
       )
-mintBuilder catchupConfig logger path =
-  let extractMint :: AnyTxBody -> [MintToken.MintTokenEvent]
-      extractMint (AnyTxBody ix txb) = MintToken.extractEventsFromTx ix txb
+mintBuilder catchupConfig mintEventConfig logger path =
+  let extractMint :: AnyTxBody -> [MintTokenEvent.MintTokenEvent]
+      extractMint (AnyTxBody ix txb) = MintTokenEvent.extractEventsFromTx ix txb
       mintTokenWorkerConfig =
         StandardWorkerConfig
           "mintToken"
           catchupConfig
-          (pure . fmap MintToken.MintTokenEvents . NonEmpty.nonEmpty . (>>= extractMint))
+          (pure . fmap MintTokenEvent.MintTokenBlockEvents . NonEmpty.nonEmpty . (>>= extractMint))
           (BM.appendName "mintToken" logger)
-   in MintToken.mintTokenEventWorker mintTokenWorkerConfig (path </> "mint.db")
+   in MintTokenEvent.mkMintTokenEventWorker mintTokenWorkerConfig mintEventConfig (path </> "mint.db")

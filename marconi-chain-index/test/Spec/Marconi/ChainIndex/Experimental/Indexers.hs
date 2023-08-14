@@ -4,6 +4,7 @@ import Test.Tasty (TestTree, localOption, testGroup)
 
 import Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as BlockInfo
 import Spec.Marconi.ChainIndex.Experimental.Indexers.Datum qualified as Datum
+import Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Spec.Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
 import Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Spec.Marconi.ChainIndex.Experimental.Indexers.UtxoQuery qualified as UtxoQuery
@@ -19,4 +20,5 @@ tests =
       , Datum.tests
       , BlockInfo.tests
       , UtxoQuery.tests
+      , MintTokenEvent.tests
       ]

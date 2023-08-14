@@ -15,10 +15,6 @@ import Database.SQLite.Simple.FromRow (FromRow (fromRow), field)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
-import Safe (atMay)
-import Test.QuickCheck (Property)
-import Test.QuickCheck.Monadic (PropertyM, monadicIO)
-
 import Marconi.Core.Model (
   Conversion (Conversion, cHistory, cMonadic, cNotifications, cView),
   Index,
@@ -45,6 +41,9 @@ import Marconi.Core.TracedStorable (
   memoryBufferSize,
  )
 import Marconi.Core.TracedStorable qualified as Storable
+import Safe (atMay)
+import Test.QuickCheck (Property)
+import Test.QuickCheck.Monadic (PropertyM, monadicIO)
 
 {-
    This is a simplified indexer implementation. The simplification is that all events,
