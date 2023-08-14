@@ -1,11 +1,10 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 {- |
     A @SQLiteAggregateQuery@ provides a way to query the content of several @SQLiteIndexer@s
     as if they were a single indexer.
 
-    Note that @SQLiteAggregateQuery doesn't implement 'IsIndex': it won't index anything,
+    Note that @SQLiteAggregateQuery doesn't implement @IsIndex@: it won't index anything,
     and won't pass any information to the indexers it relies on.
     It's sole purpose is to provide a unified access for queries.
 -}
@@ -14,7 +13,7 @@ module Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
   SQLiteSourceProvider (..),
   IsSourceProvider,
   SQLiteAggregateQuery (..),
-  aggregateHandle,
+  aggregateConnection,
   HasDatabasePath (..),
 ) where
 
@@ -54,20 +53,31 @@ data SQLiteSourceProvider m point
     (IsSourceProvider m event indexer, Point event ~ point) =>
     SQLiteSourceProvider (Con.MVar (indexer event))
 
+-- | An aggregation of SQLite indexers used to build query across indexers.
 data SQLiteAggregateQuery m point event = SQLiteAggregateQuery
   { _databases :: [SQLiteSourceProvider m point]
   -- ^ The indexers that provides database access to this query
-  , _aggregateHandle :: SQL.Connection
+  , _aggregateConnection :: SQL.Connection
   -- ^ The connection that provides a read access accross the different databases
   }
 
-Lens.makeLenses ''SQLiteAggregateQuery
+-- | The indexers that provides database access to this query, wrapeed in a @SQLiteSourceProvider@
+databases :: Lens.Lens' (SQLiteAggregateQuery m point event) [SQLiteSourceProvider m point]
+databases = Lens.lens _databases (\agg _databases -> agg{_databases})
+
+-- | The connection that provides a read access accross the different databases
+aggregateConnection :: Lens.Lens' (SQLiteAggregateQuery m point event) SQL.Connection
+aggregateConnection =
+  Lens.lens _aggregateConnection (\agg _aggregateConnection -> agg{_aggregateConnection})
+
+-- Lens.makeLenses ''SQLiteAggregateQuery
 
 {- | Build a @SQLiteSourceProvider@ from a map that attaches
 each database of the provided sources to the corresponding alias
 -}
 mkSQLiteAggregateQuery
   :: Map String (SQLiteSourceProvider m point)
+  -- ^ A map of indexers. The keys are used as an alias int the attach statement
   -> IO (SQLiteAggregateQuery m point event)
 mkSQLiteAggregateQuery sources = do
   con <- liftIO $ SQL.open ":memory:"
@@ -84,7 +94,7 @@ mkSQLiteAggregateQuery sources = do
   pure $ SQLiteAggregateQuery (Map.elems sources) con
 
 instance (MonadIO m) => Closeable m (SQLiteAggregateQuery m point) where
-  close indexer = liftIO $ SQL.close $ indexer ^. aggregateHandle
+  close indexer = liftIO $ SQL.close $ indexer ^. aggregateConnection
 
 instance
   (MonadIO m, Ord point, point ~ Point event)

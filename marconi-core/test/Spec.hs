@@ -8,7 +8,7 @@ import Marconi.Core.Spec.TracedSqlite qualified as TS
 import Marconi.Core.Trace qualified as Ix
 
 tests :: TestTree
-tests = testGroup "Everything" [indexTests, traceTests, experimentTests]
+tests = testGroup "Everything" [experimentTests, indexTests, traceTests]
 
 indexTests :: TestTree
 indexTests = testGroup "Index" [ixProperties, sProperties, tProperties]

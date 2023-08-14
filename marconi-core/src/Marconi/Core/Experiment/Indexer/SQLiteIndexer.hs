@@ -11,7 +11,7 @@
 module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   SQLiteIndexer (SQLiteIndexer),
   databasePath,
-  handle,
+  connection,
   insertPlan,
   dbLastSync,
   mkSqliteIndexer,
@@ -86,7 +86,7 @@ data SQLRollbackPlan point = forall a.
 data SQLiteIndexer event = SQLiteIndexer
   { _databasePath :: FilePath
   -- ^ The location of the database
-  , _handle :: SQL.Connection
+  , _connection :: SQL.Connection
   -- ^ The connection used to interact with the database
   , _insertPlan :: [[SQLInsertPlan event]]
   -- ^ A plan is a list of lists : each 'SQLInsertPlan' in a list is executed concurrently.
@@ -128,16 +128,16 @@ mkSqliteIndexer _databasePath _creationStatements _insertPlan _rollbackPlan last
           [x] -> pure x
           _other -> throwError (InvalidIndexer "Ambiguous sync point")
    in do
-        _handle <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
-        traverse_ (liftIO . SQL.execute_ _handle) _creationStatements
+        _connection <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
+        traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
         -- allow for concurrent insert/query.
         -- see SQLite WAL, https://www.sqlite.org/wal.html
-        liftIO $ SQL.execute_ _handle "PRAGMA journal_mode=WAL"
-        _dbLastSync <- getLastSync _handle
+        liftIO $ SQL.execute_ _connection "PRAGMA journal_mode=WAL"
+        _dbLastSync <- getLastSync _connection
         pure $
           SQLiteIndexer
             { _databasePath
-            , _handle
+            , _connection
             , _insertPlan
             , _rollbackPlan
             , _dbLastSync
@@ -170,6 +170,7 @@ mkSingleInsertSqliteIndexer
 mkSingleInsertSqliteIndexer path extract create insert rollback' =
   mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) insert]] [rollback']
 
+-- | Map SQLite errors to an indexer error
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
 handleSQLErrors value =
   fmap Right value
@@ -214,9 +215,9 @@ runLastSyncQuery
   => SQL.Connection
   -> SQL.Query
   -> m [r]
-runLastSyncQuery connection lastSyncQuery =
+runLastSyncQuery conn lastSyncQuery =
   either throwError pure <=< liftIO $
-    handleSQLErrors (SQL.query connection lastSyncQuery ())
+    handleSQLErrors (SQL.query conn lastSyncQuery ())
 
 instance
   (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))
@@ -224,7 +225,7 @@ instance
   where
   index =
     let addEvent e indexer = do
-          runIndexQueries (indexer ^. handle) [e] (indexer ^. insertPlan)
+          runIndexQueries (indexer ^. connection) [e] (indexer ^. insertPlan)
           pure indexer
         setDbLastSync p indexer = pure $ indexer & dbLastSync .~ p
      in indexIfJust addEvent setDbLastSync
@@ -234,13 +235,13 @@ instance
           [] -> id
           (x : _xs) -> dbLastSync .~ (x ^. point)
     runIndexQueries
-      (indexer ^. handle)
+      (indexer ^. connection)
       (catMaybes . toList $ sequence <$> evts)
       (indexer ^. insertPlan)
     pure $ updateLastSync indexer
 
   rollback p indexer = do
-    let c = indexer ^. handle
+    let c = indexer ^. connection
         deleteAllQuery tName = "DELETE FROM " <> tName
         deleteAll = SQL.execute_ c . deleteAllQuery . SQL.Query . Text.pack
         deleteUntilQuery tName pName =
@@ -265,9 +266,9 @@ instance (MonadIO m) => IsSync m event SQLiteIndexer where
     pure $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
-  close indexer = liftIO $ SQL.close $ indexer ^. handle
+  close indexer = liftIO $ SQL.close $ indexer ^. connection
 
-{- | A helper for the definition of the 'Queryable' typeclass for 'SQLiteIndexer'
+{- | A helper for the definition of the @Queryable@ typeclass for 'SQLiteIndexer'
 
  The helper just remove a bit of the boilerplate needed to transform data
  to query the database.
@@ -296,7 +297,7 @@ querySQLiteIndexerWith
   -> m (Result query)
 querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
-    let c = indexer ^. handle
+    let c = indexer ^. connection
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     when (p > indexer ^. dbLastSync) $
       throwError (AheadOfLastSync $ Just $ fromRows q res)
@@ -329,7 +330,7 @@ querySyncedOnlySQLiteIndexerWith
   -> m (Result query)
 querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
-    let c = indexer ^. handle
+    let c = indexer ^. connection
     when (p > indexer ^. dbLastSync) $
       throwError (AheadOfLastSync Nothing)
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)

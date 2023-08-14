@@ -56,36 +56,31 @@
     * Some queries that can be applied to many indexers.
     * Several transformers for indexers:
 
-        * Tracing, as a modifier to an existing indexer.
-          (it allows us to opt-in for traces if we want, indexer by indexer)
+        * Aggregate to maintain a fold value based on incoming events
+        * Cache to keep in memory some query result, avoiding to hit the indexer
+        * Catchup to speed up the synchronisation time of an indexer doing batch insertion
         * Delay to delay event processing for heavy computation.
         * Pruning, to compact data that can't be rollbacked.
+        * Tracing, as a modifier to an existing indexer.
+          (it allows us to opt-in for traces if we want, indexer by indexer)
+        * Transform to change the input type of an indexer
 
   Contrary to the original Marconi design,
-  indexers don't have a unique (in-memory/sqlite) implementation,
-  even if it is probably the one that is used as a reference indexer
-  at the momont.
+  indexers don't have a unique (in-memory/sqlite) implementation.
+  @SQLite@ indexers are the most common ones. For specific scenarios, you may want to combine
+  them with a mixed indexer or to go for other types of indexers.
+  We may consider other database backend than @SQLite@ in the future.
 
  = TODO List (non-exhaustive)
 
     * Provide MonadState version of the functions that manipulates the indexer.
     * Add custom error handling at the worker and at the coordinator level,
       even if its likely that the coordinator can't do much aside distributing poison pills.
+    * Add connections pools for queries for the SQLite indexers.
 
  = How-to
 
  == Define an indexer instance
-
- === Define an indexer instance for a 'MixedIndexer'
-
- Follow in order the steps for the creation of a 'ListIndexer' (the in-memory part)
- and the ones for a 'SQLiteIndexer' (the on-disk part).
-
- Once it's done, you need to implement the 'AppendResult' for the in-memory part.
- It's purpose is to take the result of an on-disk query and to update it with on-memory events.
-
- You can choose different indexers for your in-memory part or on-disk part,
- but these choices are not documented yet.
 
  === Define an indexer instance for 'ListIndexer'
 
@@ -143,15 +138,24 @@
         There's no helper on this one, but you probably want to query the database and
         to aggregate the query result in your @Result@ type.
 
+ === Define an indexer instance for a 'MixedIndexer'
+
+ Follow in order the steps for the creation of a 'ListIndexer' (the in-memory part)
+ and the ones for a 'SQLiteIndexer' (the on-disk part).
+
+ Once it's done, you need to implement the 'AppendResult' for the in-memory part.
+ It's purpose is to take the result of an on-disk query and to update it with on-memory events.
+
+ You can choose different indexers for your in-memory part or on-disk part,
+ but these choices are not documented yet.
+
 
  == Write a new indexer
 
-    You probably /don't/ want to do this.
+    Most user probably /don't/ want to do this.
 
-    Non-exhaustive good reasons to do this are:
-
-        * Support another backend for an on-disk indexer.
-        * Support another data-structure for an in-memory indexer.
+    A good reason is to add support for another backend
+    (another database or another in-memory structure)
 
     The minimal typeclass that your indexer must implement/allow to implement are:
 
@@ -160,7 +164,6 @@
         * 'AppendResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
         * 'Queryable'
         * 'Closeable' (if you plan to use it in a worker, and you probably plan to)
-
 
     Best practices is to implement as much as we can 'event'/'query' agnostic
     instances of the typeclasses of these module for the new indexer.
@@ -263,7 +266,7 @@ module Marconi.Core.Experiment (
   --
   -- It is monomorphic restriction of 'mkSqliteIndexer'
   mkSingleInsertSqliteIndexer,
-  handle,
+  connection,
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
 
@@ -274,7 +277,7 @@ module Marconi.Core.Experiment (
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
   SQLiteAggregateQuery (SQLiteAggregateQuery),
-  aggregateHandle,
+  aggregateConnection,
   mkSQLiteAggregateQuery,
   SQLiteSourceProvider (SQLiteSourceProvider),
   IsSourceProvider,
@@ -371,7 +374,7 @@ module Marconi.Core.Experiment (
   withTracer,
   HasTracerConfig (tracer),
 
-  -- ** WithCatchup
+  -- ** Catchup
   WithCatchup,
   withCatchup,
   CatchupConfig (CatchupConfig),
@@ -380,7 +383,6 @@ module Marconi.Core.Experiment (
   -- ** Delay
   WithDelay,
   withDelay,
-  -- | A type class that give access to the configuration of 'WithDelay'
   HasDelayConfig (delayCapacity),
 
   -- ** Pruning
@@ -402,6 +404,8 @@ module Marconi.Core.Experiment (
   WithTransform,
   withTransform,
   HasTransformConfig (..),
+
+  -- ** Transform an indexer into a fold
   WithAggregate,
   withAggregate,
   HasAggregateConfig (..),
@@ -415,12 +419,12 @@ module Marconi.Core.Experiment (
   -- The wrapper comes with some instances that relay the function to the wrapped indexer,
   -- without any extra behaviour.
   --
-  -- An indexer transformer can be a newtype of 'IndexWrapper',
+  -- An indexer transformer can be a newtype of 'IndexTransformer',
   -- reuse some of its instances with @deriving via@,
   -- and specifies its own instances when it wants to add logic in it.
 
   -- *** Derive via machinery
-  IndexWrapper (IndexWrapper),
+  IndexTransformer (IndexTransformer),
   wrappedIndexer,
   wrapperConfig,
 
@@ -492,7 +496,7 @@ import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
   IsSourceProvider,
   SQLiteAggregateQuery (..),
   SQLiteSourceProvider (..),
-  aggregateHandle,
+  aggregateConnection,
   mkSQLiteAggregateQuery,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
@@ -500,8 +504,8 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   SQLRollbackPlan (..),
   SQLiteIndexer (..),
   ToRow (..),
+  connection,
   dbLastSync,
-  handle,
   handleSQLErrors,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
@@ -510,8 +514,8 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (..),
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (..),
   IndexerTrans (..),
   closeVia,
   indexAllDescendingVia,

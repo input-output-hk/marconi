@@ -33,7 +33,7 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (EventAtQuery))
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
   closeVia,
   indexAllDescendingVia,
   indexVia,
@@ -56,9 +56,9 @@ newtype AggregateConfig output input = AggregationConfig
 
 makeLenses ''AggregateConfig
 
-{- | 'WithAggregate' transform data to a semigroupt instance and aggregate @input@ event
+{- | 'WithAggregate' transform data to a semigroup instance and aggregate @input@ event
  to produce an @output@.
- It can be sued if you don't care about when an event happen, but you do care about
+ It can be used if you don't care about when an event happen, but you do care about
  the result it produces.
 -}
 data WithAggregate indexer output input = WithAggregate
@@ -153,10 +153,7 @@ instance
   where
   reset = resetVia unwrapMap
 
-instance
-  (Closeable m indexer)
-  => Closeable m (WithAggregate indexer output)
-  where
+instance (Closeable m indexer) => Closeable m (WithAggregate indexer output) where
   close = closeVia unwrapMap
 
 instance

@@ -6,8 +6,8 @@
 
     See "Marconi.Core.Experiment" for documentation.
 -}
-module Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (IndexWrapper),
+module Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (IndexTransformer),
   wrapperConfig,
   wrappedIndexer,
   IndexerTrans (..),
@@ -38,12 +38,16 @@ import Marconi.Core.Experiment.Class (
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
 
-data IndexWrapper config indexer event = IndexWrapper
+{- | This datatype is meant to be use inside a new type by any indexer transformer.
+It wraps an indexer and attach to it a "config" (which may be stateful) used in the logic added
+by the transformer
+-}
+data IndexTransformer config indexer event = IndexTransformer
   { _wrapperConfig :: config event
   , _wrappedIndexer :: indexer event
   }
 
-makeLenses 'IndexWrapper
+makeLenses 'IndexTransformer
 
 -- | An indexer transformer: it adds a configurable capability to a tranformer
 class IndexerTrans t where
@@ -56,10 +60,10 @@ class IndexerTrans t where
   -- | Unwray the underlying indexer
   unwrap :: Lens' (t indexer event) (indexer event)
 
-instance IndexerTrans (IndexWrapper config) where
-  type Config (IndexWrapper config) = config
+instance IndexerTrans (IndexTransformer config) where
+  type Config (IndexTransformer config) = config
 
-  wrap = IndexWrapper
+  wrap = IndexTransformer
 
   unwrap = wrappedIndexer
 
@@ -98,7 +102,7 @@ indexAllVia l = l . indexAll
 
 instance
   (IsIndex m event indexer)
-  => IsIndex m event (IndexWrapper config indexer)
+  => IsIndex m event (IndexTransformer config indexer)
   where
   index = indexVia wrappedIndexer
   indexAll = indexAllVia wrappedIndexer
@@ -117,7 +121,7 @@ lastSyncPointVia l = lastSyncPoint . view l
 
 instance
   (IsSync event m index)
-  => IsSync event m (IndexWrapper config index)
+  => IsSync event m (IndexTransformer config index)
   where
   lastSyncPoint = lastSyncPointVia wrappedIndexer
 
@@ -133,7 +137,7 @@ closeVia l = close . view l
 
 instance
   (Closeable m index)
-  => Closeable m (IndexWrapper config index)
+  => Closeable m (IndexTransformer config index)
   where
   close = closeVia wrappedIndexer
 
@@ -149,7 +153,7 @@ getDatabasePathVia l = getDatabasePath . view l
 
 instance
   (HasDatabasePath index)
-  => HasDatabasePath (IndexWrapper config index)
+  => HasDatabasePath (IndexTransformer config index)
   where
   getDatabasePath = getDatabasePathVia wrappedIndexer
 
@@ -182,11 +186,11 @@ queryLatestVia l q = queryLatest q . view l
 
 instance
   (Queryable m event query indexer)
-  => Queryable m event query (IndexWrapper config indexer)
+  => Queryable m event query (IndexTransformer config indexer)
   where
   query = queryVia wrappedIndexer
 
-{- | Helper to implement the @rollback@ functon of 'Rollbackable' when we use a wrapper.
+{- | Helper to implement the @rollback@ functon of 'rollback' when we use a wrapper.
  Unfortunately, as @m@ must have a functor instance, we can't use @deriving via@ directly.
 -}
 rollbackVia

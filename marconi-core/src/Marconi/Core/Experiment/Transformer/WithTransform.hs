@@ -26,7 +26,7 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
   closeVia,
   getDatabasePathVia,
   indexAllDescendingVia,
@@ -65,6 +65,10 @@ withTransform f g _transformedIndexer =
     , _transformedIndexer
     }
 
+{- | Provide accces to the tranformation function of a 'WithTransform' transformer.
+The provided instance ensure that access is granted even if other indexer transformers are used
+on top of this one
+-}
 class HasTransformConfig input output indexer where
   transformEvent :: Lens' (indexer input) (input -> Maybe output)
 
@@ -78,7 +82,6 @@ instance IndexerMapTrans WithTransform where
   type ConfigMap WithTransform = TransformConfig
 
   wrapMap = WithTransform
-
   unwrapMap = transformedIndexer
 
 instance

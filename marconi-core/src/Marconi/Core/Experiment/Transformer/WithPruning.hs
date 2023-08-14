@@ -39,8 +39,8 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Indexer.MixedIndexer (MixedIndexer, inDatabase)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (IndexWrapper),
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (IndexTransformer),
   IndexerTrans (Config, unwrap, wrap),
   indexVia,
   resetVia,
@@ -130,7 +130,7 @@ makeLenses ''PruningConfig
  irrelevant.
  In this case, you may want to `prune` the stored events.
 -}
-newtype WithPruning indexer event = WithPruning {_pruningWrapper :: IndexWrapper PruningConfig indexer event}
+newtype WithPruning indexer event = WithPruning {_pruningWrapper :: IndexTransformer PruningConfig indexer event}
 
 makeLenses ''WithPruning
 
@@ -143,20 +143,20 @@ withPruning
   -> WithPruning indexer event
 withPruning sec every =
   WithPruning
-    . IndexWrapper (PruningConfig sec every Seq.empty every 0)
+    . IndexTransformer (PruningConfig sec every Seq.empty every 0)
 
 deriving via
-  (IndexWrapper PruningConfig indexer)
+  (IndexTransformer PruningConfig indexer)
   instance
     (IsSync m event indexer) => IsSync m event (WithPruning indexer)
 
 deriving via
-  (IndexWrapper PruningConfig indexer)
+  (IndexTransformer PruningConfig indexer)
   instance
     (Queryable m event query indexer) => Queryable m event query (WithPruning indexer)
 
 deriving via
-  (IndexWrapper PruningConfig indexer)
+  (IndexTransformer PruningConfig indexer)
   instance
     (Closeable m indexer) => Closeable m (WithPruning indexer)
 
@@ -188,7 +188,7 @@ instance
 instance IndexerTrans WithPruning where
   type Config WithPruning = PruningConfig
 
-  wrap cfg = WithPruning . IndexWrapper cfg
+  wrap cfg = WithPruning . IndexTransformer cfg
 
   unwrap = pruningWrapper . wrappedIndexer
 

@@ -43,8 +43,8 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
-import Marconi.Core.Experiment.Transformer.IndexWrapper (
-  IndexWrapper (IndexWrapper),
+import Marconi.Core.Experiment.Transformer.IndexTransformer (
+  IndexTransformer (IndexTransformer),
   IndexerTrans (Config, unwrap, wrap),
   indexAllDescendingVia,
   indexVia,
@@ -89,22 +89,22 @@ configOnForward = to _configOnForward
  part of a `MixedIndexer`, or any other part of an indexer that has a relatively
  stable sync point.
 -}
-newtype WithCache query indexer event = WithCache {_cacheWrapper :: IndexWrapper (CacheConfig query) indexer event}
+newtype WithCache query indexer event = WithCache {_cacheWrapper :: IndexTransformer (CacheConfig query) indexer event}
 
 makeLenses 'WithCache
 
 deriving via
-  (IndexWrapper (CacheConfig query) indexer)
+  (IndexTransformer (CacheConfig query) indexer)
   instance
     (HasDatabasePath indexer) => HasDatabasePath (WithCache query indexer)
 
 deriving via
-  IndexWrapper (CacheConfig query) indexer
+  IndexTransformer (CacheConfig query) indexer
   instance
     (IsSync m event indexer) => IsSync m event (WithCache query indexer)
 
 deriving via
-  IndexWrapper (CacheConfig query) indexer
+  IndexTransformer (CacheConfig query) indexer
   instance
     (Closeable m indexer) => Closeable m (WithCache query indexer)
 
@@ -119,7 +119,7 @@ withCache
   -> WithCache query indexer event
 withCache _configOnForward =
   WithCache
-    . IndexWrapper
+    . IndexTransformer
       ( CacheConfig
           { _configCache = mempty
           , _configOnForward
@@ -185,7 +185,7 @@ addCacheFor q indexer =
 instance IndexerTrans (WithCache query) where
   type Config (WithCache query) = CacheConfig query
 
-  wrap cfg = WithCache . IndexWrapper cfg
+  wrap cfg = WithCache . IndexTransformer cfg
 
   unwrap = cacheWrapper . wrappedIndexer
 

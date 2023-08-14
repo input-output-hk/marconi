@@ -38,13 +38,16 @@ import Marconi.Core.Experiment.Class (
  )
 import Marconi.Core.Experiment.Type (IndexerError (OtherIndexError), Point, Timed, point)
 
--- Type alias for the type classes that are required to build a worker for an indexer
+-- | Type alias for the type classes that are required to build a worker for an indexer
 type WorkerIndexer n event indexer =
   ( IsIndex n event indexer
   , IsSync n event indexer
   , Closeable n indexer
   )
 
+{- | A worker hides the shape of an indexer and integrates the data needed to interact with a
+coordinator.
+-}
 data WorkerM m input point = forall indexer event n.
   ( WorkerIndexer n event indexer
   , Point event ~ point
@@ -55,14 +58,15 @@ data WorkerM m input point = forall indexer event n.
   , workerState :: MVar (indexer event)
   -- ^ the indexer controlled by this worker
   , transformInput :: input -> m (Maybe event)
-  -- ^ used by the worker to check whether an input is a rollback or an event
+  -- ^ adapt the input event givent by the coordinator to the worker type
   , hoistError :: forall a. n a -> ExceptT IndexerError m a
-  -- ^ used by the worker to check whether an input is a rollback or an event
+  -- ^ adapt the monadic stack of the indexer to the one of the worker
   , errorBox :: MVar IndexerError
   -- ^ a place where the worker places error that it can't handle,
   -- to notify the coordinator
   }
 
+-- | A worker that operates in @IO@.
 type Worker = WorkerM IO
 
 -- | The different types of input of a worker
