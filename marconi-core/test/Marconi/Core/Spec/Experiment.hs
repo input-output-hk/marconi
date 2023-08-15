@@ -155,8 +155,8 @@ import Database.SQLite.Simple.ToField (ToField)
 import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
 
 import Data.Word (Word64)
-import Marconi.Core.Experiment (wrappedIndexer)
 import Marconi.Core.Experiment qualified as Core
+import Marconi.Core.Experiment.Coordinator qualified as Core (errorBox, threadIds)
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.Experiment.ModelBased qualified as Model
 
@@ -622,7 +622,7 @@ instance
   where
   index = Core.indexVia underCoordinator
   indexAllDescending = Core.indexAllDescendingVia underCoordinator
-  rollback = Core.rollbackVia $ underCoordinator . wrappedIndexer
+  rollback = Core.rollbackVia $ underCoordinator . Core.wrappedIndexer
 
 instance
   (MonadIO m, MonadError Core.IndexerError m, Ord (Core.Point event))
@@ -634,7 +634,7 @@ instance
   (Core.Closeable (ExceptT Core.IndexerError IO) Core.Coordinator)
   => Core.Closeable (ExceptT Core.IndexerError IO) (UnderCoordinator indexer)
   where
-  close = Core.closeVia $ underCoordinator . wrappedIndexer
+  close = Core.closeVia $ underCoordinator . Core.wrappedIndexer
 
 instance
   (MonadIO m, Core.Queryable m event (Core.EventsMatchingQuery event) indexer)
@@ -1070,7 +1070,7 @@ stopCoordinatorProperty gen runner =
         GenM.run $
           lift $
             Con.putMVar
-              (Core.errorBox . head $ ix ^. underCoordinator . Core.wrappedIndexer . Core.workers)
+              (ix ^. underCoordinator . Core.wrappedIndexer . Core.errorBox)
               forgedError
    in Test.forAll gen $ \chain ->
         length chain > 5 ==> r $ do

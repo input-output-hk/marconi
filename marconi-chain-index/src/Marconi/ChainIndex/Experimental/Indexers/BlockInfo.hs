@@ -31,7 +31,6 @@ import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
-import Data.Text (Text)
 import Data.Time qualified as Time
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
@@ -42,7 +41,11 @@ import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
-import Marconi.ChainIndex.Experimental.Indexers.Worker (catchupWorker)
+import Marconi.ChainIndex.Experimental.Indexers.Worker (
+  StandardSQLiteIndexer,
+  StandardWorkerConfig,
+  catchupWorker,
+ )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
 
@@ -64,10 +67,7 @@ type instance Core.Point BlockInfo = C.ChainPoint
 type BlockInfoIndexer = Core.SQLiteIndexer BlockInfo
 
 -- | A SQLite BlockInfo indexer with Catchup
-type StandardBlockInfoIndexer =
-  Core.WithCatchup
-    (Core.WithTransform Core.SQLiteIndexer BlockInfo)
-    (WithDistance BlockInfo)
+type StandardBlockInfoIndexer m = StandardSQLiteIndexer m BlockInfo
 
 instance SQL.ToRow (Core.Timed C.ChainPoint BlockInfo) where
   toRow b =
@@ -122,18 +122,15 @@ blockInfoWorker
      , MonadError Core.IndexerError n
      , MonadIO m
      )
-  => Text
-  -- ^ Name of the indexer (mostly for logging purpose)
-  -> Core.CatchupConfig
-  -> (input -> BlockInfo)
-  -- ^ event extractor
+  => StandardWorkerConfig m input BlockInfo
+  -- ^ General indexer configuration
   -> FilePath
   -- ^ SQLite database location
   -> n
-      (MVar StandardBlockInfoIndexer, Core.WorkerM m (WithDistance input) (Core.Point BlockInfo))
-blockInfoWorker name catchupConfig extractor path = do
+      (MVar (StandardBlockInfoIndexer m), Core.WorkerM m (WithDistance input) (Core.Point BlockInfo))
+blockInfoWorker config path = do
   indexer <- mkBlockInfoIndexer path
-  catchupWorker name catchupConfig (pure . Just . extractor) indexer
+  catchupWorker config indexer
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery BlockInfo)) m)

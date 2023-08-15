@@ -42,7 +42,6 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe, mapMaybe)
-import Data.Text (Text)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -51,7 +50,11 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
-import Marconi.ChainIndex.Experimental.Indexers.Worker (catchupWorker)
+import Marconi.ChainIndex.Experimental.Indexers.Worker (
+  StandardSQLiteIndexer,
+  StandardWorkerConfig,
+  catchupWorker,
+ )
 import Marconi.ChainIndex.Indexers.Utxo (getTxOutFromTxBodyContent)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
@@ -86,10 +89,7 @@ type instance Core.Point DatumEvent = C.ChainPoint
 type DatumIndexer = Core.SQLiteIndexer DatumEvent
 
 -- | A SQLite Datum indexer with Catchup
-type StandardDatumIndexer =
-  Core.WithCatchup
-    (Core.WithTransform Core.SQLiteIndexer DatumEvent)
-    (WithDistance DatumEvent)
+type StandardDatumIndexer m = StandardSQLiteIndexer m DatumEvent
 
 instance SQL.FromRow (Core.Timed C.ChainPoint DatumInfo) where
   fromRow = do
@@ -123,17 +123,14 @@ mkDatumIndexer path = do
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker
   :: (MonadIO m, MonadIO n, MonadError Core.IndexerError n)
-  => Text
-  -- ^ Name of the indexer (mostly for logging purpose)
-  -> Core.CatchupConfig
-  -> (input -> Maybe DatumEvent)
-  -- ^ event extractor
+  => StandardWorkerConfig m input DatumEvent
+  -- ^ General configuration of the indexer (mostly for logging purpose)
   -> FilePath
   -- ^ SQLite database location
-  -> n (MVar StandardDatumIndexer, Core.WorkerM m (WithDistance input) (Core.Point DatumEvent))
-datumWorker name catchupConfig extractor path = do
+  -> n (MVar (StandardDatumIndexer m), Core.WorkerM m (WithDistance input) (Core.Point DatumEvent))
+datumWorker workerConfig path = do
   indexer <- mkDatumIndexer path
-  catchupWorker name catchupConfig (pure . extractor) indexer
+  catchupWorker workerConfig indexer
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery DatumEvent)) m)

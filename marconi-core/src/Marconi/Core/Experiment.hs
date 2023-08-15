@@ -351,12 +351,11 @@ module Marconi.Core.Experiment (
   -- ** Coordinator
   Coordinator,
   workers,
-  threadIds,
   tokens,
   channel,
   nbWorkers,
   mkCoordinator,
-  step,
+  processQueue,
 
   -- * Common queries
 
@@ -370,9 +369,19 @@ module Marconi.Core.Experiment (
   IndexerTrans (..),
   IndexerMapTrans (..),
 
-  -- ** Tracer
+  -- ** Logging
+  IndexerEvent (..),
+
+  -- *** Trace
+  WithTrace,
+  withTrace,
+  withTraceM,
+  HasTraceConfig (trace),
+
+  -- *** Tracer
   WithTracer,
   withTracer,
+  withTracerM,
   HasTracerConfig (tracer),
 
   -- ** Catchup
@@ -475,8 +484,7 @@ import Marconi.Core.Experiment.Coordinator (
   channel,
   mkCoordinator,
   nbWorkers,
-  step,
-  threadIds,
+  processQueue,
   tokens,
   workers,
  )
@@ -566,10 +574,17 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
   withPruning,
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (
+  HasTraceConfig (trace),
   HasTracerConfig (tracer),
+  IndexerEvent (..),
+  WithTrace,
   WithTracer,
+  trace,
   tracer,
+  withTrace,
+  withTraceM,
   withTracer,
+  withTracerM,
  )
 import Marconi.Core.Experiment.Transformer.WithTransform (
   HasTransformConfig (..),

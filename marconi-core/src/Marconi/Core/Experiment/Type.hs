@@ -72,6 +72,8 @@ data IndexerError
     IndexerInternalError Text
   | -- | The indexer is in an invalid state and can't recover
     InvalidIndexer Text
+  | -- | Indexer has to stop as requested by the given worker
+    StopIndexer (Maybe Text)
   | -- | Any other cause of failure
     OtherIndexError Text
 

@@ -6,6 +6,7 @@ import Cardano.BM.Trace (Trace)
 import Data.Text (Text)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
+import Marconi.ChainIndex.Experimental.Logger qualified as Logger
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Tutorial.CLI qualified as CLI
