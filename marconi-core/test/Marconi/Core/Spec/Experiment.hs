@@ -490,7 +490,7 @@ sqliteModelIndexerWithFile f = do
     \   )"
     "INSERT INTO index_model VALUES (?, ?)"
     (Core.SQLRollbackPlan "index_model" "point" extractor)
-    "SELECT point FROM index_model ORDER BY point DESC LIMIT 1"
+    (Core.GetLastSyncQuery "SELECT point FROM index_model ORDER BY point DESC LIMIT 1")
 
 sqliteModelIndexer :: ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer = sqliteModelIndexerWithFile ":memory:"
