@@ -49,6 +49,10 @@ experimentTests =
         [ E.withAggregateTest
         ]
     , testGroup
+        "WithResume"
+        [ E.withResumeTest
+        ]
+    , testGroup
         "Performance"
         [ E.indexingPerformanceTest "ListIndexer" E.listIndexerRunner
         , E.indexingPerformanceTest "MixedIndexer" E.mixedHighMemoryIndexerRunner
@@ -59,7 +63,7 @@ experimentTests =
         , E.withRollbackFailureTest
         ]
     , testGroup
-        "Resuming"
+        "Resuming last synced points"
         [ E.resumeSQLiteLastSyncTest
         , E.resumeMixedLastSyncTest
         ]

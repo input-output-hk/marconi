@@ -135,9 +135,11 @@ test-suite marconi-core-test
     , marconi-core-test-lib
     , mtl
     , QuickCheck
+    , quickcheck-instances
     , safe
     , sqlite-simple          >=0.4.18
     , tasty
     , tasty-quickcheck
     , temporary
     , transformers
+    , uuid

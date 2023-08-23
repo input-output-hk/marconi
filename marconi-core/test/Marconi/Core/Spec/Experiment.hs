@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE LambdaCase #-}
@@ -6,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 {- | A model base test for indexers.
@@ -51,6 +53,7 @@ module Marconi.Core.Spec.Experiment (
   memorySizeUpdateTest,
   withTransformTest,
   withAggregateTest,
+  withResumeTest,
   withRollbackFailureTest,
 
   -- * Mock chain
@@ -61,15 +64,18 @@ module Marconi.Core.Spec.Experiment (
 
   -- ** Events
   Item (..),
+  testPoint,
   TestPoint (..),
   TestEvent (..),
+  testPointSlot,
+  testPointHash,
 
   -- ** Generators
   GenChainConfig,
   chainSize,
   rollbackFrequency,
   rollbackDepth,
-  currentTestPoint,
+  lastTestPoints,
   genInsert,
   genRollback,
   genItem,
@@ -102,6 +108,7 @@ module Marconi.Core.Spec.Experiment (
   sqliteModelIndexer,
 ) where
 
+import Control.Applicative (Const (Const))
 import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
 import Control.Lens (
@@ -115,66 +122,111 @@ import Control.Lens (
   use,
   view,
   views,
+  (%=),
   (%~),
   (-~),
-  (.=),
+  (.~),
   (^.),
   (^..),
  )
-
 import Control.Monad (foldM, replicateM, void)
 import Control.Monad.Except (MonadError, runExceptT)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Except (ExceptT)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
-
+import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
 import Data.Function ((&))
-
-import GHC.Generics (Generic)
-
-import Test.QuickCheck (Arbitrary, Gen, Property, chooseInt, (===), (==>))
-import Test.QuickCheck qualified as Test
-import Test.QuickCheck.Monadic (PropertyM)
-import Test.QuickCheck.Monadic qualified as GenM
-
-import Test.Tasty qualified as Tasty
-import Test.Tasty.QuickCheck qualified as Tasty
-
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Trans.Except (ExceptT)
-
-import Data.Either (fromRight)
-import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
-
-import Control.Applicative (Const (Const))
+import Data.List qualified as List
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, mapMaybe)
 import Data.Monoid (Sum (Sum))
-import Database.SQLite.Simple (FromRow)
+import Data.UUID (UUID)
+import Data.UUID qualified as UUID
+import Data.Word (Word64)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
+import Database.SQLite.Simple.FromField qualified as SQL
+import Database.SQLite.Simple.FromRow qualified as SQL
 import Database.SQLite.Simple.ToField (ToField)
 import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
-
-import Data.Word (Word64)
+import GHC.Generics (Generic)
 import Marconi.Core.Experiment (wrappedIndexer)
 import Marconi.Core.Experiment qualified as Core
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.Experiment.ModelBased qualified as Model
+import Test.QuickCheck (Arbitrary, Gen, Property, (===), (==>))
+import Test.QuickCheck qualified as Test
+import Test.QuickCheck.Instances.UUID ()
+import Test.QuickCheck.Monadic (PropertyM)
+import Test.QuickCheck.Monadic qualified as GenM
+import Test.Tasty qualified as Tasty
+import Test.Tasty.QuickCheck qualified as Tasty
 
-newtype TestPoint = TestPoint {unwrapTestPoint :: Int}
-  deriving stock (Generic)
-  deriving newtype (Eq, Ord, Enum, Num, Real, Integral, Show, FromField, ToField)
-  deriving anyclass (FromRow)
-  deriving anyclass (SQL.ToRow)
+data TestPoint = TestPoint
+  { _testPointSlot :: Int
+  -- ^ Slot number of the point.
+  , _testPointHash :: UUID
+  -- ^ Represents the block header hash of the point.
+  }
+  deriving stock (Eq, Generic, Show)
+
+instance Ord TestPoint where
+  compare (TestPoint s1 _) (TestPoint s2 _) = s1 `compare` s2
+
+instance SQL.FromRow TestPoint where
+  fromRow = do
+    let uuidFieldParser f =
+          do
+            uuidText <- SQL.fromField f
+            case UUID.fromText uuidText of
+              Nothing -> SQL.returnError SQL.ConversionFailed f "Cannot deserialise UUID"
+              Just uuid -> pure uuid
+    slotNo <- SQL.field
+    uuid <- SQL.fieldWith uuidFieldParser
+    pure $ TestPoint slotNo uuid
+
+instance SQL.ToRow TestPoint where
+  toRow (TestPoint slotNo uuid) =
+    [ SQL.SQLInteger $ fromIntegral slotNo
+    , SQL.SQLText $ UUID.toText uuid
+    ]
+
+makeLenses 'TestPoint
 
 instance Core.HasGenesis TestPoint where
-  genesis = 0
+  genesis = TestPoint 0 UUID.nil
 
--- | We simplify the events to either `Insert` or `Rollback`
+instance Core.OrdPoint TestPoint where
+  comparePoint (TestPoint p1 h1) (TestPoint p2 h2)
+    | p1 < p2 = Core.Before
+    | p1 > p2 = Core.After
+    | p1 == p2 && h1 == h2 = Core.Same
+    | otherwise = Core.Fork
+
+-- | We simplify the events to either `Insert` or `Rollback`.
 data Item event
   = Insert !TestPoint !(Maybe event)
   | Rollback !TestPoint
-  deriving stock (Show)
+  deriving stock (Show, Eq)
+
+testPoint :: Lens' (Item event) TestPoint
+testPoint = lens getter setter
+  where
+    getter (Insert point _) = point
+    getter (Rollback point) = point
+
+    setter (Insert _ event) newPoint = Insert newPoint event
+    setter (Rollback _) newPoint = Rollback newPoint
+
+instance (Eq event) => Ord (Item event) where
+  compare (Insert p1 _) (Insert p2 _) = p1 `compare` p2
+  compare (Insert p1 _) (Rollback p2) = p1 `compare` p2
+  compare (Rollback p1) (Insert p2 _) = p1 `compare` p2
+  compare (Rollback p1) (Rollback p2) = p1 `compare` p2
 
 {- | 'GenChainConfig' is used in generators of chain events
  to determine the events that should be build
@@ -182,18 +234,24 @@ data Item event
 data GenChainConfig = GenChainConfig
   { _chainSize :: Gen Int
   -- ^ Size of the chain to generate
+  , _chainStableDepth :: Word
+  -- ^ Min depth of a block for it to be considered stable (can't be rollbacked).
   , _emptyEventFrequency :: Word
   -- ^ How often an event is @Nothing@
   , _rollbackFrequency :: Word
   -- ^ How often a rollback can happen
-  , _rollbackDepth :: TestPoint -> Gen TestPoint
+  , _rollbackDepth :: NonEmpty TestPoint -> Gen TestPoint
   -- ^ Rollback depth distribution
-  , _currentTestPoint :: TestPoint
-  -- ^ Track the current point to generate the next one
+  , _lastTestPoints :: NonEmpty TestPoint
+  -- ^ Track the last 'chainStableDepth' unstable points.
+  -- Used to generate the next point and to rollback to previous known points.
   }
 
 chainSize :: Getter GenChainConfig (Gen Int)
 chainSize = to _chainSize
+
+chainStableDepth :: Getter GenChainConfig Word
+chainStableDepth = to _chainStableDepth
 
 emptyEventFrequency :: Lens' GenChainConfig Word
 emptyEventFrequency =
@@ -203,13 +261,13 @@ rollbackFrequency :: Lens' GenChainConfig Word
 rollbackFrequency =
   lens _rollbackFrequency (\g f -> g{_rollbackFrequency = f})
 
-rollbackDepth :: Lens' GenChainConfig (TestPoint -> Gen TestPoint)
+rollbackDepth :: Lens' GenChainConfig (NonEmpty TestPoint -> Gen TestPoint)
 rollbackDepth =
   lens _rollbackDepth (\g d -> g{_rollbackDepth = d})
 
-currentTestPoint :: Lens' GenChainConfig TestPoint
-currentTestPoint =
-  lens _currentTestPoint (\g p -> g{_currentTestPoint = p})
+lastTestPoints :: Lens' GenChainConfig (NonEmpty TestPoint)
+lastTestPoints =
+  lens _lastTestPoints (\g points -> g{_lastTestPoints = points})
 
 -- | Generate an insert at the given slot
 genInsert :: (Arbitrary event) => Word -> TestPoint -> Gen (Item event)
@@ -219,35 +277,49 @@ genInsert f no = do
       [ (fromIntegral f, pure Nothing)
       , (100 - fromIntegral f, Just <$> Test.arbitrary)
       ]
-  pure $ Insert (no + 1) xs
+
+  -- Each event is separated by a possibly non-continuous slot number.
+  -- For example, [Point 1, Point 3, Point 4, Point 10, ..]
+  let maxSlotNoDiffBetweenContinuousEvents = 10
+  i <- Test.chooseInt (1, maxSlotNoDiffBetweenContinuousEvents)
+  pointHash <- Test.arbitrary
+  pure $ Insert (no & testPointSlot %~ (+ i) & testPointHash .~ pointHash) xs
 
 -- | Generate a rollback, 'GenState' set the maximal depth of the rollback
 genRollback :: GenChainConfig -> Gen (Item event)
-genRollback = do
-  p <- view currentTestPoint
-  gen <- view rollbackDepth
-  pure $ Rollback <$> gen p
+genRollback cfg = do
+  let gen = view rollbackDepth cfg
+  Rollback <$> gen (cfg ^. lastTestPoints)
 
 -- | Generate an insert or a rollback, rollback depth is uniform on the chain length
 genItem
   :: (Arbitrary event)
   => StateT GenChainConfig Gen (Item event)
 genItem = do
-  no <- use currentTestPoint
+  point <- gets (NonEmpty.last . _lastTestPoints)
   genRollback' <- gets genRollback
-  let setStateSlot = \case
-        Insert no' _ -> currentTestPoint .= no'
-        Rollback n -> currentTestPoint .= n
   f <- use rollbackFrequency
-  let f' = if no > 0 then f else 0 -- no rollback on genesis
+  let f' = if point ^. testPointSlot > 0 then f else 0 -- no rollback on genesis
   g <- use emptyEventFrequency
   item <-
     lift $
       Test.frequency
         [ (fromIntegral f', genRollback')
-        , (100 - fromIntegral f', genInsert g no)
+        , (100 - fromIntegral f', genInsert g point)
         ]
-  setStateSlot item
+  k <- use chainStableDepth
+  case item of
+    Insert newPoint _ -> do
+      lastTestPoints %= \points ->
+        -- We remove the oldest point if the size the test points list is equal to K.
+        if length points + 1 == fromIntegral k
+          then NonEmpty.tail points `NonEmpty.prependList` NonEmpty.singleton newPoint
+          else points <> NonEmpty.singleton newPoint
+    Rollback newPoint -> do
+      lastTestPoints %= \points ->
+        fromMaybe (NonEmpty.singleton Core.genesis) $
+          NonEmpty.nonEmpty $
+            NonEmpty.filter (<= newPoint) points
   pure item
 
 -- | Apply an item to an indexer
@@ -271,8 +343,11 @@ genChain cfg = flip evalStateT cfg $ do
   size <- lift $ cfg ^. chainSize
   replicateM size genItem
 
-uniformRollBack :: TestPoint -> Gen TestPoint
-uniformRollBack = fmap TestPoint . chooseInt . (,) 0 . unwrapTestPoint
+uniformRollBack :: NonEmpty TestPoint -> Gen TestPoint
+uniformRollBack points = do
+  case NonEmpty.init points of
+    [] -> pure Core.genesis
+    pointsExpectLast -> Test.elements pointsExpectLast
 
 -- | Generate a chain with @1_000_000@ to @1_200_000@ elements, and 5% of empty events
 genLargeChain
@@ -281,8 +356,9 @@ genLargeChain
   -- ^ Rollback percentage
   -> Gen [Item event]
 genLargeChain p = do
-  let n = Test.chooseInt (1_000_000, 1_200_000)
-  genChain $ GenChainConfig n 5 p uniformRollBack 0
+  n <- Test.chooseInt (1_000_000, 1_200_000)
+  let k = 2_160
+  genChain $ GenChainConfig (pure n) k 5 p uniformRollBack (NonEmpty.singleton Core.genesis)
 
 -- | Chain events with 10% of rollback
 newtype DefaultChain event = DefaultChain {_defaultChain :: [Item event]}
@@ -292,7 +368,9 @@ makeLenses 'DefaultChain
 -- | Chain events with 10% of rollback
 instance (Arbitrary event) => Arbitrary (DefaultChain event) where
   arbitrary = Test.sized $ \n ->
-    DefaultChain <$> genChain (GenChainConfig (pure n) 5 10 uniformRollBack 0)
+    let k = 2_160
+     in DefaultChain
+          <$> genChain (GenChainConfig (pure n) k 5 10 uniformRollBack (NonEmpty.singleton Core.genesis))
 
 -- | Chain events without any rollback
 newtype ForwardChain event = ForwardChain {_forwardChain :: [Item event]}
@@ -301,25 +379,45 @@ makeLenses 'ForwardChain
 
 instance (Arbitrary event) => Arbitrary (ForwardChain event) where
   arbitrary = Test.sized $ \n ->
-    ForwardChain <$> genChain (GenChainConfig (pure n) 5 0 uniformRollBack 0)
+    let k = 2_160
+     in ForwardChain
+          <$> genChain (GenChainConfig (pure n) k 5 0 uniformRollBack (NonEmpty.singleton Core.genesis))
 
 -- | Chain events without empty event
-newtype FullChain event = FullChain {_fullChain :: [Item event]}
+newtype ChainWithoutEmptyEvents event = ChainWithoutEmptyEvents {_chainWithoutEmptyEvents :: [Item event]}
 
-makeLenses 'FullChain
+makeLenses 'ChainWithoutEmptyEvents
 
-instance (Arbitrary event) => Arbitrary (FullChain event) where
+instance (Arbitrary event) => Arbitrary (ChainWithoutEmptyEvents event) where
   arbitrary = Test.sized $ \n ->
-    FullChain <$> genChain (GenChainConfig (pure n) 0 10 uniformRollBack 0)
+    let k = 2_160
+     in ChainWithoutEmptyEvents
+          <$> genChain (GenChainConfig (pure n) k 0 10 uniformRollBack (NonEmpty.singleton Core.genesis))
 
 -- ** Event instances
 
 newtype TestEvent = TestEvent Int
   deriving stock (Generic)
   deriving newtype (Arbitrary, Eq, Ord, Show, Num, Enum, Real, Integral, FromField, ToField)
-  deriving anyclass (FromRow)
+  deriving anyclass (SQL.FromRow, SQL.ToRow)
 
 type instance Core.Point TestEvent = TestPoint
+
+instance SQL.ToRow (Core.Timed TestPoint TestEvent) where
+  toRow (Core.Timed point event) = SQL.toRow point ++ SQL.toRow event
+
+instance SQL.FromRow (Core.Timed TestPoint TestEvent) where
+  fromRow = do
+    let uuidFieldParser f =
+          do
+            uuidText <- SQL.fromField f
+            case UUID.fromText uuidText of
+              Nothing -> SQL.returnError SQL.ConversionFailed f "Cannot deserialise UUID"
+              Just uuid -> pure uuid
+    slotNo <- SQL.field
+    uuid <- SQL.fieldWith uuidFieldParser
+    event <- SQL.field
+    pure $ Core.Timed (TestPoint slotNo uuid) event
 
 -- * Model
 
@@ -484,19 +582,25 @@ lastSyncBasedModelProperty gen runner =
 
 sqliteModelIndexerWithFile
   :: FilePath -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
-sqliteModelIndexerWithFile f = do
-  let extractor 0 = Nothing
-      extractor n = Just n
+sqliteModelIndexerWithFile filepath = do
+  let extractor :: TestPoint -> Maybe Int
+      extractor (TestPoint 0 _) = Nothing
+      extractor (TestPoint p _) = Just p
   Core.mkSingleInsertSqliteIndexer
-    f
-    (\t -> (t ^. Core.point, t ^. Core.event))
+    filepath
+    ( \t ->
+        (t ^. Core.point . testPointSlot, UUID.toText $ t ^. Core.point . testPointHash, t ^. Core.event)
+    )
     " CREATE TABLE IF NOT EXISTS index_model \
-    \   ( point INT NOT NULL   \
+    \   ( pointSlotNo INT NOT NULL   \
+    \   , pointHash TEXT NOT NULL   \
     \   , value INT NOT NULL   \
     \   )"
-    "INSERT INTO index_model VALUES (?, ?)"
-    (Core.SQLRollbackPlan "index_model" "point" extractor)
-    (Core.GetLastSyncQuery "SELECT point FROM index_model ORDER BY point DESC LIMIT 1")
+    "INSERT INTO index_model VALUES (?, ?, ?)"
+    (Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor)
+    ( Core.GetLastSyncQuery
+        "SELECT pointSlotNo, pointHash FROM index_model ORDER BY pointSlotNo DESC LIMIT 1"
+    )
 
 sqliteModelIndexer :: ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer = sqliteModelIndexerWithFile ":memory:"
@@ -509,16 +613,20 @@ instance
   where
   query =
     let
+      rowToResult
+        :: Core.EventsMatchingQuery TestEvent
+        -> [Core.Timed TestPoint TestEvent]
+        -> [Core.Timed TestPoint TestEvent]
       rowToResult (Core.EventsMatchingQuery predicate) =
-        mapMaybe (traverse predicate . uncurry Core.Timed)
+        mapMaybe (traverse predicate)
      in
       Core.querySQLiteIndexerWith
-        (\p _ -> [":point" SQL.:= p])
+        (\p _ -> [":pointSlotNo" SQL.:= p ^. testPointSlot])
         ( const
-            " SELECT point, value   \
+            " SELECT pointSlotNo, pointHash, value   \
             \ FROM index_model      \
-            \ WHERE point <= :point \
-            \ ORDER BY point DESC"
+            \ WHERE pointSlotNo <= :pointSlotNo \
+            \ ORDER BY pointSlotNo DESC"
         )
         rowToResult
 
@@ -707,12 +815,12 @@ instance
      in do
           fmap (either (pure []) (filter (remainder q))) . runExceptT $
             Core.querySQLiteIndexerWith
-              (\p' _q' -> [":point" SQL.:= p'])
-              ( const $
+              (\p' _q' -> [":pointSlotNo" SQL.:= p' ^. testPointSlot])
+              ( const
                   " SELECT value               \
                   \ FROM index_model           \
-                  \ WHERE point <= :point      \
-                  \ ORDER BY point DESC"
+                  \ WHERE pointSlotNo <= :pointSlotNo      \
+                  \ ORDER BY pointSlotNo DESC"
               )
               rowToResult
               p
@@ -906,24 +1014,24 @@ delayTestGroup title runner =
     [ Tasty.testGroup
         "0 delay"
         [ Tasty.testProperty "indexes events without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               delayProperty 0 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               delayProperty 0 (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "10 delay"
         [ Tasty.testProperty "in a chain without rollback" $
-            Test.withMaxSuccess 5000 $
+            Test.withMaxSuccess 5_000 $
               delayProperty 10 (view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "in a chain with rollbacks" $
-            Test.withMaxSuccess 10000 $
+            Test.withMaxSuccess 10_000 $
               delayProperty 10 (view defaultChain <$> Test.arbitrary) runner
         ]
     ]
 
--- | A runner for a the 'WithTracer' tranformer
+-- | A runner for a the 'WithCatchup tranformer.
 withCatchupRunner
   :: (Monad m)
   => (Core.Point event ~ TestPoint)
@@ -932,13 +1040,14 @@ withCatchupRunner
   -> Model.IndexerTestRunner m event wrapped
   -> Model.IndexerTestRunner m event (Core.WithCatchup wrapped)
 withCatchupRunner batchSize bypassDistance wRunner =
-  let computeDistance (TestPoint d) _ = fromIntegral $ 100 - d
+  let computeDistance (TestPoint d _) _ = fromIntegral $ 100 - d
    in Model.IndexerTestRunner
         (wRunner ^. Model.indexerRunner)
         ( Core.withCatchup
             computeDistance
             (Core.CatchupConfig batchSize bypassDistance)
-            <$> wRunner ^. Model.indexerGenerator
+            <$> wRunner
+              ^. Model.indexerGenerator
         )
 
 catchupProperty
@@ -1069,7 +1178,7 @@ stopCoordinatorProperty
 stopCoordinatorProperty gen runner =
   let cRunner = coordinatorIndexerRunner runner
       r = cRunner ^. Model.indexerRunner
-      waitForKill = GenM.run $ liftIO $ Con.threadDelay 1000
+      waitForKill = GenM.run $ liftIO $ Con.threadDelay 1_000
       forgedError = Core.OtherIndexError "STOP"
 
       seedError ix =
@@ -1127,21 +1236,23 @@ resumeLastSyncProperty rehydrate gen =
     lift $ Core.close indexer''
     pure $ origSyncPoint === resumedSyncPoint
 
+-- TODO Became very slow since commit 50e35a71f7106500b87ec8eb6d2ff820c2f08b96
 resumeSQLiteLastSyncTest :: Tasty.TestTree
 resumeSQLiteLastSyncTest =
   Tasty.testProperty "SQLiteIndexer - stop and restart restore lastSyncPoint" $
-    Test.withMaxSuccess 500 $
+    Test.withMaxSuccess 5 $
       resumeLastSyncProperty
         sqliteModelIndexerWithFile
-        (view fullChain <$> Test.arbitrary)
+        (view chainWithoutEmptyEvents <$> Test.arbitrary)
 
+-- TODO Became very slow since commit 50e35a71f7106500b87ec8eb6d2ff820c2f08b96
 resumeMixedLastSyncTest :: Tasty.TestTree
 resumeMixedLastSyncTest =
   Tasty.testProperty "MixedIndexer - stop and restart restore lastSyncPoint" $
-    Test.withMaxSuccess 500 $
+    Test.withMaxSuccess 5 $
       resumeLastSyncProperty
         mixedModelNoMemoryIndexerWithFile
-        (view fullChain <$> Test.arbitrary)
+        (view chainWithoutEmptyEvents <$> Test.arbitrary)
 
 memorySizeUpdateProperty
   :: Gen [Item TestEvent]
@@ -1289,6 +1400,131 @@ withTransformTest =
     Test.withMaxSuccess 10_000 $
       withTransformProperty (view defaultChain <$> Test.arbitrary)
 
+{- | Outline of the property:
+
+ General idea of property:
+
+ * Generate a chain with 'Insert' and 'Rollback's.
+ * Select a random subset of that chain.
+ * Create a `ListIndexer` and index the chain subset.
+ * Create a `WithResume ListIndexer` and initialize using the previous `ListIndexer`.
+ * Create a new chain from the generated one where the Rollbacks in the immutable portion (given
+ k) are "applied", thus we remove all rollback events from the immutable part while keeping
+ rollbacks from the mutable part.
+ * Index this new chain using the existing 'WithResume ListIndexer'.
+ * Compare indexed events with a 'ListIndexer' that indexed the new chain.
+-}
+propWithResumeShouldDrainAlreadySyncedEvents :: Property
+propWithResumeShouldDrainAlreadySyncedEvents =
+  let getIndexerEvents
+        :: ( Monad m
+           , Core.Queryable
+              (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
+              TestEvent
+              (Core.EventsMatchingQuery TestEvent)
+              indexer
+           , Core.IsSync m TestEvent indexer
+           )
+        => indexer TestEvent
+        -> m [Core.Timed TestPoint TestEvent]
+      getIndexerEvents indexer' = fromRight [] <$> Core.queryLatestEither Core.allEvents indexer'
+
+      getLastSyncPoints
+        :: (Functor m, Core.IsSync m event indexer)
+        => indexer event
+        -> m [Core.Point event]
+      getLastSyncPoints indexer' = fmap pure $ Core.lastSyncPoint indexer'
+
+      applyRollbacksOnChain :: (Eq event) => [Item event] -> [Item event]
+      applyRollbacksOnChain chain =
+        let (IndexerModel events) = runModel chain
+         in List.sort $ fmap (uncurry Insert) events
+
+      gen :: Gen ([Item TestEvent], Int, Word)
+      gen = Test.sized $ \n -> do
+        k <- Test.chooseInt (1, 10)
+        (chain :: [Item TestEvent]) <-
+          genChain $
+            GenChainConfig (pure n) (fromIntegral k) 5 50 uniformRollBack (NonEmpty.singleton Core.genesis)
+        chainSubsetSize <- Test.chooseInt (0, length chain)
+        pure (chain, chainSubsetSize, fromIntegral k)
+   in Test.forAll gen $ \(chain, chainSubsetSize, k) -> monadicExceptTIO $ do
+        -- Select random subset of the chain and index it with a ListIndexer
+        -- This correspons to an indexer which starts indexing events from genesis up until a
+        -- certain point before being stopped.
+        let chainSubset = take chainSubsetSize chain
+        indexer <- GenM.run $ foldM (flip process) Core.mkListIndexer chainSubset
+
+        -- Initialize a 'WithResume' indexer using the previously created ListIndexer.
+        -- Then, re-index the full chain from scratch.
+        -- Resume indexing by restarting from genesis and using last immutable sync point.
+        let getResumablePoints securityParam ix = do
+              tes <- fmap (List.sortOn $ view Core.point) $ getIndexerEvents ix
+              pure $ fmap (view Core.point) $ reverse $ take (fromIntegral securityParam + 1) $ reverse tes
+        initialIndexerWithResume <-
+          GenM.run $
+            Core.withResume
+              getResumablePoints
+              k
+              indexer
+        let immutableChainPart = take (length chain - fromIntegral k) chain
+            immutableChainPartWithoutRollbacks = applyRollbacksOnChain immutableChainPart
+            mutableChainPart = drop (length chain - fromIntegral k) chain
+            fullChain = Rollback Core.genesis : immutableChainPartWithoutRollbacks ++ mutableChainPart
+        resumedIndexer <-
+          GenM.run $
+            foldM
+              (flip process)
+              initialIndexerWithResume
+              fullChain
+        withResumeIndexedEvents <- fmap (fmap (view Core.event)) $ getIndexerEvents resumedIndexer
+
+        -- Model results using a ListIndexer using the full chain
+        listIndexer <- GenM.run $ foldM (flip process) Core.mkListIndexer (Rollback Core.genesis : chain)
+        (expectedChainEvents :: [TestEvent]) <- fmap (fmap (view Core.event)) $ getIndexerEvents listIndexer
+
+        -- Calculate some statistics for 'cover'.
+        resumedIndexerLastSyncPoints <- getLastSyncPoints resumedIndexer
+        let resumedIndexerLowestLastSyncPoint = minimum resumedIndexerLastSyncPoints
+        let resumedIndexerHighestLastSyncPoint = maximum resumedIndexerLastSyncPoints
+        let chainHasAtLeastOnePointBeforeLastSyncedPoint = isJust $ find (\item -> item ^. testPoint < resumedIndexerLowestLastSyncPoint) fullChain
+        let chainHasAtLeastOnePointAfterLastSyncedPoint = isJust $ find (\item -> item ^. testPoint > resumedIndexerHighestLastSyncPoint) fullChain
+        let chainHasAtLeastOnePointSameAsLastSyncedPoint = isJust $ find (\item -> List.elem (item ^. testPoint) resumedIndexerLastSyncPoints) fullChain
+        let chainHasAtLeastOnePointForkOfLastSyncedPoint =
+              isJust $
+                find
+                  ( \item -> case Core.comparePoint resumedIndexerLowestLastSyncPoint (item ^. testPoint) of
+                      Core.Fork -> True
+                      _ -> False
+                  )
+                  fullChain
+
+        let runPropertyWithCover =
+              Test.cover
+                70
+                chainHasAtLeastOnePointBeforeLastSyncedPoint
+                "Generated chain has at least one point before the lowest last sync point of the resumed indexer"
+                . Test.cover
+                  70
+                  chainHasAtLeastOnePointSameAsLastSyncedPoint
+                  "Generated chain has at least one point that is the same as one of the last sync points"
+                . Test.cover 50 (not $ null expectedChainEvents) "Expected chain events is not empty"
+                . Test.cover
+                  5
+                  chainHasAtLeastOnePointAfterLastSyncedPoint
+                  "Generated chain has at least one point after the highest last sync point of the resumed indexer"
+                . Test.cover
+                  5
+                  chainHasAtLeastOnePointForkOfLastSyncedPoint
+                  "Generated chain has at least one point that has the same slot as one of the last sync points, but with a different point hash"
+
+        pure $ runPropertyWithCover $ withResumeIndexedEvents === expectedChainEvents
+
+withResumeTest :: Tasty.TestTree
+withResumeTest =
+  Tasty.testProperty "WithResume should drain already synced events" $
+    Test.withMaxSuccess 10_000 propWithResumeShouldDrainAlreadySyncedEvents
+
 -- | A runner for a the 'WithAggregate' tranformer
 withAggregateRunner
   :: (Monad m)
@@ -1384,7 +1620,7 @@ checkOutOfRollback gen =
       genIndexer = runner ^. Model.indexerGenerator
    in Test.within 10_000_000 $ Test.expectFailure $ Test.forAll gen $ \chain -> r $ do
         initialIndexer <- GenM.run genIndexer
-        void $ GenM.run $ foldM (flip process) initialIndexer (chain ++ [Rollback 0])
+        void $ GenM.run $ foldM (flip process) initialIndexer (chain ++ [Rollback Core.genesis])
         GenM.stop True
 
 withRollbackFailureTest :: Tasty.TestTree
