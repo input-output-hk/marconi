@@ -107,15 +107,14 @@ mkDatumIndexer path = do
         [sql|CREATE TABLE IF NOT EXISTS datum (datumHash BLOB PRIMARY KEY, datum BLOB, slotNo Int)|]
       datumInsertQuery :: SQL.Query
       datumInsertQuery =
-        [sql|INSERT OR IGNORE INTO datum (datumHash, datum, slotNo) VALUES (?, ?, ?)|]
+        [sql|INSERT OR IGNORE INTO datum (datumHash, datum, slotNo)
+          VALUES (?, ?, ?)|]
+      datumCreation = [createDatum, Sync.syncTableCreation]
   Core.mkSqliteIndexer
     path
-    [createDatum, Sync.syncTableCreation]
-    [
-      [ Core.SQLInsertPlan (traverse NonEmpty.toList) datumInsertQuery
-      , Sync.syncInsertPlan
-      ]
-    ]
+    datumCreation
+    [[Core.SQLInsertPlan (traverse NonEmpty.toList) datumInsertQuery]]
+    (Just Sync.syncInsertPlan)
     [ Core.SQLRollbackPlan "datum" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]

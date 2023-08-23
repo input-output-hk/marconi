@@ -255,6 +255,8 @@ module Marconi.Core.Experiment (
   -- (and the corresponding 'Queryable' interface)
   -- should be enough to have an operational indexer.
   SQLiteIndexer (SQLiteIndexer),
+  GetLastSyncQuery (GetLastSyncQuery),
+  InsertPointQuery (InsertPointQuery),
   -- | Start a new indexer or resume an existing SQLite indexer
   --
   -- The main difference with 'SQLiteIndexer' is
@@ -498,6 +500,8 @@ import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
   mkSQLiteAggregateQuery,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
+  GetLastSyncQuery (GetLastSyncQuery),
+  InsertPointQuery (InsertPointQuery),
   SQLInsertPlan (..),
   SQLRollbackPlan (..),
   SQLiteIndexer (..),

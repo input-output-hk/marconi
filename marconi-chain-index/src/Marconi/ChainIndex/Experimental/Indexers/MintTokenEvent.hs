@@ -259,15 +259,14 @@ mkMintTokenIndexer dbPath = do
                  redeemerData
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?)|]
+      mintCreation = [createMintPolicyEvent, createMintPolicyIdIndex, Sync.syncTableCreation]
+      mintInsert = [Core.SQLInsertPlan timedMintEventsToTimedMintEventList mintEventInsertQuery]
 
   Core.mkSqliteIndexer
     dbPath
-    [createMintPolicyEvent, createMintPolicyIdIndex, Sync.syncTableCreation]
-    [
-      [ Core.SQLInsertPlan timedMintEventsToTimedMintEventList mintEventInsertQuery
-      , Sync.syncInsertPlan
-      ]
-    ]
+    mintCreation
+    [mintInsert]
+    (Just Sync.syncInsertPlan)
     [ Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]

@@ -130,6 +130,7 @@ mkUtxoIndexer path = do
                  , inlineScript BLOB
                  , inlineScriptHash BLOB
                  , slotNo INT
+                 , blockHeaderHash BLOB
                  )|]
       createAddressIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_address ON utxo (address)|]
       createSlotNoIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_slotNo ON utxo (slotNo)|]
@@ -147,18 +148,18 @@ mkUtxoIndexer path = do
                  slotNo
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+      creationPhase =
+        [ Sync.syncTableCreation
+        , createUtxo
+        , createAddressIndex
+        , createSlotNoIndex
+        ]
+      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery]
   Core.mkSqliteIndexer
     path
-    [ createUtxo
-    , Sync.syncTableCreation
-    , createAddressIndex
-    , createSlotNoIndex
-    ]
-    [
-      [ Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery
-      , Sync.syncInsertPlan
-      ]
-    ]
+    creationPhase
+    [insertEvent]
+    (Just Sync.syncInsertPlan)
     [ Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
@@ -203,19 +204,16 @@ utxoWorker name catchupConfig utxoConfig extractor path = do
 instance ToRow (Core.Timed C.ChainPoint Utxo) where
   toRow u =
     let (C.TxIn txid txix) = u ^. Core.event . txIn
-        snoField = case u ^. Core.point of
-          C.ChainPointAtGenesis -> SQL.SQLNull
-          C.ChainPoint sno _ -> toField sno
      in toRow
-          [ toField (u ^. Core.event . address)
-          , toField (u ^. Core.event . txIndex)
+          [ toField $ u ^. Core.event . address
+          , toField $ u ^. Core.event . txIndex
           , toField txid
           , toField txix
-          , toField (u ^. Core.event . datumHash)
-          , toField (u ^. Core.event . value)
-          , toField (u ^. Core.event . inlineScript)
-          , toField (u ^. Core.event . inlineScriptHash)
-          , snoField
+          , toField $ u ^. Core.event . datumHash
+          , toField $ u ^. Core.event . value
+          , toField $ u ^. Core.event . inlineScript
+          , toField $ u ^. Core.event . inlineScriptHash
+          , toField $ u ^. Core.point . Lens.to C.chainPointToSlotNo
           ]
 
 instance SQL.FromRow Utxo where
