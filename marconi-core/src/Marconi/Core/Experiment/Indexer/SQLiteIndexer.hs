@@ -244,10 +244,10 @@ runIndexQueries c events' plan insertPoint' =
         (Just rPlan, Just rPoint) -> Just $ Async.concurrently_ rPlan rPoint
    in case allIndex of
         Nothing -> pure ()
-        Just indexers ->
+        Just runIndexers ->
           let
            in either throwError pure <=< liftIO $
-                handleSQLErrors (SQL.withTransaction c indexers)
+                handleSQLErrors (SQL.withTransaction c runIndexers)
 
 indexEvents
   :: (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))

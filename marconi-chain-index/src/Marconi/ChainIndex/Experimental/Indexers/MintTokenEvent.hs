@@ -133,9 +133,7 @@ Lens.makeLenses ''MintAssetRedeemer
 
 instance SQL.ToRow (Core.Timed C.ChainPoint MintTokenEvent) where
   toRow te =
-    let snoField = case te ^. Core.point of
-          C.ChainPointAtGenesis -> SQL.SQLNull
-          C.ChainPoint sno _ -> SQL.toField sno
+    let snoField = te ^. Core.point . Lens.to (SQL.toField . C.chainPointToSlotNo)
      in snoField : SQL.toRow (te ^. Core.event)
 
 instance SQL.ToRow MintTokenEvent where
@@ -259,12 +257,13 @@ mkMintTokenIndexer dbPath = do
                  redeemerData
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?)|]
-      mintCreation = [createMintPolicyEvent, createMintPolicyIdIndex, Sync.syncTableCreation]
+      createMintPolicyEventTables =
+        [createMintPolicyEvent, createMintPolicyIdIndex, Sync.syncTableCreation]
       mintInsert = [Core.SQLInsertPlan timedMintEventsToTimedMintEventList mintEventInsertQuery]
 
   Core.mkSqliteIndexer
     dbPath
-    mintCreation
+    createMintPolicyEventTables
     [mintInsert]
     (Just Sync.syncInsertPlan)
     [ Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo

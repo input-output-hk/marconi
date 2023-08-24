@@ -148,7 +148,7 @@ mkUtxoIndexer path = do
                  slotNo
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-      creationPhase =
+      createUtxoTables =
         [ Sync.syncTableCreation
         , createUtxo
         , createAddressIndex
@@ -157,7 +157,7 @@ mkUtxoIndexer path = do
       insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery]
   Core.mkSqliteIndexer
     path
-    creationPhase
+    createUtxoTables
     [insertEvent]
     (Just Sync.syncInsertPlan)
     [ Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo
