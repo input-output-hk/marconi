@@ -182,7 +182,7 @@ instance FromJSON GetUtxosFromAddressParams where
   parseJSON =
     let buildInterval v = do
           lo <-
-            v .:? "createdAfterSlotNo"
+            v .:? "createdAtOrAfterSlotNo"
               <|> fail "The 'createAfterSlotNo' param value must be a natural number"
           hi <-
             v .:? "unspentBeforeSlotNo"
@@ -201,7 +201,7 @@ instance ToJSON GetUtxosFromAddressParams where
     Aeson.object $
       catMaybes
         [ Just ("address" .= queryAddress q)
-        , ("createdAfterSlotNo" .=) <$> Utxo.intervalLowerBound (querySearchInterval q)
+        , ("createdAtOrAfterSlotNo" .=) <$> Utxo.intervalLowerBound (querySearchInterval q)
         , ("unspentBeforeSlotNo" .=) <$> Utxo.intervalUpperBound (querySearchInterval q)
         ]
 

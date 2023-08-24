@@ -247,15 +247,15 @@ Retrieves UTXOs of a given address until a given slot, and optionally after a gi
 
 * If `marconi-sidechain` was configured to track a specific set of addresses, then the `address` param value should be part of them.
 
-* The `createdAfterSlotNo` and `unspentBeforeSlotNo` param values must be natural numbers starting at 0.
+* The `createdAtOrAfterSlotNo` and `unspentBeforeSlotNo` param values must be natural numbers starting at 0.
 
-* The `unspentBeforeSlotNo` param value should be larger than the `createdAfterSlotNo`.
+* The `unspentBeforeSlotNo` param value should be larger than the `createdAtOrAfterSlotNo`.
 
 ==== Post-conditions
 
 * The `datumHash` result value should always be available if the `datum` result value is available.
 
-* The `slotNo` result value should be larger than provided `createdAfterSlotNo` param value.
+* The `slotNo` result value should be larger than provided `createdAtOrAfterSlotNo` param value.
 
 * The `slotNo` result value should be lower than the provided `unspentBeforeSlotNo` param value.
 
@@ -286,7 +286,7 @@ They are expected, however, to clean up older registration.
       "type": "string",
       "description": "Show UTxOs belonging to this Shelley address in the Bech32 format."
     },
-    "createdAfterSlotNo": {
+    "createdAtOrAfterSlotNo": {
       "type": "integer",
       "minimum": 0,
       "description": "Filter out UTxO that were created during or before that slot."
