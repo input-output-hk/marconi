@@ -34,6 +34,7 @@ import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment (
+  GetLastSyncQuery (GetLastSyncQuery),
   HasGenesis (genesis),
   IndexerError,
   ListIndexer,
@@ -127,7 +128,7 @@ instance (MonadIO m) => Queryable m AddressCountEvent AddressCountQuery SQLiteIn
     -> SQLiteIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
   query C.ChainPointAtGenesis _ _ = pure 0
-  query (C.ChainPoint _ _) (AddressCountQuery addr) (SQLiteIndexer _ c _ _ _) = do
+  query (C.ChainPoint _ _) (AddressCountQuery addr) (SQLiteIndexer _ c _ _ _ _) = do
     (results :: [[Int]]) <-
       liftIO $
         SQL.query
@@ -182,8 +183,9 @@ mkAddressCountSqliteIndexer dbPath = do
       [ SQLInsertPlan eventToRows addressCountInsertQuery
       ]
     ] -- requests launched when an event is stored
+    Nothing
     [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
-    lastSyncQuery
+    (GetLastSyncQuery lastSyncQuery)
   where
     dbCreation =
       [sql|CREATE TABLE IF NOT EXISTS address_count
