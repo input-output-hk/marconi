@@ -29,6 +29,8 @@ You can also run the benchmarks to estimate and report memory usage:
 module Main (main) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Setup (withTrace)
+import Cardano.BM.Tracing (Trace, defaultConfigStdout)
 import Cardano.Chain.Slotting (EpochSlots (EpochSlots))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
@@ -45,6 +47,7 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Word (Word64)
 import Database.SQLite.Simple (FromRow (fromRow), field, toRow)
@@ -64,6 +67,7 @@ import Marconi.ChainIndex.Indexers.Utxo (
   UtxoIndexer,
   lessThanOrEqual,
  )
+import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig))
 import Marconi.ChainIndex.Types (
   IndexingDepth (MinIndexingDepth),
   ShouldFailIfResync (ShouldFailIfResync),
@@ -100,23 +104,26 @@ main = do
 
   indexerTVar <- atomically (newEmptyTMVar :: STM (TMVar UtxoIndexer))
 
-  -- Run concurrently the indexing and the testing. The testing is only run once the indexing is
-  -- fully synced with the local running node.
-  race_ (runIndexerSyncing databaseDir nodeSocketPath indexerTVar) $ do
-    putStrLn "Waiting for indexer to be fully synced..."
-    waitUntilSynced databaseDir nodeSocketPath
-    putStrLn "Finished syncing!"
-    tests databaseDir indexerTVar
+  traceConfig <- defaultConfigStdout
+  withTrace traceConfig "marconi-benchmark" $ \trace -> do
+    -- Run concurrently the indexing and the testing. The testing is only run once the indexing is
+    -- fully synced with the local running node.
+    race_ (runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar) $ do
+      putStrLn "Waiting for indexer to be fully synced..."
+      waitUntilSynced databaseDir nodeSocketPath
+      putStrLn "Finished syncing!"
+      tests databaseDir indexerTVar
 
 -- | Run the IO code which syncs the Marconi Utxo indexer with the local running Cardano node.
 runIndexerSyncing
-  :: FilePath
+  :: Trace IO Text
+  -> FilePath
   -- ^ Marconi indexer database directory
   -> FilePath
   -- ^ Local node socket file path
   -> TMVar UtxoIndexer
   -> IO ()
-runIndexerSyncing databaseDir nodeSocketPath indexerTVar = do
+runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar = do
   let callbackUtxoIndexer :: UtxoIndexer -> IO ()
       callbackUtxoIndexer utxoIndexer = atomically $ writeTMVar indexerTVar utxoIndexer
       utxoIndexerConfig = UtxoIndexerConfig{ucTargetAddresses = Nothing, ucEnableUtxoTxOutRef = True}
@@ -127,12 +134,13 @@ runIndexerSyncing databaseDir nodeSocketPath indexerTVar = do
           )
         ]
   runIndexers
+    trace
+    (RetryConfig 30 (Just 900))
     nodeSocketPath
     (C.Testnet $ C.NetworkMagic 1) -- TODO Needs to be passed a CLI param
     C.ChainPointAtGenesis
     (MinIndexingDepth 0)
     (ShouldFailIfResync True)
-    "marconi"
     indexers
 
 tests

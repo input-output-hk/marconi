@@ -45,7 +45,6 @@ import Cardano.Api qualified as C
 import Control.Concurrent.STM (TMVar, newEmptyTMVarIO)
 import Control.Lens (makeLenses)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Void (Void)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
@@ -53,10 +52,9 @@ import Marconi.ChainIndex.Types (
   SecurityParam,
   TargetAddresses,
  )
-import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable (State)
 import Marconi.Sidechain.CLI (
-  CliArgs (CliArgs, httpPort, networkId, socketFilePath, targetAddresses, targetAssets),
+  CliArgs (CliArgs, httpPort, targetAddresses, targetAssets),
  )
 import Network.Wai.Handler.Warp (Port, Settings, defaultSettings, setPort)
 
@@ -98,10 +96,10 @@ newtype EpochStateIndexerEnv = EpochStateIndexerEnv
   }
 
 mkSidechainEnvFromCliArgs
-  :: CliArgs
+  :: SecurityParam
+  -> CliArgs
   -> IO SidechainEnv
-mkSidechainEnvFromCliArgs CliArgs{networkId, socketFilePath, httpPort, targetAddresses, targetAssets} = do
-  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketFilePath
+mkSidechainEnvFromCliArgs securityParam CliArgs{httpPort, targetAddresses, targetAssets} = do
   mkSidechainEnv securityParam httpPort targetAddresses targetAssets
 
 mkSidechainEnv

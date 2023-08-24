@@ -8,7 +8,9 @@ Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
                          [--max-indexing-depth | --min-indexing-depth NATURAL] 
                          [(-a|--addresses-to-index BECH32-ADDRESS)] 
                          [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
-                         [--fail-if-resyncing-from-genesis]
+                         [--fail-if-resyncing-from-genesis] 
+                         [--initial-retry-time NATURAL] 
+                         [--no-max-retry-time | --max-retry-time NATURAL]
 
   marconi-sidechain
 
@@ -21,7 +23,7 @@ Available options:
                            to.
   -d,--db-dir DIR          Directory path where all Marconi-related SQLite
                            databases are located.
-  --http-port HTTP-PORT    JSON-RPC http port number, default is port 3000.
+  --http-port HTTP-PORT    JSON-RPC http port number. Defaults to 3000.
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
   --max-indexing-depth     Only index blocks that are not rollbackable
@@ -42,3 +44,9 @@ Available options:
   --fail-if-resyncing-from-genesis
                            Fails resuming if one indexer must resync from
                            genesis when it can resume from a later point.
+  --initial-retry-time NATURAL
+                           Initial time (in seconds) before retry after a failed
+                           node connection. Defaults to 30s.
+  --no-max-retry-time      Unlimited retries.
+  --max-retry-time NATURAL Max time (in seconds) allowed after startup for
+                           retries. Defaults to 30min.

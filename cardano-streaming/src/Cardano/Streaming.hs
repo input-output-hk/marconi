@@ -212,9 +212,7 @@ withChainSyncEventEpochNoStream socketPath networkId points consumer =
       consumer $ S.unfoldr eventLoop history
     -- Let's rethrow exceptions from the client thread unwrapped, so that the
     -- consumer does not have to know anything about async
-    `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> do
-      putStrLn "error in chainSync"
-      throw e
+    `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
 
 connectToLocalNodeWithChainSyncClient
   :: C.LocalNodeConnectInfo C.CardanoMode

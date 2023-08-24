@@ -23,13 +23,11 @@ import Cardano.Api (
  )
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (
   Trace,
   logError,
   logInfo,
  )
-import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Ledger.Alonzo.TxWits qualified as Alonzo
 import Cardano.Streaming (
   BlockEvent (BlockEvent, blockInMode),
@@ -95,7 +93,6 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Data.Word (Word64)
-import Marconi.ChainIndex.CLI qualified as CLI
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantRollback, CantStartIndexer),
   ignoreQueryError,
@@ -119,6 +116,7 @@ import Marconi.ChainIndex.Node.Client.GenesisConfig (
   readNetworkConfig,
   renderGenesisConfigError,
  )
+import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   SecurityParam (SecurityParam),
@@ -635,7 +633,7 @@ mkIndexerStream' f coordinator =
       waitQSemN _barrier _indexerCount
       pure c'
 
-    -- give 3 minutes for a step to finish
+    -- give 3 minutes (180s) for a step to finish
     safeStep c event = do
       result <- timeout 180_000_000 $ step c event
       case result of
@@ -651,39 +649,33 @@ mkIndexerStream
 mkIndexerStream = mkIndexerStream' (bimSlotNo . blockInMode)
 
 runIndexers
-  :: FilePath
+  :: Trace IO Text
+  -> RetryConfig
+  -> FilePath
   -> C.NetworkId
   -> ChainPoint
   -> IndexingDepth
   -> ShouldFailIfResync
-  -> Text.Text
   -> [(Worker, Maybe FilePath)]
   -> IO ()
-runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync shouldFailIfResync) traceName indexerList = do
-  securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
-  currentNodeBlockNo <- Utils.toException $ Utils.queryCurrentNodeBlockNo @Void networkId socketPath
-  let indexers = mapMaybe sequenceA indexerList
-  coordinator <- initializeCoordinatorFromIndexers securityParam indexingDepth indexers
-  let indexerDepth =
-        let SecurityParam s = securityParam
-         in case indexingDepth of
-              MinIndexingDepth d -> SecurityParam $ s - d + 1
-              MaxIndexingDepth -> SecurityParam 1
-  resumablePoints <-
-    getStartingPointsFromIndexers indexerDepth currentNodeBlockNo indexers coordinator
-  let oldestCommonChainPoint = minimum resumablePoints
-      resumePoint = case cliChainPoint of
-        C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
-        cliCp -> cliCp -- otherwise use what was provided on CLI.
-      cleanExit :: Trace IO Text -> Coordinator' a -> IO ()
-      cleanExit trace c = do
-        logInfo trace "Marconi is shutting down. Waiting for indexers to finish their work..."
-        void $ timeout 180_000_000 $ waitQSemN (c ^. barrier) (c ^. indexerCount)
-        logInfo trace "Done!"
-  c <- defaultConfigStdout
-  withTrace c traceName $ \trace -> do
-    logInfo trace $ Text.pack $ "marconi " <> CLI.getVersion
-    logInfo trace $
+runIndexers stdoutTrace retryConfig socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync shouldFailIfResync) indexerList = do
+  withNodeConnectRetry stdoutTrace retryConfig socketPath $ do
+    securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+    currentNodeBlockNo <- Utils.toException $ Utils.queryCurrentNodeBlockNo @Void networkId socketPath
+    let indexers = mapMaybe sequenceA indexerList
+    coordinator <- initializeCoordinatorFromIndexers securityParam indexingDepth indexers
+    let indexerDepth =
+          let SecurityParam s = securityParam
+           in case indexingDepth of
+                MinIndexingDepth d -> SecurityParam $ s - d + 1
+                MaxIndexingDepth -> SecurityParam 1
+    resumablePoints <-
+      getStartingPointsFromIndexers indexerDepth currentNodeBlockNo indexers coordinator
+    let oldestCommonChainPoint = minimum resumablePoints
+        resumePoint = case cliChainPoint of
+          C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
+          cliCp -> cliCp -- otherwise use what was provided on CLI.
+    logInfo stdoutTrace $
       renderStrict $
         layoutPretty defaultLayoutOptions $
           "Resumable points for each indexer:"
@@ -696,7 +688,7 @@ runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync
       && elem C.ChainPointAtGenesis resumablePoints
       && any (\case ChainPoint{} -> True; _ -> False) resumablePoints
       then do
-        logError trace $
+        logError stdoutTrace $
           renderStrict $
             layoutPretty defaultLayoutOptions $
               nest
@@ -710,11 +702,11 @@ runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync
       else do
         let stream =
               mkIndexerStream coordinator
-                . chainSyncEventStreamLogging trace
+                . chainSyncEventStreamLogging stdoutTrace
                 . updateProcessedBlocksMetric
-            io = withChainSyncEventEpochNoStream socketPath networkId [resumePoint] stream
-            handleException NoIntersectionFound = do
-              logError trace $
+            runChainSyncStream = withChainSyncEventEpochNoStream socketPath networkId [resumePoint] stream
+            whenNoIntersectionFound NoIntersectionFound = do
+              logError stdoutTrace $
                 renderStrict $
                   layoutPretty defaultLayoutOptions $
                     "No intersection found when looking for the chain point"
@@ -722,7 +714,21 @@ runIndexers socketPath networkId cliChainPoint indexingDepth (ShouldFailIfResync
                       <> "."
                       <+> "Please check the slot number and the block hash do belong to the chain."
               signalQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
-         in finally (io `catch` handleException) (cleanExit trace coordinator)
+         in finally
+              (runChainSyncStream `catch` whenNoIntersectionFound)
+              (waitForIndexersToFinishProcessingLastEvent coordinator)
+  where
+    waitForIndexersToFinishProcessingLastEvent :: Coordinator' a -> IO ()
+    waitForIndexersToFinishProcessingLastEvent coordinator = do
+      let secondsBeforeTimeout = 180
+      logInfo stdoutTrace $
+        "Stopping indexing. Waiting for indexers to finish their work (timeout after "
+          <> Text.pack (show secondsBeforeTimeout)
+          <> "s) ..."
+      void $
+        timeout (secondsBeforeTimeout * 1_000_000) $
+          waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
+      logInfo stdoutTrace "Done!"
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r

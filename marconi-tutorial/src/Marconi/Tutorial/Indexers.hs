@@ -2,6 +2,8 @@
 
 module Marconi.Tutorial.Indexers where
 
+import Cardano.BM.Trace (Trace)
+import Data.Text (Text)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
@@ -11,8 +13,8 @@ import Marconi.Tutorial.Indexers.AddressCount qualified as AddressCount
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 
-runIndexers :: CLI.Options -> IO ()
-runIndexers o = do
+runIndexers :: Trace IO Text -> CLI.Options -> IO ()
+runIndexers trace o = do
   createDirectoryIfMissing True (CLI.optionsDbPath o)
 
   let socketPath = CommonCLI.optionsSocketPath $ CLI.commonOptions o
@@ -27,8 +29,9 @@ runIndexers o = do
       ]
 
   Runner.runIndexers
+    trace
+    (CommonCLI.optionsRetryConfig $ CLI.commonOptions o)
     (CommonCLI.optionsSocketPath $ CLI.commonOptions o)
     (CommonCLI.optionsNetworkId $ CLI.commonOptions o)
     (CommonCLI.optionsChainPoint $ CLI.commonOptions o)
-    "marconi-tutorial"
     indexers
