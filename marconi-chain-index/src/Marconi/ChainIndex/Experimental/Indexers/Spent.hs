@@ -119,14 +119,15 @@ mkSpentIndexer path = do
                , slotNo
                )
                VALUES (?, ?, ?, ?)|]
+      createSpentTables =
+        [createSpent, createSlotNoIndex, createTxInIndex, createSpentAtIndex, Sync.syncTableCreation]
+      spentInsert =
+        [Core.SQLInsertPlan (traverse NonEmpty.toList) spentInsertQuery]
   Core.mkSqliteIndexer
     path
-    [createSpent, createSlotNoIndex, createTxInIndex, createSpentAtIndex, Sync.syncTableCreation]
-    [
-      [ Core.SQLInsertPlan (traverse NonEmpty.toList) spentInsertQuery
-      , Sync.syncInsertPlan
-      ]
-    ]
+    createSpentTables
+    [spentInsert]
+    (Just Sync.syncInsertPlan)
     [ Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]

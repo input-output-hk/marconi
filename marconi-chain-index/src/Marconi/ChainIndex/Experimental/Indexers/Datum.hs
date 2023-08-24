@@ -103,19 +103,18 @@ mkDatumIndexer
   => FilePath
   -> m (Core.SQLiteIndexer DatumEvent)
 mkDatumIndexer path = do
-  let createDatum =
+  let createDatumQuery =
         [sql|CREATE TABLE IF NOT EXISTS datum (datumHash BLOB PRIMARY KEY, datum BLOB, slotNo Int)|]
       datumInsertQuery :: SQL.Query
       datumInsertQuery =
-        [sql|INSERT OR IGNORE INTO datum (datumHash, datum, slotNo) VALUES (?, ?, ?)|]
+        [sql|INSERT OR IGNORE INTO datum (datumHash, datum, slotNo)
+          VALUES (?, ?, ?)|]
+      createDatumTables = [createDatumQuery, Sync.syncTableCreation]
   Core.mkSqliteIndexer
     path
-    [createDatum, Sync.syncTableCreation]
-    [
-      [ Core.SQLInsertPlan (traverse NonEmpty.toList) datumInsertQuery
-      , Sync.syncInsertPlan
-      ]
-    ]
+    createDatumTables
+    [[Core.SQLInsertPlan (traverse NonEmpty.toList) datumInsertQuery]]
+    (Just Sync.syncInsertPlan)
     [ Core.SQLRollbackPlan "datum" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]

@@ -104,9 +104,10 @@ mkBlockInfoIndexer path = do
       blockInfoInsertQuery =
         [sql|INSERT INTO blockInfo (slotNo, blockHeaderHash, blockNo, blockTimestamp, epochNo)
              VALUES (?, ?, ?, ?, ?)|]
-      lastPointQuery :: SQL.Query
+      lastPointQuery :: Core.GetLastSyncQuery
       lastPointQuery =
-        [sql|SELECT slotNo, blockHeaderHash FROM blockInfo ORDER BY slotNo DESC LIMIT 1|]
+        Core.GetLastSyncQuery
+          [sql|SELECT slotNo, blockHeaderHash FROM blockInfo ORDER BY slotNo DESC LIMIT 1|]
   Core.mkSingleInsertSqliteIndexer
     path
     id
