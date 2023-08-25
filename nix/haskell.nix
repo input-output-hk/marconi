@@ -7,7 +7,6 @@
   enableCrossCompilation = true;
 
   defaultChangelogPackages = [
-    "cardano-streaming"
     "marconi-chain-index"
     "marconi-core"
     "marconi-sidechain"

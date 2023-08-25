@@ -22,6 +22,13 @@ import Cardano.Api (
   SlotNo,
  )
 import Cardano.Api qualified as C
+import Cardano.Api.Extended qualified as CE
+import Cardano.Api.Extended.Streaming (
+  BlockEvent (BlockEvent, blockInMode),
+  ChainSyncEvent (RollBackward, RollForward),
+  ChainSyncEventException (NoIntersectionFound),
+  withChainSyncBlockEventStream,
+ )
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Trace (
   Trace,
@@ -29,13 +36,6 @@ import Cardano.BM.Trace (
   logInfo,
  )
 import Cardano.Ledger.Alonzo.TxWits qualified as Alonzo
-import Cardano.Streaming (
-  BlockEvent (BlockEvent, blockInMode),
-  ChainSyncEvent (RollBackward, RollForward),
-  ChainSyncEventException (NoIntersectionFound),
-  withChainSyncEventEpochNoStream,
- )
-import Cardano.Streaming.Helpers (bimSlotNo)
 import Control.Concurrent (
   MVar,
   forkIO,
@@ -108,14 +108,6 @@ import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
-import Marconi.ChainIndex.Node.Client.GenesisConfig (
-  NetworkConfigFile (NetworkConfigFile),
-  initExtLedgerStateVar,
-  mkProtocolInfoCardano,
-  readCardanoGenesisConfig,
-  readNetworkConfig,
-  renderGenesisConfigError,
- )
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
@@ -126,9 +118,7 @@ import Marconi.ChainIndex.Types (
  )
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
-import Ouroboros.Consensus.Ledger.Abstract qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
-import Ouroboros.Consensus.Node qualified as O
 import Prettyprinter (
   align,
   defaultLayoutOptions,
@@ -386,44 +376,47 @@ epochStateWorker_
   Coordinator{_barrier, _errorVar}
   ch
   dbPath = do
-    nodeConfigE <- runExceptT $ readNetworkConfig (NetworkConfigFile nodeConfigPath)
+    nodeConfigE <- runExceptT $ C.readNodeConfig (C.File nodeConfigPath)
     nodeConfig <- either (throw . CantStartIndexer @Void . Text.pack . show) pure nodeConfigE
-    genesisConfigE <- runExceptT $ readCardanoGenesisConfig nodeConfig
+    genesisConfigE <- runExceptT $ C.readCardanoGenesisConfig nodeConfig
     genesisConfig <-
       either
-        (throw . CantStartIndexer @Void . Text.pack . show . renderGenesisConfigError)
+        (throw . CantStartIndexer @Void . Text.pack . show . C.renderGenesisConfigError)
         pure
         genesisConfigE
 
-    let initialLedgerState = initExtLedgerStateVar genesisConfig
-        topLevelConfig = O.pInfoConfig $ fst $ mkProtocolInfoCardano genesisConfig
-        hfLedgerConfig = O.ExtLedgerCfg topLevelConfig
+    let extLedgerConfig = CE.mkExtLedgerConfig genesisConfig
+        initialExtLedgerState = CE.mkInitExtLedgerState genesisConfig
 
     let ledgerStateDir = takeDirectory dbPath </> "ledgerStates"
     createDirectoryIfMissing False ledgerStateDir
     indexer <-
       Utils.toException $
-        EpochState.open topLevelConfig dbPath ledgerStateDir securityParam currentNodeBlockNoAtStartup
+        EpochState.open
+          (O.getExtLedgerCfg extLedgerConfig)
+          dbPath
+          ledgerStateDir
+          securityParam
+          currentNodeBlockNoAtStartup
 
     cp <- Utils.toException $ Storable.resumeFromStorage $ view Storable.handle indexer
     indexerMVar <- newMVar indexer
 
     let process currentLedgerState currentEpochNo = \case
           RollForward (BlockEvent bim@(C.BlockInMode (C.Block (C.BlockHeader slotNo bh bn) _) _) _ _) chainTip -> do
-            let newLedgerState' =
-                  O.lrResult $
-                    O.tickThenReapplyLedgerResult
-                      hfLedgerConfig
-                      (C.toConsensusBlock bim)
-                      currentLedgerState
-                newEpochNo = EpochState.getEpochNo newLedgerState'
+            newLedgerState <-
+              either
+                (throw . CantStartIndexer @Void . Text.pack . show)
+                pure
+                $ CE.applyBlockExtLedgerState extLedgerConfig C.QuickValidation bim currentLedgerState
+            let newEpochNo = EpochState.getEpochNo newLedgerState
 
             -- If the block is rollbackable, we always store the LedgerState. If the block is
             -- immutable, we only store it right at the beginning of a new epoch.
             let isFirstEventOfEpoch = newEpochNo > currentEpochNo
             let storableEvent =
                   EpochState.toStorableEvent
-                    newLedgerState'
+                    newLedgerState
                     slotNo
                     bh
                     bn
@@ -434,10 +427,10 @@ epochStateWorker_
             void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.insert storableEvent
 
             -- Compute new LedgerState given block and old LedgerState
-            pure (newLedgerState', newEpochNo)
+            pure (newLedgerState, newEpochNo)
           RollBackward C.ChainPointAtGenesis _ct -> do
             void $ updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind C.ChainPointAtGenesis
-            pure (initialLedgerState, Nothing)
+            pure (initialExtLedgerState, Nothing)
           RollBackward cp' _ct -> do
             newIndex <- updateWith indexerMVar _errorVar $ ignoreQueryError . Storable.rewind cp'
 
@@ -454,16 +447,16 @@ epochStateWorker_
                   tryPutMVar _errorVar $
                     CantRollback
                       "Could not find LedgerState from which to rollback from in EpochState indexer. Should not happen!"
-                pure (initialLedgerState, Nothing)
+                pure (initialExtLedgerState, Nothing)
               Right _ -> do
                 void $
                   tryPutMVar _errorVar $
                     CantRollback
                       "LedgerStateAtPointQuery returned a result mismatch when applying a rollback. Should not happen!"
-                pure (initialLedgerState, Nothing)
+                pure (initialExtLedgerState, Nothing)
               Left err -> do
                 void $ tryPutMVar _errorVar err
-                pure (initialLedgerState, Nothing)
+                pure (initialExtLedgerState, Nothing)
 
         raiseError =
           tryPutMVar _errorVar $ CantInsertEvent "EpochState raised an uncaught exception"
@@ -477,7 +470,7 @@ epochStateWorker_
               `onException` raiseError
           loop newLedgerState newEpochNo
 
-    pure (loop initialLedgerState (EpochState.getEpochNo initialLedgerState), cp, indexerMVar)
+    pure (loop initialExtLedgerState (EpochState.getEpochNo initialExtLedgerState), cp, indexerMVar)
 
 epochStateWorker
   :: FilePath
@@ -646,7 +639,7 @@ mkIndexerStream
   :: Coordinator
   -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
   -> IO ()
-mkIndexerStream = mkIndexerStream' (bimSlotNo . blockInMode)
+mkIndexerStream = mkIndexerStream' (CE.bimSlotNo . blockInMode)
 
 runIndexers
   :: Trace IO Text
@@ -704,7 +697,7 @@ runIndexers stdoutTrace retryConfig socketPath networkId cliChainPoint indexingD
               mkIndexerStream coordinator
                 . chainSyncEventStreamLogging stdoutTrace
                 . updateProcessedBlocksMetric
-            runChainSyncStream = withChainSyncEventEpochNoStream socketPath networkId [resumePoint] stream
+            runChainSyncStream = withChainSyncBlockEventStream socketPath networkId [resumePoint] stream
             whenNoIntersectionFound NoIntersectionFound = do
               logError stdoutTrace $
                 renderStrict $

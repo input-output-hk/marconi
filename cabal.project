@@ -19,7 +19,6 @@ packages: marconi-chain-index
           marconi-core
           marconi-sidechain
           marconi-tutorial
-          cardano-streaming
 
 -- We never, ever, want this.
 write-ghc-environment-files: never

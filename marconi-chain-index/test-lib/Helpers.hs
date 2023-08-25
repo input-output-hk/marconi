@@ -5,8 +5,8 @@
 module Helpers where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.Streaming qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.Streaming qualified as CS
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
 import Control.Monad (void, when)
@@ -187,8 +187,8 @@ awaitTxId :: C.LocalNodeConnectInfo C.CardanoMode -> C.TxId -> IO ()
 awaitTxId con txId = do
   chan :: IO.Chan [C.TxId] <- IO.newChan
   let indexer =
-        CS.blocks con C.ChainPointAtGenesis
-          & CS.ignoreRollbacks
+        C.blocks con C.ChainPointAtGenesis
+          & C.ignoreRollbacks
           & S.map bimTxIds
           & S.chain (IO.writeChan chan)
   void $ (IO.link =<<) $ IO.async $ void $ S.effects indexer

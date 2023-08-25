@@ -3,8 +3,7 @@
 module Spec.Marconi.ChainIndex.Coordinator (tests) where
 
 import Cardano.Api qualified as C
-
-import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward))
+import Cardano.Api.Extended.Streaming (ChainSyncEvent (RollBackward, RollForward))
 import Control.Concurrent (MVar, forkIO, modifyMVar_, newMVar, readMVar, signalQSemN, waitQSemN)
 import Control.Concurrent.STM (atomically, dupTChan, readTChan)
 import Control.Lens ((^.))

@@ -7,9 +7,6 @@ module Marconi.ChainIndex.Experimental.Indexers where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
-import Cardano.Streaming (
-  BlockEvent (BlockEvent),
- )
 import Control.Concurrent (MVar)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
@@ -25,7 +22,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardWorkerConfig (StandardWorkerConfig))
-import Marconi.ChainIndex.Types (TxIndexInBlock)
+import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), TxIndexInBlock)
 import Marconi.Core.Experiment qualified as Core
 import System.FilePath ((</>))
 

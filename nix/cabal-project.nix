@@ -85,7 +85,6 @@ let
     ";
 
     # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
-    cardano-streaming.ghcOptions = [ "-Werror" ];
     marconi-chain-index.ghcOptions = [ "-Werror" ];
     marconi-core.ghcOptions = [ "-Werror" ];
     marconi-sidechain.ghcOptions = [ "-Werror" ];

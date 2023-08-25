@@ -16,8 +16,8 @@ module Marconi.ChainIndex.Utils (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.IPC qualified as C
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
-import Cardano.Streaming.Helpers qualified as C
 import Control.Exception (Exception, throw)
 import Control.Monad.Except (
   ExceptT,

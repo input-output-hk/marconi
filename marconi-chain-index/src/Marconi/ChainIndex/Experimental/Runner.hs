@@ -8,14 +8,14 @@ module Marconi.ChainIndex.Experimental.Runner (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Data.Trace (Trace)
-import Cardano.BM.Trace qualified as Trace
-import Cardano.Streaming (
+import Cardano.Api.Extended.Streaming (
   BlockEvent (BlockEvent),
   ChainSyncEvent (RollBackward, RollForward),
   ChainSyncEventException (NoIntersectionFound),
-  withChainSyncEventEpochNoStream,
+  withChainSyncBlockEventStream,
  )
+import Cardano.BM.Data.Trace (Trace)
+import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
@@ -59,7 +59,7 @@ runIndexer trace retryConfig socketPath networkId _startingPoint indexer = do
     eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
     cBox <- Concurrent.newMVar indexer
     let runChainSyncStream =
-          withChainSyncEventEpochNoStream
+          withChainSyncBlockEventStream
             socketPath
             networkId
             [Core.genesis]

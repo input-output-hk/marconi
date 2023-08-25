@@ -12,8 +12,11 @@ module Marconi.ChainIndex.Logging (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.Streaming (
+  BlockEvent (BlockEvent),
+  ChainSyncEvent (RollBackward, RollForward),
+ )
 import Cardano.BM.Trace (Trace, logInfo)
-import Cardano.Streaming (BlockEvent (BlockEvent), ChainSyncEvent (RollBackward, RollForward))
 import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
