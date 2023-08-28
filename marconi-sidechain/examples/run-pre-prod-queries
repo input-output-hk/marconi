@@ -43,8 +43,8 @@ echo "curl --silent -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "p
 curl --silent -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "unspentBeforeSlotNo": 30000000 }, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
 echo ""
 
-echo "curl --silent -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "createdAfterSlotNo": 16052985, "unspentBeforeSlotNo": 18364224}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl --silent -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "createdAfterSlotNo": 16052985, "unspentBeforeSlotNo": 18364224}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
+echo "curl --silent -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "createdAtOrAfterSlotNo": 16052985, "unspentBeforeSlotNo": 18364224}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
+curl --silent -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "createdAtOrAfterSlotNo": 16052985, "unspentBeforeSlotNo": 18364224}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
 echo ""
 
 
