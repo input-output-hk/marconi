@@ -26,7 +26,7 @@ import Control.Monad.Except (MonadError (throwError))
 import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import Marconi.Core.Experiment.Class qualified as Class
-import Marconi.Core.Experiment.Transformer.IndexWrapper qualified as Wrapper
+import Marconi.Core.Experiment.Transformer.IndexTransformer qualified as Wrapper
 import Marconi.Core.Experiment.Type (
   IndexerError (InvalidIndexer, ResumingFailed),
   Point,
@@ -50,7 +50,7 @@ data ResumeState event = ResumeState
 Lens.makeLenses ''ResumeState
 
 -- | An indexer transformer that adds the resuming capability to an indexer
-newtype WithResume indexer event = WithResume {_resumeWrapper :: Wrapper.IndexWrapper ResumeState indexer event}
+newtype WithResume indexer event = WithResume {_resumeWrapper :: Wrapper.IndexTransformer ResumeState indexer event}
 
 Lens.makeLenses 'WithResume
 
@@ -66,7 +66,7 @@ withResume
   -> m (WithResume indexer event)
 withResume getHistory securityParam indexer = do
   history <- getHistory securityParam indexer
-  pure $ WithResume $ Wrapper.IndexWrapper (ResumeState False Nothing history) indexer
+  pure $ WithResume $ Wrapper.IndexTransformer (ResumeState False Nothing history) indexer
 
 class HasResumePoints event indexer where
   resumePoints :: indexer event -> Maybe [Point event]
@@ -87,17 +87,17 @@ instance
   resumePoints = resumePoints . Lens.view Wrapper.unwrap
 
 deriving via
-  (Wrapper.IndexWrapper ResumeState indexer)
+  (Wrapper.IndexTransformer ResumeState indexer)
   instance
     (Class.IsSync m event indexer) => Class.IsSync m event (WithResume indexer)
 
 deriving via
-  (Wrapper.IndexWrapper ResumeState indexer)
+  (Wrapper.IndexTransformer ResumeState indexer)
   instance
     (Class.Closeable m indexer) => Class.Closeable m (WithResume indexer)
 
 deriving via
-  (Wrapper.IndexWrapper ResumeState indexer)
+  (Wrapper.IndexTransformer ResumeState indexer)
   instance
     (Class.Queryable m event query indexer) => Class.Queryable m event query (WithResume indexer)
 
@@ -118,7 +118,7 @@ hasStarted = resumeConfig . stateHasStarted
 
 instance Wrapper.IndexerTrans WithResume where
   type Config WithResume = ResumeState
-  wrap cfg = WithResume . Wrapper.IndexWrapper cfg
+  wrap cfg = WithResume . Wrapper.IndexTransformer cfg
   unwrap = resumeIndexer
 
 -- | A comparison for points, quite similar to 'Ordering' but add a way to identify forks
