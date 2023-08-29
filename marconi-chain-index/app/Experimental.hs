@@ -1,4 +1,6 @@
-import Marconi.ChainIndex.Run (run)
+{-# LANGUAGE OverloadedStrings #-}
+
+import Marconi.ChainIndex.Experimental.Run (run)
 
 main :: IO ()
-main = run
+main = run "marconi-chain-index-experimental"
