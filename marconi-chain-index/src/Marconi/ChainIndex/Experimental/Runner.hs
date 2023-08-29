@@ -18,8 +18,8 @@ import Cardano.Streaming (
  )
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM qualified as STM
-import Control.Exception ( catch )
-import Control.Monad.Except ( ExceptT, void )
+import Control.Exception (catch)
+import Control.Monad.Except (ExceptT, void)
 
 import Data.Text (Text)
 import Data.Void (Void)
@@ -43,7 +43,7 @@ given indexer.
 If you want to start several indexers, use @runIndexers@.
 -}
 runIndexer
-  :: (Core.IsIndex (ExceptT Core.IndexerError IO) (WithDistance BlockEvent) indexer
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) (WithDistance BlockEvent) indexer
      , Core.Closeable IO indexer
      )
   => Trace IO Text

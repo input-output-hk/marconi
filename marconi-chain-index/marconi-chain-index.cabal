@@ -69,8 +69,8 @@ library
     Marconi.ChainIndex.Experimental.Indexers.Utxo
     Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
     Marconi.ChainIndex.Experimental.Indexers.Worker
-    Marconi.ChainIndex.Experimental.Run
     Marconi.ChainIndex.Experimental.Logger
+    Marconi.ChainIndex.Experimental.Run
     Marconi.ChainIndex.Experimental.Runner
     Marconi.ChainIndex.Extract.Datum
     Marconi.ChainIndex.Git.Rev
@@ -210,11 +210,7 @@ executable marconi-chain-index-experimental
   ------------------------
   -- Non-IOG dependencies
   ------------------------
-  build-depends:
-    , base       >=4.9 && <5
-    , directory
-    , mtl
-    , text
+  build-depends:  base >=4.9 && <5
 
 library marconi-chain-index-test-lib
   import:          lang
