@@ -1,13 +1,16 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 
-module Cardano.Streaming.Callbacks where
-
-import Control.Exception (throw)
-import Data.Word (Word32)
+module Cardano.Api.Extended.Streaming.Callback where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.Streaming.ChainSyncEvent (
+  ChainSyncEvent (RollBackward, RollForward),
+  ChainSyncEventException (NoIntersectionFound),
+ )
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
+import Control.Exception (throw)
+import Data.Word (Word32)
 import Network.TypedProtocol.Pipelined (N (Z), Nat (Succ, Zero))
 import Ouroboros.Network.Protocol.ChainSync.Client qualified as CS
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined qualified as CSP
@@ -16,15 +19,13 @@ import Ouroboros.Network.Protocol.ChainSync.PipelineDecision (
   pipelineDecisionMax,
  )
 
-import Cardano.Streaming.Helpers qualified as H
-
 -- * Raw chain-sync clients using callback
 
 blocksCallbackPipelined
   :: Word32
   -> C.LocalNodeConnectInfo C.CardanoMode
   -> C.ChainPoint
-  -> (H.ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ())
+  -> (ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ())
   -> IO ()
 blocksCallbackPipelined n con point callback =
   C.connectToLocalNode con $
@@ -42,7 +43,7 @@ blocksCallbackPipelined n con point callback =
     onIntersect =
       CSP.ClientPipelinedStIntersect
         { CSP.recvMsgIntersectFound = \_ _ -> pure $ work n
-        , CSP.recvMsgIntersectNotFound = throw H.NoIntersectionFound
+        , CSP.recvMsgIntersectNotFound = throw NoIntersectionFound
         }
 
     work
@@ -70,18 +71,23 @@ blocksCallbackPipelined n con point callback =
           -> CSP.ClientStNext n (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
         clientNextN rqsInFlight =
           CSP.ClientStNext
-            { CSP.recvMsgRollForward = \bim ct -> do
-                callback $ H.RollForward bim ct
-                return $ requestMore (At $ H.bimBlockNo bim) (H.fromChainTip ct) rqsInFlight
+            { CSP.recvMsgRollForward = \bim@(C.BlockInMode (C.Block (C.BlockHeader _ _ blockNo) _) _) ct -> do
+                callback $ RollForward bim ct
+                return $ requestMore (At blockNo) (fromChainTip ct) rqsInFlight
             , CSP.recvMsgRollBackward = \cp ct -> do
-                callback $ H.RollBackward cp ct
-                return $ requestMore Origin (H.fromChainTip ct) rqsInFlight
+                callback $ RollBackward cp ct
+                return $ requestMore Origin (fromChainTip ct) rqsInFlight
             }
+
+    fromChainTip :: C.ChainTip -> WithOrigin C.BlockNo
+    fromChainTip ct = case ct of
+      C.ChainTipAtGenesis -> Origin
+      C.ChainTip _ _ bno -> At bno
 
 blocksCallback
   :: C.LocalNodeConnectInfo C.CardanoMode
   -> C.ChainPoint
-  -> (H.ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ())
+  -> (ChainSyncEvent (C.BlockInMode C.CardanoMode) -> IO ())
   -> IO ()
 blocksCallback con point callback =
   C.connectToLocalNode con $
@@ -96,16 +102,16 @@ blocksCallback con point callback =
     onIntersect =
       CS.ClientStIntersect
         { CS.recvMsgIntersectFound = \_ _ -> CS.ChainSyncClient sendRequestNext
-        , CS.recvMsgIntersectNotFound = throw H.NoIntersectionFound
+        , CS.recvMsgIntersectNotFound = throw NoIntersectionFound
         }
     sendRequestNext = pure $ CS.SendMsgRequestNext onNext (pure onNext)
       where
         onNext =
           CS.ClientStNext
             { CS.recvMsgRollForward = \bim ct -> CS.ChainSyncClient $ do
-                callback $ H.RollForward bim ct
+                callback $ RollForward bim ct
                 sendRequestNext
             , CS.recvMsgRollBackward = \cp ct -> CS.ChainSyncClient $ do
-                callback $ H.RollBackward cp ct
+                callback $ RollBackward cp ct
                 sendRequestNext
             }

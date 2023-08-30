@@ -3,28 +3,23 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-overlapping-patterns #-}
 
-module Cardano.Streaming.Helpers where
-
-import Control.Concurrent.Async qualified as IO
-import Control.Exception qualified as IO
-import Data.SOP.Strict (NP ((:*)))
-import GHC.Generics (Generic)
-import Streaming.Prelude qualified as S
+module Cardano.Api.Extended.Streaming.ChainSyncEvent where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as CS
 import Cardano.Chain.Genesis qualified
 import Cardano.Crypto (
   ProtocolMagicId (unProtocolMagicId),
   RequiresNetworkMagic (RequiresMagic, RequiresNoMagic),
  )
-import Cardano.Ledger.Shelley.LedgerState qualified as SL
-import Cardano.Slotting.Slot (WithOrigin (At, Origin))
+import Control.Concurrent.Async qualified as IO
+import Control.Exception qualified as IO
+import Data.SOP.Strict (NP ((:*)))
+import GHC.Generics (Generic)
 import Ouroboros.Consensus.Cardano.CanHardFork qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras qualified as HFC
 import Ouroboros.Consensus.HardFork.Combinator.Basics qualified as HFC
-import Ouroboros.Consensus.Shelley.Ledger qualified as O
+import Streaming.Prelude qualified as S
 
 -- * ChainSyncEvent
 
@@ -47,31 +42,6 @@ instance IO.Exception RollbackException
 
 instance IO.Exception C.FoldBlocksError
 deriving instance Show C.FoldBlocksError
-
--- * Block
-
-bimBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
-bimBlockNo (C.BlockInMode (C.Block (C.BlockHeader _ _ blockNo) _) _) = blockNo
-
-bimSlotNo :: C.BlockInMode C.CardanoMode -> C.SlotNo
-bimSlotNo (C.BlockInMode (C.Block (C.BlockHeader slotNo _ _) _) _) = slotNo
-
-getEpochNo :: C.LedgerState -> Maybe CS.EpochNo
-getEpochNo ledgerState' = case ledgerState' of
-  C.LedgerStateByron _st -> Nothing
-  C.LedgerStateShelley st -> fromState st
-  C.LedgerStateAllegra st -> fromState st
-  C.LedgerStateMary st -> fromState st
-  C.LedgerStateAlonzo st -> fromState st
-  C.LedgerStateBabbage st -> fromState st
-  C.LedgerStateConway st -> fromState st
-  where
-    fromState = Just . SL.nesEL . O.shelleyLedgerState
-
-fromChainTip :: C.ChainTip -> WithOrigin C.BlockNo
-fromChainTip ct = case ct of
-  C.ChainTipAtGenesis -> Origin
-  C.ChainTip _ _ bno -> At bno
 
 -- * IO
 

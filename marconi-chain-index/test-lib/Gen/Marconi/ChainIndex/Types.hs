@@ -32,12 +32,12 @@ module Gen.Marconi.ChainIndex.Types (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.Streaming (ChainSyncEvent (RollBackward, RollForward))
 import Cardano.Api.Shelley qualified as C
 import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.Hash.Class qualified as CRYPTO
 import Cardano.Ledger.Keys (KeyHash (KeyHash))
 import Cardano.Ledger.SafeHash (unsafeMakeSafeHash)
-import Cardano.Streaming (ChainSyncEvent (RollBackward, RollForward))
 import Control.Monad.State (StateT, evalStateT, lift, modify)
 import Control.Monad.State.Lazy (MonadState (get))
 import Data.ByteString (ByteString)
