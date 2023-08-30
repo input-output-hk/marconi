@@ -33,7 +33,6 @@ import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
-import Data.Text (Text)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -42,7 +41,11 @@ import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
-import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardSQLiteIndexer, catchupWorker)
+import Marconi.ChainIndex.Experimental.Indexers.Worker (
+  StandardSQLiteIndexer,
+  StandardWorkerConfig,
+  catchupWorker,
+ )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
 
@@ -90,7 +93,7 @@ type instance Core.Point SpentInfoEvent = C.ChainPoint
 type SpentIndexer = Core.SQLiteIndexer SpentInfoEvent
 
 -- | A SQLite Spent indexer with Catchup
-type StandardSpentIndexer = StandardSQLiteIndexer SpentInfoEvent
+type StandardSpentIndexer m = StandardSQLiteIndexer m SpentInfoEvent
 
 mkSpentIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -136,17 +139,14 @@ mkSpentIndexer path = do
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
-  => Text
-  -- ^ Name of the indexer (mostly for logging purpose)
-  -> Core.CatchupConfig
-  -> (input -> Maybe SpentInfoEvent)
-  -- ^ event extractor
+  => StandardWorkerConfig m input SpentInfoEvent
+  -- ^ General configuration of a worker
   -> FilePath
   -- ^ SQLite database location
-  -> n (MVar StandardSpentIndexer, Core.WorkerM m (WithDistance input) (Core.Point SpentInfoEvent))
-spentWorker name catchupConfig extractor path = do
+  -> n (MVar (StandardSpentIndexer m), Core.WorkerM m (WithDistance input) (Core.Point SpentInfoEvent))
+spentWorker config path = do
   indexer <- mkSpentIndexer path
-  catchupWorker name catchupConfig (pure . extractor) indexer
+  catchupWorker config indexer
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery SpentInfoEvent)) m)

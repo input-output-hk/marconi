@@ -69,6 +69,7 @@ library
     Marconi.ChainIndex.Experimental.Indexers.Utxo
     Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
     Marconi.ChainIndex.Experimental.Indexers.Worker
+    Marconi.ChainIndex.Experimental.Logger
     Marconi.ChainIndex.Experimental.Run
     Marconi.ChainIndex.Experimental.Runner
     Marconi.ChainIndex.Extract.Datum

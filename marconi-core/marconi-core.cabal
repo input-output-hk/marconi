@@ -80,11 +80,22 @@ library
     Marconi.Core.TracedStorable
 
   hs-source-dirs:  src
+
+  ------------------------
+  -- IOG dependencies
+  ------------------------
+  build-depends:
+    , contra-tracer
+    , iohk-monitoring
+
+  ------------------------
+  -- Other dependencies
+  ------------------------
+  build-depends:
   build-depends:
     , async
     , base           >=4.7 && <5
     , containers
-    , contra-tracer
     , lens
     , mtl
     , primitive

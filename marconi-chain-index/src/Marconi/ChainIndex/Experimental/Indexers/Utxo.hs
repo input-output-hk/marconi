@@ -67,18 +67,17 @@ import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
-import Data.Text (Text)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
+  StandardWorkerConfig,
   catchupWorkerWithFilter,
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
-import Marconi.Core.Experiment (CatchupConfig)
 import Marconi.Core.Experiment qualified as Core
 
 -- | Indexer representation of an UTxO
@@ -110,7 +109,7 @@ Lens.makeLenses ''UtxoIndexerConfig
 
 type instance Core.Point UtxoEvent = C.ChainPoint
 type UtxoIndexer = Core.SQLiteIndexer UtxoEvent
-type StandardUtxoIndexer = StandardSQLiteIndexer UtxoEvent
+type StandardUtxoIndexer m = StandardSQLiteIndexer m UtxoEvent
 
 -- | Make a SQLiteIndexer for Utxos
 mkUtxoIndexer
@@ -168,16 +167,14 @@ mkUtxoIndexer path = do
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
-  => Text
-  -- ^ Name of the indexer (mostly for logging purpose)
-  -> CatchupConfig
+  => StandardWorkerConfig m input UtxoEvent
+  -- ^ General configuration of the indexer (mostly for logging purpose)
   -> UtxoIndexerConfig
-  -> (input -> Maybe UtxoEvent)
-  -- ^ event extractor
+  -- ^ Specific configuration of the indexer (mostly for logging purpose)
   -> FilePath
   -- ^ SQLite database location
-  -> n (MVar StandardUtxoIndexer, Core.WorkerM m (WithDistance input) (Core.Point UtxoEvent))
-utxoWorker name catchupConfig utxoConfig extractor path = do
+  -> n (MVar (StandardUtxoIndexer m), Core.WorkerM m (WithDistance input) (Core.Point UtxoEvent))
+utxoWorker workerConfig utxoConfig path = do
   indexer <- mkUtxoIndexer path
   -- A helper to filter the provided utxos
   let utxoTransform :: UtxoIndexerConfig -> Utxo -> Maybe Utxo
@@ -199,7 +196,11 @@ utxoWorker name catchupConfig utxoConfig extractor path = do
         NonEmpty.nonEmpty
           . mapMaybe (utxoTransform utxoConfig)
           . NonEmpty.toList
-  liftIO $ catchupWorkerWithFilter name filtering catchupConfig (pure . extractor) indexer
+  liftIO $
+    catchupWorkerWithFilter
+      workerConfig
+      filtering
+      indexer
 
 instance ToRow (Core.Timed C.ChainPoint Utxo) where
   toRow u =

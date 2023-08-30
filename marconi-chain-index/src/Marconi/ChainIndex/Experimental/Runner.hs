@@ -17,11 +17,10 @@ import Cardano.Streaming (
   withChainSyncEventEpochNoStream,
  )
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch, throwIO)
-import Control.Monad (forever)
-import Control.Monad.Except (ExceptT, runExceptT)
+import Control.Exception (catch)
+import Control.Monad.Except (ExceptT, void)
+
 import Data.Text (Text)
 import Data.Void (Void)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
@@ -44,7 +43,9 @@ given indexer.
 If you want to start several indexers, use @runIndexers@.
 -}
 runIndexer
-  :: (Core.IsIndex (ExceptT Core.IndexerError IO) (WithDistance BlockEvent) indexer)
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) (WithDistance BlockEvent) indexer
+     , Core.Closeable IO indexer
+     )
   => Trace IO Text
   -> RetryConfig
   -> FilePath
@@ -69,25 +70,8 @@ runIndexer trace retryConfig socketPath networkId _startingPoint indexer = do
               Pretty.layoutPretty
                 Pretty.defaultLayoutOptions
                 "No intersection found"
-    Async.concurrently_
-      (runChainSyncStream `catch` whenNoIntersectionFound)
-      (readEvent eventQueue cBox)
-
--- | Process the next event in the queue with the coordinator.
-readEvent
-  :: ( Ord (Core.Point event)
-     , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
-     )
-  => STM.TBQueue (Core.ProcessedInput event)
-  -> Concurrent.MVar (indexer event)
-  -> IO r
-readEvent q cBox = forever $ do
-  e <- STM.atomically $ STM.readTBQueue q
-  Concurrent.modifyMVar_ cBox $ \c -> do
-    mres <- runExceptT (Core.step c e)
-    case mres of
-      Left (err :: Core.IndexerError) -> throwIO err
-      Right res -> pure res
+    void $ runChainSyncStream `catch` whenNoIntersectionFound
+    Core.processQueue eventQueue cBox
 
 -- | Run several indexers under a unique coordinator
 runIndexers

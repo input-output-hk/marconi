@@ -23,20 +23,25 @@ import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (SomeException, bracket, catch)
+import Control.Exception (SomeException, catch, finally)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (MonadTrans (lift))
 
 import Control.Lens.Operators ((^.))
-import Control.Monad (forever, void)
-import Data.Text (Text, pack)
+import Control.Monad (void)
+import Data.Text (Text)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index, rollback),
   IsSync (lastSyncPoint),
  )
-import Marconi.Core.Experiment.Type (IndexerError (OtherIndexError), Point, Timed, point)
+import Marconi.Core.Experiment.Type (
+  IndexerError (OtherIndexError, StopIndexer),
+  Point,
+  Timed,
+  point,
+ )
 
 -- | Type alias for the type classes that are required to build a worker for an indexer
 type WorkerIndexer n event indexer =
@@ -61,9 +66,6 @@ data WorkerM m input point = forall indexer event n.
   -- ^ adapt the input event givent by the coordinator to the worker type
   , hoistError :: forall a. n a -> ExceptT IndexerError m a
   -- ^ adapt the monadic stack of the indexer to the one of the worker
-  , errorBox :: MVar IndexerError
-  -- ^ a place where the worker places error that it can't handle,
-  -- to notify the coordinator
   }
 
 -- | A worker that operates in @IO@.
@@ -75,6 +77,8 @@ data ProcessedInput event
     Rollback (Point event)
   | -- | A new event has to be indexed
     Index (Timed (Point event) (Maybe event))
+  | -- | Processing stops
+    Stop
 
 -- Create workers
 
@@ -88,8 +92,7 @@ createWorker'
   -> f (MVar (indexer event), WorkerM m input (Point event))
 createWorker' hoist name getEvent ix = liftIO $ do
   workerState <- Con.newMVar ix
-  errorBox <- Con.newEmptyMVar
-  pure (workerState, Worker name workerState getEvent hoist errorBox)
+  pure (workerState, Worker name workerState getEvent hoist)
 
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
@@ -119,6 +122,7 @@ mapIndex f (Index timedEvent) =
   let mapEvent Nothing = pure Nothing
       mapEvent (Just e) = f e
    in Index <$> traverse mapEvent timedEvent
+mapIndex _ Stop = pure Stop
 
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come
@@ -127,58 +131,78 @@ startWorker
   :: (MonadIO m)
   => (Ord (Point input))
   => TChan (ProcessedInput input)
+  -> MVar IndexerError
+  -> QSemN
   -> QSemN
   -> Worker input (Point input)
   -> m ThreadId
-startWorker chan tokens (Worker name ix transformInput hoistError errorBox) =
+startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistError) =
   let unlockCoordinator :: IO ()
       unlockCoordinator = Con.signalQSemN tokens 1
+
+      notifyEndToCoordinator :: IO ()
+      notifyEndToCoordinator = Con.signalQSemN endTokens 1
 
       fresherThan :: (Ord (Point event)) => Timed (Point event) (Maybe event) -> Point event -> Bool
       fresherThan evt p = evt ^. point > p
 
-      indexEvent timedEvent = Con.modifyMVar_ ix $ \indexer -> do
-        result <- runExceptT $ do
-          indexerLastPoint <- hoistError $ lastSyncPoint indexer
-          if timedEvent `fresherThan` indexerLastPoint
-            then hoistError $ index timedEvent indexer
-            else pure indexer
-        either (raiseError indexer) pure result
-
-      raiseError indexer err = do
-        -- We don't need to check if tryPutMVar succeed
-        -- because if @errorBox@ is already full, our job is done anyway
-        void $ Con.tryPutMVar errorBox err
-        pure indexer
+      indexEvent timedEvent = do
+        Con.modifyMVar ix $ \indexer -> do
+          result <- runExceptT $ do
+            indexerLastPoint <- hoistError $ lastSyncPoint indexer
+            if timedEvent `fresherThan` indexerLastPoint
+              then hoistError $ index timedEvent indexer
+              else pure indexer
+          case result of
+            Left err -> pure (indexer, Just err)
+            Right res -> pure (res, Nothing)
 
       handleRollback p = do
-        Con.modifyMVar_ ix $ \indexer -> do
+        Con.modifyMVar ix $ \indexer -> do
           result <- runExceptT $ hoistError $ rollback p indexer
-          either (raiseError indexer) pure result
+          case result of
+            Left err -> pure (indexer, Just err)
+            Right res -> pure (res, Nothing)
 
-      swallowPill = do
+      checkError = Con.tryReadMVar errorBox
+
+      closeIndexer = do
         indexer <- Con.readMVar ix
         void $ runExceptT $ hoistError $ close indexer
 
-      notifyCoordinatorOnError e = do
-        indexer <- Con.readMVar ix
-        raiseError indexer $ OtherIndexError $ name <> ": " <> pack (show e)
+      swallowPill = finally closeIndexer notifyEndToCoordinator
+
+      notifyCoordinatorOnError e =
+        -- We don't need to check if tryPutMVar succeed
+        -- because if @errorBox@ is already full, our job is done anyway
+        void $ Con.tryPutMVar errorBox e
 
       process = \case
         Rollback p -> handleRollback p
         Index e -> indexEvent e
+        Stop -> pure $ Just $ OtherIndexError "Stop"
 
       safeProcessEvent input = do
         processedInput <- mapIndex transformInput input
-        process processedInput `catch` \(e :: SomeException) -> void $ notifyCoordinatorOnError e
+        process processedInput
+          `catch` \(_ :: SomeException) -> pure $ Just $ StopIndexer (Just name)
 
       loop chan' =
-        forever $
-          -- `bracket` ensures that the coordinator won't be stuck (we always unlock it)
-          bracket
-            (STM.atomically $ STM.readTChan chan')
-            (const unlockCoordinator)
-            safeProcessEvent
+        let loop' = do
+              err <- checkError
+              case err of
+                Nothing -> do
+                  event <- STM.atomically $ STM.readTChan chan'
+                  result <- safeProcessEvent event
+                  case result of
+                    Nothing -> do
+                      unlockCoordinator
+                      loop'
+                    Just err' -> do
+                      notifyCoordinatorOnError err'
+                      unlockCoordinator
+                Just _ -> unlockCoordinator
+         in loop'
    in liftIO $ do
         chan' <- STM.atomically $ STM.dupTChan chan
         Con.forkFinally (loop chan') (const swallowPill)
