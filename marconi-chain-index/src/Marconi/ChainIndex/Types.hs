@@ -43,6 +43,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
+import GHC.Generics (Generic)
 
 -- | Type represents non empty list of Bech32 Shelley compatable addresses
 type TargetAddresses = NonEmpty (C.Address C.ShelleyAddr)
@@ -80,10 +81,12 @@ newtype ShouldFailIfResync = ShouldFailIfResync Bool
     ( Eq
     , Ord
     , Show
+    , Aeson.FromJSON
+    , Aeson.ToJSON
     )
 
 data IndexingDepth = MinIndexingDepth !Word64 | MaxIndexingDepth
-  deriving (Show, Eq)
+  deriving (Eq, Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 newtype SecurityParam = SecurityParam Word64
   deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show)

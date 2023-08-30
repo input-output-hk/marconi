@@ -17,8 +17,10 @@
 -- | This module provides support for writing handlers for JSON-RPC endpoints.
 module Marconi.Sidechain.Env (
   SidechainEnv (..),
-  sidechainQueryEnv,
+  sidechainCliArgs,
   sidechainIndexersEnv,
+  sidechainQueryEnv,
+  sidechainTrace,
   SidechainQueryEnv (..),
   sidechainQueryEnvSecurityParam,
   sidechainQueryEnvHttpSettings,
@@ -42,9 +44,11 @@ module Marconi.Sidechain.Env (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Trace (Trace)
 import Control.Concurrent.STM (TMVar, newEmptyTMVarIO)
 import Control.Lens (makeLenses)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Text (Text)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
@@ -63,6 +67,8 @@ data SidechainEnv = SidechainEnv
   { _sidechainQueryEnv :: !SidechainQueryEnv
   , _sidechainIndexersEnv :: !SidechainIndexersEnv
   -- ^ Access the Sidechain indexers for querying purposes.
+  , _sidechainCliArgs :: !CliArgs
+  , _sidechainTrace :: !(Trace IO Text)
   }
 
 data SidechainQueryEnv = SidechainQueryEnv
@@ -98,17 +104,20 @@ newtype EpochStateIndexerEnv = EpochStateIndexerEnv
 mkSidechainEnvFromCliArgs
   :: SecurityParam
   -> CliArgs
+  -> Trace IO Text
   -> IO SidechainEnv
-mkSidechainEnvFromCliArgs securityParam CliArgs{httpPort, targetAddresses, targetAssets} = do
-  mkSidechainEnv securityParam httpPort targetAddresses targetAssets
+mkSidechainEnvFromCliArgs securityParam cliArgs@CliArgs{httpPort, targetAddresses, targetAssets} trace = do
+  mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace
 
 mkSidechainEnv
   :: SecurityParam
   -> Maybe Port
   -> Maybe TargetAddresses
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  -> CliArgs
+  -> Trace IO Text
   -> IO SidechainEnv
-mkSidechainEnv securityParam httpPort targetAddresses targetAssets = do
+mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace = do
   let httpSettings = maybe defaultSettings (flip setPort defaultSettings) httpPort
   let sidechainQueryEnv = SidechainQueryEnv securityParam httpSettings
   sidechainIndexers <-
@@ -116,7 +125,7 @@ mkSidechainEnv securityParam httpPort targetAddresses targetAssets = do
       <$> mkAddressUtxoIndexerEnv targetAddresses
       <*> mkMintEventIndexerEnv targetAssets
       <*> mkEpochStateEnv
-  pure $ SidechainEnv sidechainQueryEnv sidechainIndexers
+  pure $ SidechainEnv sidechainQueryEnv sidechainIndexers cliArgs trace
 
 {- | Bootstraps the utxo query environment.
  The module is responsible for accessing SQLite for queries.

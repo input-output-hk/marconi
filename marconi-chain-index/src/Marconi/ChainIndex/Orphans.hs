@@ -25,6 +25,7 @@ import Database.SQLite.Simple.Ok qualified as SQL
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToField qualified as SQL
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
+import GHC.Generics (Generic)
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Ouroboros.Consensus.Byron.Ledger qualified as O
 import Ouroboros.Consensus.Cardano.Block qualified as O
@@ -137,6 +138,14 @@ instance FromJSON C.AddressAny where
 
 instance ToJSON C.AddressAny where
   toJSON = Aeson.String . C.serialiseAddress
+
+-- * C.NetworkId and C.NetworkMagic
+
+deriving stock instance Generic C.NetworkId
+deriving anyclass instance FromJSON C.NetworkId
+deriving anyclass instance ToJSON C.NetworkId
+deriving newtype instance FromJSON C.NetworkMagic
+deriving newtype instance ToJSON C.NetworkMagic
 
 -- * C.Hash C.ScriptData
 
