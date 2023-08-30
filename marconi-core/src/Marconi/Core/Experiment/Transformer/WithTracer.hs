@@ -82,7 +82,7 @@ makeLenses 'IndexerTracer
 -- | A tracer modifier that adds tracing to an existing indexer
 newtype WithTracer m indexer event = WithTracer {_tracerWrapper :: IndexTransformer (IndexerTracer m) indexer event}
 
--- | A smart consructor for @WithTracer@
+-- | A smart constructor for @WithTracer@
 withTracer
   :: (Applicative m)
   => Tracer m (IndexerEvent (Point event))
@@ -90,7 +90,7 @@ withTracer
   -> WithTracer m indexer event
 withTracer tr = WithTracer . IndexTransformer (IndexerTracer tr)
 
--- | A monadic smart consructor for @WithTracer@
+-- | A monadic smart constructor for @WithTracer@
 withTracerM
   :: (Applicative m)
   => Tracer m (IndexerEvent (Point event))
@@ -275,7 +275,7 @@ makeLenses 'IndexerTrace
 -- | A tracer modifier that adds tracing to an existing indexer
 newtype WithTrace m indexer event = WithTrace {_traceWrapper :: IndexTransformer (IndexerTrace m) indexer event}
 
--- | A smart consructor for @WithTrace@
+-- | A smart constructor for @WithTrace@
 withTrace
   :: (Applicative m)
   => Trace m (IndexerEvent (Point event))
@@ -283,7 +283,7 @@ withTrace
   -> WithTrace m indexer event
 withTrace tr = WithTrace . IndexTransformer (IndexerTrace tr)
 
--- | A monadic smart consructor for @WithTrace@
+-- | A monadic smart constructor for @WithTrace@
 withTraceM
   :: (MonadIO m)
   => Trace m (IndexerEvent (Point event))
