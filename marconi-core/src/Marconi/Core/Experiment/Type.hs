@@ -75,6 +75,8 @@ data IndexerError
     InvalidIndexer Text
   | -- | Indexer has to stop as requested by the given worker
     StopIndexer (Maybe Text)
+  | -- | The indexer failed at resuming (likely due to a bug)
+    ResumingFailed Text
   | -- | Any other cause of failure
     OtherIndexError Text
 

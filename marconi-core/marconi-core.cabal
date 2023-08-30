@@ -72,6 +72,7 @@ library
     Marconi.Core.Experiment.Transformer.WithCatchup
     Marconi.Core.Experiment.Transformer.WithDelay
     Marconi.Core.Experiment.Transformer.WithPruning
+    Marconi.Core.Experiment.Transformer.WithResume
     Marconi.Core.Experiment.Transformer.WithTracer
     Marconi.Core.Experiment.Transformer.WithTransform
     Marconi.Core.Experiment.Type
@@ -145,9 +146,11 @@ test-suite marconi-core-test
     , marconi-core-test-lib
     , mtl
     , QuickCheck
+    , quickcheck-instances
     , safe
     , sqlite-simple          >=0.4.18
     , tasty
     , tasty-quickcheck
     , temporary
     , transformers
+    , uuid
