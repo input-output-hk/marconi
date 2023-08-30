@@ -5,12 +5,9 @@
 module Marconi.Sidechain.Bootstrap where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Trace (
-  Trace,
- )
 import Control.Concurrent.STM (atomically)
-import Control.Lens ((^.))
-import Data.Text (Text)
+import Control.Lens (view, (^.))
+import Control.Monad.Reader (ReaderT, ask, lift)
 import Marconi.ChainIndex.Indexers (epochStateWorker, mintBurnWorker, runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
@@ -27,28 +24,26 @@ import Marconi.Core.Storable (State)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurn
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxo
-import Marconi.Sidechain.CLI (
-  CliArgs,
- )
 import Marconi.Sidechain.CLI qualified as CLI
 import Marconi.Sidechain.Env (
   SidechainEnv,
   epochStateIndexerEnvIndexer,
   mintBurnIndexerEnvIndexer,
   sidechainAddressUtxoIndexer,
+  sidechainCliArgs,
   sidechainEpochStateIndexer,
   sidechainIndexersEnv,
   sidechainMintBurnIndexer,
+  sidechainTrace,
  )
 import System.FilePath ((</>))
 
 -- | Run Sidechain indexers
-runSidechainIndexers
-  :: Trace IO Text
-  -> CliArgs
-  -> SidechainEnv
-  -> IO ()
-runSidechainIndexers trace cliArgs env = do
+runSidechainIndexers :: ReaderT SidechainEnv IO ()
+runSidechainIndexers = do
+  env <- ask
+  cliArgs <- view sidechainCliArgs
+  trace <- view sidechainTrace
   let addressUtxoCallback :: State UtxoHandle -> IO ()
       addressUtxoCallback =
         atomically
@@ -83,12 +78,13 @@ runSidechainIndexers trace cliArgs env = do
           , Just $ dbPath </> mintBurnDbName
           )
         ]
-  runIndexers
-    trace
-    (CLI.optionsRetryConfig cliArgs)
-    (CLI.socketFilePath cliArgs)
-    (CLI.networkId cliArgs)
-    C.ChainPointAtGenesis
-    (CLI.minIndexingDepth cliArgs)
-    (CLI.optionsFailsIfResync cliArgs)
-    indexers
+  lift $
+    runIndexers
+      trace
+      (CLI.optionsRetryConfig cliArgs)
+      (CLI.socketFilePath cliArgs)
+      (CLI.networkId cliArgs)
+      C.ChainPointAtGenesis
+      (CLI.minIndexingDepth cliArgs)
+      (CLI.optionsFailsIfResync cliArgs)
+      indexers

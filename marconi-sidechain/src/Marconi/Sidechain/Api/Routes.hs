@@ -35,6 +35,7 @@ import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock)
+import Marconi.Sidechain.CLI (CliArgs)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
 
@@ -505,10 +506,13 @@ instance ToJSON NonceResult where
 
 type RestAPI =
   GetTime
+    :<|> GetParams
     :<|> GetTargetAddresses
     :<|> GetMetrics
 
 type GetTime = "time" :> Get '[PlainText] String
+
+type GetParams = "params" :> Get '[JSON] CliArgs
 
 type GetTargetAddresses = "addresses" :> Get '[JSON] [Text]
 

@@ -10,6 +10,7 @@ module Marconi.Sidechain.Api.HttpServer where
 import Cardano.Api ()
 import Control.Lens ((^.))
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader (ReaderT, ask, lift)
 import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.ByteString qualified as BS
 import Data.Proxy (Proxy (Proxy))
@@ -34,9 +35,11 @@ import Marconi.Sidechain.Api.Routes (
   JsonRpcAPI,
   RestAPI,
  )
+import Marconi.Sidechain.CLI (CliArgs)
 import Marconi.Sidechain.Env (
   SidechainEnv,
   sidechainAddressUtxoIndexer,
+  sidechainCliArgs,
   sidechainIndexersEnv,
   sidechainQueryEnv,
   sidechainQueryEnvHttpSettings,
@@ -56,11 +59,13 @@ import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler, Server, serve)
 
 -- | Bootstraps the HTTP server
-runHttpServer :: SidechainEnv -> IO ()
-runHttpServer env =
-  runSettings
-    (env ^. sidechainQueryEnv . sidechainQueryEnvHttpSettings)
-    (marconiApp env)
+runHttpServer :: ReaderT SidechainEnv IO ()
+runHttpServer = do
+  env <- ask
+  lift $
+    runSettings
+      (env ^. sidechainQueryEnv . sidechainQueryEnvHttpSettings)
+      (marconiApp env)
 
 marconiApp :: SidechainEnv -> Application
 marconiApp env = serve (Proxy @API) (httpRpcServer env)
@@ -83,6 +88,7 @@ restApiServer
   -> Server RestAPI
 restApiServer env =
   getTimeHandler
+    :<|> getParamsHandler env
     :<|> getTargetAddressesHandler env
     :<|> getMetricsHandler
 
@@ -105,6 +111,12 @@ getTimeHandler :: Handler String
 getTimeHandler = timeString <$> liftIO getCurrentTime
   where
     timeString = formatTime defaultTimeLocale "%T"
+
+-- | Returns params given through CLI as a JSON REST response.
+getParamsHandler
+  :: SidechainEnv
+  -> Handler CliArgs
+getParamsHandler env = pure $ env ^. sidechainCliArgs
 
 -- | Prints TargetAddresses Bech32 representation to the console
 getTargetAddressesHandler

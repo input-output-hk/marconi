@@ -1,14 +1,20 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module Marconi.Sidechain.CLI (
   CliArgs (..),
   parseCli,
+  parseCliArgs,
   Cli.getVersion,
   programParser,
 ) where
 
 import Cardano.Api qualified as C
+import Data.Aeson (FromJSON, ToJSON)
 import Data.List.NonEmpty (NonEmpty)
+import GHC.Generics (Generic)
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig)
+import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   IndexingDepth,
   ShouldFailIfResync,
@@ -39,10 +45,13 @@ data CliArgs = CliArgs
   -- synced point.
   , optionsRetryConfig :: !RetryConfig
   }
-  deriving (Show)
+  deriving (Show, Generic, FromJSON, ToJSON)
 
 parseCli :: IO CliArgs
 parseCli = Opt.execParser programParser
+
+parseCliArgs :: [String] -> IO CliArgs
+parseCliArgs = Opt.handleParseResult . Opt.execParserPure Opt.defaultPrefs programParser
 
 programParser :: Opt.ParserInfo CliArgs
 programParser =

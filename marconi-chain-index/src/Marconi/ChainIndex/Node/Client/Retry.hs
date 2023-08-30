@@ -14,8 +14,10 @@ import Control.Concurrent (
   threadDelay,
  )
 import Control.Exception (Handler (Handler), catches, throwIO)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
 import Data.Word (Word64)
+import GHC.Generics (Generic)
 import Network.Mux.Trace (MuxError (MuxError), MuxErrorType (MuxBearerClosed, MuxIOException))
 import Prettyprinter (
   defaultLayoutOptions,
@@ -33,7 +35,8 @@ data RetryConfig = RetryConfig
   , maybeMaxWaitTime :: !(Maybe Word64)
   -- ^ Max time before stopping retries (in seconds)
   }
-  deriving stock (Show)
+  deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 data RetryState = RetryState
   { totalWaitTime :: !Word64

@@ -1,14 +1,33 @@
-= JSON-RPC API
+= HTTP API
 :toc: left
 :toclevels: 2
 
-This document describes the JSON-RPC HTTP API that end-users will interact with in order to query the data indexed by `marconi-sidechain`.
+This document describes the HTTP API that end-users interact with in order to query the data indexed by `marconi-sidechain`.
 
-== HTTP endpoint
+== HTTP endpoints
 
-In this application, there is a single HTTP endpoint/route: `POST /json-rpc`.
-This endpoint will listen and respond to well-formed link:https://www.jsonrpc.org/specification[JSON-RPC version 2] requests and responses.
-Each of the following subsections reflect the JSON-RPC methods that can be used in the JSON-RPC request.
+In this application, the following HTTP endpoints/routes are available:
+
+[%header%autowidth,format=csv]
+|===
+Route,Methods,ContentType
+`/json-rpc`,`POST`,JSON
+`/addresses`,`GET`,Text
+`/metrics`,`GET`,Text
+`/params`,`GET`,JSON
+`/time`,`GET`,Text
+|===
+
+The `/json-rpc` endpoint responds to well-formed link:https://www.jsonrpc.org/specification[JSON-RPC version 2] requests.
+The JSON-RPC methods that can be used are described <<_supported_json_rpc_methods,below>>.
+
+The `/addresses` endpoint returns the list of target addresses represented as Bech32 text in a JSON string array.
+
+The `/metrics` endpoint returns Prometheus metrics for monitoring the runtime behavior.
+
+The `/params` endpoint returns the parsed command-line parameters as a JSON object.
+
+The `/time` endpoint returns the current time as text. It's typically used for testing the http server outside of JSON-RPC.
 
 == JSON-RPC HTTP endpoint request and response format
 
@@ -118,6 +137,97 @@ In case of runtime errors, the JSON-RPC server will respond with any of the pred
 However, each supported JSON-RPC methods described below will respond with a custom `data` field which provides additional/detailed information about the error.
 
 == Supported JSON-RPC methods
+
+=== echo
+
+Echoes a message back as a JSON-RPC response.
+
+==== Pre-conditions
+
+None. Any string may be given as input.
+
+==== Post-conditions
+
+The result is the same as the input parameter.
+
+==== Rationale
+
+Used for testing the server.
+
+==== JSON Schema
+
+.JSON-RPC param object
+[%collapsible]
+====
+```JSON
+{
+  "type": "string",
+  "description": "Message to be echoed",
+}
+```
+====
+
+.JSON-RPC result object
+[%collapsible]
+====
+```JSON
+{
+  "type": "string",
+  "description": "Echoed input message",
+}
+```
+====
+
+[NOTE]
+====
+This method does not return errors.
+====
+
+=== getTargetAddresses
+
+Returns the list of target addresses represented as Bech32 text, as an array of strings.
+
+==== Pre-conditions
+
+None as the input parameter is unused.
+
+==== Post-conditions
+
+The result contains the list of target addresses configured for the server.
+
+==== Rationale
+
+Used for checking the server configuration.
+
+==== JSON Schema
+
+.JSON-RPC param object
+[%collapsible]
+====
+```JSON
+{
+  "type": "string",
+  "description": "Unused",
+}
+```
+====
+
+.JSON-RPC result object
+[%collapsible]
+====
+```JSON
+{
+  "type": "array",
+  "items": "string",
+  "description": "Target addresses",
+}
+```
+====
+
+[NOTE]
+====
+This method does not return errors.
+====
 
 === getCurrentSyncedBlock
 
