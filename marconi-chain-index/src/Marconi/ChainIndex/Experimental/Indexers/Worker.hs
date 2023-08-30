@@ -12,16 +12,15 @@ module Marconi.ChainIndex.Experimental.Indexers.Worker (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Tracing (Trace)
 import Control.Concurrent (MVar)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT)
-import Data.Word (Word64)
-import Marconi.Core.Experiment qualified as Core
-
-import Cardano.BM.Tracing (Trace)
 import Data.Text (Text)
+import Data.Word (Word64)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
+import Marconi.Core.Experiment qualified as Core
 
 -- | An alias for an indexer with catchup and transformation to perform filtering
 type StandardIndexer m indexer event =

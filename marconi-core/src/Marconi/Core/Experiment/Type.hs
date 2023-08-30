@@ -22,6 +22,7 @@ module Marconi.Core.Experiment.Type (
 
 import Control.Exception (Exception)
 import Control.Lens (Lens, Lens')
+import Data.Data (Typeable)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
@@ -96,3 +97,4 @@ data QueryError query
     IndexerQueryError Text
 
 deriving stock instance (Show (Result query)) => Show (QueryError query)
+deriving instance (Typeable query, Show (Result query)) => Exception (QueryError query)

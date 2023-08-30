@@ -321,6 +321,7 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Experimental.Indexers
     Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo
     Spec.Marconi.ChainIndex.Experimental.Indexers.Datum
+    Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent
     Spec.Marconi.ChainIndex.Experimental.Indexers.Spent
     Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo
     Spec.Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
@@ -378,6 +379,7 @@ test-suite marconi-chain-index-test
     , bytestring
     , cborg
     , containers
+    , contra-tracer
     , directory
     , filepath
     , hedgehog

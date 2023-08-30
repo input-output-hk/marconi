@@ -8,6 +8,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Experimental.Indexers (buildIndexers)
+import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Logger (defaultStdOutLogger)
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
@@ -20,6 +21,7 @@ run appName = do
   let batchSize = 5000
       stopCatchupDistance = 100
       filteredAddresses = []
+      filteredAssetIds = []
       includeScript = True
       socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
       networkId = Cli.optionsNetworkId $ Cli.commonOptions o
@@ -30,6 +32,7 @@ run appName = do
       buildIndexers
         (Core.CatchupConfig batchSize stopCatchupDistance)
         (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
+        (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
         trace
         (Cli.optionsDbPath o)
   let (_utxoQueryIndexer, indexers) = case mindexers of
