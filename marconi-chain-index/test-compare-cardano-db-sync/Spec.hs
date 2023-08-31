@@ -34,11 +34,12 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Ledger.Shelley.API qualified as Ledger
 import Cardano.Slotting.Slot (WithOrigin (At, Origin))
-import Control.Exception (throw)
+import Control.Exception (Exception, throw)
 import Control.Lens ((^.))
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Data.Bifunctor (second)
 import Data.ByteString qualified as BS
 import Data.Coerce (coerce)
 import Data.Map.Strict qualified as Map
@@ -47,6 +48,7 @@ import Data.Proxy (Proxy (Proxy))
 import Data.Ratio (denominator, numerator)
 import Data.String (fromString)
 import Data.Time (nominalDiffTimeToSeconds)
+import Data.Void (Void)
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple qualified as PG
 import Database.PostgreSQL.Simple.FromField qualified as PG
@@ -57,7 +59,6 @@ import Marconi.ChainIndex.Error qualified as Marconi
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), blockInfoBlockNo)
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Node.Client.GenesisConfig qualified as GenesisConfig
 import Marconi.ChainIndex.Types (epochStateDbName, utxoDbName)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
@@ -67,11 +68,12 @@ import Ouroboros.Consensus.Node qualified as O
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.ExpectedFailure (ignoreTestBecause)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 import Text.Read (readMaybe)
 
 main :: IO ()
-main = defaultMain tests
+main = defaultMain $ ignoreTestBecause "needs local running cardano-node and cardano-db-sync" tests
 
 tests :: TestTree
 tests =
@@ -132,7 +134,7 @@ propCurrentSyncedBlockInfo = H.withTests 1 $ H.property $ do
     queryCurrentSyncedBlockInfo indexer = do
       res <- throwIndexerError $ Storable.query indexer Utxo.LastSyncedBlockInfoQuery
       case res of
-        Utxo.LastSyncedBlockInfoResult r -> return r
+        (Utxo.LastSyncedBlockInfoResult r _) -> return r
         _ -> fail "Expected LastSyncedBlockInfoResult, but got another result type"
 
 openUtxoIndexer :: H.PropertyT IO (Storable.State Utxo.UtxoHandle)
@@ -147,7 +149,7 @@ openUtxoIndexer = do
       Just word32 -> return $ C.Testnet $ C.NetworkMagic word32
   let dbPath = dbDir </> utxoDbName
   liftIO $ do
-    securityParam <- throwIndexerError $ Utils.querySecurityParam networkMagic socketPath
+    securityParam <- throwIndexerError @Void $ Utils.querySecurityParam networkMagic socketPath
     throwIndexerError $ Utxo.open dbPath (fromIntegral securityParam) False
 
 {- | Connect to cardano-db-sync's postgres instance, get all (EpochNo,
@@ -226,7 +228,7 @@ dbSyncStakepoolSizes conn epochNo = do
       -- We do that for the same reason as above. The indexer query returns the *active* SDD for epoch
       -- 'n', so we need to compare it with the db-sync SDD of epoch 'n - 1'.
       $ PG.Only (epochNo - 1)
-  return $ Map.fromList $ map (\(a, b) -> (a, rationalToLovelace b)) dbSyncRows
+  return $ Map.fromList $ map (second rationalToLovelace) dbSyncRows
   where
     rationalToLovelace :: Rational -> C.Lovelace
     rationalToLovelace n
@@ -257,13 +259,14 @@ openEpochStateIndexer = do
       Nothing -> fail $ "Can't parse network magic: " <> networkMagicStr
       Just word32 -> return $ C.Testnet $ C.NetworkMagic word32
   liftIO $ do
-    securityParam <- throwIndexerError $ Utils.querySecurityParam networkMagic socketPath
+    securityParam <- throwIndexerError @Void $ Utils.querySecurityParam networkMagic socketPath
     topLevelConfig <- topLevelConfigFromNodeConfig nodeConfigPath
     let dbPath = dbDir </> epochStateDbName
         ledgerStateDirPath = dbDir </> "ledgerStates"
-    throwIndexerError $ EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam
+    throwIndexerError $ EpochState.open topLevelConfig dbPath ledgerStateDirPath securityParam 0
 
-throwIndexerError :: (Monad m) => ExceptT Marconi.IndexerError m a -> m a
+throwIndexerError
+  :: (Exception indexer, Monad m) => ExceptT (Marconi.IndexerError indexer) m a -> m a
 throwIndexerError action = either throw return =<< runExceptT action
 
 {- | Connect to cardano-db-sync postgres with password from
@@ -293,11 +296,11 @@ topLevelConfigFromNodeConfig
   :: FilePath -> IO (O.TopLevelConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto)))
 topLevelConfigFromNodeConfig nodeConfigPath = do
   nodeConfigE <-
-    runExceptT $ GenesisConfig.readNetworkConfig (GenesisConfig.NetworkConfigFile nodeConfigPath)
+    runExceptT $ C.readNodeConfig (C.File nodeConfigPath)
   nodeConfig <- either (error . show) pure nodeConfigE
-  genesisConfigE <- runExceptT $ GenesisConfig.readCardanoGenesisConfig nodeConfig
-  genesisConfig <- either (error . show . GenesisConfig.renderGenesisConfigError) pure genesisConfigE
-  return $ O.pInfoConfig (GenesisConfig.mkProtocolInfoCardano genesisConfig)
+  genesisConfigE <- runExceptT $ C.readCardanoGenesisConfig nodeConfig
+  genesisConfig <- either (error . show . C.renderGenesisConfigError) pure genesisConfigE
+  return $ O.pInfoConfig $ fst $ C.mkProtocolInfoCardano genesisConfig
 
 -- * FromField & ToField instances
 

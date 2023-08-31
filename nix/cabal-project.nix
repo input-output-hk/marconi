@@ -18,6 +18,7 @@ let
   packages = {
     # These rely on the plutus-tx-plugin, so they don't cross-compile.
     marconi-chain-index.components.tests.marconi-chain-index-test.buildable = l.mkForce (!isCross);
+    marconi-chain-index.components.tests.marconi-chain-index-test-compare-cardano-db-sync.buildable = l.mkForce (!isCross);
     marconi-chain-index.components.sublibs.marconi-chain-index-test-lib.buildable = l.mkForce (!isCross);
 
     # These don't cross-compile anymore after updating hackage.
