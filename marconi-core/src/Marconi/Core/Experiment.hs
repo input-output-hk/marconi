@@ -425,9 +425,10 @@ module Marconi.Core.Experiment (
   HasTransformConfig (..),
 
   -- ** Transform an indexer into a fold
-  WithAggregate,
-  withAggregate,
-  HasAggregateConfig (..),
+  WithFold,
+  withFold,
+  withFoldMap,
+  HasFoldConfig (fold),
 
   -- ** Index Wrapper
 
@@ -551,11 +552,6 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   wrappedIndexer,
   wrapperConfig,
  )
-import Marconi.Core.Experiment.Transformer.WithAggregate (
-  HasAggregateConfig (..),
-  WithAggregate,
-  withAggregate,
- )
 import Marconi.Core.Experiment.Transformer.WithCache (
   HasCacheConfig (cache),
   WithCache,
@@ -572,6 +568,12 @@ import Marconi.Core.Experiment.Transformer.WithDelay (
   HasDelayConfig (delayCapacity),
   WithDelay,
   withDelay,
+ )
+import Marconi.Core.Experiment.Transformer.WithFold (
+  HasFoldConfig (..),
+  WithFold,
+  withFold,
+  withFoldMap,
  )
 import Marconi.Core.Experiment.Transformer.WithPruning (
   HasPruningConfig (pruneEvery, securityParam),

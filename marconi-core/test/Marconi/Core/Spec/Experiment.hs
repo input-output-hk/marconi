@@ -1566,18 +1566,19 @@ withResumeTest =
   Tasty.testProperty "WithResume should drain already synced events" $
     Test.withMaxSuccess 10_000 propWithResumeShouldDrainAlreadySyncedEvents
 
--- | A runner for a the 'WithAggregate' tranformer
-withAggregateRunner
-  :: (Monad m)
+-- | A runner for a the 'WithFold' tranformer (using withFoldMap)
+withFoldMapRunner
+  :: (Monad m, Monoid output)
   => (input -> output)
   -> Model.IndexerTestRunner m output wrapped
-  -> Model.IndexerTestRunner m input (Core.WithAggregate wrapped output)
-withAggregateRunner f wRunner =
+  -> Model.IndexerTestRunner m input (Core.WithFold wrapped output)
+withFoldMapRunner f wRunner =
   Model.IndexerTestRunner
     (wRunner ^. Model.indexerRunner)
-    (Core.withAggregate f <$> wRunner ^. Model.indexerGenerator)
+    (Core.withFoldMap f <$> wRunner ^. Model.indexerGenerator)
 
 deriving via (Sum Int) instance Semigroup TestEvent
+deriving via (Sum Int) instance Monoid TestEvent
 
 withAggregateProperty
   :: Gen [Item TestEvent]
@@ -1597,7 +1598,7 @@ withAggregateProperty gen =
         catMaybes . init . scanr modelAggregate Nothing
           <$> views model (fmap snd . filter ((lastSync >=) . fst))
 
-      runner = withAggregateRunner id Model.listIndexerRunner
+      runner = withFoldMapRunner id Model.listIndexerRunner
 
       r = runner ^. Model.indexerRunner
       genIndexer = runner ^. Model.indexerGenerator
