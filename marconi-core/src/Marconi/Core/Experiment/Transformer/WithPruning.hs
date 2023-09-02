@@ -5,7 +5,7 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 {- |
-    A transformer that cache result of some queries
+    A transformer that prune the content of an indexer
 
     See "Marconi.Core.Experiment" for documentation.
 -}
@@ -38,10 +38,12 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
  )
 import Marconi.Core.Experiment.Indexer.MixedIndexer (MixedIndexer, inDatabase)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
+import Marconi.Core.Experiment.Transformer.Class (
+  IndexerMapTrans (unwrapMap),
+  IndexerTrans (unwrap),
+ )
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
-  IndexerTrans (Config, unwrap, wrap),
   indexVia,
   resetVia,
   rollbackVia,
@@ -186,10 +188,6 @@ instance
   pruneEvery = unwrap . pruneEvery
 
 instance IndexerTrans WithPruning where
-  type Config WithPruning = PruningConfig
-
-  wrap cfg = WithPruning . IndexTransformer cfg
-
   unwrap = pruningWrapper . wrappedIndexer
 
 pruneAt

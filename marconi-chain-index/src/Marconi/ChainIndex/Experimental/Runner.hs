@@ -22,6 +22,7 @@ import Control.Exception (catch)
 import Control.Monad.Except (ExceptT, void)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
+
 import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance

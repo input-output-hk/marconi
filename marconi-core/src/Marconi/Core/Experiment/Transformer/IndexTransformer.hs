@@ -10,7 +10,6 @@ module Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
   wrapperConfig,
   wrappedIndexer,
-  IndexerTrans (..),
   rollbackVia,
   resetVia,
   indexVia,
@@ -26,7 +25,6 @@ module Marconi.Core.Experiment.Transformer.IndexTransformer (
 
 import Control.Lens (Getter, Lens', makeLenses, view)
 import Control.Monad.Except (MonadError)
-import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index, indexAllDescending, rollback),
@@ -37,6 +35,7 @@ import Marconi.Core.Experiment.Class (
   queryLatest,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
+import Marconi.Core.Experiment.Transformer.Class (IndexerTrans (unwrap))
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed)
 
 {- | This datatype is meant to be use inside a new type by any indexer transformer.
@@ -50,22 +49,7 @@ data IndexTransformer config indexer event = IndexTransformer
 
 makeLenses 'IndexTransformer
 
--- | An indexer transformer: it adds a configurable capability to a tranformer
-class IndexerTrans t where
-  -- | The type of the configuration of a transformer
-  type Config t :: Type -> Type
-
-  -- | Wrap an existing indexer in its transformer
-  wrap :: Config t event -> indexer event -> t indexer event
-
-  -- | Unwray the underlying indexer
-  unwrap :: Lens' (t indexer event) (indexer event)
-
 instance IndexerTrans (IndexTransformer config) where
-  type Config (IndexTransformer config) = config
-
-  wrap = IndexTransformer
-
   unwrap = wrappedIndexer
 
 {- | Helper to implement the @index@ functon of 'IsIndex' when we use a wrapper.
@@ -101,10 +85,7 @@ indexAllVia
   -> m s
 indexAllVia l = l . indexAll
 
-instance
-  (IsIndex m event indexer)
-  => IsIndex m event (IndexTransformer config indexer)
-  where
+instance (IsIndex m event indexer) => IsIndex m event (IndexTransformer config indexer) where
   index = indexVia wrappedIndexer
   indexAll = indexAllVia wrappedIndexer
   indexAllDescending = indexAllDescendingVia wrappedIndexer

@@ -13,16 +13,17 @@
 module Marconi.Core.Experiment.Transformer.WithFold (
   WithFold,
   withFold,
+  withFoldPure,
   withFoldMap,
+  getLastByQuery,
   HasFoldConfig (fold),
 ) where
 
-import Control.Lens (Getter, Lens', makeLenses, (.~))
-import Control.Lens.Operators ((?~), (^.))
+import Control.Lens (Lens', makeLenses)
+import Control.Lens.Operators ((^.))
 import Control.Monad.Except (ExceptT, MonadError (throwError))
 import Data.Foldable (Foldable (toList))
-import Data.Function ((&))
-import Data.List (scanl', sortOn)
+import Data.List (sortOn)
 import Data.Maybe (fromMaybe)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
@@ -34,7 +35,7 @@ import Marconi.Core.Experiment.Class (
   queryEither,
  )
 import Marconi.Core.Experiment.Query (EventAtQuery (EventAtQuery))
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   closeVia,
   indexAllDescendingVia,
@@ -54,87 +55,84 @@ import Marconi.Core.Experiment.Type (
   point,
  )
 
-data FoldConfig output input = FoldConfig
-  { _initialConfig :: output
-  , _foldConfig :: output -> input -> output
-  }
-
-makeLenses ''FoldConfig
-
 -- | 'WithFold' fold incoming @event@ to produce an @output@.
-data WithFold indexer output input = WithFold
-  { _config :: FoldConfig output input
+data WithFold m indexer output input = WithFold
+  { _initial :: output
+  , _getLast :: indexer output -> m (Maybe output)
+  , _foldConfig :: output -> input -> m output
   , _foldedIndexer :: indexer output
   }
 
 makeLenses ''WithFold
 
+-- Rely on @EventAtQuery@ to retrieve the last value of the fold.
+-- If there isn't a previous value, returns 'Nothing'.
+getLastByQuery
+  :: ( IsSync m event indexer
+     , HasGenesis (Point event)
+     , Queryable (ExceptT (QueryError (EventAtQuery a)) m) event (EventAtQuery a) indexer
+     , Ord (Point event)
+     , MonadError IndexerError m
+     )
+  => indexer event
+  -> m (Maybe a)
+getLastByQuery indexer = do
+  lSync <- lastSyncPoint indexer
+  if lSync == genesis
+    then pure Nothing
+    else do
+      lastAggregateOrError <- queryEither lSync EventAtQuery indexer
+      case lastAggregateOrError of
+        Left _ -> throwError $ IndexerInternalError "can't retrive previous value"
+        Right agg -> pure agg
+
 -- | A smart constructor for 'WitFold'
 withFold
   :: output
+  -> (indexer output -> m (Maybe output))
+  -> (output -> input -> m output)
+  -> indexer output
+  -> WithFold m indexer output input
+withFold = WithFold
+
+-- | A smart constructor for 'WitFold'
+withFoldPure
+  :: (Applicative m)
+  => output
+  -> (indexer output -> m (Maybe output))
   -> (output -> input -> output)
   -> indexer output
-  -> WithFold indexer output input
-withFold init' fold' _foldedIndexer =
-  WithFold
-    { _config = FoldConfig init' fold'
-    , _foldedIndexer
-    }
+  -> WithFold m indexer output input
+withFoldPure init' lastQuery step = WithFold init' lastQuery (\x y -> pure $ step x y)
 
 -- | A smart constructor for 'WitFold'
 withFoldMap
-  :: (Monoid output)
-  => (input -> output)
+  :: (Monoid output, Applicative m)
+  => (indexer output -> m (Maybe output))
+  -> (input -> output)
   -> indexer output
-  -> WithFold indexer output input
-withFoldMap f _foldedIndexer =
+  -> WithFold m indexer output input
+withFoldMap _getLast f _foldedIndexer =
   WithFold
-    { _config = FoldConfig mempty (\acc x -> acc <> f x)
+    { _initial = mempty
+    , _getLast
+    , _foldConfig = \acc x -> pure $ acc <> f x
     , _foldedIndexer
     }
 
 -- | There are few scenarios where you want to modify the fold function but it may happen
-class HasFoldConfig input output indexer where
-  initial :: Getter (indexer input) output
-  fold :: Lens' (indexer input) (output -> input -> output)
+class HasFoldConfig m input output indexer where
+  fold :: Lens' (indexer input) (output -> input -> m output)
 
-instance HasFoldConfig input output (WithFold indexer output) where
-  initial = config . initialConfig
-  fold = config . foldConfig
+instance HasFoldConfig m input output (WithFold m indexer output) where
+  fold = foldConfig
 
-instance IndexerMapTrans WithFold where
-  type ConfigMap WithFold = FoldConfig
-  wrapMap = WithFold
+instance IndexerMapTrans (WithFold m) where
   unwrapMap = foldedIndexer
-
-{- | Get the previous value stored by the indexer, or the initial value if the previous value
-doesn't exist
--}
-getPreviousValue
-  :: ( MonadError IndexerError m
-     , HasGenesis (Point output)
-     , Point input ~ Point output
-     , IsSync m output indexer
-     , Queryable (ExceptT (QueryError (EventAtQuery output)) m) output (EventAtQuery output) indexer
-     , Ord (Point output)
-     )
-  => WithFold indexer output input
-  -> m (Timed (Point output) (Maybe output))
-getPreviousValue indexer = do
-  lSync <- lastSyncPoint indexer
-  evt <-
-    if lSync == genesis
-      then pure Nothing
-      else do
-        lastAggregateOrError <- queryEither lSync EventAtQuery indexer
-        case lastAggregateOrError of
-          Left _ -> throwError $ IndexerInternalError "can't find last aggregate"
-          Right previous -> pure previous
-  pure $ Timed lSync evt
 
 instance
   (Point output ~ Point event, IsSync m output indexer)
-  => IsSync m event (WithFold indexer output)
+  => IsSync m event (WithFold m indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
   lastSyncPoints = lastSyncPointsVia unwrapMap
@@ -143,7 +141,7 @@ instance
   ( Queryable m output query indexer
   , Point input ~ Point output
   )
-  => Queryable m input query (WithFold indexer output)
+  => Queryable m input query (WithFold n indexer output)
   where
   query = queryVia unwrapMap
 
@@ -152,40 +150,46 @@ instance
   , Resetable m output indexer
   , HasGenesis (Point event)
   )
-  => Resetable m event (WithFold indexer output)
+  => Resetable m event (WithFold m indexer output)
   where
   reset = resetVia unwrapMap
 
-instance (Closeable m indexer) => Closeable m (WithFold indexer output) where
+instance (Closeable m indexer) => Closeable m (WithFold m indexer output) where
   close = closeVia unwrapMap
 
 instance
-  ( MonadError IndexerError m
-  , HasGenesis (Point output)
+  ( HasGenesis (Point output)
   , Point input ~ Point output
   , IsSync m output indexer
   , IsIndex m output indexer
-  , Queryable (ExceptT (QueryError (EventAtQuery output)) m) output (EventAtQuery output) indexer
   , Ord (Point output)
   )
-  => IsIndex m input (WithFold indexer output)
+  => IsIndex m input (WithFold m indexer output)
   where
   index timedEvent indexer = do
-    Timed _ previous <- getPreviousValue indexer
-    let foldEvent Nothing = previous
-        foldEvent (Just evt) = Just $ (indexer ^. fold) (fromMaybe (indexer ^. initial) previous) evt
-    indexVia unwrapMap (foldEvent <$> timedEvent) indexer
+    previous <- (indexer ^. getLast) (indexer ^. foldedIndexer)
+    let foldEvent Nothing = pure previous
+        foldEvent (Just evt) = Just <$> (indexer ^. fold) (fromMaybe (indexer ^. initial) previous) evt
+    newEvent <- traverse foldEvent timedEvent
+    indexVia unwrapMap newEvent indexer
 
   indexAllDescending events indexer = case sortOn (^. point) $ toList events of
     [] -> pure indexer
     xs -> do
-      previousTimedEvent <- getPreviousValue indexer
-      let foldEvent p te = case (p ^. event, te ^. event) of
-            (previous, Nothing) -> te & event .~ previous
-            (previous, Just evt) ->
-              let previous' = fromMaybe (indexer ^. initial) previous
-               in te & event ?~ (indexer ^. fold) previous' evt
-          asOutputs = scanl' foldEvent
-      indexAllDescendingVia unwrapMap (asOutputs previousTimedEvent xs) indexer
+      previous <- (indexer ^. getLast) (indexer ^. foldedIndexer)
+      -- TODO check footprint
+      let scanM _ _ [] = pure []
+          scanM f acc (y : ys) = do
+            y' <- f acc y
+            ys' <- scanM f y' ys
+            pure $ y' : ys'
+          foldEvent :: Timed p (Maybe output) -> Timed p (Maybe input) -> m (Timed p (Maybe output))
+          foldEvent timedPrevious te = case (timedPrevious ^. event, te ^. event) of
+            (previous', Nothing) -> event (pure . const previous') te
+            (previous', Just evt) ->
+              let previous'' = fromMaybe (indexer ^. initial) previous'
+               in event (const $ Just <$> (indexer ^. fold) previous'' evt) te
+      evts <- scanM foldEvent (Timed genesis previous) xs
+      indexAllDescendingVia unwrapMap evts indexer
 
   rollback = rollbackVia unwrapMap

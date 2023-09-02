@@ -16,6 +16,7 @@ import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as Block
 import Marconi.ChainIndex.Experimental.Indexers.Coordinator (coordinatorWorker, standardCoordinator)
 import Marconi.ChainIndex.Experimental.Indexers.Datum qualified as Datum
+import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
@@ -24,7 +25,12 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
-import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam, TxIndexInBlock)
+import Marconi.ChainIndex.Types (
+  BlockEvent (BlockEvent),
+  SecurityParam,
+  TxIndexInBlock,
+  blockInMode,
+ )
 import Marconi.Core.Experiment qualified as Core
 import System.FilePath ((</>))
 
@@ -40,6 +46,7 @@ buildIndexers
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
+  -> EpochState.EpochStateConfig
   -> BM.Trace IO Text
   -> FilePath
   -> ExceptT
@@ -51,12 +58,15 @@ buildIndexers
       , -- Indexing part
         Core.WithTrace IO Core.Coordinator (WithDistance BlockEvent)
       )
-buildIndexers securityParam catchupConfig utxoConfig mintEventConfig logger path = do
+buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateConfig logger path = do
   let mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) logger
       txBodyCoordinatorLogger = BM.appendName "txBody" mainLogger
 
   StandardWorker blockInfoMVar blockInfoWorker <-
     blockInfoBuilder securityParam catchupConfig mainLogger path
+
+  StandardWorker _epochStateMVar epochStateWorker <-
+    epochStateBuilder securityParam catchupConfig epochStateConfig mainLogger path
 
   StandardWorker utxoMVar utxoWorker <-
     utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
@@ -84,7 +94,10 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig logger path
         UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
 
   mainCoordinator <-
-    lift $ standardCoordinator mainLogger [blockInfoWorker, coordinatorTxBodyWorkers]
+    lift $
+      standardCoordinator
+        mainLogger
+        [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
   resumePoints <- Core.lastSyncPoints (fromIntegral securityParam + 1) mainCoordinator
 
@@ -203,3 +216,22 @@ mintBuilder securityParam catchupConfig mintEventConfig logger path =
           (pure . fmap MintTokenEvent.MintTokenBlockEvents . NonEmpty.nonEmpty . (>>= extractMint))
           (BM.appendName "mintToken" logger)
    in MintTokenEvent.mkMintTokenEventWorker mintTokenWorkerConfig mintEventConfig (path </> "mint.db")
+
+-- | Configure and start the @EpochState@ indexer
+epochStateBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> EpochState.EpochStateConfig
+  -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> FilePath
+  -> n (StandardWorker m BlockEvent (C.BlockInMode C.CardanoMode) EpochState.EpochStateIndexer)
+epochStateBuilder securityParam catchupConfig epochStateConfig logger path =
+  let epochStateWorkerConfig =
+        StandardWorkerConfig
+          "epochState"
+          securityParam
+          catchupConfig
+          (pure . Just . blockInMode)
+          (BM.appendName "epochState" logger)
+   in EpochState.mkEpochStateWorker epochStateWorkerConfig epochStateConfig (path </> "epochState")

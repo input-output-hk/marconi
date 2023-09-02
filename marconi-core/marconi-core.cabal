@@ -59,6 +59,7 @@ library
     Marconi.Core.Experiment
     Marconi.Core.Experiment.Class
     Marconi.Core.Experiment.Coordinator
+    Marconi.Core.Experiment.Indexer.FileIndexer
     Marconi.Core.Experiment.Indexer.LastPointIndexer
     Marconi.Core.Experiment.Indexer.ListIndexer
     Marconi.Core.Experiment.Indexer.MixedIndexer
@@ -96,7 +97,10 @@ library
   build-depends:
     , async
     , base           >=4.7 && <5
+    , bytestring
     , containers
+    , directory
+    , filepath
     , lens
     , mtl
     , primitive

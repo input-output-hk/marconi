@@ -244,9 +244,9 @@ module Marconi.Core.Experiment (
   events,
   latestPoint,
 
-  -- ** In database
+  -- ** On disk
 
-  --
+  -- *** SQLite
 
   -- | An in-memory indexer that stores its events in a SQLite database.
   --
@@ -273,7 +273,7 @@ module Marconi.Core.Experiment (
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
 
-  -- *** Reexport from SQLite
+  -- **** Reexport from SQLite
   ToRow (..),
   lastSyncPointsQuery,
   dbLastSync,
@@ -286,6 +286,12 @@ module Marconi.Core.Experiment (
   SQLiteSourceProvider (SQLiteSourceProvider),
   IsSourceProvider,
   HasDatabasePath (getDatabasePath),
+
+  -- *** On file
+
+  -- | An indexer that serialise the event to disk
+  FileIndexer (FileIndexer),
+  mkFileIndexer,
 
   -- ** Mixed indexer
 
@@ -365,8 +371,11 @@ module Marconi.Core.Experiment (
   --
   -- Queries that can be implemented for all indexers
   EventAtQuery (..),
+  EventsFromQuery (..),
   EventsMatchingQuery (..),
   allEvents,
+  LatestEventsQuery (LatestEventsQuery),
+  latestEvent,
 
   -- * Indexer Transformers
   IndexerTrans (..),
@@ -428,6 +437,7 @@ module Marconi.Core.Experiment (
   WithFold,
   withFold,
   withFoldMap,
+  getLastByQuery,
   HasFoldConfig (fold),
 
   -- ** Index Wrapper
@@ -500,6 +510,7 @@ import Marconi.Core.Experiment.Coordinator (
   tokens,
   workers,
  )
+import Marconi.Core.Experiment.Indexer.FileIndexer (FileIndexer (FileIndexer), mkFileIndexer)
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)
 import Marconi.Core.Experiment.Indexer.MixedIndexer (
@@ -535,11 +546,17 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
  )
-import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
+import Marconi.Core.Experiment.Query (
+  EventAtQuery (..),
+  EventsFromQuery (..),
+  EventsMatchingQuery (..),
+  LatestEventsQuery (..),
+  allEvents,
+  latestEvent,
+ )
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..), IndexerTrans (..))
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (..),
-  IndexerTrans (..),
   closeVia,
   indexAllDescendingVia,
   indexVia,
@@ -572,6 +589,7 @@ import Marconi.Core.Experiment.Transformer.WithDelay (
 import Marconi.Core.Experiment.Transformer.WithFold (
   HasFoldConfig (..),
   WithFold,
+  getLastByQuery,
   withFold,
   withFoldMap,
  )
