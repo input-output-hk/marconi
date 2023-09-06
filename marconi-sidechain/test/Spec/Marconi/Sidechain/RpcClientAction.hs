@@ -1,9 +1,15 @@
-module Spec.Marconi.Sidechain.RpcClientAction where
+module Spec.Marconi.Sidechain.RpcClientAction (
+  RpcClientAction (..),
+  mkRpcClientAction,
+  mocUtxoWorker,
+  mocMintBurnWorker,
+) where
 
 import Cardano.Api (AssetName, PolicyId)
 import Control.Concurrent.STM (atomically)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
+import Control.Monad.Reader (ReaderT, ask, liftIO)
 import Data.Proxy (Proxy (Proxy))
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
@@ -55,12 +61,13 @@ data RpcClientAction = RpcClientAction
       :: !((PolicyId, Maybe AssetName) -> IO (JsonRpcResponse String GetBurnTokenEventsResult))
   }
 
-mkRpcClientAction :: SidechainEnv -> Port -> IO RpcClientAction
-mkRpcClientAction env port = do
-  manager <- newManager defaultManagerSettings
+mkRpcClientAction :: Port -> ReaderT SidechainEnv IO RpcClientAction
+mkRpcClientAction port = do
+  manager <- liftIO $ newManager defaultManagerSettings
   let clientEnv = mkClientEnv manager (baseUrl port)
       (_ :<|> _ :<|> rpcSyncPoint :<|> rpcUtxos :<|> rpcMinting :<|> _ :<|> _) =
         mkHoistedHttpRpcClient clientEnv
+  env <- ask
   pure $
     RpcClientAction
       (mkInsertUtxoEventsCallback env)

@@ -8,9 +8,10 @@
 module Marconi.Sidechain.Api.HttpServer where
 
 import Cardano.Api ()
-import Control.Lens ((^.))
+import Control.Lens (view, (^.))
+import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Reader (ReaderT, ask, lift)
+import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
 import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.ByteString qualified as BS
 import Data.Proxy (Proxy (Proxy))
@@ -56,7 +57,7 @@ import Network.JsonRpc.Types (
 import Network.Wai.Handler.Warp (runSettings)
 import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
-import Servant.Server (Application, Handler, Server, serve)
+import Servant.Server (Application, Handler (Handler), ServerError, ServerT, hoistServer, serve)
 
 -- | Bootstraps the HTTP server
 runHttpServer :: ReaderT SidechainEnv IO ()
@@ -68,116 +69,101 @@ runHttpServer = do
       (marconiApp env)
 
 marconiApp :: SidechainEnv -> Application
-marconiApp env = serve (Proxy @API) (httpRpcServer env)
+marconiApp env =
+  serve (Proxy @API) $
+    hoistServer (Proxy @API) (hoistHandler env) httpRpcServer
 
-jsonRpcServer
-  :: SidechainEnv
-  -- ^  Utxo Environment to access Utxo Storage running on the marconi thread
-  -> Server JsonRpcAPI
-jsonRpcServer env =
+type ReaderHandler env = ExceptT ServerError (ReaderT env IO)
+type ReaderServer env api = ServerT api (ReaderHandler env)
+
+hoistHandler :: env -> ReaderHandler env a -> Handler a
+hoistHandler env = Handler . ExceptT . flip runReaderT env . runExceptT
+
+jsonRpcServer :: ReaderServer SidechainEnv JsonRpcAPI
+jsonRpcServer =
   echo
-    :<|> getTargetAddressesQueryHandler env
-    :<|> getCurrentSyncedBlockHandler env
-    :<|> getAddressUtxoHandler env
-    :<|> getMintingPolicyHashTxHandler env
-    :<|> getEpochStakePoolDelegationHandler env
-    :<|> getEpochNonceHandler env
+    :<|> getTargetAddressesQueryHandler
+    :<|> getCurrentSyncedBlockHandler
+    :<|> getAddressUtxoHandler
+    :<|> getMintingPolicyHashTxHandler
+    :<|> getEpochStakePoolDelegationHandler
+    :<|> getEpochNonceHandler
 
-restApiServer
-  :: SidechainEnv
-  -> Server RestAPI
-restApiServer env =
+restApiServer :: ReaderServer SidechainEnv RestAPI
+restApiServer =
   getTimeHandler
-    :<|> getParamsHandler env
-    :<|> getTargetAddressesHandler env
+    :<|> getParamsHandler
+    :<|> getTargetAddressesHandler
     :<|> getMetricsHandler
 
-httpRpcServer
-  :: SidechainEnv
-  -- ^  Utxo Environment to access Utxo Storage running on the marconi thread
-  -> Server API
-httpRpcServer env = jsonRpcServer env :<|> restApiServer env
+httpRpcServer :: ReaderServer SidechainEnv API
+httpRpcServer = jsonRpcServer :<|> restApiServer
 
--- | Echos message back as a Jsonrpc response. Used for testing the server.
+-- | Echoes message back as a Jsonrpc response. Used for testing the server.
 echo
   :: String
-  -> Handler (Either (JsonRpcErr String) String)
+  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) String)
 echo = return . Right
 
 {- | Echos current time as REST response. Used for testing the http server outside of jsonrpc
  protocol.
 -}
-getTimeHandler :: Handler String
+getTimeHandler :: ReaderHandler SidechainEnv String
 getTimeHandler = timeString <$> liftIO getCurrentTime
   where
     timeString = formatTime defaultTimeLocale "%T"
 
 -- | Returns params given through CLI as a JSON REST response.
-getParamsHandler
-  :: SidechainEnv
-  -> Handler CliArgs
-getParamsHandler env = pure $ env ^. sidechainCliArgs
+getParamsHandler :: ReaderHandler SidechainEnv CliArgs
+getParamsHandler = view sidechainCliArgs
 
 -- | Prints TargetAddresses Bech32 representation to the console
-getTargetAddressesHandler
-  :: SidechainEnv
-  -- ^  Utxo Environment to access Utxo Storage running on the marconi thread
-  -> Handler [Text]
-getTargetAddressesHandler env =
-  pure $
-    Q.Utxo.reportBech32Addresses $
-      env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer
+getTargetAddressesHandler :: ReaderHandler SidechainEnv [Text]
+getTargetAddressesHandler = do
+  indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
+  pure $ Q.Utxo.reportBech32Addresses indexer
 
-getMetricsHandler :: Handler Text
+getMetricsHandler :: ReaderHandler SidechainEnv Text
 getMetricsHandler = liftIO $ Text.decodeUtf8 . BS.toStrict <$> P.exportMetricsAsText
 
 -- | Prints TargetAddresses Bech32 representation as thru JsonRpc
 getTargetAddressesQueryHandler
-  :: SidechainEnv
-  -- ^ database configuration
-  -> String
+  :: String
   -- ^ Will always be an empty string as we are ignoring this param, and returning everything
-  -> Handler (Either (JsonRpcErr String) [Text])
-getTargetAddressesQueryHandler env _ =
-  pure $
-    Right $
-      Q.Utxo.reportBech32Addresses (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
+  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) [Text])
+getTargetAddressesQueryHandler _ = do
+  indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
+  pure $ Right $ Q.Utxo.reportBech32Addresses indexer
 
 -- | Handler for retrieving current synced chain point.
 getCurrentSyncedBlockHandler
-  :: SidechainEnv
-  -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-  -> GetCurrentSyncedBlockParams
+  :: GetCurrentSyncedBlockParams
   -- ^ Will always be an empty string as we are ignoring this param, and returning everything
-  -> Handler (Either (JsonRpcErr String) GetCurrentSyncedBlockResult)
-getCurrentSyncedBlockHandler env _ =
-  liftIO $
-    first toRpcErr
-      <$> Q.Utxo.queryCurrentSyncedBlock
-        (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
+  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetCurrentSyncedBlockResult)
+getCurrentSyncedBlockHandler _ = do
+  indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
+  liftIO $ first toRpcErr <$> Q.Utxo.queryCurrentSyncedBlock indexer
 
 -- | Handler for retrieving UTXOs by Address
 getAddressUtxoHandler
-  :: SidechainEnv
-  -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-  -> GetUtxosFromAddressParams
+  :: GetUtxosFromAddressParams
   -- ^ Bech32 addressCredential and a slotNumber
-  -> Handler (Either (JsonRpcErr String) GetUtxosFromAddressResult)
-getAddressUtxoHandler env query =
+  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetUtxosFromAddressResult)
+getAddressUtxoHandler query = do
+  indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
   liftIO $
     first toRpcErr <$> do
       Q.Utxo.findByBech32AddressAtSlot
-        (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
+        indexer
         (pack $ queryAddress query)
         (querySearchInterval query)
 
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler
-  :: SidechainEnv
-  -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-  -> GetBurnTokenEventsParams
-  -> Handler (Either (JsonRpcErr String) GetBurnTokenEventsResult)
-getMintingPolicyHashTxHandler env query =
+  :: GetBurnTokenEventsParams
+  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetBurnTokenEventsResult)
+getMintingPolicyHashTxHandler query = do
+  env <- ask
   liftIO $
     bimap toRpcErr GetBurnTokenEventsResult <$> do
       Q.Mint.queryByAssetIdAtSlot
@@ -190,24 +176,22 @@ getMintingPolicyHashTxHandler env query =
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochStakePoolDelegationHandler
-  :: SidechainEnv
-  -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-  -> Word64
+  :: Word64
   -- ^ EpochNo
-  -> Handler (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
-getEpochStakePoolDelegationHandler env epochNo =
+  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
+getEpochStakePoolDelegationHandler epochNo = do
+  env <- ask
   liftIO $
     first toRpcErr
       <$> EpochState.queryActiveSDDByEpochNo env epochNo
 
 -- | Handler for retrieving stake pool delegation per epoch
 getEpochNonceHandler
-  :: SidechainEnv
-  -- ^ Utxo Environment to access Utxo Storage running on the marconi thread
-  -> Word64
+  :: Word64
   -- ^ EpochNo
-  -> Handler (Either (JsonRpcErr String) GetEpochNonceResult)
-getEpochNonceHandler env epochNo =
+  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetEpochNonceResult)
+getEpochNonceHandler epochNo = do
+  env <- ask
   liftIO $
     first toRpcErr
       <$> EpochState.queryNonceByEpochNo env epochNo
