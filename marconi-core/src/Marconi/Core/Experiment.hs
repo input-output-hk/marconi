@@ -202,8 +202,9 @@ module Marconi.Core.Experiment (
   Resetable (..),
   resumeFrom,
   IsSync (..),
-  Closeable (..),
+  computeResumePoints,
   isAheadOfSync,
+  Closeable (..),
   Queryable (..),
   queryEither,
   queryLatest,
@@ -241,7 +242,7 @@ module Marconi.Core.Experiment (
   ListIndexer,
   mkListIndexer,
   events,
-  latest,
+  latestPoint,
 
   -- ** In database
 
@@ -255,7 +256,7 @@ module Marconi.Core.Experiment (
   -- (and the corresponding 'Queryable' interface)
   -- should be enough to have an operational indexer.
   SQLiteIndexer (SQLiteIndexer),
-  GetLastSyncQuery (GetLastSyncQuery),
+  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
   InsertPointQuery (InsertPointQuery),
   -- | Start a new indexer or resume an existing SQLite indexer
   --
@@ -274,6 +275,7 @@ module Marconi.Core.Experiment (
 
   -- *** Reexport from SQLite
   ToRow (..),
+  lastSyncPointsQuery,
   dbLastSync,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
@@ -341,7 +343,8 @@ module Marconi.Core.Experiment (
   -- ** Workers
   WorkerM (..),
   Worker,
-  WorkerIndexer,
+  WorkerIndexer (..),
+  WorkerIndexerType,
   startWorker,
   createWorker',
   createWorker,
@@ -393,7 +396,6 @@ module Marconi.Core.Experiment (
   -- ** Resuming/draining
   OrdPoint (comparePoint),
   PointCompare (..),
-  HasResumePoints (resumePoints),
   WithResume,
   withResume,
 
@@ -463,6 +465,7 @@ module Marconi.Core.Experiment (
   indexVia,
   indexAllDescendingVia,
   lastSyncPointVia,
+  lastSyncPointsVia,
   closeVia,
   queryVia,
   queryLatestVia,
@@ -478,6 +481,7 @@ import Marconi.Core.Experiment.Class (
   IsSync (..),
   Queryable (..),
   Resetable (..),
+  computeResumePoints,
   indexAllDescendingEither,
   indexAllEither,
   indexEither,
@@ -496,7 +500,7 @@ import Marconi.Core.Experiment.Coordinator (
   workers,
  )
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
-import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
+import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)
 import Marconi.Core.Experiment.Indexer.MixedIndexer (
   Flushable (..),
   HasMixedConfig (flushEvery, keepInMemory),
@@ -515,7 +519,7 @@ import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
   mkSQLiteAggregateQuery,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
-  GetLastSyncQuery (GetLastSyncQuery),
+  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
   InsertPointQuery (InsertPointQuery),
   SQLInsertPlan (..),
   SQLRollbackPlan (..),
@@ -524,6 +528,7 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   connection,
   dbLastSync,
   handleSQLErrors,
+  lastSyncPointsQuery,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
   querySQLiteIndexerWith,
@@ -538,6 +543,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
+  lastSyncPointsVia,
   queryLatestVia,
   queryVia,
   resetVia,
@@ -581,7 +587,6 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
   withPruning,
  )
 import Marconi.Core.Experiment.Transformer.WithResume (
-  HasResumePoints (resumePoints),
   OrdPoint (comparePoint),
   PointCompare (..),
   WithResume,
@@ -617,7 +622,8 @@ import Marconi.Core.Experiment.Type (
 import Marconi.Core.Experiment.Worker (
   ProcessedInput (..),
   Worker,
-  WorkerIndexer,
+  WorkerIndexer (..),
+  WorkerIndexerType,
   WorkerM (..),
   createWorker,
   createWorker',

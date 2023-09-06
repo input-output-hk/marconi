@@ -27,7 +27,10 @@ import Hedgehog.Gen qualified as Hedgehog
 import Hedgehog.Range qualified
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardWorkerConfig (StandardWorkerConfig))
+import Marconi.ChainIndex.Experimental.Indexers.Worker (
+  StandardWorker (StandardWorker),
+  StandardWorkerConfig (StandardWorkerConfig),
+ )
 import Marconi.ChainIndex.Experimental.Logger (nullTracer)
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Core.Experiment qualified as Core
@@ -140,10 +143,10 @@ propRunnerTracksSelectedAddress = Hedgehog.property $ do
     Hedgehog.forAll $
       Hedgehog.element $
         if null followedAddresses then chainAddresses else followedAddresses
-  (ix, w) <-
+  StandardWorker ix w <-
     Hedgehog.evalExceptT $
       Utxo.utxoWorker
-        (StandardWorkerConfig "test" (Core.CatchupConfig 4 2) (pure . getBlockUtxosEvent) nullTracer)
+        (StandardWorkerConfig "test" 1 (Core.CatchupConfig 4 2) (pure . getBlockUtxosEvent) nullTracer)
         (Utxo.UtxoIndexerConfig followedAddresses True)
         ":memory:"
   -- we create a coordinator to perform indexing through the worker
@@ -181,10 +184,10 @@ propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
   let untrackedAddresses = chainAddresses \\ followedAddresses
   addr <-
     Hedgehog.forAll $ Hedgehog.element untrackedAddresses
-  (ix, w) <-
+  StandardWorker ix w <-
     Hedgehog.evalExceptT $
       Utxo.utxoWorker
-        (StandardWorkerConfig "test" (Core.CatchupConfig 4 2) (pure . getBlockUtxosEvent) nullTracer)
+        (StandardWorkerConfig "test" 1 (Core.CatchupConfig 4 2) (pure . getBlockUtxosEvent) nullTracer)
         (Utxo.UtxoIndexerConfig followedAddresses True)
         ":memory:"
   -- we create a coordinator to perform indexing through the worker

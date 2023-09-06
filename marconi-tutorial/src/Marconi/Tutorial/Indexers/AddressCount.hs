@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -19,23 +20,23 @@
 module Marconi.Tutorial.Indexers.AddressCount where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (MVar)
 import Control.Lens (at, folded, sumOf, to, (^.))
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.String (fromString)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment (
-  GetLastSyncQuery (GetLastSyncQuery),
-  HasGenesis (genesis),
+  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
   IndexerError,
   ListIndexer,
   MixedIndexer,
@@ -44,8 +45,9 @@ import Marconi.Core.Experiment (
   Result,
   SQLInsertPlan (SQLInsertPlan),
   SQLRollbackPlan (SQLRollbackPlan),
-  SQLiteIndexer (SQLiteIndexer),
+  SQLiteIndexer,
   Timed (Timed),
+  connection,
   event,
   events,
   mkListIndexer,
@@ -59,8 +61,11 @@ addressCountWorker
   :: FilePath
   -> SecurityParam
   -> IO
-      ( MVar (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer AddressCountEvent)
-      , Core.Worker (WithDistance BlockEvent) C.ChainPoint
+      ( Core.WorkerIndexer
+          IO
+          (WithDistance BlockEvent)
+          AddressCountEvent
+          (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer)
       )
 addressCountWorker dbPath securityParam = do
   let extract = getEventsFromBlock
@@ -128,11 +133,11 @@ instance (MonadIO m) => Queryable m AddressCountEvent AddressCountQuery SQLiteIn
     -> SQLiteIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
   query C.ChainPointAtGenesis _ _ = pure 0
-  query (C.ChainPoint _ _) (AddressCountQuery addr) (SQLiteIndexer _ c _ _ _ _) = do
+  query (C.ChainPoint _ _) (AddressCountQuery addr) sqliteIndexer = do
     (results :: [[Int]]) <-
       liftIO $
         SQL.query
-          c
+          (sqliteIndexer ^. connection)
           [sql|SELECT count FROM address_count
                WHERE address = ?
                LIMIT 10|]
@@ -168,9 +173,6 @@ eventToRows te =
         C.ChainPoint _ _ ->
           fmap (\(addr, count) -> Timed cp (AddressCountRow addr count)) addrCounts
 
-instance HasGenesis C.ChainPoint where
-  genesis = C.ChainPointAtGenesis
-
 mkAddressCountSqliteIndexer
   :: (MonadIO m, MonadError IndexerError m)
   => FilePath
@@ -185,7 +187,7 @@ mkAddressCountSqliteIndexer dbPath = do
     ] -- requests launched when an event is stored
     Nothing
     [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
-    (GetLastSyncQuery lastSyncQuery)
+    (GetLastSyncPointsQuery lastSyncPointsQuery)
   where
     dbCreation =
       [sql|CREATE TABLE IF NOT EXISTS address_count
@@ -194,7 +196,7 @@ mkAddressCountSqliteIndexer dbPath = do
                  , slotNo INT NOT NULL
                  , blockHeaderHash BLOB
                  )|]
-    addressCountInsertQuery :: SQL.Query -- Utxo table SQL statement
+    addressCountInsertQuery :: SQL.Query -- AddressCount table SQL statement
     addressCountInsertQuery =
       [sql|INSERT
                INTO address_count (
@@ -204,12 +206,13 @@ mkAddressCountSqliteIndexer dbPath = do
                  blockHeaderHash
               ) VALUES (?, ?, ?, ?)|]
 
-    lastSyncQuery :: SQL.Query -- Utxo table SQL statement
-    lastSyncQuery =
+    lastSyncPointsQuery :: Word -> SQL.Query -- AddressCount table SQL statement
+    lastSyncPointsQuery limit =
       [sql|SELECT slotNo, blockHeaderHash
                FROM address_count
                ORDER BY slotNo DESC
-               LIMIT 1|]
+               LIMIT |]
+        <> fromString (show limit)
 
 -- | Make a SQLiteIndexer
 mkAddressCountMixedIndexer

@@ -26,7 +26,7 @@ import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
   IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
   Queryable (query),
   Resetable (reset),
   queryEither,
@@ -38,6 +38,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
+  lastSyncPointsVia,
   queryVia,
   resetVia,
   rollbackVia,
@@ -96,12 +97,12 @@ instance IndexerMapTrans WithAggregate where
 instance
   ( MonadError IndexerError m
   , Semigroup output
-  , HasGenesis (Point output)
   , Point input ~ Point output
   , IsSync m output indexer
   , IsIndex m output indexer
   , Queryable (ExceptT (QueryError (EventAtQuery output)) m) output (EventAtQuery output) indexer
   , Ord (Point output)
+  , HasGenesis (Point output)
   )
   => IsIndex m input (WithAggregate indexer output)
   where
@@ -143,6 +144,7 @@ instance
   => IsSync m event (WithAggregate indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
+  lastSyncPoints = lastSyncPointsVia unwrapMap
 
 instance
   ( Functor m

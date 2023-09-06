@@ -16,7 +16,11 @@ import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError))
 import Data.Maybe (mapMaybe)
-import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
+import Marconi.Core.Experiment.Class (
+  AppendResult (appendResult),
+  Queryable (query),
+  isAheadOfSync,
+ )
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events)
 import Marconi.Core.Experiment.Type (
   Point,

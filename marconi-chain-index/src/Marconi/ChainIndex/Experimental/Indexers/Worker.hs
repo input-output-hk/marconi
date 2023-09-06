@@ -1,14 +1,13 @@
 {-# LANGUAGE FlexibleContexts #-}
 
---
-
 -- | Common worker configuration and creation
 module Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardIndexer,
   StandardSQLiteIndexer,
   StandardWorkerConfig (..),
-  catchupWorker,
-  catchupWorkerWithFilter,
+  StandardWorker (..),
+  mkStandardWorker,
+  mkStandardWorkerWithFilter,
 ) where
 
 import Cardano.Api qualified as C
@@ -20,50 +19,69 @@ import Data.Text (Text)
 import Data.Word (Word64)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
+import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
+import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core.Experiment qualified as Core
 
 -- | An alias for an indexer with catchup and transformation to perform filtering
 type StandardIndexer m indexer event =
-  Core.WithTrace m (Core.WithCatchup (Core.WithTransform indexer event)) (WithDistance event)
+  Core.WithTrace
+    m
+    (Core.WithResume (Core.WithCatchup (Core.WithTransform indexer event)))
+    (WithDistance event)
 
 -- | An alias for an SQLiteWorker with catchup and transformation to perform filtering
 type StandardSQLiteIndexer m event = StandardIndexer m Core.SQLiteIndexer event
 
 data StandardWorkerConfig m input event = StandardWorkerConfig
   { workerName :: Text
+  , securityParamConfig :: !SecurityParam
   , catchupConfig :: Core.CatchupConfig
   , eventExtractor :: input -> m (Maybe event)
   , logger :: Trace m (Core.IndexerEvent C.ChainPoint)
   }
 
+data StandardWorker m input event indexer = StandardWorker
+  { standardWorkerIndexerVar :: !(MVar (StandardIndexer m indexer event))
+  , standardWorker :: Core.WorkerM m (WithDistance input) (Core.Point event)
+  }
+
 -- | Create a worker for the given indexer with some standard catchup values
-catchupWorker
+mkStandardWorker
   :: ( MonadIO m
      , MonadIO n
-     , Core.WorkerIndexer (ExceptT Core.IndexerError m) event indexer
+     , Core.WorkerIndexerType (ExceptT Core.IndexerError m) event indexer
      , Core.Point event ~ C.ChainPoint
+     , Core.IsSync n event indexer
      )
   => StandardWorkerConfig m input event
   -> indexer event
-  -> n (MVar (StandardIndexer m indexer event), Core.WorkerM m (WithDistance input) (Core.Point event))
-catchupWorker config = catchupWorkerWithFilter config Just
+  -> n (StandardWorker m input event indexer)
+mkStandardWorker config = mkStandardWorkerWithFilter config Just
 
--- | Create a worker for the given indexer with some standard catchup values with extra filtering
-catchupWorkerWithFilter
+-- | Create a worker for the given indexer with some standard catchup values with extra filtering.
+mkStandardWorkerWithFilter
   :: ( MonadIO n
      , MonadIO m
-     , Core.WorkerIndexer (ExceptT Core.IndexerError m) event indexer
+     , Core.WorkerIndexerType (ExceptT Core.IndexerError m) event indexer
+     , Core.IsSync n event indexer
+     , Ord (Core.Point event)
      , Core.Point event ~ C.ChainPoint
      )
   => StandardWorkerConfig m input event
   -> (event -> Maybe event)
   -> indexer event
-  -> n (MVar (StandardIndexer m indexer event), Core.WorkerM m (WithDistance input) (Core.Point event))
-catchupWorkerWithFilter config eventFilter indexer =
+  -> n (StandardWorker m input event indexer)
+mkStandardWorkerWithFilter config eventFilter indexer =
   let chainPointDistance :: Core.Point (WithDistance a) -> WithDistance a -> Word64
       chainPointDistance _ = Distance.chainDistance
       mapEventUnderDistance = fmap sequence . traverse (eventExtractor config)
-   in Core.createWorker (workerName config) mapEventUnderDistance $
-        Core.withTrace (logger config) $
-          Core.withCatchup chainPointDistance (catchupConfig config) $
-            Core.withTransform id (eventFilter . Distance.getEvent) indexer
+   in do
+        transformedIndexer <-
+          fmap (Core.withTrace (logger config)) $
+            Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig config) + 1) $
+              Core.withCatchup chainPointDistance (catchupConfig config) $
+                Core.withTransform id (eventFilter . Distance.getEvent) indexer
+        Core.WorkerIndexer idx worker <-
+          Core.createWorker (workerName config) mapEventUnderDistance transformedIndexer
+        pure $ StandardWorker idx worker

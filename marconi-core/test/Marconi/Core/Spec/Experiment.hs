@@ -32,7 +32,8 @@ module Marconi.Core.Spec.Experiment (
   -- ** Main test suite
   indexingTestGroup,
   storageBasedModelProperty,
-  lastSyncBasedModelProperty,
+  lastSyncPointBasedModelProperty,
+  lastSyncPointsBasedModelProperty,
 
   -- ** Cache test suite
   cacheTestGroup,
@@ -130,7 +131,7 @@ import Control.Lens (
   (^..),
  )
 import Control.Monad (foldM, replicateM, void)
-import Control.Monad.Except (MonadError, runExceptT)
+import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
@@ -144,6 +145,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, mapMaybe)
 import Data.Monoid (Sum (Sum))
+import Data.String (fromString)
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import Data.Word (Word64)
@@ -508,13 +510,25 @@ indexingTestGroup indexerName runner =
               storageBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
-        "lastSync"
-        [ Tasty.testProperty "in a chain without rollback" $
-            Test.withMaxSuccess 5_000 $
-              lastSyncBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
-        , Tasty.testProperty "in a chain with rollbacks" $
-            Test.withMaxSuccess 10_000 $
-              lastSyncBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
+        "IsSync"
+        [ Tasty.testGroup
+            "lastSyncPoint"
+            [ Tasty.testProperty "in a chain without rollback" $
+                Test.withMaxSuccess 5_000 $
+                  lastSyncPointBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
+            , Tasty.testProperty "in a chain with rollbacks" $
+                Test.withMaxSuccess 10_000 $
+                  lastSyncPointBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
+            ]
+        , Tasty.testGroup
+            "lastSyncPoints"
+            [ Tasty.testProperty "in a chain without rollback" $
+                Test.withMaxSuccess 5_000 $
+                  lastSyncPointsBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
+            , Tasty.testProperty "in a chain with rollbacks" $
+                Test.withMaxSuccess 10_000 $
+                  lastSyncPointsBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
+            ]
         ]
     ]
 
@@ -564,7 +578,7 @@ storageBasedModelProperty gen runner =
         indexerEvents
 
 -- | The lastSyncPoint of an indexer is correctly set
-lastSyncBasedModelProperty
+lastSyncPointBasedModelProperty
   :: ( Core.IsIndex m event indexer
      , Core.IsSync m event indexer
      , Core.Point event ~ TestPoint
@@ -573,12 +587,35 @@ lastSyncBasedModelProperty
   => Gen [Item event]
   -> Model.IndexerTestRunner m event indexer
   -> Property
-lastSyncBasedModelProperty gen runner =
+lastSyncPointBasedModelProperty gen runner =
   behaveLikeModel
     gen
     runner
     (views model (maybe Core.genesis fst . listToMaybe))
     Core.lastSyncPoint
+
+-- | The 'Core.lastSyncPoints' of an indexer is correctly set
+lastSyncPointsBasedModelProperty
+  :: ( Core.IsIndex m event indexer
+     , Core.IsSync m event indexer
+     , Core.Point event ~ TestPoint
+     , Show event
+     )
+  => Gen [Item event]
+  -> Model.IndexerTestRunner m event indexer
+  -> Property
+lastSyncPointsBasedModelProperty gen runner = do
+  behaveLikeModel
+    gen
+    runner
+    ( views model $ \timedEvents ->
+        take 10 $
+          reverse $
+            List.sort $
+              fmap fst $
+                filter (\(_, maybeEvent) -> isJust maybeEvent) timedEvents
+    )
+    (Core.lastSyncPoints 10)
 
 sqliteModelIndexerWithFile
   :: FilePath -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
@@ -598,8 +635,9 @@ sqliteModelIndexerWithFile filepath = do
     \   )"
     "INSERT INTO index_model VALUES (?, ?, ?)"
     (Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor)
-    ( Core.GetLastSyncQuery
-        "SELECT pointSlotNo, pointHash FROM index_model ORDER BY pointSlotNo DESC LIMIT 1"
+    ( Core.GetLastSyncPointsQuery $ \limit ->
+        "SELECT pointSlotNo, pointHash FROM index_model ORDER BY pointSlotNo DESC LIMIT "
+          <> fromString (show limit)
     )
 
 sqliteModelIndexer :: ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
@@ -647,10 +685,10 @@ mixedModelNoMemoryIndexerWithFile
       (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer TestEvent)
 mixedModelNoMemoryIndexerWithFile f = do
   dbIndexer <- sqliteModelIndexerWithFile f
-  Core.standardMixedIndexer
-    0
-    1
-    dbIndexer
+  resultE <- runExceptT $ Core.standardMixedIndexer 0 1 dbIndexer
+  case resultE of
+    Left _err -> throwError $ Core.OtherIndexError "Could not create standardMixedIndexer"
+    Right v -> pure v
 
 mixedModelNoMemoryIndexer
   :: ExceptT
@@ -659,10 +697,10 @@ mixedModelNoMemoryIndexer
       (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer TestEvent)
 mixedModelNoMemoryIndexer = do
   dbIndexer <- sqliteModelIndexer
-  Core.standardMixedIndexer
-    0
-    1
-    dbIndexer
+  resultE <- runExceptT $ Core.standardMixedIndexer 0 1 dbIndexer
+  case resultE of
+    Left _err -> throwError $ Core.OtherIndexError "Could not create standardMixedIndexer"
+    Right v -> pure v
 
 mixedModelLowMemoryIndexer
   :: ExceptT
@@ -739,10 +777,15 @@ instance
   rollback = Core.rollbackVia $ underCoordinator . Core.wrappedIndexer
 
 instance
-  (MonadIO m, MonadError Core.IndexerError m, Ord (Core.Point event))
+  ( MonadIO m
+  , MonadError Core.IndexerError m
+  , Ord (Core.Point event)
+  , Core.HasGenesis (Core.Point event)
+  )
   => Core.IsSync m event (UnderCoordinator indexer)
   where
   lastSyncPoint = Core.lastSyncPointVia underCoordinator
+  lastSyncPoints = Core.lastSyncPointsVia underCoordinator
 
 instance
   (Core.Closeable (ExceptT Core.IndexerError IO) Core.Coordinator)
@@ -762,7 +805,7 @@ instance
     pure res
 
 coordinatorIndexerRunner
-  :: ( Core.WorkerIndexer (ExceptT Core.IndexerError IO) event wrapped
+  :: ( Core.WorkerIndexerType (ExceptT Core.IndexerError IO) event wrapped
      , Core.HasGenesis (Core.Point event)
      , Ord (Core.Point event)
      )
@@ -773,13 +816,14 @@ coordinatorIndexerRunner wRunner =
     monadicExceptTIO
     $ do
       wrapped <- wRunner ^. Model.indexerGenerator
-      (t, run) <-
+      workerIndexer <-
         lift $
           Core.createWorker
             "TestWorker"
             (pure . pure)
             wrapped
-      UnderCoordinator . Core.IndexTransformer (IndexerMVar t) <$> lift (Core.mkCoordinator [run])
+      UnderCoordinator . Core.IndexTransformer (IndexerMVar $ Core.workerIndexerVar workerIndexer)
+        <$> lift (Core.mkCoordinator [Core.worker workerIndexer])
 
 data ParityQuery = OddTestEvent | EvenTestEvent
   deriving (Eq, Ord, Show)
@@ -1429,12 +1473,6 @@ propWithResumeShouldDrainAlreadySyncedEvents =
         -> m [Core.Timed TestPoint TestEvent]
       getIndexerEvents indexer' = fromRight [] <$> Core.queryLatestEither Core.allEvents indexer'
 
-      getLastSyncPoints
-        :: (Functor m, Core.IsSync m event indexer)
-        => indexer event
-        -> m [Core.Point event]
-      getLastSyncPoints indexer' = fmap pure $ Core.lastSyncPoint indexer'
-
       applyRollbacksOnChain :: (Eq event) => [Item event] -> [Item event]
       applyRollbacksOnChain chain =
         let (IndexerModel events) = runModel chain
@@ -1458,14 +1496,11 @@ propWithResumeShouldDrainAlreadySyncedEvents =
         -- Initialize a 'WithResume' indexer using the previously created ListIndexer.
         -- Then, re-index the full chain from scratch.
         -- Resume indexing by restarting from genesis and using last immutable sync point.
-        let getResumablePoints securityParam ix = do
-              tes <- fmap (List.sortOn $ view Core.point) $ getIndexerEvents ix
-              pure $ fmap (view Core.point) $ reverse $ take (fromIntegral securityParam + 1) $ reverse tes
         initialIndexerWithResume <-
           GenM.run $
             Core.withResume
-              getResumablePoints
-              k
+              Core.lastSyncPoints
+              (k + 1)
               indexer
         let immutableChainPart = take (length chain - fromIntegral k) chain
             immutableChainPartWithoutRollbacks = applyRollbacksOnChain immutableChainPart
@@ -1484,7 +1519,13 @@ propWithResumeShouldDrainAlreadySyncedEvents =
         (expectedChainEvents :: [TestEvent]) <- fmap (fmap (view Core.event)) $ getIndexerEvents listIndexer
 
         -- Calculate some statistics for 'cover'.
-        resumedIndexerLastSyncPoints <- getLastSyncPoints resumedIndexer
+        resumedIndexerLastSyncPoints <-
+          fmap
+            ( NonEmpty.toList
+                . fromMaybe (NonEmpty.singleton Core.genesis)
+                . NonEmpty.nonEmpty
+            )
+            $ Core.lastSyncPoints (k + 1) resumedIndexer
         let resumedIndexerLowestLastSyncPoint = minimum resumedIndexerLastSyncPoints
         let resumedIndexerHighestLastSyncPoint = maximum resumedIndexerLastSyncPoints
         let chainHasAtLeastOnePointBeforeLastSyncedPoint = isJust $ find (\item -> item ^. testPoint < resumedIndexerLowestLastSyncPoint) fullChain

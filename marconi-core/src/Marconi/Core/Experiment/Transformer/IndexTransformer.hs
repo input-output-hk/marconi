@@ -17,6 +17,7 @@ module Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexAllDescendingVia,
   indexAllVia,
   lastSyncPointVia,
+  lastSyncPointsVia,
   closeVia,
   getDatabasePathVia,
   queryVia,
@@ -29,7 +30,7 @@ import Data.Kind (Type)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
   Queryable (query),
   Resetable (reset),
   indexAll,
@@ -119,11 +120,23 @@ lastSyncPointVia
   -> m (Point event)
 lastSyncPointVia l = lastSyncPoint . view l
 
+{- | Helper to implement the @lastSyncPoints@ functon of 'IsSync' when we use a wrapper.
+ If you don't want to perform any other side logic, use @deriving via@ instead.
+-}
+lastSyncPointsVia
+  :: (IsSync m event indexer)
+  => Getter s (indexer event)
+  -> Word
+  -> s
+  -> m [Point event]
+lastSyncPointsVia l n = lastSyncPoints n . view l
+
 instance
   (IsSync event m index)
   => IsSync event m (IndexTransformer config index)
   where
   lastSyncPoint = lastSyncPointVia wrappedIndexer
+  lastSyncPoints = lastSyncPointsVia wrappedIndexer
 
 {- | Helper to implement the @close@ functon of 'Closeable' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.

@@ -14,13 +14,17 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   connection,
   insertPlan,
   InsertPointQuery (InsertPointQuery, getInsertPointQuery),
-  GetLastSyncQuery (GetLastSyncQuery, getLastSyncQuery),
-  dbLastSync,
+  GetLastSyncPointsQuery (
+    GetLastSyncPointsQuery,
+    getLastSyncPointsQuery
+  ),
   mkSqliteIndexer,
   mkSingleInsertSqliteIndexer,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
+  lastSyncPointsQuery,
+  dbLastSync,
   SQLInsertPlan (SQLInsertPlan, planInsert, planExtractor),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
 
@@ -33,20 +37,20 @@ import Control.Exception (Handler (Handler), catches)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.), (^..))
 import Control.Monad (when, (<=<))
-import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.Except (MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-
+import Data.Foldable (Foldable (toList), traverse_)
+import Data.List qualified as List
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Maybe (catMaybes)
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
-
-import Data.Foldable (Foldable (toList), traverse_)
-import Data.Maybe (catMaybes)
 import Database.SQLite.Simple.ToField qualified as SQL
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
   IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
  )
 import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError, InvalidIndexer),
@@ -85,8 +89,10 @@ data SQLRollbackPlan point = forall a.
   -- rows with a point higher than 'point'.
   }
 
--- : A new type to get the last sync point from an indexer, the query should not take any param
-newtype GetLastSyncQuery = GetLastSyncQuery {getLastSyncQuery :: SQL.Query}
+-- | A newtype to get the 'n' last sync points from an indexer.
+newtype GetLastSyncPointsQuery = GetLastSyncPointsQuery
+  { getLastSyncPointsQuery :: Word -> SQL.Query
+  }
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
 data SQLiteIndexer event = SQLiteIndexer
@@ -101,6 +107,8 @@ data SQLiteIndexer event = SQLiteIndexer
   -- ^ The query to keep track of the indexed point
   , _rollbackPlan :: [SQLRollbackPlan (Point event)]
   -- ^ The list of tables we update on rollback, with the information required to update them
+  , _lastSyncPointsQuery :: GetLastSyncPointsQuery
+  -- ^ The SQL query to fetch the last sync points from the indexer.
   , _dbLastSync :: Point event
   -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
   }
@@ -113,7 +121,8 @@ makeLenses 'SQLiteIndexer
  that we set 'dbLastSync' thanks to the provided query
 -}
 mkSqliteIndexer
-  :: ( MonadIO m
+  :: forall event m
+   . ( MonadIO m
      , MonadError IndexerError m
      , HasGenesis (Point event)
      , SQL.FromRow (Point event)
@@ -127,23 +136,25 @@ mkSqliteIndexer
   -- ^ we may omit the insert point query if the SQLInsertPlan makes it redundant
   -> [SQLRollbackPlan (Point event)]
   -- ^ the rollbackQuery
-  -> GetLastSyncQuery
-  -- ^ the lastSyncQuery
+  -> GetLastSyncPointsQuery
+  -- ^ The SQL query to fetch the last sync points from the indexer.
   -> m (SQLiteIndexer event)
-mkSqliteIndexer _databasePath _creationStatements _insertPlan _insertPoint _rollbackPlan lastSyncQuery =
-  let getLastSync h = do
-        res <- runLastSyncQuery h $ getLastSyncQuery lastSyncQuery
-        case res of
-          [] -> pure genesis
-          [x] -> pure x
-          _other -> throwError (InvalidIndexer "Ambiguous sync point")
+mkSqliteIndexer _databasePath _creationStatements _insertPlan _insertPoint _rollbackPlan _lastSyncPointsQuery =
+  let getLastSyncPoint :: SQL.Connection -> m (Point event)
+      getLastSyncPoint h = do
+        res <-
+          runLastSyncPointsQuery
+            h
+            _lastSyncPointsQuery
+            1
+        pure $ maybe genesis NonEmpty.last $ NonEmpty.nonEmpty res
    in do
         _connection <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
         traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
         -- allow for concurrent insert/query.
         -- see SQLite WAL, https://www.sqlite.org/wal.html
         liftIO $ SQL.execute_ _connection "PRAGMA journal_mode=WAL"
-        _dbLastSync <- getLastSync _connection
+        _dbLastSync <- getLastSyncPoint _connection
         pure $
           SQLiteIndexer
             { _databasePath
@@ -151,6 +162,7 @@ mkSqliteIndexer _databasePath _creationStatements _insertPlan _insertPoint _roll
             , _insertPlan
             , _insertPoint
             , _rollbackPlan
+            , _lastSyncPointsQuery
             , _dbLastSync
             }
 
@@ -175,8 +187,8 @@ mkSingleInsertSqliteIndexer
   -- ^ the insert query
   -> SQLRollbackPlan (Point event)
   -- ^ the rollback query
-  -> GetLastSyncQuery
-  -- ^ the lastSyncQuery
+  -> GetLastSyncPointsQuery
+  -- ^ The SQL query to fetch the last sync points from the indexer.
   -> m (SQLiteIndexer event)
 mkSingleInsertSqliteIndexer path extract create insert rollback' =
   mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) insert]] Nothing [rollback']
@@ -260,14 +272,15 @@ indexEvents evts@(e : _) indexer = do
   runIndexQueries (indexer ^. connection) evts (indexer ^. insertPlan) (indexer ^. insertPoint)
   setDbLastSync (e ^. point)
 
-runLastSyncQuery
+runLastSyncPointsQuery
   :: (MonadError IndexerError m, MonadIO m, SQL.FromRow r)
   => SQL.Connection
-  -> SQL.Query
+  -> GetLastSyncPointsQuery
+  -> Word
   -> m [r]
-runLastSyncQuery conn lastSyncQuery =
+runLastSyncPointsQuery conn (GetLastSyncPointsQuery mkQuery) n =
   either throwError pure <=< liftIO $
-    handleSQLErrors (SQL.query conn lastSyncQuery ())
+    handleSQLErrors (SQL.query_ conn (mkQuery n))
 
 instance
   (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))
@@ -298,13 +311,24 @@ instance
         traverse_ rollbackTable (indexer ^. rollbackPlan)
     pure $ indexer & dbLastSync .~ p
 
-instance (MonadIO m) => IsSync m event SQLiteIndexer where
+instance
+  (MonadIO m, SQL.FromRow (Point event))
+  => IsSync m event SQLiteIndexer
+  where
   lastSyncPoint indexer =
     pure $ indexer ^. dbLastSync
 
--- TODO This often results in the runtime error:
--- SQLite3 returned ErrorBusy while attempting to perform close: unable to close due to unfinalized statements or unfinished backups
--- Should use 'withConnection' instead.
+  lastSyncPoints :: Word -> SQLiteIndexer event -> m [Point event]
+  lastSyncPoints n indexer = do
+    let getLastSyncPointsQuery = indexer ^. lastSyncPointsQuery
+    resultE <- runExceptT $ runLastSyncPointsQuery (indexer ^. connection) getLastSyncPointsQuery n
+    case resultE of
+      -- TODO Revisit this. Should probably throw error. However, can't just add constraint
+      -- 'MonadError IndexerError event' because then it conflicts with other functions which have
+      -- 'MonadError (QueryError query) event)'
+      Left _err -> List.singleton <$> lastSyncPoint indexer -- throwError $ OtherIndexError ""
+      Right v -> pure v
+
 instance (MonadIO m) => Closeable m SQLiteIndexer where
   close indexer = liftIO $ SQL.close $ indexer ^. connection
 

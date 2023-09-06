@@ -7,18 +7,18 @@ module Marconi.ChainIndex.Experimental.Indexers.SyncHelper (
   syncSizeLimitTrigger,
   withSyncTable,
   syncInsertPlan,
-  syncLastPointQuery,
+  syncLastPointsQuery,
   syncHistoryQuery,
   syncRollbackPlan,
 ) where
 
 import Cardano.Api qualified as C
+import Data.String (fromString)
 import Data.Text qualified as Text
 import Data.Word (Word64)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core.Experiment qualified as Core
 
 -- | A simple table to store the passed chainpoints
@@ -26,7 +26,9 @@ syncTableCreation :: SQL.Query
 syncTableCreation =
   [sql|CREATE TABLE IF NOT EXISTS sync (slotNo INT PRIMARY KEY, blockHeaderHash BLOB)|]
 
-{- | Used to keep only the @securityParam + 1@ most recent rows of the sync table.
+{- | NOTE: NOT AT ALL PERFORMANT. DO NOT USE.
+
+Used to keep only the @securityParam + 1@ most recent rows of the sync table.
 Do not use if some of your request relies on data from the sync table
 -}
 syncSizeLimitTrigger :: Word64 -> SQL.Query
@@ -52,9 +54,13 @@ syncInsertPlan :: Core.InsertPointQuery
 syncInsertPlan =
   Core.InsertPointQuery [sql|INSERT INTO sync (slotNo, blockHeaderHash) VALUES (?, ?)|]
 
+-- TODO Revisit comment
+
 -- | Query for the last point of an indexer
-syncLastPointQuery :: Core.GetLastSyncQuery
-syncLastPointQuery = Core.GetLastSyncQuery $ syncHistoryQuery 1
+syncLastPointsQuery :: Core.GetLastSyncPointsQuery
+syncLastPointsQuery = Core.GetLastSyncPointsQuery syncHistoryQuery
+
+-- TODO Revisit comment
 
 {- | Query the last sync point up to the first immutable event
 
@@ -62,10 +68,9 @@ Used to find resuming points on restart.
 
 Note that if you want to get one stable point, you need to pass @securityParam + 1@
 -}
-syncHistoryQuery :: SecurityParam -> SQL.Query
-syncHistoryQuery securityParam =
-  [sql|SELECT * FROM sync ORDER BY slotNo DESC LIMIT |]
-    <> SQL.Query (Text.pack $ show securityParam)
+syncHistoryQuery :: Word -> SQL.Query
+syncHistoryQuery n =
+  [sql|SELECT * FROM sync ORDER BY slotNo DESC LIMIT |] <> fromString (show n)
 
 -- | Standard rollback plan for the sync table
 syncRollbackPlan :: Core.SQLRollbackPlan C.ChainPoint

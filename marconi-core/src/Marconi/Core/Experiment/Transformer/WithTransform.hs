@@ -20,7 +20,7 @@ import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
   IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
   Queryable (query),
   Resetable (reset),
  )
@@ -32,6 +32,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
+  lastSyncPointsVia,
   queryVia,
   resetVia,
   rollbackVia,
@@ -109,6 +110,7 @@ instance
   => IsSync m event (WithTransform indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
+  lastSyncPoints = lastSyncPointsVia unwrapMap
 
 instance (HasDatabasePath indexer) => HasDatabasePath (WithTransform indexer output) where
   getDatabasePath = getDatabasePathVia unwrapMap

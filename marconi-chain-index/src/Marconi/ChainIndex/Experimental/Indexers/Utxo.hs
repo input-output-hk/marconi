@@ -43,38 +43,35 @@ module Marconi.ChainIndex.Experimental.Indexers.Utxo (
   getUtxosFromTxBody,
 ) where
 
+import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
 import Control.Lens (
   (&),
   (.~),
   (^.),
  )
 import Control.Lens qualified as Lens
+import Control.Monad.Except (MonadError, guard)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-
 import Data.Aeson.TH qualified as Aeson
 import Data.Either (fromRight)
+import Data.Function (on)
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Maybe (mapMaybe)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
-
-import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as C
-import Control.Concurrent (MVar)
-import Control.Monad.Except (MonadError, guard)
-import Data.Function (on)
-import Data.List.NonEmpty (NonEmpty ((:|)))
-import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (mapMaybe)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
+  StandardWorker,
   StandardWorkerConfig,
-  catchupWorkerWithFilter,
+  mkStandardWorkerWithFilter,
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
@@ -162,7 +159,7 @@ mkUtxoIndexer path = do
     [ Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
-    Sync.syncLastPointQuery
+    Sync.syncLastPointsQuery
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
@@ -173,7 +170,7 @@ utxoWorker
   -- ^ Specific configuration of the indexer (mostly for logging purpose)
   -> FilePath
   -- ^ SQLite database location
-  -> n (MVar (StandardUtxoIndexer m), Core.WorkerM m (WithDistance input) (Core.Point UtxoEvent))
+  -> n (StandardWorker m input UtxoEvent Core.SQLiteIndexer)
 utxoWorker workerConfig utxoConfig path = do
   indexer <- mkUtxoIndexer path
   -- A helper to filter the provided utxos
@@ -197,7 +194,7 @@ utxoWorker workerConfig utxoConfig path = do
           . mapMaybe (utxoTransform utxoConfig)
           . NonEmpty.toList
   liftIO $
-    catchupWorkerWithFilter
+    mkStandardWorkerWithFilter
       workerConfig
       filtering
       indexer
