@@ -4,6 +4,7 @@ module Main (main) where
 
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Tracing (defaultConfigTesting)
+import Control.Monad.Reader (runReaderT)
 import Marconi.Sidechain.Api.HttpServer (marconiApp)
 import Marconi.Sidechain.CLI (parseCliArgs)
 import Marconi.Sidechain.CLI qualified as CLI
@@ -34,7 +35,7 @@ main = do
       cliArgs <- mkCliArgs tempDir
       env <- mkSidechainEnv 2160 Nothing Nothing Nothing cliArgs trace
       Warp.testWithApplication (pure $ marconiApp env) $ \port -> do
-        rpcClientAction <- mkRpcClientAction env port
+        rpcClientAction <- flip runReaderT env $ mkRpcClientAction port
         defaultMain $ tests env rpcClientAction
 
 tests :: SidechainEnv -> RpcClientAction -> TestTree

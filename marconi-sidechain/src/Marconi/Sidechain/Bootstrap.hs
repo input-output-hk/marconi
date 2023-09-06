@@ -7,7 +7,7 @@ module Marconi.Sidechain.Bootstrap where
 import Cardano.Api qualified as C
 import Control.Concurrent.STM (atomically)
 import Control.Lens (view, (^.))
-import Control.Monad.Reader (ReaderT, ask, lift)
+import Control.Monad.Reader (ReaderT, lift)
 import Marconi.ChainIndex.Indexers (epochStateWorker, mintBurnWorker, runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
@@ -41,24 +41,25 @@ import System.FilePath ((</>))
 -- | Run Sidechain indexers
 runSidechainIndexers :: ReaderT SidechainEnv IO ()
 runSidechainIndexers = do
-  env <- ask
   cliArgs <- view sidechainCliArgs
   trace <- view sidechainTrace
+  env <- view sidechainIndexersEnv
+
   let addressUtxoCallback :: State UtxoHandle -> IO ()
       addressUtxoCallback =
         atomically
-          . AddressUtxo.updateEnvState (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
+          . AddressUtxo.updateEnvState (env ^. sidechainAddressUtxoIndexer)
   let epochStateCallback :: State EpochStateHandle -> IO ()
       epochStateCallback =
         atomically
           . EpochState.updateEnvState
-            (env ^. sidechainIndexersEnv . sidechainEpochStateIndexer . epochStateIndexerEnvIndexer)
+            (env ^. sidechainEpochStateIndexer . epochStateIndexerEnvIndexer)
   let mintBurnCallback :: State MintBurnHandle -> IO ()
       dbPath = CLI.dbDir cliArgs
       mintBurnCallback =
         atomically
           . MintBurn.updateEnvState
-            (env ^. sidechainIndexersEnv . sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
+            (env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
       utxoIndexerConfig =
         UtxoIndexerConfig
           { ucTargetAddresses = CLI.targetAddresses cliArgs
