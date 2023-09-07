@@ -1,4 +1,4 @@
-option --match-asset-id: RawBytesHexErrorRawBytesDecodeFail "deadbeef0000000000000000000000000000000000000000000000000000000000" AssetName (SerialiseAsRawBytesError {unSerialiseAsRawBytesError = "Unable to deserialise AssetName (the bytestring should be no longer than 32 bytes long which corresponds to a hex representation of 64 characters)"})
+option --match-asset-id: Failed to deserialise deadbeef0000000000000000000000000000000000000000000000000000000000 as AssetName. Unable to deserialise AssetName (the bytestring should be no longer than 32 bytes long which corresponds to a hex representation of 64 characters)
 
 Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
                          --node-config-path ARG (-d|--db-dir DIR) 
