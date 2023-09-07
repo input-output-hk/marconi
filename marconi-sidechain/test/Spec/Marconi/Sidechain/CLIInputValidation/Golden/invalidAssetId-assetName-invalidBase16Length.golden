@@ -1,4 +1,4 @@
-option --match-asset-id: RawBytesHexErrorBase16DecodeFail "deadbeeef" "invalid bytestring size"
+option --match-asset-id: Expected Base16-encoded bytestring, but got deadbeeef; invalid bytestring size
 
 Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
                          --node-config-path ARG (-d|--db-dir DIR) 

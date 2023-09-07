@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
@@ -317,17 +318,32 @@ commonMaybeTargetAssetParser =
 parseAsset :: Text -> Opt.ReadM (C.PolicyId, Maybe C.AssetName)
 parseAsset arg = do
   let parseAssetName :: Text -> Opt.ReadM C.AssetName
-      parseAssetName = either (fail . show) pure . C.deserialiseFromRawBytesHex C.AsAssetName . Text.encodeUtf8
+      parseAssetName =
+        either (fail . C.displayError) pure . C.deserialiseFromRawBytesHex C.AsAssetName . Text.encodeUtf8
 
       parsePolicyId :: Text -> Opt.ReadM C.PolicyId
-      parsePolicyId = either (fail . show) pure . C.deserialiseFromRawBytesHex C.AsPolicyId . Text.encodeUtf8
+      parsePolicyId =
+        either (fail . displayError') pure . C.deserialiseFromRawBytesHex C.AsPolicyId . Text.encodeUtf8
+
+      -- Modify the error message to avoid mentioning `ScriptHash` when a `PolicyId` was being
+      -- given. We get this because `PolicyId` is a `newtype` of `ScriptHash`. The only possible
+      -- cause of failure in a `RawBytesHexErrorRawBytesDecodeFail` error is an incorrect length.
+      -- (See `Cardano.Crypto.Hash.hashFromBytes`.)
+      displayError' =
+        C.displayError . \case
+          C.RawBytesHexErrorRawBytesDecodeFail input asType (C.SerialiseAsRawBytesError _) ->
+            C.RawBytesHexErrorRawBytesDecodeFail
+              input
+              asType
+              (C.SerialiseAsRawBytesError "Incorrect number of bytes")
+          e -> e
   case Text.splitOn "." arg of
     [rawPolicyId, rawAssetName] ->
       (,) <$> parsePolicyId rawPolicyId <*> (Just <$> parseAssetName rawAssetName)
     [rawPolicyId] ->
       (,Nothing) <$> parsePolicyId rawPolicyId
     _other ->
-      fail $ "Invalid format: expected POLICY_ID[,ASSET_NAME]. Got " <> Text.unpack arg
+      fail $ "Invalid format: expected POLICY_ID[.ASSET_NAME]. Got " <> Text.unpack arg
 
 -- | Allow the user to specify how deep must be a block before we index it.
 commonMinIndexingDepthParser :: Opt.Parser IndexingDepth
