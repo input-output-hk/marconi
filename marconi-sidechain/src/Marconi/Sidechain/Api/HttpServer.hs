@@ -27,7 +27,6 @@ import Marconi.Sidechain.Api.Routes (
   API,
   GetBurnTokenEventsParams (afterTx, assetName, beforeSlotNo, policyId),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
-  GetCurrentSyncedBlockParams,
   GetCurrentSyncedBlockResult,
   GetEpochActiveStakePoolDelegationResult,
   GetEpochNonceResult,
@@ -52,6 +51,7 @@ import Marconi.Sidechain.Error (
 import Network.JsonRpc.Server.Types ()
 import Network.JsonRpc.Types (
   JsonRpcErr (JsonRpcErr),
+  UnusedRequestParams,
   mkJsonRpcParseErr,
  )
 import Network.Wai.Handler.Warp (runSettings)
@@ -128,8 +128,8 @@ getMetricsHandler = liftIO $ Text.decodeUtf8 . BS.toStrict <$> P.exportMetricsAs
 
 -- | Prints TargetAddresses Bech32 representation as thru JsonRpc
 getTargetAddressesQueryHandler
-  :: String
-  -- ^ Will always be an empty string as we are ignoring this param, and returning everything
+  :: UnusedRequestParams
+  -- ^ Will be an empty string, empty object, or null, as we are ignoring this param, and returning everything
   -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) [Text])
 getTargetAddressesQueryHandler _ = do
   indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
@@ -137,8 +137,8 @@ getTargetAddressesQueryHandler _ = do
 
 -- | Handler for retrieving current synced chain point.
 getCurrentSyncedBlockHandler
-  :: GetCurrentSyncedBlockParams
-  -- ^ Will always be an empty string as we are ignoring this param, and returning everything
+  :: UnusedRequestParams
+  -- ^ Will be an empty string, empty object, or null, as we are ignoring this param, and returning everything
   -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetCurrentSyncedBlockResult)
 getCurrentSyncedBlockHandler _ = do
   indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer

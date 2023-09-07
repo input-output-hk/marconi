@@ -12,7 +12,10 @@ import Marconi.Sidechain.Api.Routes (
  )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.JsonRpc.Client.Types ()
-import Network.JsonRpc.Types (JsonRpcResponse (Ack, Errors, Result))
+import Network.JsonRpc.Types (
+  JsonRpcResponse (Ack, Errors, Result),
+  UnusedRequestParams (UnusedRequestParams),
+ )
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Client (
   BaseUrl (BaseUrl),
@@ -46,7 +49,7 @@ main = do
   let boundaries = fromRight (error "the provided interval is correct") (interval Nothing (Just maxBound))
   -- RPC calls
   msg <- rpcEcho "marconi client calling ???" --  return the echo message
-  addresses <- rpcTargets "" --  get the targetAddresss
+  addresses <- rpcTargets UnusedRequestParams --  get the targetAddresss
   --  get utxos for this address
   utxos <- rpcUtxos $ GetUtxosFromAddressParams bech32Address boundaries
   printResults msg

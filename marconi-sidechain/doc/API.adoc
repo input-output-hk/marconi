@@ -10,9 +10,9 @@ In this application, the following HTTP endpoints/routes are available:
 
 [%header%autowidth,format=csv]
 |===
-Route,Methods,ContentType
+Route,Methods,Content Type
 `/json-rpc`,`POST`,JSON
-`/addresses`,`GET`,Text
+`/addresses`,`GET`,JSON
 `/metrics`,`GET`,Text
 `/params`,`GET`,JSON
 `/time`,`GET`,Text
@@ -144,7 +144,7 @@ Echoes a message back as a JSON-RPC response.
 
 ==== Pre-conditions
 
-None. Any string may be given as input.
+Any string may be given as input.
 
 ==== Post-conditions
 
@@ -189,7 +189,7 @@ Returns the list of target addresses represented as Bech32 text, as an array of 
 
 ==== Pre-conditions
 
-None as the input parameter is unused.
+Although the input parameter is unused, it's required to be an "empty value": an empty object, an empty string, or `null`.
 
 ==== Post-conditions
 
@@ -206,8 +206,12 @@ Used for checking the server configuration.
 ====
 ```JSON
 {
-  "type": "string",
   "description": "Unused",
+  "oneOf": [
+    { "const": {} },
+    { "const": "" },
+    { "const": null },
+  ]
 }
 ```
 ====
@@ -224,9 +228,18 @@ Used for checking the server configuration.
 ```
 ====
 
-[NOTE]
+.JSON-RPC error data object
+[%collapsible]
 ====
-This method does not return errors.
+```JSON
+{
+  "oneOf": [
+    {
+      "const": "The param value must be empty (use '{}', 'null' or empty string)"
+    }
+  ]
+}
+```
 ====
 
 === getCurrentSyncedBlock
@@ -245,7 +258,7 @@ Taking the chainpoint before ensure that we have consistent infomation across al
 
 ==== Pre-conditions
 
-None as there are no required inputs.
+Although the input parameter is unused, it's required to be an "empty value": an empty object, an empty string, or `null`.
 
 ==== Post-conditions
 
@@ -263,18 +276,14 @@ It’s triggered when a user calls the Sidechain API to get info about the state
 ====
 ```JSON
 {
+  "description": "Unused",
   "oneOf": [
     { "const": {} },
     { "const": "" },
     { "const": null },
-    { "const": undefined },
+  ]
 }
 ```
-====
-
-[NOTE]
-====
-The param object can be fully omitted for this method.
 ====
 
 .JSON-RPC result object
@@ -340,7 +349,7 @@ The param object can be fully omitted for this method.
 {
   "oneOf": [
     {
-      "const": "The param value must be empty (use '{}', 'null', empty string or omit the param object entirely)."
+      "const": "The param value must be empty (use '{}', 'null' or empty string)"
     }
   ]
 }

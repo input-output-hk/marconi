@@ -24,6 +24,7 @@ module Network.JsonRpc.Types (
   Request (..),
   JsonRpcErr (..),
   JsonRpcResponse (..),
+  UnusedRequestParams (..),
 
   -- ** Smart constructors for standard JSON-RPC errors
   mkJsonRpcParseErr,
@@ -40,7 +41,7 @@ import Control.Applicative (liftA3, (<|>))
 import Data.Aeson (
   FromJSON (parseJSON),
   ToJSON (toJSON),
-  Value (Null),
+  Value (Null, Object, String),
   object,
   withObject,
   (.:),
@@ -176,6 +177,17 @@ instance (ToJSON e, ToJSON r) => ToJSON (JsonRpcResponse e r) where
           , "message" .= msg
           , "data" .= err
           ]
+
+data UnusedRequestParams = UnusedRequestParams
+
+instance FromJSON UnusedRequestParams where
+  parseJSON Null = pure UnusedRequestParams
+  parseJSON (String "") = pure UnusedRequestParams
+  parseJSON (Object o) | null o = pure UnusedRequestParams
+  parseJSON _ = fail "The param value must be empty (use '{}', 'null' or empty string)"
+
+instance ToJSON UnusedRequestParams where
+  toJSON = const Null
 
 -- | A JSON RPC server handles any number of methods.
 data RawJsonRpc api

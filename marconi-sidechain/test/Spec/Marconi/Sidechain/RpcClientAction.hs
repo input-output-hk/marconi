@@ -20,7 +20,6 @@ import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ
 import Marconi.Sidechain.Api.Routes (
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult,
-  GetCurrentSyncedBlockParams (GetCurrentSyncedBlockParams),
   GetCurrentSyncedBlockResult,
   GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult,
@@ -35,7 +34,7 @@ import Marconi.Sidechain.Env (
  )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.JsonRpc.Client.Types ()
-import Network.JsonRpc.Types (JsonRpcResponse)
+import Network.JsonRpc.Types (JsonRpcResponse, UnusedRequestParams (UnusedRequestParams))
 import Network.Wai.Handler.Warp (Port)
 import Network.Wai.Handler.Warp qualified as Warp
 import Servant.API ((:<|>) ((:<|>)))
@@ -73,7 +72,7 @@ mkRpcClientAction port = do
       (mkInsertUtxoEventsCallback env)
       (mkInsertMintBurnEventsCallback env)
       (\a -> rpcUtxos $ GetUtxosFromAddressParams a (Utxo.lessThanOrEqual maxBound))
-      (rpcSyncPoint GetCurrentSyncedBlockParams)
+      (rpcSyncPoint UnusedRequestParams)
       (\(p, a) -> rpcMinting $ GetBurnTokenEventsParams p a Nothing Nothing)
 
 baseUrl :: Warp.Port -> BaseUrl
