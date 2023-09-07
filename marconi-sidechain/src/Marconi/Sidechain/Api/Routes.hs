@@ -36,7 +36,7 @@ import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Marconi.Sidechain.CLI (CliArgs)
-import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
+import Network.JsonRpc.Types (JsonRpc, RawJsonRpc, UnusedRequestParams)
 import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
 
 -- | marconi-sidechain APIs
@@ -62,12 +62,17 @@ type RpcAPI =
 
 type RpcEchoMethod = JsonRpc "echo" String String String
 
-type RpcTargetAddressesMethod = JsonRpc "getTargetAddresses" String String [Text]
+type RpcTargetAddressesMethod =
+  JsonRpc
+    "getTargetAddresses"
+    UnusedRequestParams
+    String
+    [Text]
 
 type RpcCurrentSyncedBlockMethod =
   JsonRpc
     "getCurrentSyncedBlock"
-    GetCurrentSyncedBlockParams
+    UnusedRequestParams
     String
     GetCurrentSyncedBlockResult
 
@@ -124,17 +129,6 @@ instance FromJSON SidechainTip where
           bn <- v .: "blockNo"
           pure $ SidechainTip $ C.ChainTip slotNo bhh bn
      in Aeson.withObject "ChainTip" parseTip obj
-
-data GetCurrentSyncedBlockParams = GetCurrentSyncedBlockParams
-
-instance FromJSON GetCurrentSyncedBlockParams where
-  parseJSON (Aeson.String "") = pure GetCurrentSyncedBlockParams
-  parseJSON Aeson.Null = pure GetCurrentSyncedBlockParams
-  parseJSON (Aeson.Object o) | null o = pure GetCurrentSyncedBlockParams
-  parseJSON _ = fail "The param value must be empty (use '{}', 'null', empty string"
-
-instance ToJSON GetCurrentSyncedBlockParams where
-  toJSON = const Aeson.Null
 
 data GetCurrentSyncedBlockResult
   = GetCurrentSyncedBlockResult (WithOrigin BlockInfo) SidechainTip
