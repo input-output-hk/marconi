@@ -8,12 +8,14 @@
 module Marconi.Sidechain.Api.HttpServer where
 
 import Cardano.Api ()
+import Cardano.BM.Trace (logDebug)
 import Control.Lens (view, (^.))
 import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
 import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.ByteString qualified as BS
+import Data.Default (def)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, pack, unpack)
 import Data.Text qualified as Text
@@ -44,6 +46,7 @@ import Marconi.Sidechain.Env (
   sidechainQueryEnv,
   sidechainQueryEnvHttpSettings,
   sidechainQueryEnvSecurityParam,
+  sidechainTrace,
  )
 import Marconi.Sidechain.Error (
   QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult, UntrackedPolicy),
@@ -55,18 +58,35 @@ import Network.JsonRpc.Types (
   mkJsonRpcParseErr,
  )
 import Network.Wai.Handler.Warp (runSettings)
+import Network.Wai.Middleware.RequestLogger (
+  Destination (Callback),
+  OutputFormat (DetailedWithSettings),
+  destination,
+  mPrelogRequests,
+  mkRequestLogger,
+  outputFormat,
+ )
 import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (Application, Handler (Handler), ServerError, ServerT, hoistServer, serve)
+import System.Log.FastLogger (fromLogStr)
 
 -- | Bootstraps the HTTP server
 runHttpServer :: ReaderT SidechainEnv IO ()
 runHttpServer = do
   env <- ask
-  lift $
-    runSettings
+  requestLogger <-
+    lift $
+      mkRequestLogger
+        def
+          { destination = Callback $ logDebug (env ^. sidechainTrace) . Text.decodeUtf8 . fromLogStr
+          , outputFormat = DetailedWithSettings def{mPrelogRequests = True}
+          }
+  lift
+    $ runSettings
       (env ^. sidechainQueryEnv . sidechainQueryEnvHttpSettings)
-      (marconiApp env)
+    $ requestLogger
+    $ marconiApp env
 
 marconiApp :: SidechainEnv -> Application
 marconiApp env =
