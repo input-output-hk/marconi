@@ -1,7 +1,4 @@
-# This file is part of the IOGX template and is documented at the link below:
-# https://www.github.com/input-output-hk/iogx#33-nixcabal-projectnix
-
-{ inputs, inputs', meta, config, pkgs, l, ... }:
+{ repoRoot, inputs, pkgs, lib, ... }:
 
 let
 
@@ -10,12 +7,7 @@ let
   isCross = pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform;
 
 
-  sha256map = {
-    "https://github.com/input-output-hk/cardano-node"."a158a679690ed8b003ee06e1216ac8acd5ab823d" = "sha256-uY7wPyCgKuIZcGu0+vGacjGw2kox8H5ZsVGsfTNtU0c=";
-  };
-
-
-  packages = {
+  packages = { config, ... }: {
     # These rely on the plutus-tx-plugin, so they don't cross-compile.
     marconi-chain-index.components.tests.marconi-chain-index-test.buildable = l.mkForce (!isCross);
     marconi-chain-index.components.tests.marconi-chain-index-test-compare-cardano-db-sync.buildable = l.mkForce (!isCross);
@@ -47,22 +39,26 @@ let
     # ghc: ghc-iserv terminated (1)
     # The error is here: https://ci.iog.io/build/265023/nixlog/2
     # ```
+<<<<<<< HEAD
     marconi-chain-index.components.sublibs.json-rpc.buildable = l.mkForce (!isCross);
     marconi-core-json-rpc.package.buildable = !isCross;
+=======
+    marconi-chain-index.components.sublibs.json-rpc.buildable = lib.mkForce (!isCross);
+>>>>>>> 873f7fd (WIP)
     marconi-sidechain.package.buildable = !isCross;
-    marconi-tutorial.package.buildable = !isCross;
+    marconi-tutorialib.package.buildable = !isCross;
 
-    marconi-core.doHaddock = meta.enableHaddock;
-    marconi-core.flags.defer-plugin-errors = meta.enableHaddock;
+    # marconi-core.doHaddock = false;
+    # marconi-core.flags.defer-plugin-errors = false;
 
-    marconi-chain-index.doHaddock = meta.enableHaddock;
-    marconi-chain-index.flags.defer-plugin-errors = meta.enableHaddock;
+    # marconi-chain-index.doHaddock = false;
+    # marconi-chain-index.flags.defer-plugin-errors = false;
 
-    marconi-sidechain.doHaddock = meta.enableHaddock;
-    marconi-sidechain.flags.defer-plugin-errors = meta.enableHaddock;
+    # marconi-sidechain.doHaddock = false;
+    # marconi-sidechain.flags.defer-plugin-errors = false;
 
-    marconi-tutorial.doHaddock = meta.enableHaddock;
-    marconi-tutorial.flags.defer-plugin-errors = meta.enableHaddock;
+    # marconi-tutorialib.doHaddock = false;
+    # marconi-tutorialib.flags.defer-plugin-errors = false;
 
     marconi-core-legacy.doHaddock = meta.enableHaddock;
     marconi-core-legacy.flags.defer-plugin-errors = meta.enableHaddock;
@@ -79,28 +75,49 @@ let
     # Else, we'll get the error
     # `/nix/store/ls0ky8x6zi3fkxrv7n4vs4x9czcqh1pb-marconi/marconi/test/configuration.yaml: openFile: does not exist (No such file or directory)`
     marconi-chain-index.preCheck = "
-      export CARDANO_CLI=${inputs'.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
-      export CARDANO_NODE=${inputs'.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
+      export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
+      export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
       export CARDANO_NODE_SRC=${../.}
     ";
 
     # Needed for running the marconi-sidechain integration tests in CI
     marconi-sidechain.preCheck = "
-      export MARCONI_SIDECHAIN=${inputs'.self.packages.marconi-sidechain}/bin/marconi-sidechain
+      export MARCONI_SIDECHAIN=${config.hsPkgs.marconi-sidechain.components.exes.marconi-sidechain}/bin/marconi-sidechain
     ";
 
-    # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
+    # Werror everything. This is a pain, see https://github.com/input-output-hk/haskellib.nix/issues/519
     marconi-chain-index.ghcOptions = [ "-Werror" ];
     marconi-core.ghcOptions = [ "-Werror" ];
     marconi-sidechain.ghcOptions = [ "-Werror" ];
-    marconi-tutorial.ghcOptions = [ "-Werror" ];
+    marconi-tutorialib.ghcOptions = [ "-Werror" ];
   };
 
 
-  modules = [{ inherit packages; }];
+  cabalProjectArgs = {
+
+    name = "marconi";
+
+    src = ../.;
+
+    compiler-nix-name = "ghc928";
+
+    sha256map = {
+      "https://github.com/input-output-hk/cardano-node"."a158a679690ed8b003ee06e1216ac8acd5ab823d" = "sha256-uY7wPyCgKuIZcGu0+vGacjGw2kox8H5ZsVGsfTNtU0c=";
+    };
+
+    inputMap = {
+      "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.CHaP;
+    };
+
+    modules = [ (args: { packages = packages args; }) ];
+  };
 
 
-  project = { inherit sha256map modules; };
+  project = lib.iogx.mkHaskellProject {
+    inherit cabalProjectArgs;
+    shellFor = repoRoot.nix.shell;
+    readTheDocs.siteFolder = "doc/read-the-docs-site";
+  };
 
 in
 

@@ -1,9 +1,9 @@
-{ inputs', pkgs, ... }:
+{ inputs, pkgs, config, ... }:
 
-{ project, enable }:
+cabalProject:
 
 let
-  mithril-client = inputs'.mithril.packages.mithril-client;
+  mithril-client = inputs.mithril.packages.mithril-client;
 
   baseVmModule = { lib, modulesPath, ... }: {
     imports = [
@@ -122,7 +122,7 @@ let
 
     environment.etc = {
       "grafana-dashboards/marconi-dashboard.json" = {
-        source = inputs'.self + /benchmark/marconi-dashboard.json;
+        source = inputs.self + /benchmark/marconi-dashboard.json;
         group = "grafana";
         user = "grafana";
       };
@@ -172,7 +172,7 @@ let
     };
 
     imports = [
-      inputs'.cardano-node.nixosModules.cardano-node
+      inputs.cardano-node.nixosModules.cardano-node
     ];
 
     services.cardano-node = {
@@ -220,7 +220,7 @@ let
         ExecStartPre = ''
           ${pkgs.bash}/bin/bash -c "mkdir -p /var/lib/cardano-node/preprod/marconi-sidechain"
         '';
-        ExecStart = ''${pkgs.bash}/bin/bash -c "${project.hsPkgs.marconi-sidechain.components.exes.marconi-sidechain}/bin/marconi-sidechain --testnet-magic 1 -s ${config.services.cardano-node.socketPath 0} --node-config-path ${config.services.cardano-node.stateDir 0}/config-0-0.json -d ${config.services.cardano-node.stateDir 0}/preprod/marconi-sidechain --http-port 8080 --max-indexing-depth"'';
+        ExecStart = ''${pkgs.bash}/bin/bash -c "${cabalProject.hsPkgs.marconi-sidechain.components.exes.marconi-sidechain}/bin/marconi-sidechain --testnet-magic 1 -s ${config.services.cardano-node.socketPath 0} --node-config-path ${config.services.cardano-node.stateDir 0}/config-0-0.json -d ${config.services.cardano-node.stateDir 0}/preprod/marconi-sidechain --http-port 8080 --max-indexing-depth"'';
         ConditionPathExists = config.services.cardano-node.socketPath 0;
       };
 
@@ -232,33 +232,27 @@ let
 
   benchmarkMachine = pkgs.nixos [ baseVmModule commonModule benchmarkModule ];
 in
-{
-  inherit enable;
-  exec = ''
-    NIX_DISK_IMAGE= $(mktemp -u -t nixos.qcow2.XXX)
-    export NIX_DISK_IMAGE
-    trap 'rm -f $NIX_DISK_IMAGE' EXIT
-    if [ -z "$1" ]
-    then
-      echo "Missing argument. Choose between 'local' or 'benchmark'."
-      exit 1
-    fi
 
-    case $1 in
-      local)
-        ${localMachine.config.system.build.vm}/bin/run-nixos-vm
-        ;;
-      benchmark)
-        ${benchmarkMachine.config.system.build.vm}/bin/run-nixos-vm
-        ;;
-      *)
-        echo "Wrong argument. Choose between 'local' or 'benchmark'."
-        exit 1
-        ;;
-    esac
-  '';
-  description = ''
-    Start the benchmarking NixOS VM exposing Grafana dashboards and Prometheus metrics for Marconi.
-  '';
-  group = "benchmarking";
-}
+''
+  NIX_DISK_IMAGE= $(mktemp -u -t nixos.qcow2.XXX)
+  export NIX_DISK_IMAGE
+  trap 'rm -f $NIX_DISK_IMAGE' EXIT
+  if [ -z "$1" ]
+  then
+    echo "Missing argument. Choose between 'local' or 'benchmark'."
+    exit 1
+  fi
+
+  case $1 in
+    local)
+      ${localMachine.config.system.build.vm}/bin/run-nixos-vm
+      ;;
+    benchmark)
+      ${benchmarkMachine.config.system.build.vm}/bin/run-nixos-vm
+      ;;
+    *)
+      echo "Wrong argument. Choose between 'local' or 'benchmark'."
+      exit 1
+      ;;
+  esac
+''
