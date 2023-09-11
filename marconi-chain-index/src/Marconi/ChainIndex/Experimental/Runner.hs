@@ -19,8 +19,9 @@ import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
-import Control.Monad.Except (ExceptT, void)
+import Control.Monad.Except (ExceptT)
 
+import Control.Concurrent.Async qualified as Async
 import Data.Text (Text)
 import Data.Void (Void)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
@@ -70,8 +71,9 @@ runIndexer trace retryConfig socketPath networkId _startingPoint indexer = do
               Pretty.layoutPretty
                 Pretty.defaultLayoutOptions
                 "No intersection found"
-    void $ runChainSyncStream `catch` whenNoIntersectionFound
-    Core.processQueue eventQueue cBox
+    Async.concurrently_
+      (runChainSyncStream `catch` whenNoIntersectionFound)
+      (Core.processQueue eventQueue cBox)
 
 -- | Run several indexers under a unique coordinator
 runIndexers
