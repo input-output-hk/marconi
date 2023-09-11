@@ -80,6 +80,8 @@ library
     , async
     , base                  >=4.9 && <5
     , bytestring
+    , data-default
+    , fast-logger
     , filepath
     , lens
     , mtl
@@ -91,6 +93,7 @@ library
     , stm                   >=2.5
     , text
     , time
+    , wai-extra
     , warp
 
 executable marconi-sidechain

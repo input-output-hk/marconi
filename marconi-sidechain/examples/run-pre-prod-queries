@@ -1,101 +1,65 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
+
+set -euo pipefail
 
 PORT=3000
 
-echo "============================================="
-echo "== unknownMethod"
-echo "============================================="
-echo ""
+banner() {
+  echo '============================================='
+  echo '==' "${@}"
+  echo '============================================='
+  echo ''
+}
 
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "unknownMethod" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "unknownMethod" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
+query() {
+  local method=$1
+  local params=$2
 
+  echo "$method($(jq -C . <<<"$params")) ="
+  curl -sS --fail-with-body \
+    -H 'Content-Type: application/json' \
+    -d '{"jsonrpc": "2.0", "method": "'"$method"'", "params": '"$params"', "id": 1}' \
+    "http://localhost:$PORT/json-rpc" \
+    | jq
+  echo ''
+}
 
-echo "============================================="
-echo "== getTargetAddresses"
-echo "============================================="
-echo ""
+banner "unknownMethod"
 
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getTargetAddresses" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getTargetAddresses" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
+query "unknownMethod" '""'
 
+banner "getTargetAddresses"
 
-echo "============================================="
-echo "== getCurrentSyncedBlock"
-echo "============================================="
-echo ""
+query "getTargetAddresses" '""'
 
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getCurrentSyncedBlock" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getCurrentSyncedBlock" , "params": "", "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
+banner "getCurrentSyncedBlock"
 
+query "getCurrentSyncedBlock" '""'
 
-echo "============================================="
-echo "== getUtxosFromAddress"
-echo "============================================="
-echo ""
-
+banner "getUtxosFromAddress"
 
 # The cardano-db-sync query to get addresses with the most utxos:
 # select address, count(*) as c from tx_out, tx, block where tx_out.tx_id = tx.id and tx.block_id = block.id group by address order by c desc limit 1;
 
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket" }, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "unspentBeforeSlotNo": 30000000 }, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
+query "getUtxosFromAddress" '{"address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "unspentBeforeSlotNo": 30000000}'
+query "getUtxosFromAddress" '{"address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "createdAtOrAfterSlotNo": 16052985, "unspentBeforeSlotNo": 18364224}'
 
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "createdAtOrAfterSlotNo": 16052985, "unspentBeforeSlotNo": 18364224}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getUtxosFromAddress" , "params": { "address": "addr_test1vz09v9yfxguvlp0zsnrpa3tdtm7el8xufp3m5lsm7qxzclgmzkket", "createdAtOrAfterSlotNo": 16052985, "unspentBeforeSlotNo": 18364224}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
-
-
-echo "============================================="
-echo "== getBurnTokenEvents"
-echo "============================================="
-echo ""
+banner "getBurnTokenEvents"
 
 # The cardano-db-sync query to get burn events:
 # select multi_asset.policy, multi_asset.name, block.slot_no, tx.hash from tx, ma_tx_mint, multi_asset, redeemer, block where tx.id = ma_tx_mint.tx_id and multi_asset.id = ma_tx_mint.ident and redeemer.tx_id = tx.id and tx.block_id = block.id limit 1;
 
-echo "curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e2bab64ca481afc5a695b7db22fd0a7df4bf930158dfa652fb337999", "assetName": "53554d4d495441574152445344656669", "createdBeforeSlotNo": 11639233}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e2bab64ca481afc5a695b7db22fd0a7df4bf930158dfa652fb337999", "assetName": "53554d4d495441574152445344656669", "createdBeforeSlotNo": 11639233}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
+query "getBurnTokenEvents" '{"policyId": "e2bab64ca481afc5a695b7db22fd0a7df4bf930158dfa652fb337999", "assetName": "53554d4d495441574152445344656669", "createdBeforeSlotNo": 11639233}'
+query "getBurnTokenEvents" '{"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40"}'
+query "getBurnTokenEvents" '{"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40", "createdBeforeSlotNo": 10944386}'
+query "getBurnTokenEvents" '{"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40", "afterTx": "0a872c4fcf87f041caab5d5ecaeae19fd0e26de14241167c8dee7d1b26b5b4f7"}'
 
-echo "curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40"}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40"}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
+banner "getNonceByEpoch"
 
-echo "curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40", "createdBeforeSlotNo": 10944386}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40", "createdBeforeSlotNo": 10944386}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
+query "getNonceByEpoch" '3'
+query "getNonceByEpoch" '4'
 
-echo "curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40", "afterTx": "0a872c4fcf87f041caab5d5ecaeae19fd0e26de14241167c8dee7d1b26b5b4f7"}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0", "method": "getBurnTokenEvents", "params": {"policyId": "e222ae950cef1915dcb9db8840dc9c3df3785f9a10eca30dfb84ad40", "afterTx": "0a872c4fcf87f041caab5d5ecaeae19fd0e26de14241167c8dee7d1b26b5b4f7"}, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
+banner "getActiveStakePoolDelegationByEpoch"
 
-
-echo "============================================="
-echo "== getNonceByEpoch"
-echo "============================================="
-echo ""
-
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 3, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 3, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
-
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 4, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getNonceByEpoch" , "params": 4, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
-
-
-echo "============================================="
-echo "== getActiveStakePoolDelegationByEpoch"
-echo "============================================="
-echo ""
-
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getActiveStakePoolDelegationByEpoch" , "params": 7, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getActiveStakePoolDelegationByEpoch" , "params": 7, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
-
-echo "curl -sS -d '{"jsonrpc": "2.0" , "method": "getActiveStakePoolDelegationByEpoch" , "params": 31, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq"
-curl -sS -d '{"jsonrpc": "2.0" , "method": "getActiveStakePoolDelegationByEpoch" , "params": 31, "id": 1}' -H 'Content-Type: application/json' -X POST http://localhost:$PORT/json-rpc | jq
-echo ""
+query "getActiveStakePoolDelegationByEpoch" '7'
+query "getActiveStakePoolDelegationByEpoch" '31'
