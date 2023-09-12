@@ -38,10 +38,10 @@ import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
   IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
   Queryable (query),
  )
-import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latest, mkListIndexer)
+import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)
 import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
@@ -136,9 +136,7 @@ mkMixedIndexer keepNb flushNb db =
 
 -- | Create a  mixed indexer that initialised it's last sync point from the inMemory indexer
 standardMixedIndexer
-  :: (IsSync m event store)
-  => (Monad m)
-  => (HasGenesis (Point event))
+  :: (IsSync m event store, HasGenesis (Point event), Monad m)
   => Word
   -- ^ how many events are kept in memory after a flush
   -> Word
@@ -147,7 +145,7 @@ standardMixedIndexer
   -> m (MixedIndexer store ListIndexer event)
 standardMixedIndexer keepNb flushNb db = do
   lSync <- lastSyncPoint db
-  pure $ mkMixedIndexer keepNb flushNb db (mkListIndexer & latest .~ lSync)
+  pure $ mkMixedIndexer keepNb flushNb db (mkListIndexer & latestPoint .~ lSync)
 
 makeLenses ''MixedIndexer
 
@@ -245,7 +243,7 @@ createFlushPoint p indexer =
         & queueFlushPoint
         & resetNextFlushPointCounter
 
--- | Adjust counter and decide whether a flush should happent or not
+-- | Adjust counter and decide whether a flush should happen or not
 tick
   :: Point event
   -> MixedIndexer store mem event
@@ -315,8 +313,19 @@ instance
         & removeFlushPointsAfterRollback p
         & currentMemorySize .~ memorySize'
 
-instance (IsSync event m mem) => IsSync event m (MixedIndexer store mem) where
+instance (IsSync event m mem, IsSync event m store, Monad event) => IsSync event m (MixedIndexer store mem) where
   lastSyncPoint = lastSyncPoint . view inMemory
+  lastSyncPoints n indexer = do
+    lastSyncMemPoints <- lastSyncPoints n $ view inMemory indexer
+    let numLastSyncMemPoints = fromIntegral $ length lastSyncMemPoints
+    if numLastSyncMemPoints >= n
+      then pure lastSyncMemPoints
+      else do
+        lastSyncDbPoints <-
+          lastSyncPoints
+            (n - numLastSyncMemPoints)
+            $ view inDatabase indexer
+        pure $ lastSyncMemPoints ++ lastSyncDbPoints
 
 instance
   ( AppendResult m event query ListIndexer

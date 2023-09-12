@@ -9,18 +9,18 @@
 module Marconi.Core.Experiment.Indexer.ListIndexer (
   ListIndexer,
   events,
-  latest,
+  latestPoint,
   mkListIndexer,
 ) where
 
 import Control.Lens (makeLenses, view)
-
 import Control.Lens.Operators ((%~), (&), (.~), (^.))
+import Data.List qualified as List
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
   IsIndex (index, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
   Resetable (reset),
   indexIfJust,
  )
@@ -30,7 +30,7 @@ import Marconi.Core.Experiment.Type (Point, Timed, point)
 data ListIndexer event = ListIndexer
   { _events :: [Timed (Point event) event]
   -- ^ Stored @event@s, associated with their history 'Point'
-  , _latest :: Point event
+  , _latestPoint :: Point event
   -- ^ Ease access to the latest sync point
   }
 
@@ -47,19 +47,19 @@ instance (Monad m) => IsIndex m event ListIndexer where
     let appendEvent :: Timed (Point event) event -> ListIndexer event -> m (ListIndexer event)
         appendEvent te = pure . (events %~ (te :))
 
-        updateLatest :: Point event -> ListIndexer event -> m (ListIndexer event)
-        updateLatest p = pure . (latest .~ p)
-     in indexIfJust appendEvent updateLatest
+        updateLatestPoint :: Point event -> ListIndexer event -> m (ListIndexer event)
+        updateLatestPoint p = pure . (latestPoint .~ p)
+     in indexIfJust appendEvent updateLatestPoint
 
   rollback p ix =
     let adjustLatestPoint :: ListIndexer event -> ListIndexer event
-        adjustLatestPoint = latest .~ p
+        adjustLatestPoint = latestPoint .~ p
 
         cleanEventsAfterRollback :: ListIndexer event -> ListIndexer event
         cleanEventsAfterRollback = events %~ dropWhile isEventAfterRollback
 
         isIndexBeforeRollback :: ListIndexer event -> Bool
-        isIndexBeforeRollback x = x ^. latest < p
+        isIndexBeforeRollback x = x ^. latestPoint < p
 
         isEventAfterRollback :: Timed (Point event) event -> Bool
         isEventAfterRollback x = x ^. point > p
@@ -68,8 +68,15 @@ instance (Monad m) => IsIndex m event ListIndexer where
             then ix -- if we're already before the rollback, we don't have to do anything
             else adjustLatestPoint $ cleanEventsAfterRollback ix
 
-instance (Applicative m) => IsSync m event ListIndexer where
-  lastSyncPoint = pure . view latest
+instance (Applicative m, Ord (Point event)) => IsSync m event ListIndexer where
+  lastSyncPoint = pure . view latestPoint
+  lastSyncPoints n indexer =
+    pure $
+      take (fromIntegral n) $
+        reverse $
+          List.sort $
+            fmap (view point) $
+              indexer ^. events
 
 instance
   ( HasGenesis (Point event)
@@ -81,7 +88,7 @@ instance
     pure $
       indexer
         & events .~ mempty
-        & latest .~ genesis
+        & latestPoint .~ genesis
 
 instance (Applicative m) => Closeable m ListIndexer where
   close = const $ pure ()

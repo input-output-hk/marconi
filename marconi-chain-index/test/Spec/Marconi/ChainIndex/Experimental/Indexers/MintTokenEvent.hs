@@ -45,7 +45,10 @@ import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   mintTokenEvents,
  )
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Experimental.Indexers.Worker (StandardWorkerConfig (StandardWorkerConfig))
+import Marconi.ChainIndex.Experimental.Indexers.Worker (
+  StandardWorker (StandardWorker),
+  StandardWorkerConfig (StandardWorkerConfig),
+ )
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Core.Experiment qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -345,10 +348,10 @@ indexWithRunner
   -> [Core.Timed C.ChainPoint (Maybe MintTokenBlockEvents)]
   -> PropertyT IO (StandardMintTokenEventIndexer IO)
 indexWithRunner trackedAssetIds events = do
-  (indexerVar, worker) <-
+  StandardWorker indexerVar worker <-
     H.evalExceptT $
       MintTokenEvent.mkMintTokenEventWorker
-        (StandardWorkerConfig "MintTokenEventWorker" (Core.CatchupConfig 4 2) pure nullTracer)
+        (StandardWorkerConfig "MintTokenEventWorker" 1 (Core.CatchupConfig 4 2) pure nullTracer)
         (MintTokenEventConfig trackedAssetIds)
         ":memory:"
 

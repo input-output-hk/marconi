@@ -30,7 +30,6 @@ module Marconi.ChainIndex.Experimental.Indexers.Datum (
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api qualified as Ledger
-import Control.Concurrent (MVar)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
@@ -47,13 +46,13 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
+  StandardWorker,
   StandardWorkerConfig,
-  catchupWorker,
+  mkStandardWorker,
  )
 import Marconi.ChainIndex.Indexers.Utxo (getTxOutFromTxBodyContent)
 import Marconi.ChainIndex.Orphans ()
@@ -118,7 +117,7 @@ mkDatumIndexer path = do
     [ Core.SQLRollbackPlan "datum" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
-    Sync.syncLastPointQuery
+    Sync.syncLastPointsQuery
 
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker
@@ -127,10 +126,10 @@ datumWorker
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> FilePath
   -- ^ SQLite database location
-  -> n (MVar (StandardDatumIndexer m), Core.WorkerM m (WithDistance input) (Core.Point DatumEvent))
+  -> n (StandardWorker m input DatumEvent Core.SQLiteIndexer)
 datumWorker workerConfig path = do
   indexer <- mkDatumIndexer path
-  catchupWorker workerConfig indexer
+  mkStandardWorker workerConfig indexer
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery DatumEvent)) m)

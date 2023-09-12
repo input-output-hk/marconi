@@ -13,12 +13,12 @@ module Marconi.Core.Experiment.Indexer.LastPointIndexer (
 
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((^.))
-
 import Data.Foldable (Foldable (toList))
+import Data.List qualified as List
 import Marconi.Core.Experiment.Class (
   HasGenesis (genesis),
   IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
  )
 import Marconi.Core.Experiment.Type (Point, point)
 
@@ -49,5 +49,6 @@ instance
 
   rollback p _ = pure $ LastPointIndexer p
 
-instance (Applicative m) => IsSync m event LastPointIndexer where
+instance (Applicative m, HasGenesis (Point event)) => IsSync m event LastPointIndexer where
   lastSyncPoint = pure . view lastPoint
+  lastSyncPoints _ indexer = List.singleton <$> lastSyncPoint indexer

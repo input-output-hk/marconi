@@ -25,18 +25,18 @@ import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
-import Control.Lens (makeLenses)
-import Control.Lens.Operators ((^.))
-import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
-import Control.Monad.IO.Class (MonadIO (liftIO))
-
 import Control.Exception (throwIO)
 import Control.Exception.Base (finally)
+import Control.Lens (makeLenses)
+import Control.Lens.Operators ((^.))
 import Control.Monad (forever)
+import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
+  computeResumePoints,
  )
 import Marconi.Core.Experiment.Type (IndexerError (StopIndexer), Point)
 import Marconi.Core.Experiment.Worker (
@@ -172,6 +172,16 @@ instance
             Left err -> throwError err
             Right res' -> pure res'
      in minimum <$> traverse workerLastSyncPoint (indexer ^. workers)
+
+  lastSyncPoints n indexer =
+    let getWorkerLastSyncPoints :: Worker event (Point event) -> m [Point event]
+        getWorkerLastSyncPoints (Worker _name state _f hoistError) = do
+          ix <- liftIO $ Con.readMVar state
+          res <- liftIO $ runExceptT $ hoistError $ lastSyncPoints n ix
+          case res of
+            Left err -> throwError err
+            Right res' -> pure res'
+     in fmap computeResumePoints $ traverse getWorkerLastSyncPoints (indexer ^. workers)
 
 instance (MonadIO m) => Closeable m Coordinator where
   close coordinator = liftIO $ do

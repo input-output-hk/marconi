@@ -9,7 +9,8 @@
     See 'Marconi.Core.Experiment' for documentation.
 -}
 module Marconi.Core.Experiment.Worker (
-  WorkerIndexer,
+  WorkerIndexer (..),
+  WorkerIndexerType,
   WorkerM (..),
   Worker,
   ProcessedInput (..),
@@ -24,12 +25,11 @@ import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (SomeException, catch, finally)
+import Control.Lens.Operators ((^.))
+import Control.Monad (void)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (MonadTrans (lift))
-
-import Control.Lens.Operators ((^.))
-import Control.Monad (void)
 import Data.Text (Text)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
@@ -43,8 +43,14 @@ import Marconi.Core.Experiment.Type (
   point,
  )
 
+-- | Worker which also provides direct access to the indexer hidden inside it.
+data WorkerIndexer m input event indexer = WorkerIndexer
+  { workerIndexerVar :: !(MVar (indexer event))
+  , worker :: WorkerM m input (Point event)
+  }
+
 -- | Type alias for the type classes that are required to build a worker for an indexer
-type WorkerIndexer n event indexer =
+type WorkerIndexerType n event indexer =
   ( IsIndex n event indexer
   , IsSync n event indexer
   , Closeable n indexer
@@ -54,7 +60,7 @@ type WorkerIndexer n event indexer =
 coordinator.
 -}
 data WorkerM m input point = forall indexer event n.
-  ( WorkerIndexer n event indexer
+  ( WorkerIndexerType n event indexer
   , Point event ~ point
   ) =>
   Worker
@@ -84,32 +90,32 @@ data ProcessedInput event
 
 -- | create a worker for an indexer, retuning the worker and the @MVar@ it's using internally
 createWorker'
-  :: (MonadIO f, WorkerIndexer n event indexer)
+  :: (MonadIO f, WorkerIndexerType n event indexer)
   => (forall a. n a -> ExceptT IndexerError m a)
   -> Text
   -> (input -> m (Maybe event))
   -> indexer event
-  -> f (MVar (indexer event), WorkerM m input (Point event))
+  -> f (WorkerIndexer m input event indexer)
 createWorker' hoist name getEvent ix = liftIO $ do
   workerState <- Con.newMVar ix
-  pure (workerState, Worker name workerState getEvent hoist)
+  pure $ WorkerIndexer workerState $ Worker name workerState getEvent hoist
 
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
-  :: (MonadIO f, MonadIO m, WorkerIndexer m event indexer)
+  :: (MonadIO f, MonadIO m, WorkerIndexerType m event indexer)
   => Text
   -> (input -> m (Maybe event))
   -> indexer event
-  -> f (MVar (indexer event), WorkerM m input (Point event))
+  -> f (WorkerIndexer m input event indexer)
 createWorkerPure = createWorker' lift
 
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
-  :: (MonadIO f, WorkerIndexer (ExceptT IndexerError m) event indexer)
+  :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
   => Text
   -> (input -> m (Maybe event))
   -> indexer event
-  -> f (MVar (indexer event), WorkerM m input (Point event))
+  -> f (WorkerIndexer m input event indexer)
 createWorker = createWorker' id
 
 mapIndex
@@ -128,7 +134,8 @@ mapIndex _ Stop = pure Stop
  and starts waiting for new events and process them as they come
 -}
 startWorker
-  :: (MonadIO m)
+  :: forall input m
+   . (MonadIO m)
   => (Ord (Point input))
   => TChan (ProcessedInput input)
   -> MVar IndexerError
@@ -157,6 +164,7 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
             Left err -> pure (indexer, Just err)
             Right res -> pure (res, Nothing)
 
+      handleRollback :: Point input -> IO (Maybe IndexerError)
       handleRollback p = do
         Con.modifyMVar ix $ \indexer -> do
           result <- runExceptT $ hoistError $ rollback p indexer
@@ -164,14 +172,18 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
             Left err -> pure (indexer, Just err)
             Right res -> pure (res, Nothing)
 
+      checkError :: IO (Maybe IndexerError)
       checkError = Con.tryReadMVar errorBox
 
+      closeIndexer :: IO ()
       closeIndexer = do
         indexer <- Con.readMVar ix
         void $ runExceptT $ hoistError $ close indexer
 
+      swallowPill :: IO ()
       swallowPill = finally closeIndexer notifyEndToCoordinator
 
+      notifyCoordinatorOnError :: IndexerError -> IO ()
       notifyCoordinatorOnError e =
         -- We don't need to check if tryPutMVar succeed
         -- because if @errorBox@ is already full, our job is done anyway
@@ -182,11 +194,13 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
         Index e -> indexEvent e
         Stop -> pure $ Just $ OtherIndexError "Stop"
 
+      safeProcessEvent :: ProcessedInput input -> IO (Maybe IndexerError)
       safeProcessEvent input = do
         processedInput <- mapIndex transformInput input
         process processedInput
           `catch` \(_ :: SomeException) -> pure $ Just $ StopIndexer (Just name)
 
+      loop :: TChan (ProcessedInput input) -> IO ()
       loop chan' =
         let loop' = do
               err <- checkError

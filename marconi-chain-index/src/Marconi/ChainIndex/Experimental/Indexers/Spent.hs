@@ -23,7 +23,6 @@ module Marconi.ChainIndex.Experimental.Indexers.Spent (
 ) where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (MVar)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
@@ -38,13 +37,13 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
+  StandardWorker,
   StandardWorkerConfig,
-  catchupWorker,
+  mkStandardWorker,
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
@@ -134,7 +133,7 @@ mkSpentIndexer path = do
     [ Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
-    Sync.syncLastPointQuery
+    Sync.syncLastPointsQuery
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
@@ -143,10 +142,10 @@ spentWorker
   -- ^ General configuration of a worker
   -> FilePath
   -- ^ SQLite database location
-  -> n (MVar (StandardSpentIndexer m), Core.WorkerM m (WithDistance input) (Core.Point SpentInfoEvent))
+  -> n (StandardWorker m input SpentInfoEvent Core.SQLiteIndexer)
 spentWorker config path = do
   indexer <- mkSpentIndexer path
-  catchupWorker config indexer
+  mkStandardWorker config indexer
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery SpentInfoEvent)) m)

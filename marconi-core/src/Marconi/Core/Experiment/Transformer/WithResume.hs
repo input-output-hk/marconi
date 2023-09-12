@@ -17,7 +17,6 @@
 module Marconi.Core.Experiment.Transformer.WithResume (
   WithResume,
   withResume,
-  HasResumePoints (resumePoints),
   OrdPoint (comparePoint),
   PointCompare (..),
 ) where
@@ -29,6 +28,7 @@ import Control.Monad.Except (MonadError (throwError), MonadIO)
 import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import Marconi.Core.Experiment.Class qualified as Class
+import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
 import Marconi.Core.Experiment.Transformer.IndexTransformer qualified as Wrapper
 import Marconi.Core.Experiment.Type (
   IndexerError (ResumingFailed),
@@ -74,28 +74,15 @@ withResume getHistory securityParam indexer = do
   history <- getHistory securityParam indexer
   pure $ WithResume $ Wrapper.IndexTransformer (ResumeState True Nothing history) indexer
 
-class HasResumePoints event indexer where
-  resumePoints :: indexer event -> Maybe [Point event]
-
--- The overlapping instance means that this one take precedence over the other overlappable
--- instances.
--- As a consequence, if we use several @WithResume@ transformers on the same indexer
--- (please, don't do this, it's wrong) 'resumePoints' will target the configuration of the most
--- external one.
-instance {-# OVERLAPPING #-} HasResumePoints event (WithResume indexer) where
-  resumePoints = Just . Lens.view lastPoints
-
-instance
-  {-# OVERLAPPABLE #-}
-  (Wrapper.IndexerTrans t, HasResumePoints event indexer)
-  => HasResumePoints event (t indexer)
-  where
-  resumePoints = resumePoints . Lens.view Wrapper.unwrap
-
 deriving via
   (Wrapper.IndexTransformer ResumeState indexer)
   instance
     (Class.IsSync m event indexer) => Class.IsSync m event (WithResume indexer)
+
+deriving via
+  (Wrapper.IndexTransformer ResumeState indexer)
+  instance
+    (HasDatabasePath indexer) => HasDatabasePath (WithResume indexer)
 
 deriving via
   (Wrapper.IndexTransformer ResumeState indexer)
@@ -177,8 +164,6 @@ instance
   , OrdPoint (Point event)
   , Ord (Point event)
   , MonadIO m
-  , Show (Point event)
-  , Show event
   )
   => Class.IsIndex m event (WithResume indexer)
   where

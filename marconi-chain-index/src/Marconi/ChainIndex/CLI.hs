@@ -51,6 +51,8 @@ chainPointParser =
         ( Opt.long "block-header-hash"
             <> Opt.short 'b'
             <> Opt.metavar "BLOCK-HEADER-HASH"
+            <> Opt.help
+              "Block header hash of the preferred starting point. Note that you also need to provide the starting point slot number with `--slot-no`. Might fail if the target indexers can't resume from arbitrary points."
         )
     slotNoParser :: Opt.Parser C.SlotNo
     slotNoParser =
@@ -59,6 +61,8 @@ chainPointParser =
         ( Opt.long "slot-no"
             <> Opt.short 'n'
             <> Opt.metavar "SLOT-NO"
+            <> Opt.help
+              "Slot number of the preferred starting point. Note that you also need to provide the starting point block header hash with `--block-header-hash`. Might fail if the target indexers can't resume from arbitrary points."
         )
     maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
     maybeParseHashBlockHeader =

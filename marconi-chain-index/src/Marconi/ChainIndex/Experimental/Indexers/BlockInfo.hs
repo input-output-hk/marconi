@@ -24,13 +24,13 @@ module Marconi.ChainIndex.Experimental.Indexers.BlockInfo (
 ) where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (MVar)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
+import Data.String (fromString)
 import Data.Time qualified as Time
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
@@ -39,12 +39,12 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
+  StandardWorker,
   StandardWorkerConfig,
-  catchupWorker,
+  mkStandardWorker,
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
@@ -104,10 +104,10 @@ mkBlockInfoIndexer path = do
       blockInfoInsertQuery =
         [sql|INSERT INTO blockInfo (slotNo, blockHeaderHash, blockNo, blockTimestamp, epochNo)
              VALUES (?, ?, ?, ?, ?)|]
-      lastPointQuery :: Core.GetLastSyncQuery
-      lastPointQuery =
-        Core.GetLastSyncQuery
-          [sql|SELECT slotNo, blockHeaderHash FROM blockInfo ORDER BY slotNo DESC LIMIT 1|]
+      lastPointQuery :: Core.GetLastSyncPointsQuery
+      lastPointQuery = Core.GetLastSyncPointsQuery $ \limit ->
+        [sql|SELECT slotNo, blockHeaderHash FROM blockInfo ORDER BY slotNo DESC LIMIT |]
+          <> fromString (show limit)
   Core.mkSingleInsertSqliteIndexer
     path
     id
@@ -126,11 +126,10 @@ blockInfoWorker
   -- ^ General indexer configuration
   -> FilePath
   -- ^ SQLite database location
-  -> n
-      (MVar (StandardBlockInfoIndexer m), Core.WorkerM m (WithDistance input) (Core.Point BlockInfo))
+  -> n (StandardWorker m input BlockInfo Core.SQLiteIndexer)
 blockInfoWorker config path = do
   indexer <- mkBlockInfoIndexer path
-  catchupWorker config indexer
+  mkStandardWorker config indexer
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery BlockInfo)) m)

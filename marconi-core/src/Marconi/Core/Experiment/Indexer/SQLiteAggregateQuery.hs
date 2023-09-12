@@ -17,6 +17,7 @@ module Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
   HasDatabasePath (..),
 ) where
 
+import Control.Concurrent qualified as Con
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -25,9 +26,11 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
-
-import Control.Concurrent qualified as Con
-import Marconi.Core.Experiment.Class (Closeable (close), IsSync (lastSyncPoint))
+import Marconi.Core.Experiment.Class (
+  Closeable (close),
+  IsSync (lastSyncPoint, lastSyncPoints),
+  computeResumePoints,
+ )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (SQLiteIndexer)
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer qualified as SQLite
 import Marconi.Core.Experiment.Type (Point)
@@ -106,3 +109,10 @@ instance
           ix' <- liftIO $ Con.readMVar ix
           lastSyncPoint ix'
      in fmap minimum . traverse getPoint . Lens.view databases
+
+  lastSyncPoints n =
+    let getPoints :: SQLiteSourceProvider m point -> m [point]
+        getPoints (SQLiteSourceProvider ix) = do
+          ix' <- liftIO $ Con.readMVar ix
+          lastSyncPoints n ix'
+     in fmap computeResumePoints . traverse getPoints . Lens.view databases

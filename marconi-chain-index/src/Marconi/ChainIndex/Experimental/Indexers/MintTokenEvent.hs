@@ -82,7 +82,6 @@ import Cardano.Ledger.Mary.Value (
   PolicyID (PolicyID),
   flattenMultiAsset,
  )
-import Control.Concurrent (MVar)
 import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
@@ -102,13 +101,13 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
+  StandardWorker,
   StandardWorkerConfig,
-  catchupWorkerWithFilter,
+  mkStandardWorkerWithFilter,
  )
 import Marconi.ChainIndex.Types (
   TxIndexInBlock,
@@ -246,10 +245,10 @@ mkMintTokenEventWorker
   -- ^ Specific configuration of the indexer (mostly for logging purpose and filtering for target
   -- asset ids)
   -> FilePath
-  -> n (MVar (StandardMintTokenEventIndexer m), Core.WorkerM m (WithDistance input) C.ChainPoint)
+  -> n (StandardWorker m input MintTokenBlockEvents Core.SQLiteIndexer)
 mkMintTokenEventWorker workerConfig (MintTokenEventConfig trackedAssetIds) dbPath = do
   sqliteIndexer <- mkMintTokenIndexer dbPath
-  catchupWorkerWithFilter workerConfig (filterByTargetAssetIds trackedAssetIds) sqliteIndexer
+  mkStandardWorkerWithFilter workerConfig (filterByTargetAssetIds trackedAssetIds) sqliteIndexer
 
 -- | Only keep the MintTokenEvents at a block if they mint a target 'AssetId'.
 filterByTargetAssetIds :: [C.AssetId] -> MintTokenBlockEvents -> Maybe MintTokenBlockEvents
@@ -358,7 +357,7 @@ mkMintTokenIndexer dbPath = do
     [ Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
-    Sync.syncLastPointQuery
+    Sync.syncLastPointsQuery
 
 fromTimedMintEvents
   :: Core.Timed point MintTokenBlockEvents
@@ -394,6 +393,12 @@ allBurnEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
     NonEmpty.nonEmpty $
       NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0) events
 
+newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event -> Maybe event)
+
+type instance
+  Core.Result (MintTokenEventsMatchingQuery event) =
+    [Core.Timed (Core.Point event) event]
+
 instance
   (MonadIO m, MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
   => Core.Queryable
@@ -422,12 +427,6 @@ instance
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const mintTokenEventQuery)
           (\(MintTokenEventsMatchingQuery p) r -> parseResult p r)
-
-newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event -> Maybe event)
-
-type instance
-  Core.Result (MintTokenEventsMatchingQuery event) =
-    [Core.Timed (Core.Point event) event]
 
 instance
   (MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)

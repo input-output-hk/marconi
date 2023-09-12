@@ -175,12 +175,11 @@ addCacheFor
   => query
   -> indexer event
   -> m (indexer event)
-addCacheFor q indexer =
-  do
-    initialResult <- runExceptT $ queryLatest q indexer
-    case initialResult of
-      Left _err -> throwError $ OtherIndexError "Can't create cache"
-      Right result -> pure $ indexer & cache %~ Map.insert q result
+addCacheFor q indexer = do
+  initialResult <- runExceptT $ queryLatest q indexer
+  case initialResult of
+    Left _err -> throwError $ OtherIndexError "Can't create cache"
+    Right result -> pure $ indexer & cache %~ Map.insert q result
 
 instance IndexerTrans (WithCache query) where
   type Config (WithCache query) = CacheConfig query

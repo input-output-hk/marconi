@@ -41,7 +41,7 @@ import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
   IsIndex (index, indexAll, indexAllDescending, rollback),
-  IsSync (lastSyncPoint),
+  IsSync (lastSyncPoint, lastSyncPoints),
   Queryable (query),
   Resetable (reset),
  )
@@ -55,6 +55,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexAllVia,
   indexVia,
   lastSyncPointVia,
+  lastSyncPointsVia,
   queryVia,
   resetVia,
   rollbackVia,
@@ -106,6 +107,7 @@ makeLenses 'WithTracer
 
 instance (IsSync m event indexer) => IsSync m event (WithTracer n indexer) where
   lastSyncPoint = lastSyncPointVia unwrap
+  lastSyncPoints = lastSyncPointsVia unwrap
 
 deriving via
   (IndexTransformer (IndexerTracer m) indexer)
@@ -299,6 +301,7 @@ makeLenses 'WithTrace
 
 instance (IsSync m event indexer) => IsSync m event (WithTrace n indexer) where
   lastSyncPoint = lastSyncPointVia unwrap
+  lastSyncPoints = lastSyncPointsVia unwrap
 
 deriving via
   (IndexTransformer (IndexerTrace m) indexer)

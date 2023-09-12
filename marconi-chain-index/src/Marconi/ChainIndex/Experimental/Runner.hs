@@ -4,7 +4,6 @@
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.ChainIndex.Experimental.Runner (
   runIndexer,
-  runIndexers,
 ) where
 
 import Cardano.Api qualified as C
@@ -17,24 +16,35 @@ import Cardano.Api.Extended.Streaming (
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
+import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
-import Control.Monad.Except (ExceptT)
-
-import Control.Concurrent.Async qualified as Async
+import Control.Monad.Except (ExceptT, void)
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
-import Data.Void (Void)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core.Experiment qualified as Core
-import Prettyprinter qualified as Pretty
-import Prettyprinter.Render.Text qualified as Pretty
+import Prettyprinter qualified as PP
+import Prettyprinter.Render.Text qualified as PP
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
+
+-- | Wraps as a datatype log message emitted by the 'runIndexer' et al. functions.
+data RunIndexerLog
+  = -- | The last sync points of all indexers that will be used to start the chain-sync protocol.
+    StartingPointsLog [C.ChainPoint]
+  | NoIntersectionFoundLog
+
+instance PP.Pretty RunIndexerLog where
+  pretty (StartingPointsLog lastSyncPoints) =
+    "Possible starting points for chain-sync protocol are" PP.<+> PP.pretty lastSyncPoints
+  pretty NoIntersectionFoundLog = "No intersection found"
 
 type instance Core.Point BlockEvent = C.ChainPoint
 
@@ -44,49 +54,42 @@ given indexer.
 If you want to start several indexers, use @runIndexers@.
 -}
 runIndexer
-  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) (WithDistance BlockEvent) indexer
+  :: ( WithDistance BlockEvent ~ event
+     , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      )
   => Trace IO Text
+  -> SecurityParam
   -> RetryConfig
   -> FilePath
   -> C.NetworkId
-  -> C.ChainPoint
+  -> NonEmpty C.ChainPoint
   -> indexer (WithDistance BlockEvent)
   -> IO ()
-runIndexer trace retryConfig socketPath networkId _startingPoint indexer = do
+runIndexer trace securityParam retryConfig socketPath networkId startingPoints indexer = do
   withNodeConnectRetry trace retryConfig socketPath $ do
-    securityParam <- Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+    Trace.logInfo trace $
+      PP.renderStrict $
+        PP.layoutPretty PP.defaultLayoutOptions $
+          PP.pretty $
+            StartingPointsLog $
+              NonEmpty.toList startingPoints
     eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
     cBox <- Concurrent.newMVar indexer
     let runChainSyncStream =
           withChainSyncBlockEventStream
             socketPath
             networkId
-            [Core.genesis]
+            (NonEmpty.toList startingPoints)
             (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
         whenNoIntersectionFound NoIntersectionFound =
           Trace.logError trace $
-            Pretty.renderStrict $
-              Pretty.layoutPretty
-                Pretty.defaultLayoutOptions
-                "No intersection found"
+            PP.renderStrict $
+              PP.layoutPretty PP.defaultLayoutOptions $
+                PP.pretty NoIntersectionFoundLog
     Async.concurrently_
-      (runChainSyncStream `catch` whenNoIntersectionFound)
+      (void $ runChainSyncStream `catch` whenNoIntersectionFound)
       (Core.processQueue eventQueue cBox)
-
--- | Run several indexers under a unique coordinator
-runIndexers
-  :: Trace IO Text
-  -> RetryConfig
-  -> FilePath
-  -> C.NetworkId
-  -> C.ChainPoint
-  -> [Core.Worker (WithDistance BlockEvent) C.ChainPoint]
-  -> IO ()
-runIndexers trace retryConfig socketPath networkId _startingPoint indexers = do
-  coordinator <- Core.mkCoordinator indexers
-  runIndexer trace retryConfig socketPath networkId _startingPoint coordinator
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream

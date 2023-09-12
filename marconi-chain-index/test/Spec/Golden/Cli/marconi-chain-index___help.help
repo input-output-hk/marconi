@@ -26,6 +26,16 @@ Available options:
                            Path to node socket.
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
+  -n,--slot-no SLOT-NO     Slot number of the preferred starting point. Note
+                           that you also need to provide the starting point
+                           block header hash with `--block-header-hash`. Might
+                           fail if the target indexers can't resume from
+                           arbitrary points.
+  -b,--block-header-hash BLOCK-HEADER-HASH
+                           Block header hash of the preferred starting point.
+                           Note that you also need to provide the starting point
+                           slot number with `--slot-no`. Might fail if the
+                           target indexers can't resume from arbitrary points.
   --max-indexing-depth     Only index blocks that are not rollbackable
   --min-indexing-depth NATURAL
                            Depth of a block before it is indexed in relation to
