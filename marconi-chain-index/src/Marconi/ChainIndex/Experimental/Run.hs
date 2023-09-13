@@ -52,7 +52,7 @@ run appName = do
         (Core.CatchupConfig batchSize stopCatchupDistance)
         (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
         (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
-        (EpochState.EpochStateConfig nodeConfigPath 200)
+        (EpochState.EpochStateConfig nodeConfigPath 1000)
         trace
         (Cli.optionsDbPath o)
   (indexerLastSyncPoints, _utxoQueryIndexer, indexers) <-

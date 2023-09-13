@@ -65,7 +65,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
   StandardWorker blockInfoMVar blockInfoWorker <-
     blockInfoBuilder securityParam catchupConfig mainLogger path
 
-  StandardWorker _epochStateMVar epochStateWorker <-
+  Core.WorkerIndexer _epochStateMVar epochStateWorker <-
     epochStateBuilder securityParam catchupConfig epochStateConfig mainLogger path
 
   StandardWorker utxoMVar utxoWorker <-
@@ -219,13 +219,19 @@ mintBuilder securityParam catchupConfig mintEventConfig logger path =
 
 -- | Configure and start the @EpochState@ indexer
 epochStateBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
   -> Core.CatchupConfig
   -> EpochState.EpochStateConfig
-  -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> BM.Trace IO (Core.IndexerEvent C.ChainPoint)
   -> FilePath
-  -> n (StandardWorker m BlockEvent (C.BlockInMode C.CardanoMode) EpochState.EpochStateIndexer)
+  -> n
+      ( Core.WorkerIndexer
+          IO
+          (WithDistance BlockEvent)
+          (WithDistance (C.BlockInMode C.CardanoMode))
+          EpochState.EpochStateIndexer
+      )
 epochStateBuilder securityParam catchupConfig epochStateConfig logger path =
   let epochStateWorkerConfig =
         StandardWorkerConfig
