@@ -193,7 +193,7 @@ deserialiseTimedEvent indexer eventFile = do
       pt = indexer ^. eventBuilder . extractPoint $ meta
   evt <-
     if hasContent eventFile
-      then ExceptT $ deserialise <$> liftIO (BS.readFile $ path eventFile)
+      then ExceptT $ deserialise <$> liftIO (BS.readFile $ fullPath indexer eventFile)
       else pure Nothing
   pure $ Timed pt evt
 

@@ -19,8 +19,9 @@ import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError), MonadIO (liftIO), runExceptT)
 import Data.ByteString.Lazy qualified as BS
-import Data.List (find)
+import Data.List (find, sortOn)
 import Data.Maybe (catMaybes, mapMaybe)
+import Data.Ord (Down (Down))
 import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
 import Marconi.Core.Experiment.Indexer.FileIndexer (
   FileIndexer,
@@ -164,9 +165,7 @@ instance
   query p q ix = do
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
-    pure $
-      take (fromIntegral $ nbOfEvents q) $
-        ix ^.. events . Lens.folded . Lens.filtered (\x -> x ^. point <= p)
+    pure $ take (fromIntegral $ nbOfEvents q) $ filter (\x -> x ^. point <= p) $ ix ^. events
 
 instance
   (MonadIO m, MonadError (QueryError (LatestEventsQuery event)) m)
@@ -187,7 +186,7 @@ instance
     result <- traverse (runExceptT . FileIndexer.deserialiseTimedEvent ix) resultFile
     case extractEvents result of
       Left err -> throwError $ IndexerQueryError err
-      Right res -> pure $ take (fromIntegral $ nbOfEvents q) $ catMaybes res
+      Right res -> pure $ take (fromIntegral $ nbOfEvents q) $ sortOn (Down . Lens.view point) $ catMaybes res
 
 -- | Get the non empty events from the given point (excluded) to the one of the query (included)
 newtype EventsFromQuery event = EventsFromQuery {startingPoint :: Point event}
@@ -201,11 +200,7 @@ instance
   query p q ix = do
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
-    pure $
-      ix
-        ^.. events
-          . Lens.folded
-          . Lens.filtered (\x -> x ^. point <= p && x ^. point > startingPoint q)
+    pure $ filter (\x -> x ^. point <= p && x ^. point > startingPoint q) $ ix ^. events
 
 instance
   (MonadIO m, MonadError (QueryError (EventsFromQuery event)) m)

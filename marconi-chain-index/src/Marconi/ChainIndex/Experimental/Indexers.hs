@@ -230,7 +230,7 @@ epochStateBuilder
           IO
           (WithDistance BlockEvent)
           (WithDistance (C.BlockInMode C.CardanoMode))
-          EpochState.EpochStateIndexer
+          (Core.WithResume EpochState.EpochStateIndexer)
       )
 epochStateBuilder securityParam catchupConfig epochStateConfig logger path =
   let epochStateWorkerConfig =

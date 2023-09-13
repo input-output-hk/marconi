@@ -51,6 +51,7 @@ import Data.Coerce (coerce)
 import Data.Data (Proxy (Proxy))
 import Data.Foldable (Foldable (toList))
 import Data.Functor (($>))
+import Data.List (genericLength)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map (Map)
@@ -89,7 +90,7 @@ import Ouroboros.Consensus.Protocol.Praos qualified as O
 import Ouroboros.Consensus.Protocol.TPraos qualified as O
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Ouroboros.Consensus.Storage.Serialisation qualified as O
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
 import Text.Read qualified as Text
 
@@ -232,7 +233,7 @@ mkEpochStateIndexer
   => StandardWorkerConfig IO a b
   -> EpochStateConfig
   -> FilePath
-  -> n (EpochStateIndexer (WithDistance (C.BlockInMode C.CardanoMode)))
+  -> n (Core.WithResume EpochStateIndexer (WithDistance (C.BlockInMode C.CardanoMode)))
 mkEpochStateIndexer workerCfg cfg rootDir = do
   genesisCfg <- readGenesisFile (nodeConfig cfg)
   let securityParam' = securityParamConfig workerCfg
@@ -255,7 +256,14 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
           epochBlocksIndexer
           epochNonceIndexer'
           epochSDDIndexer'
-  pure $ EpochStateIndexer state config
+
+  let indexer = EpochStateIndexer state config
+  latestLedgerState <- liftIO $ runExceptT $ restoreLedgerState indexer
+  case latestLedgerState of
+    Left err -> throwError err
+    Right extLedgerState' ->
+      Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig workerCfg) + 1) $
+        indexer & currentLedgerState .~ extLedgerState'
 
 mkEpochStateWorker
   :: (MonadIO n, MonadError Core.IndexerError n)
@@ -268,7 +276,7 @@ mkEpochStateWorker
           IO
           (WithDistance input)
           (WithDistance (C.BlockInMode C.CardanoMode))
-          EpochStateIndexer
+          (Core.WithResume EpochStateIndexer)
       )
 mkEpochStateWorker workerConfig epochStateConfig rootDir = do
   indexer <- mkEpochStateIndexer workerConfig epochStateConfig rootDir
@@ -289,12 +297,17 @@ deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
     parseBlockNo bhh = Just . C.BlockNo <$> Text.readMaybe (Text.unpack bhh)
 deserialiseMetadata _ = Nothing
 
+directorySize :: (MonadIO m) => FilePath -> m Word
+directorySize dir = liftIO $ do
+  b <- doesDirectoryExist dir
+  if b then genericLength <$> listDirectory dir else pure 0
+
 buildEpochStateIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> FilePath
   -> m (Core.FileIndexer EpochMetadata EpochState)
-buildEpochStateIndexer codecConfig path =
+buildEpochStateIndexer codecConfig path = do
   let serialiseLedgerState =
         CBOR.toLazyByteString
           . O.encodeExtLedgerState
@@ -321,18 +334,19 @@ buildEpochStateIndexer codecConfig path =
               C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
                 [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
          in blockNoAsText evt : chainPointTexts
-   in Core.mkFileIndexer
-        path
-        (Core.FileStorageConfig True (Just 50) (comparing metadataChainpoint) 0) -- TODO use securityParam as a limit
-        (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState)
-        (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState)
+  currentSize <- directorySize path
+  Core.mkFileIndexer
+    path
+    (Core.FileStorageConfig False (Just 50) (comparing metadataChainpoint) currentSize) -- TODO use securityParam as a limit
+    (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState)
+    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState)
 
 buildBlockIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> FilePath
   -> m (Core.FileIndexer EpochMetadata (C.BlockInMode C.CardanoMode))
-buildBlockIndexer codecConfig path =
+buildBlockIndexer codecConfig path = do
   let serialiseBlock =
         CBOR.toLazyByteString . O.encodeDisk codecConfig . C.toConsensusBlock
       deserialiseBlock (EpochMetadata Nothing _) = const (Right Nothing)
@@ -349,11 +363,12 @@ buildBlockIndexer codecConfig path =
               C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
                 [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
          in blockNoAsText evt : chainPointTexts
-   in Core.mkFileIndexer
-        path
-        (Core.FileStorageConfig True (Just 5000) (comparing metadataChainpoint) 0) -- TODO use securityParam as a limit
-        (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock)
-        (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock)
+  currentSize <- directorySize path
+  Core.mkFileIndexer
+    path
+    (Core.FileStorageConfig True (Just 5000) (comparing metadataChainpoint) currentSize) -- TODO use securityParam as a limit
+    (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock)
+    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock)
 
 -- TODO placeholder, to implement
 buildEpochSDDIndexer
@@ -456,6 +471,17 @@ getBlocksFrom from indexer = do
     Left _err -> throwError $ Core.IndexerInternalError "Cant resolve last epochState"
     Right xs -> pure $ Lens.view Core.event <$> xs
 
+restoreLedgerState :: EpochStateIndexer event -> ExceptT Core.IndexerError IO EpochState
+restoreLedgerState indexer = do
+  Core.Timed epochStatePoint closestLedgerState <-
+    getLatestNonEmpty (initialEpochState indexer) (indexer ^. epochStateIndexer)
+  blocks <- getBlocksFrom epochStatePoint (indexer ^. blockIndexer)
+  liftIO $
+    foldM
+      (buildNextEpochState $ extLedgerConfig indexer)
+      closestLedgerState
+      blocks
+
 instance
   Core.IsIndex
     (ExceptT Core.IndexerError IO)
@@ -488,23 +514,15 @@ instance
             <=< epochSDDIndexer (Core.rollback p)
             <=< epochNonceIndexer (Core.rollback p)
     indexer' <- rollbackIndexers indexer
-    Core.Timed epochStatePoint closestLedgerState <-
-      getLatestNonEmpty (initialEpochState indexer) (indexer ^. epochStateIndexer)
-    blocks :: [C.BlockInMode C.CardanoMode] <- getBlocksFrom epochStatePoint (indexer ^. blockIndexer)
-    newEpochState <-
-      liftIO $
-        foldM
-          (buildNextEpochState $ extLedgerConfig indexer)
-          closestLedgerState
-          blocks
+    newEpochState <- restoreLedgerState indexer'
     pure $ indexer' & currentLedgerState .~ newEpochState
 
 instance
   (MonadIO m, MonadError Core.IndexerError m, Core.Point event ~ C.ChainPoint)
   => Core.IsSync m event EpochStateIndexer
   where
-  lastSyncPoint indexer = Core.lastSyncPoint $ indexer ^. blockIndexer
-  lastSyncPoints n indexer = Core.lastSyncPoints n $ indexer ^. blockIndexer
+  lastSyncPoint indexer = Core.lastSyncPoint $ indexer ^. epochStateIndexer
+  lastSyncPoints n indexer = Core.lastSyncPoints n $ indexer ^. epochStateIndexer
 
 instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
   close indexer = do
