@@ -26,7 +26,8 @@ import Marconi.Core.Experiment.Indexer.FileIndexer (
   FileIndexer,
   deserialiseEvent,
   directoryContentWithMeta,
-  filePointExtractor,
+  eventBuilder,
+  extractPoint,
  )
 import Marconi.Core.Experiment.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events)
@@ -69,12 +70,12 @@ instance
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
     content <- directoryContentWithMeta ix
-    let resultContent = find ((p ==) . (ix ^. filePointExtractor) . FileIndexer.metadata) content
+    let resultContent = find ((p ==) . (ix ^. eventBuilder . extractPoint) . FileIndexer.metadata) content
     case resultContent of
       Nothing -> pure Nothing
       Just eventFile -> do
         let resultFile = FileIndexer.path eventFile
-            deserialise = ix ^. deserialiseEvent $ FileIndexer.metadata eventFile
+            deserialise = ix ^. eventBuilder . deserialiseEvent $ FileIndexer.metadata eventFile
         result <- liftIO $ BS.readFile resultFile
         case deserialise result of
           Left err -> throwError $ IndexerQueryError err
@@ -176,7 +177,7 @@ instance
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
     content <- directoryContentWithMeta ix
     let validCandidate eventFile =
-          (ix ^. filePointExtractor) (FileIndexer.metadata eventFile) <= p
+          (ix ^. eventBuilder . extractPoint) (FileIndexer.metadata eventFile) <= p
             && FileIndexer.hasContent eventFile
         resultFile = filter validCandidate content
         extractEvents
@@ -215,7 +216,7 @@ instance
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
     content <- directoryContentWithMeta ix
     let validCandidate eventFile =
-          let eventPoint = (ix ^. filePointExtractor) (FileIndexer.metadata eventFile)
+          let eventPoint = (ix ^. eventBuilder . extractPoint) (FileIndexer.metadata eventFile)
            in eventPoint <= p && eventPoint > startingPoint q && FileIndexer.hasContent eventFile
         resultFile = filter validCandidate content
         extractEvents

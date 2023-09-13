@@ -291,6 +291,9 @@ module Marconi.Core.Experiment (
 
   -- | An indexer that serialise the event to disk
   FileIndexer (FileIndexer),
+  FileStorageConfig (FileStorageConfig),
+  FileBuilder (FileBuilder),
+  EventBuilder (EventBuilder),
   mkFileIndexer,
 
   -- ** Mixed indexer
@@ -510,7 +513,13 @@ import Marconi.Core.Experiment.Coordinator (
   tokens,
   workers,
  )
-import Marconi.Core.Experiment.Indexer.FileIndexer (FileIndexer (FileIndexer), mkFileIndexer)
+import Marconi.Core.Experiment.Indexer.FileIndexer (
+  EventBuilder (EventBuilder),
+  FileBuilder (FileBuilder),
+  FileIndexer (FileIndexer),
+  FileStorageConfig (FileStorageConfig),
+  mkFileIndexer,
+ )
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)
 import Marconi.Core.Experiment.Indexer.MixedIndexer (

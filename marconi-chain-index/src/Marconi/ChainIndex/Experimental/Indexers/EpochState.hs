@@ -56,6 +56,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
+import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -322,14 +323,9 @@ buildEpochStateIndexer codecConfig path =
          in blockNoAsText evt : chainPointTexts
    in Core.mkFileIndexer
         path
-        False
-        "epochState"
-        "cbor"
-        serialiseLedgerState
-        deserialiseLedgerState
-        metadataAsText
-        deserialiseMetadata
-        metadataChainpoint
+        (Core.FileStorageConfig True (Just 50) (comparing metadataChainpoint) 0) -- TODO use securityParam as a limit
+        (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState)
+        (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState)
 
 buildBlockIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -355,14 +351,9 @@ buildBlockIndexer codecConfig path =
          in blockNoAsText evt : chainPointTexts
    in Core.mkFileIndexer
         path
-        True
-        "block"
-        "cbor"
-        serialiseBlock
-        deserialiseBlock
-        metadataAsText
-        deserialiseMetadata
-        metadataChainpoint
+        (Core.FileStorageConfig True (Just 5000) (comparing metadataChainpoint) 0) -- TODO use securityParam as a limit
+        (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock)
+        (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock)
 
 -- TODO placeholder, to implement
 buildEpochSDDIndexer
