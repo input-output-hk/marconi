@@ -52,6 +52,7 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Sidechain.Api.HttpServer
+    Marconi.Sidechain.Api.Orphans
     Marconi.Sidechain.Api.Query.Indexers.EpochState
     Marconi.Sidechain.Api.Query.Indexers.MintBurn
     Marconi.Sidechain.Api.Query.Indexers.Utxo
@@ -86,6 +87,7 @@ library
   ------------------------
   build-depends:
     , aeson
+    , aeson-pretty
     , async
     , base                  >=4.9 && <5
     , bytestring
@@ -96,11 +98,13 @@ library
     , http-types
     , lens
     , mtl
+    , openapi3
     , optparse-applicative
     , pretty-simple
     , prettyprinter
     , prometheus-client
     , servant
+    , servant-openapi3
     , servant-server
     , stm                   >=2.5
     , text

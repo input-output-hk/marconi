@@ -16,9 +16,12 @@ import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
 import Data.Aeson qualified as Aeson
+import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.ByteString qualified as BS
+import Data.ByteString.Lazy.Char8 qualified as BSL8
 import Data.Default (def)
+import Data.OpenApi (OpenApi)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding qualified as Text
@@ -75,6 +78,7 @@ import Network.Wai.Middleware.RequestLogger (
 import Prettyprinter (Pretty (pretty))
 import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
+import Servant.OpenApi (toOpenApi)
 import Servant.Server (
   Application,
   Handler (Handler),
@@ -85,6 +89,12 @@ import Servant.Server (
   serve,
  )
 import System.Log.FastLogger (fromLogStr)
+
+openApi :: OpenApi
+openApi = toOpenApi (Proxy :: Proxy JsonRpcAPI)
+
+printOpenApi :: IO ()
+printOpenApi = BSL8.putStrLn $ encodePretty openApi
 
 -- | Bootstraps the HTTP server
 runHttpServer :: ReaderT SidechainEnv IO ()

@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -38,6 +40,7 @@ module Network.JsonRpc.Types (
 ) where
 
 import Control.Applicative (liftA3, (<|>))
+import Control.Lens ((&), (.~), (?~))
 import Data.Aeson (
   FromJSON (parseJSON),
   ToJSON (toJSON),
@@ -51,9 +54,18 @@ import Data.Aeson (
 import Data.Aeson.Types (Parser)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (isNothing)
+import Data.OpenApi (
+  NamedSchema (NamedSchema),
+  OpenApiType (OpenApiObject, OpenApiString),
+  Referenced (Inline),
+  ToSchema (declareNamedSchema),
+  declareSchemaRef,
+ )
+import Data.OpenApi.Lens (enum_, properties, required, type_)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text.Read (decimal)
 import Data.Word (Word64)
+import GHC.Generics (Generic)
 import GHC.TypeLits (Symbol)
 import Network.HTTP.Media ((//))
 import Servant.API (
@@ -66,6 +78,7 @@ import Servant.API (
   ReqBody,
   (:>),
  )
+import Servant.OpenApi (HasOpenApi (toOpenApi))
 
 -- | Client messages
 data Request p = Request
@@ -96,6 +109,32 @@ instance (FromJSON p) => FromJSON (Request p) where
 
     versionGuard v . pure $ Request m p ix
 
+instance (ToSchema p) => ToSchema (Request p) where
+  declareNamedSchema _ = do
+    idSchema <- declareSchemaRef $ Proxy @(Maybe Word64)
+    methodSchema <- declareSchemaRef $ Proxy @String
+    let versionSchema =
+          Inline $
+            mempty
+              & type_ ?~ OpenApiString
+              & enum_ ?~ ["2.0"]
+    let paramsSchema = Inline mempty
+    return $
+      NamedSchema (Just "JsonRpc_Request") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("id", idSchema)
+               , ("jsonrpc", versionSchema)
+               , ("method", methodSchema)
+               , ("params", paramsSchema)
+               ]
+          & required
+            .~ [ "jsonrpc"
+               , "method"
+               , "params"
+               ]
+
 -- | JSON-RPC supported version, 2.0 at this time
 versionGuard :: Maybe String -> Parser a -> Parser a
 versionGuard v x
@@ -108,14 +147,18 @@ data JsonRpcResponse e r
   = Result !Word64 !r
   | Ack !Word64
   | Errors !(Maybe Word64) !(JsonRpcErr e)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+instance (ToSchema e, ToSchema r) => ToSchema (JsonRpcResponse e r)
 
 data JsonRpcErr e = JsonRpcErr
   { errorCode :: !Int
   , errorMessage :: !String
   , errorData :: !(Maybe e)
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+instance (ToSchema e) => ToSchema (JsonRpcErr e)
 
 -- | JSON-RPC error codes based on [JSONRPC Spec](https://www.jsonrpc.org/specification#error_object)
 mkJsonRpcParseErr :: Maybe e -> JsonRpcErr e
@@ -179,6 +222,7 @@ instance (ToJSON e, ToJSON r) => ToJSON (JsonRpcResponse e r) where
           ]
 
 data UnusedRequestParams = UnusedRequestParams
+  deriving (Generic)
 
 instance FromJSON UnusedRequestParams where
   parseJSON Null = pure UnusedRequestParams
@@ -189,8 +233,13 @@ instance FromJSON UnusedRequestParams where
 instance ToJSON UnusedRequestParams where
   toJSON = const Null
 
+instance ToSchema UnusedRequestParams
+
 -- | A JSON RPC server handles any number of methods.
 data RawJsonRpc api
+
+instance (HasOpenApi api) => HasOpenApi (RawJsonRpc api) where
+  toOpenApi _ = toOpenApi (Proxy :: Proxy api)
 
 {- | JSON-RPC endpoint which respond with a result given a query.
 
@@ -202,6 +251,9 @@ data RawJsonRpc api
    * @r@: the value type of the `result` field in the JSON-RPC response
 -}
 data JsonRpc (method :: Symbol) p e r
+
+instance (ToSchema p, ToSchema e, ToSchema r) => HasOpenApi (JsonRpc m p e r) where
+  toOpenApi _ = toOpenApi (Proxy :: Proxy (JsonRpcEndpoint (JsonRpc m p e r)))
 
 -- | JSON-RPC endpoints which do not respond
 data JsonRpcNotification (method :: Symbol) p

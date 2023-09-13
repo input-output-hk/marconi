@@ -84,8 +84,10 @@ library
     , iohk-monitoring
     , lens
     , mtl
+    , openapi3
     , servant
     , servant-client-core
+    , servant-openapi3
     , servant-server
     , text
     , wai

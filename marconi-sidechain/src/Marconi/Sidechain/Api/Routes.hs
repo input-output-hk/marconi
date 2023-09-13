@@ -1,7 +1,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 
 -- | Defines REST and JSON-RPC routes
@@ -15,6 +17,7 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.BaseTypes qualified as Ledger
 import Cardano.Slotting.Slot (WithOrigin (At, Origin), withOriginFromMaybe)
 import Control.Applicative ((<|>))
+import Control.Lens ((.~), (?~))
 import Control.Monad (join)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
@@ -22,11 +25,19 @@ import Data.Aeson.Key qualified as Aeson
 import Data.Aeson.KeyMap qualified as Aeson
 import Data.Aeson.Types qualified as Aeson
 import Data.Bifunctor (Bifunctor (first))
-import Data.Function (on)
+import Data.Function (on, (&))
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes, fromMaybe)
+import Data.OpenApi (
+  NamedSchema (NamedSchema),
+  OpenApiType (OpenApiObject),
+  ToSchema (declareNamedSchema),
+  declareSchemaRef,
+ )
+import Data.OpenApi.Lens (properties, required, type_)
+import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -36,6 +47,7 @@ import Marconi.ChainIndex.Legacy.Indexers.Utxo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Legacy.Orphans ()
 import Marconi.ChainIndex.Legacy.Types (TxIndexInBlock)
+import Marconi.Sidechain.Api.Orphans ()
 import Marconi.Sidechain.CLI (CliArgs)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc, UnusedRequestParams)
 import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
@@ -131,6 +143,26 @@ instance FromJSON SidechainTip where
           pure $ SidechainTip $ C.ChainTip slotNo bhh bn
      in Aeson.withObject "ChainTip" parseTip obj
 
+instance ToSchema SidechainTip where
+  declareNamedSchema _ = do
+    blockNoSchema <- declareSchemaRef $ Proxy @C.BlockNo
+    blockHeaderSchema <- declareSchemaRef $ Proxy @(C.Hash C.BlockHeader)
+    slotNoSchema <- declareSchemaRef $ Proxy @C.SlotNo
+    return $
+      NamedSchema (Just "SidechainTip") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("blockNo", blockNoSchema)
+               , ("blockHeaderHash", blockHeaderSchema)
+               , ("slotNo", slotNoSchema)
+               ]
+          & required
+            .~ [ "blockNo"
+               , "blockHeaderHash"
+               , "slotNo"
+               ]
+
 data GetCurrentSyncedBlockResult
   = GetCurrentSyncedBlockResult (WithOrigin BlockInfo) SidechainTip
   deriving stock (Eq, Ord, Generic, Show)
@@ -166,13 +198,36 @@ instance FromJSON GetCurrentSyncedBlockResult where
           pure $ GetCurrentSyncedBlockResult blockInfoM (fromMaybe (SidechainTip C.ChainTipAtGenesis) tip)
      in Aeson.withObject "BlockResult" parseBlock
 
+instance ToSchema GetCurrentSyncedBlockResult where
+  declareNamedSchema _ = do
+    blockNoSchema <- declareSchemaRef $ Proxy @C.BlockNo
+    blockTimestampSchema <- declareSchemaRef $ Proxy @Word64
+    blockHeaderSchema <- declareSchemaRef $ Proxy @(C.Hash C.BlockHeader)
+    slotNoSchema <- declareSchemaRef $ Proxy @C.SlotNo
+    epochNoSchema <- declareSchemaRef $ Proxy @C.EpochNo
+    nodeTipSchema <- declareSchemaRef $ Proxy @SidechainTip
+    return $
+      NamedSchema (Just "GetCurrentSyncedBlockResult") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("blockNo", blockNoSchema)
+               , ("blockTimestamp", blockTimestampSchema)
+               , ("blockHeaderHash", blockHeaderSchema)
+               , ("slotNo", slotNoSchema)
+               , ("epochNo", epochNoSchema)
+               , ("nodeTip", nodeTipSchema)
+               ]
+          & required
+            .~ []
+
 data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   { queryAddress :: !String
   -- ^ address to query for
   , querySearchInterval :: !(Utxo.Interval Ledger.SlotNo)
   -- ^ Query interval
   }
-  deriving stock (Show, Eq)
+  deriving stock (Show, Eq, Generic)
 
 instance FromJSON GetUtxosFromAddressParams where
   parseJSON =
@@ -201,10 +256,29 @@ instance ToJSON GetUtxosFromAddressParams where
         , ("unspentBeforeSlotNo" .=) <$> Utxo.intervalUpperBound (querySearchInterval q)
         ]
 
+instance ToSchema GetUtxosFromAddressParams where
+  declareNamedSchema _ = do
+    addressSchema <- declareSchemaRef $ Proxy @String
+    slotNoSchema <- declareSchemaRef $ Proxy @(Maybe C.SlotNo)
+    return $
+      NamedSchema (Just "GetUtxosFromAddressParams") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("address", addressSchema)
+               , ("createdAtOrAfterSlotNo", slotNoSchema)
+               , ("unspentBeforeSlotNo", slotNoSchema)
+               ]
+          & required
+            .~ [ "address"
+               ]
+
 newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult
   {unAddressUtxosResult :: [AddressUtxoResult]}
   deriving stock (Eq, Show, Generic)
   deriving newtype (ToJSON, FromJSON)
+
+deriving newtype instance ToSchema GetUtxosFromAddressResult
 
 data SpentInfoResult
   = SpentInfoResult
@@ -219,6 +293,8 @@ instance FromJSON SpentInfoResult where
   parseJSON =
     let parseSpent v = SpentInfoResult <$> v .: "slotNo" <*> v .: "txId"
      in Aeson.withObject "SpentInfoResult" parseSpent
+
+instance ToSchema SpentInfoResult
 
 -- | Wrapper around Cardano.Api,Value to provide a custom JSON serialisation/deserialisation
 newtype SidechainValue = SidechainValue {getSidechainValue :: C.Value}
@@ -275,6 +351,8 @@ instance FromJSON SidechainValue where
           SidechainValue . C.valueFromList . join
             <$> traverse parseValueItem (first Aeson.toText <$> Aeson.toList v)
      in Aeson.withObject "Value" fromJSONSideChainValue
+
+instance ToSchema SidechainValue
 
 data AddressUtxoResult = AddressUtxoResult
   { utxoResultSlotNo :: !C.SlotNo
@@ -335,6 +413,50 @@ instance FromJSON AddressUtxoResult where
               .: "txInputs"
      in Aeson.withObject "AddressUtxoResult" parseAddressUtxoResult
 
+instance ToSchema AddressUtxoResult where
+  declareNamedSchema _ = do
+    slotNoSchema <- declareSchemaRef $ Proxy @C.SlotNo
+    blockHeaderSchema <- declareSchemaRef $ Proxy @(C.Hash C.BlockHeader)
+    blockNoSchema <- declareSchemaRef $ Proxy @C.BlockNo
+    txIndexInBlockSchema <- declareSchemaRef $ Proxy @TxIndexInBlock
+    txIdSchema <- declareSchemaRef $ Proxy @C.TxId
+    txIxSchema <- declareSchemaRef $ Proxy @C.TxIx
+    scriptHashSchema <- declareSchemaRef $ Proxy @(Maybe (C.Hash C.ScriptData))
+    scriptDataSchema <- declareSchemaRef $ Proxy @(Maybe C.ScriptData)
+    valueSchema <- declareSchemaRef $ Proxy @C.Value
+    spentBySchema <- declareSchemaRef $ Proxy @(Maybe SpentInfoResult)
+    txInputsSchema <- declareSchemaRef $ Proxy @[UtxoTxInput]
+    return $
+      NamedSchema (Just "AddressUtxoResult") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("slotNo", slotNoSchema)
+               , ("blockHeaderHash", blockHeaderSchema)
+               , ("blockNo", blockNoSchema)
+               , ("txIndexInBlock", txIndexInBlockSchema)
+               , ("txId", txIdSchema)
+               , ("txIx", txIxSchema)
+               , ("datumHash", scriptHashSchema)
+               , ("datum", scriptDataSchema)
+               , ("value", valueSchema)
+               , ("spentBy", spentBySchema)
+               , ("txInputs", txInputsSchema)
+               ]
+          & required
+            .~ [ "slotNo"
+               , "blockHeaderHash"
+               , "blockNo"
+               , "txIndexInBlock"
+               , "txId"
+               , "txIx"
+               , "datumHash"
+               , "datum"
+               , "value"
+               , "spentBy"
+               , "txInputs"
+               ]
+
 newtype UtxoTxInput = UtxoTxInput C.TxIn
   deriving stock (Eq, Ord, Show, Generic)
 
@@ -352,13 +474,30 @@ instance FromJSON UtxoTxInput where
           pure $ UtxoTxInput txIn
      in Aeson.withObject "UtxoTxInput" parseUtxoTxInput
 
+instance ToSchema UtxoTxInput where
+  declareNamedSchema _ = do
+    txIdSchema <- declareSchemaRef $ Proxy @C.TxId
+    txIxSchema <- declareSchemaRef $ Proxy @C.TxIx
+    return $
+      NamedSchema (Just "UtxoTxInput") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("txId", txIdSchema)
+               , ("txIx", txIxSchema)
+               ]
+          & required
+            .~ [ "txId"
+               , "txIx"
+               ]
+
 data GetBurnTokenEventsParams = GetBurnTokenEventsParams
   { policyId :: !C.PolicyId
   , assetName :: !(Maybe C.AssetName)
   , beforeSlotNo :: !(Maybe Word64)
   , afterTx :: !(Maybe C.TxId)
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Generic)
 
 instance FromJSON GetBurnTokenEventsParams where
   parseJSON =
@@ -380,10 +519,32 @@ instance ToJSON GetBurnTokenEventsParams where
         , ("createdAfterTx" .=) <$> afterTx q
         ]
 
+instance ToSchema GetBurnTokenEventsParams where
+  declareNamedSchema _ = do
+    policyIdSchema <- declareSchemaRef $ Proxy @C.PolicyId
+    assetNameSchema <- declareSchemaRef $ Proxy @(Maybe C.AssetName)
+    beforeSlotNoSchema <- declareSchemaRef $ Proxy @(Maybe Word64)
+    afterTxSchema <- declareSchemaRef $ Proxy @(Maybe C.TxId)
+    return $
+      NamedSchema (Just "GetBurnTokenEventsParams") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("policyId", policyIdSchema)
+               , ("assetName", assetNameSchema)
+               , ("createdBeforeSlotNo", beforeSlotNoSchema)
+               , ("createdAfterTx", afterTxSchema)
+               ]
+          & required
+            .~ [ "policyId"
+               ]
+
 newtype GetBurnTokenEventsResult
   = GetBurnTokenEventsResult [BurnTokenEventResult]
   deriving stock (Eq, Ord, Show, Generic)
   deriving newtype (ToJSON, FromJSON)
+
+deriving newtype instance ToSchema GetBurnTokenEventsResult
 
 -- | The quantity represents a burn amount only, so this is always a positive number.
 data BurnTokenEventResult
@@ -437,10 +598,48 @@ instance FromJSON BurnTokenEventResult where
               .: "isStable"
      in Aeson.withObject "AssetIdTxResult" parseAssetIdTxResult
 
+instance ToSchema BurnTokenEventResult where
+  declareNamedSchema _ = do
+    slotNoSchema <- declareSchemaRef $ Proxy @C.SlotNo
+    blockHeaderSchema <- declareSchemaRef $ Proxy @(C.Hash C.BlockHeader)
+    blockNoSchema <- declareSchemaRef $ Proxy @C.BlockNo
+    txIdSchema <- declareSchemaRef $ Proxy @C.TxId
+    scriptHashSchema <- declareSchemaRef $ Proxy @(Maybe (C.Hash C.ScriptData))
+    scriptDataSchema <- declareSchemaRef $ Proxy @(Maybe C.ScriptData)
+    assetNameSchema <- declareSchemaRef $ Proxy @(Maybe C.AssetName)
+    quantitySchema <- declareSchemaRef $ Proxy @C.Quantity
+    boolSchema <- declareSchemaRef $ Proxy @Bool
+    return $
+      NamedSchema (Just "BurnTokenEventResult") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("slotNo", slotNoSchema)
+               , ("blockHeaderHash", blockHeaderSchema)
+               , ("blockNo", blockNoSchema)
+               , ("txId", txIdSchema)
+               , ("redeemerHash", scriptHashSchema)
+               , ("redeemer", scriptDataSchema)
+               , ("assetName", assetNameSchema)
+               , ("burnAmount", quantitySchema)
+               , ("isStable", boolSchema)
+               ]
+          & required
+            .~ [ "slotNo"
+               , "blockHeaderHash"
+               , "blockNo"
+               , "txId"
+               , "redeemerHash"
+               , "redeemer"
+               , "assetName"
+               , "burnAmount"
+               , "isStable"
+               ]
+
 newtype GetEpochActiveStakePoolDelegationResult
   = GetEpochActiveStakePoolDelegationResult [ActiveSDDResult]
   deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (ToJSON, FromJSON)
+  deriving newtype (ToJSON, FromJSON, ToSchema)
 
 data ActiveSDDResult
   = ActiveSDDResult
@@ -482,10 +681,36 @@ instance ToJSON ActiveSDDResult where
         , "blockNo" .= blockNo
         ]
 
+instance ToSchema ActiveSDDResult where
+  declareNamedSchema _ = do
+    poolIdSchema <- declareSchemaRef $ Proxy @C.PoolId
+    lovelaceSchema <- declareSchemaRef $ Proxy @C.Lovelace
+    slotNoSchema <- declareSchemaRef $ Proxy @C.SlotNo
+    blockHeaderSchema <- declareSchemaRef $ Proxy @(C.Hash C.BlockHeader)
+    blockNoSchema <- declareSchemaRef $ Proxy @C.BlockNo
+    return $
+      NamedSchema (Just "ActiveSDDResult") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("poolId", poolIdSchema)
+               , ("lovelace", lovelaceSchema)
+               , ("slotNo", slotNoSchema)
+               , ("blockHeaderHash", blockHeaderSchema)
+               , ("blockNo", blockNoSchema)
+               ]
+          & required
+            .~ [ "poolId"
+               , "lovelace"
+               , "slotNo"
+               , "blockHeaderHash"
+               , "blockNo"
+               ]
+
 newtype GetEpochNonceResult
   = GetEpochNonceResult (Maybe NonceResult)
   deriving stock (Eq, Ord, Show, Generic)
-  deriving newtype (ToJSON, FromJSON)
+  deriving newtype (ToJSON, FromJSON, ToSchema)
 
 data NonceResult
   = NonceResult
@@ -493,7 +718,7 @@ data NonceResult
       !(Maybe C.SlotNo)
       !(Maybe (C.Hash C.BlockHeader))
       !C.BlockNo
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Generic, Show)
 
 instance FromJSON NonceResult where
   parseJSON =
@@ -523,6 +748,29 @@ instance ToJSON NonceResult where
             , "blockHeaderHash" .= blockHeaderHash
             , "blockNo" .= blockNo
             ]
+
+instance ToSchema NonceResult where
+  declareNamedSchema _ = do
+    nonceSchema <- declareSchemaRef $ Proxy @Ledger.Nonce
+    slotNoSchema <- declareSchemaRef $ Proxy @C.SlotNo
+    blockHeaderSchema <- declareSchemaRef $ Proxy @(C.Hash C.BlockHeader)
+    blockNoSchema <- declareSchemaRef $ Proxy @C.BlockNo
+    return $
+      NamedSchema (Just "NonceResult") $
+        mempty
+          & type_ ?~ OpenApiObject
+          & properties
+            .~ [ ("nonce", nonceSchema)
+               , ("slotNo", slotNoSchema)
+               , ("blockHeaderHash", blockHeaderSchema)
+               , ("blockNo", blockNoSchema)
+               ]
+          & required
+            .~ [ "nonce"
+               , "slotNo"
+               , "blockHeaderHash"
+               , "blockNo"
+               ]
 
 ------------------------
 -- REST API endpoints --
