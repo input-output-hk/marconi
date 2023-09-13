@@ -26,9 +26,9 @@ import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (qu
 import Marconi.Core.Experiment.Indexer.FileIndexer (
   FileIndexer,
   deserialiseEvent,
-  directoryContentWithMeta,
   eventBuilder,
   extractPoint,
+  getDirectoryMetadata,
  )
 import Marconi.Core.Experiment.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events)
@@ -70,7 +70,7 @@ instance
   query p EventAtQuery ix = do
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
-    content <- directoryContentWithMeta ix
+    content <- getDirectoryMetadata ix
     let resultContent = find ((p ==) . (ix ^. eventBuilder . extractPoint) . FileIndexer.metadata) content
     case resultContent of
       Nothing -> pure Nothing
@@ -149,10 +149,10 @@ instance
           memoryResult <- extractMemoryResult
           pure $ memoryResult <> dbResult
 
--- | Get the 'nbOfEvents' last non empty from the indexer before the point given in the query
+-- | Get the 'nbOfEvents' last non empty events from the indexer before the point given in the query
 newtype LatestEventsQuery event = LatestEventsQuery {nbOfEvents :: Word}
 
--- | Get the latest non empty event befor the point given in the query
+-- | Get the latest non empty event before the point given in the query
 latestEvent :: LatestEventsQuery event
 latestEvent = LatestEventsQuery 1
 
@@ -174,7 +174,7 @@ instance
   query p q ix = do
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
-    content <- directoryContentWithMeta ix
+    content <- getDirectoryMetadata ix
     let validCandidate eventFile =
           (ix ^. eventBuilder . extractPoint) (FileIndexer.metadata eventFile) <= p
             && FileIndexer.hasContent eventFile
@@ -209,7 +209,7 @@ instance
   query p q ix = do
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
-    content <- directoryContentWithMeta ix
+    content <- getDirectoryMetadata ix
     let validCandidate eventFile =
           let eventPoint = (ix ^. eventBuilder . extractPoint) (FileIndexer.metadata eventFile)
            in eventPoint <= p && eventPoint > startingPoint q && FileIndexer.hasContent eventFile

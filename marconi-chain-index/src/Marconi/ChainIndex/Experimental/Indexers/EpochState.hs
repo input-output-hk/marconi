@@ -370,7 +370,7 @@ buildBlockIndexer codecConfig path = do
     (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock)
 
--- TODO placeholder, to implement
+-- TODO placeholder, to implement (at the moment we don't store any info except the point)
 buildEpochSDDIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath
@@ -384,7 +384,7 @@ buildEpochSDDIndexer path =
     Sync.syncRollbackPlan
     Sync.syncLastPointsQuery
 
--- TODO placeholder, to implement
+-- TODO placeholder, to implement (at the moment we don't store any info except the point)
 buildEpochNonceIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath

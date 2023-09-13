@@ -440,8 +440,8 @@ module Marconi.Core.Experiment (
   WithFold,
   withFold,
   withFoldMap,
-  getLastByQuery,
-  HasFoldConfig (fold),
+  getLastEventAtQueryValue,
+  HasFold (fold),
 
   -- ** Index Wrapper
 
@@ -596,9 +596,9 @@ import Marconi.Core.Experiment.Transformer.WithDelay (
   withDelay,
  )
 import Marconi.Core.Experiment.Transformer.WithFold (
-  HasFoldConfig (..),
+  HasFold (..),
   WithFold,
-  getLastByQuery,
+  getLastEventAtQueryValue,
   withFold,
   withFoldMap,
  )

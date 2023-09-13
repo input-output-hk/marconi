@@ -1586,7 +1586,7 @@ withFoldMapRunner
 withFoldMapRunner f wRunner =
   Model.IndexerTestRunner
     (wRunner ^. Model.indexerRunner)
-    (Core.withFoldMap Core.getLastByQuery f <$> wRunner ^. Model.indexerGenerator)
+    (Core.withFoldMap Core.getLastEventAtQueryValue f <$> wRunner ^. Model.indexerGenerator)
 
 deriving via (Sum Int) instance Semigroup TestEvent
 deriving via (Sum Int) instance Monoid TestEvent

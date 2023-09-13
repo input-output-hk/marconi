@@ -1,7 +1,11 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
--- | An indexer that stores its events to filedisk, using the provided serialisation
+{- | An indexer that stores its events to files, using the provided serialisation.
+
+Note that the indexer stores one file per event, it recommended to either limit the number of
+events we keep or to use it for sparse events.
+-}
 module Marconi.Core.Experiment.Indexer.FileIndexer (
   FileIndexer (FileIndexer),
   FileStorageConfig (FileStorageConfig),
@@ -18,7 +22,7 @@ module Marconi.Core.Experiment.Indexer.FileIndexer (
   deserialiseTimedEvent,
   fileEventIdentifier,
   fileIndexerLastSyncPoint,
-  directoryContentWithMeta,
+  getDirectoryMetadata,
   EventInfo (..),
 ) where
 
@@ -55,6 +59,9 @@ import System.Directory (createDirectoryIfMissing, listDirectory, removeFile)
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
 
+{- | Configuration datatype for 'FileIndexer' that provides the content needed to create the
+filenames used by the indexer
+-}
 data FileBuilder meta event = FileBuilder
   { _eventPrefix :: Text
   -- ^ The prefix used in the filename of the events
@@ -67,14 +74,21 @@ data FileBuilder meta event = FileBuilder
 
 Lens.makeLenses ''FileBuilder
 
+{- | This datatypes gather the functions needed to deserialise events from both the filenames and
+the file content.
+@meta@ is the metadata type and @event@ the type of events we handle.
+-}
 data EventBuilder meta event = EventBuilder
   { _deserialiseMeta :: [Text] -> Maybe meta
+  -- ^ this function take the parts of the filename (split with @_@) and rebuild the metadata from
+  -- there
   , _extractPoint :: meta -> Point event
   , _deserialiseEvent :: meta -> ByteString -> Either Text (Maybe event)
   }
 
 Lens.makeLenses ''EventBuilder
 
+-- | The dataytpe used to control which events are saved and how many we keep on disk.
 data FileStorageConfig meta = FileStorageConfig
   { _keepEmptyEvent :: Bool
   -- ^ Do we create a file for empty event
@@ -86,9 +100,16 @@ data FileStorageConfig meta = FileStorageConfig
 
 Lens.makeLenses ''FileStorageConfig
 
+{- | An indexer that store events in a directory, one file per event.
+
+It as to type parameters:
+
+    * @meta@ the metadata type, used to build the filename
+    * @event@ the indexed events type.
+-}
 data FileIndexer meta event = FileIndexer
   { _eventDirectory :: FilePath
-  -- ^ The directory wher we store the events
+  -- ^ The directory where we store the events
   , _storageConfig :: FileStorageConfig meta
   -- ^ Define storage management
   , _fileBuilder :: FileBuilder meta event
@@ -101,6 +122,7 @@ data FileIndexer meta event = FileIndexer
 
 Lens.makeLenses ''FileIndexer
 
+-- Create a 'FileIndexer', rebuilding the contenc
 mkFileIndexer
   :: (MonadIO m, MonadError IndexerError m, HasGenesis (Point event), Ord (Point event))
   => FilePath
@@ -174,11 +196,11 @@ extractEventsInfo metaExtractor eventDir =
           Nothing -> throwError $ IndexerQueryError $ "Invalid file in directory: " <> Text.pack eventDir
           Just points -> pure points
 
-directoryContentWithMeta
+getDirectoryMetadata
   :: (MonadIO m, MonadError (QueryError q) m)
   => FileIndexer meta event
   -> m [EventInfo meta]
-directoryContentWithMeta indexer = do
+getDirectoryMetadata indexer = do
   let eventDir = indexer ^. eventDirectory
   extractEventsInfo (indexer ^. eventBuilder . deserialiseMeta) eventDir
 
@@ -199,7 +221,7 @@ deserialiseTimedEvent indexer eventFile = do
 
 instance (Applicative m) => IsSync m event (FileIndexer meta) where
   lastSyncPoint = pure . Lens.view fileIndexerLastSyncPoint
-  lastSyncPoints _n = pure . lastSyncPoint -- TODO do better
+  lastSyncPoints _n = pure . lastSyncPoint -- TODO Query the directory content to get the n last sync points
 
 writeTimedEvent
   :: (MonadIO m, MonadError IndexerError m)
@@ -234,7 +256,7 @@ removeOldest
   => FileIndexer meta event
   -> m ()
 removeOldest indexer = do
-  content <- runExceptT $ directoryContentWithMeta indexer
+  content <- runExceptT $ getDirectoryMetadata indexer
   case content of
     Left _err -> throwError $ IndexerInternalError "can't read directory content"
     Right c -> do
@@ -259,7 +281,7 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
         pure $ setLastSync indexer
 
   rollback p indexer = do
-    filesWithMetadata <- runExceptT $ directoryContentWithMeta indexer
+    filesWithMetadata <- runExceptT $ getDirectoryMetadata indexer
     nbRemoved <- case filesWithMetadata of
       Left _err -> throwError $ IndexerInternalError "can't parse directory content"
       Right xs -> flip execStateT 0 $ forM xs $ \eventFile -> do

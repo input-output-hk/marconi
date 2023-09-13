@@ -52,7 +52,7 @@ run appName = do
         (Core.CatchupConfig batchSize stopCatchupDistance)
         (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
         (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
-        (EpochState.EpochStateConfig nodeConfigPath 1000)
+        (EpochState.EpochStateConfig nodeConfigPath 500)
         trace
         (Cli.optionsDbPath o)
   (indexerLastSyncPoints, _utxoQueryIndexer, indexers) <-
@@ -67,7 +67,6 @@ run appName = do
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
-  logInfo trace "Indexers ready"
   Runner.runIndexer
     trace
     securityParam
