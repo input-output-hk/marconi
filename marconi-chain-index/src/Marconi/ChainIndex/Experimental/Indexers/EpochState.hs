@@ -109,8 +109,10 @@ type ExtLedgerConfig = O.ExtLedgerCfg (O.HardForkBlock (O.CardanoEras O.Standard
 type instance Core.Point (C.BlockInMode C.CardanoMode) = C.ChainPoint
 type instance Core.Point EpochState = C.ChainPoint
 
+-- | Base event used to store the 'ExtLedgerState'
 data EpochState = EpochState {extLedgerState :: ExtLedgerState, blockNo :: C.BlockNo}
 
+-- | Event for @Nonce@ storage
 data EpochNonce = EpochNonce
   { _nonceEpochNo :: !C.EpochNo
   , _nonceNonce :: !Ledger.Nonce
@@ -127,6 +129,7 @@ type instance Core.Point EpochNonce = C.ChainPoint
 
 Lens.makeLenses ''EpochNonce
 
+-- | Event for @SDD@ storage
 data EpochSDD = EpochSDD
   { _sddEpochNo :: !C.EpochNo
   , _sddPoolId :: !C.PoolId
@@ -169,6 +172,7 @@ type BlockFileIndexer =
     (C.BlockInMode C.CardanoMode)
     (WithDistance (C.BlockInMode C.CardanoMode))
 
+-- | The inner state of the 'EpochStateIndexer'
 data EpochStateIndexerState event = EpochStateIndexerState
   { _stateCurrentLedgerState :: EpochState
   , _stateTimeToNextSnapshot :: Word
@@ -180,6 +184,7 @@ data EpochStateIndexerState event = EpochStateIndexerState
 
 Lens.makeLenses ''EpochStateIndexerState
 
+-- | The configuration of the 'EpochStateIndexer'
 data EpochStateIndexerConfig event = EpochStateIndexerConfig
   { _configSnapshotInterval :: Word
   , _configGenesisConfig :: C.GenesisConfig
@@ -281,9 +286,18 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
   epochNonceIndexer' <-
     mkStandardIndexer workerCfg =<< buildEpochNonceIndexer (rootDir </> "epochNonce.db")
   epochStateIndexer' <-
-    addTransform <$> buildEpochStateIndexer configCodec (rootDir </> "epochState")
+    addTransform
+      <$> buildEpochStateIndexer
+        configCodec
+        (securityParamConfig workerCfg)
+        (snapshotIntervalInBlocks cfg)
+        (rootDir </> "epochState")
   epochBlocksIndexer <-
-    addTransform <$> buildBlockIndexer configCodec (rootDir </> "epochBlocks")
+    addTransform
+      <$> buildBlockIndexer
+        configCodec
+        (securityParamConfig workerCfg)
+        (rootDir </> "epochBlocks")
   let state =
         EpochStateIndexerState
           (EpochState (CE.mkInitExtLedgerState genesisCfg) 0)
@@ -341,9 +355,12 @@ directorySize dir = liftIO $ do
 buildEpochStateIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+  -> SecurityParam
+  -> Word
+  -- ^ save frequency
   -> FilePath
   -> m (Core.FileIndexer EpochMetadata EpochState)
-buildEpochStateIndexer codecConfig path = do
+buildEpochStateIndexer codecConfig securityParam' saveFrequency path = do
   let serialiseLedgerState =
         CBOR.toLazyByteString
           . O.encodeExtLedgerState
@@ -370,19 +387,22 @@ buildEpochStateIndexer codecConfig path = do
               C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
                 [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
          in blockNoAsText evt : chainPointTexts
+      -- we always add one to get at least one stable ledger state
+      storageSize = (fromIntegral securityParam' `div` saveFrequency) + 1
   currentSize <- directorySize path
   Core.mkFileIndexer
     path
-    (Core.FileStorageConfig False (Just 50) (comparing metadataChainpoint) currentSize) -- TODO use securityParam as a limit
+    (Core.FileStorageConfig False (Just storageSize) (comparing metadataChainpoint) currentSize)
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState)
 
 buildBlockIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+  -> SecurityParam
   -> FilePath
   -> m (Core.FileIndexer EpochMetadata (C.BlockInMode C.CardanoMode))
-buildBlockIndexer codecConfig path = do
+buildBlockIndexer codecConfig securityParam' path = do
   let serialiseBlock =
         CBOR.toLazyByteString . O.encodeDisk codecConfig . C.toConsensusBlock
       deserialiseBlock (EpochMetadata Nothing _) = const (Right Nothing)
@@ -399,10 +419,11 @@ buildBlockIndexer codecConfig path = do
               C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
                 [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
          in blockNoAsText evt : chainPointTexts
+      storageSize = fromIntegral securityParam'
   currentSize <- directorySize path
   Core.mkFileIndexer
     path
-    (Core.FileStorageConfig True (Just 5000) (comparing metadataChainpoint) currentSize) -- TODO use securityParam as a limit
+    (Core.FileStorageConfig True (Just storageSize) (comparing metadataChainpoint) currentSize)
     (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock)
 
@@ -563,9 +584,9 @@ instance
     indexer' <- indexer & performSnapshots newTimeToSnapshot timedEvent
     storeEmptyEpochStateRelatedInfo p indexer'
   index timedEvent@(Core.Timed p (Just (WithDistance d bim))) indexer = do
-    let oldEpoch = currentEpoch indexer
     newEpochState <- updateEpochState bim indexer
-    let newEpoch = getEpochNo $ extLedgerState newEpochState
+    let oldEpoch = currentEpoch indexer
+        newEpoch = getEpochNo $ extLedgerState newEpochState
         newTimeToSnapshot = pred $ indexer ^. blocksBeforeNextSnapshot
     indexer' <-
       indexer
