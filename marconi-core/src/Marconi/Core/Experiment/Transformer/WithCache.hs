@@ -42,10 +42,12 @@ import Marconi.Core.Experiment.Class (
   queryLatest,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
+import Marconi.Core.Experiment.Transformer.Class (
+  IndexerMapTrans (unwrapMap),
+  IndexerTrans (unwrap),
+ )
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
-  IndexerTrans (Config, unwrap, wrap),
   indexAllDescendingVia,
   indexVia,
   lastSyncPointVia,
@@ -182,10 +184,6 @@ addCacheFor q indexer = do
     Right result -> pure $ indexer & cache %~ Map.insert q result
 
 instance IndexerTrans (WithCache query) where
-  type Config (WithCache query) = CacheConfig query
-
-  wrap cfg = WithCache . IndexTransformer cfg
-
   unwrap = cacheWrapper . wrappedIndexer
 
 rollbackCache

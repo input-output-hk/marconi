@@ -29,10 +29,12 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
+import Marconi.Core.Experiment.Transformer.Class (
+  IndexerMapTrans (unwrapMap),
+  IndexerTrans (unwrap),
+ )
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
-  IndexerTrans (Config, unwrap, wrap),
   indexVia,
   resetVia,
   rollbackVia,
@@ -91,10 +93,6 @@ deriving via
     (Queryable m event query indexer) => Queryable m event query (WithDelay indexer)
 
 instance IndexerTrans WithDelay where
-  type Config WithDelay = DelayConfig
-
-  wrap cfg = WithDelay . IndexTransformer cfg
-
   unwrap = delayedIndexer
 
 delayedIndexer :: Lens' (WithDelay indexer event) (indexer event)

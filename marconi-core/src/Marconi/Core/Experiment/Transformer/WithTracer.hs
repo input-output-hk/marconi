@@ -46,10 +46,12 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
+import Marconi.Core.Experiment.Transformer.Class (
+  IndexerMapTrans (unwrapMap),
+  IndexerTrans (unwrap),
+ )
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
-  IndexerTrans (Config, unwrap, wrap),
   closeVia,
   indexAllDescendingVia,
   indexAllVia,
@@ -137,10 +139,6 @@ instance (Queryable m event query indexer) => Queryable m event query (WithTrace
   query = queryVia unwrap
 
 instance IndexerTrans (WithTracer m) where
-  type Config (WithTracer m) = IndexerTracer m
-
-  wrap cfg = WithTracer . IndexTransformer cfg
-
   unwrap = tracerWrapper . unwrap
 
 {- | It gives access to the tracer. The provided instances allows access to the tracer event below
@@ -331,10 +329,6 @@ instance (Queryable m event query indexer) => Queryable m event query (WithTrace
   query = queryVia unwrap
 
 instance IndexerTrans (WithTrace m) where
-  type Config (WithTrace m) = IndexerTrace m
-
-  wrap cfg = WithTrace . IndexTransformer cfg
-
   unwrap = traceWrapper . unwrap
 
 {- | It gives access to the tracer. The provided instances allows access to the tracer event below

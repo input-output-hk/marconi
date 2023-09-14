@@ -24,13 +24,14 @@ import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (SomeException, catch, finally)
+import Control.Exception (SomeException (SomeException), catch, finally)
 import Control.Lens.Operators ((^.))
 import Control.Monad (void)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   IsIndex (index, rollback),
@@ -198,7 +199,7 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
       safeProcessEvent input = do
         processedInput <- mapIndex transformInput input
         process processedInput
-          `catch` \(_ :: SomeException) -> pure $ Just $ StopIndexer (Just name)
+          `catch` \(SomeException e) -> pure $ Just $ StopIndexer (Just $ name <> " " <> Text.pack (show e))
 
       loop :: TChan (ProcessedInput input) -> IO ()
       loop chan' =

@@ -1280,20 +1280,18 @@ resumeLastSyncProperty rehydrate gen =
     lift $ Core.close indexer''
     pure $ origSyncPoint === resumedSyncPoint
 
--- TODO Became very slow since commit 50e35a71f7106500b87ec8eb6d2ff820c2f08b96
 resumeSQLiteLastSyncTest :: Tasty.TestTree
 resumeSQLiteLastSyncTest =
   Tasty.testProperty "SQLiteIndexer - stop and restart restore lastSyncPoint" $
-    Test.withMaxSuccess 5 $
+    Test.withMaxSuccess 100 $
       resumeLastSyncProperty
         sqliteModelIndexerWithFile
         (view chainWithoutEmptyEvents <$> Test.arbitrary)
 
--- TODO Became very slow since commit 50e35a71f7106500b87ec8eb6d2ff820c2f08b96
 resumeMixedLastSyncTest :: Tasty.TestTree
 resumeMixedLastSyncTest =
   Tasty.testProperty "MixedIndexer - stop and restart restore lastSyncPoint" $
-    Test.withMaxSuccess 5 $
+    Test.withMaxSuccess 100 $
       resumeLastSyncProperty
         mixedModelNoMemoryIndexerWithFile
         (view chainWithoutEmptyEvents <$> Test.arbitrary)
@@ -1566,18 +1564,32 @@ withResumeTest =
   Tasty.testProperty "WithResume should drain already synced events" $
     Test.withMaxSuccess 10_000 propWithResumeShouldDrainAlreadySyncedEvents
 
--- | A runner for a the 'WithAggregate' tranformer
-withAggregateRunner
-  :: (Monad m)
+-- | A runner for a the 'WithFold' tranformer (using withFoldMap)
+withFoldMapRunner
+  :: ( MonadError Core.IndexerError m
+     , Monoid output
+     , Core.IsSync m output wrapped
+     , Core.HasGenesis (Core.Point output)
+     , Core.Queryable
+        ( ExceptT
+            (Core.QueryError (Core.EventAtQuery output))
+            m
+        )
+        output
+        (Core.EventAtQuery output)
+        wrapped
+     , Ord (Core.Point output)
+     )
   => (input -> output)
   -> Model.IndexerTestRunner m output wrapped
-  -> Model.IndexerTestRunner m input (Core.WithAggregate wrapped output)
-withAggregateRunner f wRunner =
+  -> Model.IndexerTestRunner m input (Core.WithFold m wrapped output)
+withFoldMapRunner f wRunner =
   Model.IndexerTestRunner
     (wRunner ^. Model.indexerRunner)
-    (Core.withAggregate f <$> wRunner ^. Model.indexerGenerator)
+    (Core.withFoldMap Core.getLastEventAtQueryValue f <$> wRunner ^. Model.indexerGenerator)
 
 deriving via (Sum Int) instance Semigroup TestEvent
+deriving via (Sum Int) instance Monoid TestEvent
 
 withAggregateProperty
   :: Gen [Item TestEvent]
@@ -1597,7 +1609,7 @@ withAggregateProperty gen =
         catMaybes . init . scanr modelAggregate Nothing
           <$> views model (fmap snd . filter ((lastSync >=) . fst))
 
-      runner = withAggregateRunner id Model.listIndexerRunner
+      runner = withFoldMapRunner id Model.listIndexerRunner
 
       r = runner ^. Model.indexerRunner
       genIndexer = runner ^. Model.indexerGenerator
@@ -1633,8 +1645,6 @@ withRollbackFailureRunner wRunner =
     (WithRollbackFailure . Core.IndexTransformer (Const ()) <$> (wRunner ^. Model.indexerGenerator))
 
 instance Core.IndexerTrans WithRollbackFailure where
-  type Config WithRollbackFailure = Const ()
-  wrap cfg = WithRollbackFailure . Core.IndexTransformer cfg
   unwrap = withRollbackFailure . Core.wrappedIndexer
 
 deriving via

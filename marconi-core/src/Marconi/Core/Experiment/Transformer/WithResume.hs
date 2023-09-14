@@ -29,6 +29,7 @@ import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import Marconi.Core.Experiment.Class qualified as Class
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
+import Marconi.Core.Experiment.Transformer.Class (IndexerTrans (unwrap))
 import Marconi.Core.Experiment.Transformer.IndexTransformer qualified as Wrapper
 import Marconi.Core.Experiment.Type (
   IndexerError (ResumingFailed),
@@ -109,9 +110,7 @@ lastPassed = resumeState . stateLastPassed
 hasStarted :: Lens.Lens' (WithResume indexer event) Bool
 hasStarted = resumeState . stateHasStarted
 
-instance Wrapper.IndexerTrans WithResume where
-  type Config WithResume = ResumeState
-  wrap cfg = WithResume . Wrapper.IndexTransformer cfg
+instance IndexerTrans WithResume where
   unwrap = resumeIndexer
 
 -- | A comparison for points, quite similar to 'Ordering' but add a way to identify forks
@@ -153,8 +152,8 @@ rollbackToAndInsert
   -> WithResume indexer event
   -> m (WithResume indexer event)
 rollbackToAndInsert p potentialNext indexer =
-  maybe pure (Wrapper.indexVia Wrapper.unwrap) potentialNext
-    <=< Wrapper.rollbackVia Wrapper.unwrap p
+  maybe pure (Wrapper.indexVia unwrap) potentialNext
+    <=< Wrapper.rollbackVia unwrap p
     $ indexer & resumeState %~ wipeHistory
 
 instance
@@ -175,7 +174,7 @@ instance
      in case decidePointStatus (timedEvent ^. point) (indexer ^. lastPoints) of
           -- We have exhausted the sync list, we're past the resume point and we can index normally
           ResumingEnded ->
-            Wrapper.indexVia Wrapper.unwrap timedEvent indexer
+            Wrapper.indexVia unwrap timedEvent indexer
           -- the point is before the next point we're waiting
           OngoingResuming Before ->
             case indexer ^. lastPassed of

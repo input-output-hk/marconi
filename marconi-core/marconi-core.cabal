@@ -59,6 +59,7 @@ library
     Marconi.Core.Experiment
     Marconi.Core.Experiment.Class
     Marconi.Core.Experiment.Coordinator
+    Marconi.Core.Experiment.Indexer.FileIndexer
     Marconi.Core.Experiment.Indexer.LastPointIndexer
     Marconi.Core.Experiment.Indexer.ListIndexer
     Marconi.Core.Experiment.Indexer.MixedIndexer
@@ -67,10 +68,10 @@ library
     Marconi.Core.Experiment.Query
     Marconi.Core.Experiment.Transformer.Class
     Marconi.Core.Experiment.Transformer.IndexTransformer
-    Marconi.Core.Experiment.Transformer.WithAggregate
     Marconi.Core.Experiment.Transformer.WithCache
     Marconi.Core.Experiment.Transformer.WithCatchup
     Marconi.Core.Experiment.Transformer.WithDelay
+    Marconi.Core.Experiment.Transformer.WithFold
     Marconi.Core.Experiment.Transformer.WithPruning
     Marconi.Core.Experiment.Transformer.WithResume
     Marconi.Core.Experiment.Transformer.WithTracer
@@ -96,7 +97,10 @@ library
   build-depends:
     , async
     , base           >=4.7 && <5
+    , bytestring
     , containers
+    , directory
+    , filepath
     , lens
     , mtl
     , primitive

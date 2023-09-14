@@ -25,7 +25,7 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (ConfigMap, unwrapMap, wrapMap))
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   closeVia,
   getDatabasePathVia,
@@ -80,9 +80,6 @@ transformPoint :: Lens' (WithTransform indexer output input) (Point input -> Poi
 transformPoint = config . transformPointConfig
 
 instance IndexerMapTrans WithTransform where
-  type ConfigMap WithTransform = TransformConfig
-
-  wrapMap = WithTransform
   unwrapMap = transformedIndexer
 
 instance

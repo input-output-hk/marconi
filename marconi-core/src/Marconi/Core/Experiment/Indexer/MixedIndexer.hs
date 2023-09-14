@@ -42,10 +42,12 @@ import Marconi.Core.Experiment.Class (
   Queryable (query),
  )
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
+import Marconi.Core.Experiment.Transformer.Class (
+  IndexerMapTrans (unwrapMap),
+  IndexerTrans (unwrap),
+ )
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
-  IndexerTrans (unwrap),
   indexVia,
   wrappedIndexer,
   wrapperConfig,

@@ -113,12 +113,12 @@ data SQLiteIndexer event = SQLiteIndexer
   -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
   }
 
-makeLenses 'SQLiteIndexer
+makeLenses ''SQLiteIndexer
 
 {- | Start a new indexer or resume an existing SQLite indexer
 
- The main difference with 'SQLiteIndexer' is
- that we set 'dbLastSync' thanks to the provided query
+ The main difference with 'SQLiteIndexer' is that we set 'dbLastSync' thanks to the provided query.
+ It helps resuming an existing indexer.
 -}
 mkSqliteIndexer
   :: forall event m

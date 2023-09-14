@@ -29,10 +29,12 @@ import Marconi.Core.Experiment.Class (
   Resetable (reset),
  )
 import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (HasDatabasePath)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (unwrapMap))
+import Marconi.Core.Experiment.Transformer.Class (
+  IndexerMapTrans (unwrapMap),
+  IndexerTrans (unwrap),
+ )
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
-  IndexerTrans (Config, unwrap, wrap),
   indexAllDescendingVia,
   indexVia,
   resetVia,
@@ -119,10 +121,6 @@ caughtUpIndexer :: Lens.Lens' (WithCatchup indexer event) (indexer event)
 caughtUpIndexer = catchupWrapper . wrappedIndexer
 
 instance IndexerTrans WithCatchup where
-  type Config WithCatchup = CatchupContext
-
-  wrap cfg = WithCatchup . IndexTransformer cfg
-
   unwrap = caughtUpIndexer
 
 {- | A typeclass that allows an indexer with a @WitchCatchup@ transformer to configure

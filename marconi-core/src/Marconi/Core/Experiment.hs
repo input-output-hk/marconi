@@ -244,9 +244,9 @@ module Marconi.Core.Experiment (
   events,
   latestPoint,
 
-  -- ** In database
+  -- ** On disk
 
-  --
+  -- *** SQLite
 
   -- | An in-memory indexer that stores its events in a SQLite database.
   --
@@ -273,7 +273,7 @@ module Marconi.Core.Experiment (
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
 
-  -- *** Reexport from SQLite
+  -- **** Reexport from SQLite
   ToRow (..),
   lastSyncPointsQuery,
   dbLastSync,
@@ -286,6 +286,15 @@ module Marconi.Core.Experiment (
   SQLiteSourceProvider (SQLiteSourceProvider),
   IsSourceProvider,
   HasDatabasePath (getDatabasePath),
+
+  -- *** On file
+
+  -- | An indexer that serialise the event to disk
+  FileIndexer (FileIndexer),
+  FileStorageConfig (FileStorageConfig),
+  FileBuilder (FileBuilder),
+  EventBuilder (EventBuilder),
+  mkFileIndexer,
 
   -- ** Mixed indexer
 
@@ -365,8 +374,11 @@ module Marconi.Core.Experiment (
   --
   -- Queries that can be implemented for all indexers
   EventAtQuery (..),
+  EventsFromQuery (..),
   EventsMatchingQuery (..),
   allEvents,
+  LatestEventsQuery (LatestEventsQuery),
+  latestEvent,
 
   -- * Indexer Transformers
   IndexerTrans (..),
@@ -425,9 +437,11 @@ module Marconi.Core.Experiment (
   HasTransformConfig (..),
 
   -- ** Transform an indexer into a fold
-  WithAggregate,
-  withAggregate,
-  HasAggregateConfig (..),
+  WithFold,
+  withFold,
+  withFoldMap,
+  getLastEventAtQueryValue,
+  HasFold (fold),
 
   -- ** Index Wrapper
 
@@ -499,6 +513,13 @@ import Marconi.Core.Experiment.Coordinator (
   tokens,
   workers,
  )
+import Marconi.Core.Experiment.Indexer.FileIndexer (
+  EventBuilder (EventBuilder),
+  FileBuilder (FileBuilder),
+  FileIndexer (FileIndexer),
+  FileStorageConfig (FileStorageConfig),
+  mkFileIndexer,
+ )
 import Marconi.Core.Experiment.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)
 import Marconi.Core.Experiment.Indexer.MixedIndexer (
@@ -534,11 +555,17 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
  )
-import Marconi.Core.Experiment.Query (EventAtQuery (..), EventsMatchingQuery (..), allEvents)
-import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..))
+import Marconi.Core.Experiment.Query (
+  EventAtQuery (..),
+  EventsFromQuery (..),
+  EventsMatchingQuery (..),
+  LatestEventsQuery (..),
+  allEvents,
+  latestEvent,
+ )
+import Marconi.Core.Experiment.Transformer.Class (IndexerMapTrans (..), IndexerTrans (..))
 import Marconi.Core.Experiment.Transformer.IndexTransformer (
   IndexTransformer (..),
-  IndexerTrans (..),
   closeVia,
   indexAllDescendingVia,
   indexVia,
@@ -550,11 +577,6 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   rollbackVia,
   wrappedIndexer,
   wrapperConfig,
- )
-import Marconi.Core.Experiment.Transformer.WithAggregate (
-  HasAggregateConfig (..),
-  WithAggregate,
-  withAggregate,
  )
 import Marconi.Core.Experiment.Transformer.WithCache (
   HasCacheConfig (cache),
@@ -572,6 +594,13 @@ import Marconi.Core.Experiment.Transformer.WithDelay (
   HasDelayConfig (delayCapacity),
   WithDelay,
   withDelay,
+ )
+import Marconi.Core.Experiment.Transformer.WithFold (
+  HasFold (..),
+  WithFold,
+  getLastEventAtQueryValue,
+  withFold,
+  withFoldMap,
  )
 import Marconi.Core.Experiment.Transformer.WithPruning (
   HasPruningConfig (pruneEvery, securityParam),

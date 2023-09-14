@@ -8,6 +8,8 @@ module Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardWorker (..),
   mkStandardWorker,
   mkStandardWorkerWithFilter,
+  mkStandardIndexer,
+  mkStandardIndexerWithFilter,
 ) where
 
 import Cardano.Api qualified as C
@@ -46,6 +48,24 @@ data StandardWorker m input event indexer = StandardWorker
   , standardWorker :: Core.WorkerM m (WithDistance input) (Core.Point event)
   }
 
+-- | Create a standard indexer from the given indexer with some standard catchup values.
+mkStandardIndexer
+  :: ( MonadIO n
+     , MonadIO m
+     , Core.IsSync n event indexer
+     , Core.Point event ~ C.ChainPoint
+     )
+  => StandardWorkerConfig m a b
+  -> indexer event
+  -> n (StandardIndexer m indexer event)
+mkStandardIndexer config indexer =
+  let chainPointDistance :: Core.Point (WithDistance a) -> WithDistance a -> Word64
+      chainPointDistance _ = Distance.chainDistance
+   in fmap (Core.withTrace (logger config)) $
+        Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig config) + 1) $
+          Core.withCatchup chainPointDistance (catchupConfig config) $
+            Core.withTransform id (Just . Distance.getEvent) indexer
+
 -- | Create a worker for the given indexer with some standard catchup values
 mkStandardWorker
   :: ( MonadIO m
@@ -58,6 +78,25 @@ mkStandardWorker
   -> indexer event
   -> n (StandardWorker m input event indexer)
 mkStandardWorker config = mkStandardWorkerWithFilter config Just
+
+-- | Create a standard indexer from the given indexer with some standard catchup values with extra filtering.
+mkStandardIndexerWithFilter
+  :: ( MonadIO n
+     , MonadIO m
+     , Core.IsSync n event indexer
+     , Core.Point event ~ C.ChainPoint
+     )
+  => StandardWorkerConfig m a b
+  -> (event -> Maybe event)
+  -> indexer event
+  -> n (StandardIndexer m indexer event)
+mkStandardIndexerWithFilter config eventFilter indexer =
+  let chainPointDistance :: Core.Point (WithDistance a) -> WithDistance a -> Word64
+      chainPointDistance _ = Distance.chainDistance
+   in fmap (Core.withTrace (logger config)) $
+        Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig config) + 1) $
+          Core.withCatchup chainPointDistance (catchupConfig config) $
+            Core.withTransform id (eventFilter . Distance.getEvent) indexer
 
 -- | Create a worker for the given indexer with some standard catchup values with extra filtering.
 mkStandardWorkerWithFilter
@@ -72,16 +111,9 @@ mkStandardWorkerWithFilter
   -> (event -> Maybe event)
   -> indexer event
   -> n (StandardWorker m input event indexer)
-mkStandardWorkerWithFilter config eventFilter indexer =
-  let chainPointDistance :: Core.Point (WithDistance a) -> WithDistance a -> Word64
-      chainPointDistance _ = Distance.chainDistance
-      mapEventUnderDistance = fmap sequence . traverse (eventExtractor config)
-   in do
-        transformedIndexer <-
-          fmap (Core.withTrace (logger config)) $
-            Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig config) + 1) $
-              Core.withCatchup chainPointDistance (catchupConfig config) $
-                Core.withTransform id (eventFilter . Distance.getEvent) indexer
-        Core.WorkerIndexer idx worker <-
-          Core.createWorker (workerName config) mapEventUnderDistance transformedIndexer
-        pure $ StandardWorker idx worker
+mkStandardWorkerWithFilter config eventFilter indexer = do
+  let mapEventUnderDistance = fmap sequence . traverse (eventExtractor config)
+  transformedIndexer <- mkStandardIndexerWithFilter config eventFilter indexer
+  Core.WorkerIndexer idx worker <-
+    Core.createWorker (workerName config) mapEventUnderDistance transformedIndexer
+  pure $ StandardWorker idx worker

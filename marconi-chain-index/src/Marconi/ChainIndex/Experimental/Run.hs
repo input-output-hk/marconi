@@ -13,6 +13,7 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Experimental.Indexers (buildIndexers)
+import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Logger (defaultStdOutLogger)
@@ -36,11 +37,14 @@ run appName = do
       retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
       preferredStartingPoint = Cli.optionsChainPoint $ Cli.commonOptions o
   createDirectoryIfMissing True (Cli.optionsDbPath o)
+  nodeConfigPath <- case Cli.optionsNodeConfigPath o of
+    Just cfg -> pure cfg
+    Nothing -> error "No node config path provided"
   trace <- defaultStdOutLogger appName
-
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
     Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
 
+  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
   mindexers <-
     runExceptT $
       buildIndexers
@@ -48,6 +52,7 @@ run appName = do
         (Core.CatchupConfig batchSize stopCatchupDistance)
         (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
         (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
+        (EpochState.EpochStateConfig nodeConfigPath 500)
         trace
         (Cli.optionsDbPath o)
   (indexerLastSyncPoints, _utxoQueryIndexer, indexers) <-
