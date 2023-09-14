@@ -1,5 +1,4 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 
 {- | An indexer that stores its events to files, using the provided serialisation.
 
