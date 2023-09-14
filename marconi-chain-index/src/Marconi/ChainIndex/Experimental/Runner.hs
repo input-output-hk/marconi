@@ -16,7 +16,6 @@ import Cardano.Api.Extended.Streaming (
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.Async qualified as Async
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
 import Control.Monad.Except (ExceptT, void)
@@ -88,9 +87,8 @@ runIndexer trace securityParam retryConfig socketPath networkId startingPoints i
             PP.renderStrict $
               PP.layoutPretty PP.defaultLayoutOptions $
                 PP.pretty NoIntersectionFoundLog
-    Async.concurrently_
-      (void $ runChainSyncStream `catch` whenNoIntersectionFound)
-      (Core.processQueue eventQueue cBox)
+    void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
+    Core.processQueue eventQueue cBox
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
