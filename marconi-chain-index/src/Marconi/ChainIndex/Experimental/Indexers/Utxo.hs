@@ -126,7 +126,6 @@ mkUtxoIndexer path = do
                  , inlineScript BLOB
                  , inlineScriptHash BLOB
                  , slotNo INT
-                 , blockHeaderHash BLOB
                  )|]
       createAddressIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_address ON utxo (address)|]
       createSlotNoIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_slotNo ON utxo (slotNo)|]
@@ -272,7 +271,7 @@ instance
           JOIN sync ON utxo.slotNo == sync.slotNo
           WHERE utxo.slotNo <= :slotNo
           |]
-        -- \| Group utxos that are of the same block in the same event
+        -- Group utxos that are of the same block in the same event
         groupEvents
           :: NonEmpty (Core.Timed point a)
           -> Core.Timed point (NonEmpty a)

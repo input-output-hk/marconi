@@ -101,6 +101,7 @@ import Ouroboros.Consensus.Storage.Serialisation qualified as O
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
 
+import Database.SQLite.Simple.ToField qualified as SQL
 import Text.Read qualified as Text
 
 type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -117,6 +118,11 @@ data EpochNonce = EpochNonce
   }
   deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
 
+instance SQL.ToRow (Core.Timed C.ChainPoint EpochNonce) where
+  toRow epochNonce =
+    SQL.toRow (epochNonce ^. Core.event)
+      <> [SQL.toField $ epochNonce ^. Core.point . Lens.to C.chainPointToSlotNo]
+
 type instance Core.Point EpochNonce = C.ChainPoint
 
 Lens.makeLenses ''EpochNonce
@@ -130,6 +136,17 @@ data EpochSDD = EpochSDD
   deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
 
 type instance Core.Point (NonEmpty EpochSDD) = C.ChainPoint
+
+instance SQL.ToRow (Core.Timed C.ChainPoint EpochSDD) where
+  toRow epochSDD =
+    SQL.toRow (epochSDD ^. Core.event)
+      <> [SQL.toField $ epochSDD ^. Core.point . Lens.to C.chainPointToSlotNo]
+
+instance SQL.FromRow (Core.Timed C.ChainPoint EpochSDD) where
+  fromRow = do
+    sdd <- SQL.fromRow
+    point <- SQL.fromRow
+    pure $ Core.Timed point sdd
 
 data EpochMetadata = EpochMetadata
   { metadataBlockNo :: Maybe C.BlockNo
@@ -389,32 +406,66 @@ buildBlockIndexer codecConfig path = do
     (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock)
 
--- TODO placeholder, to implement (at the moment we don't store any info except the point)
 buildEpochSDDIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath
   -> m (Core.SQLiteIndexer (NonEmpty EpochSDD))
-buildEpochSDDIndexer path =
-  Core.mkSingleInsertSqliteIndexer
+buildEpochSDDIndexer path = do
+  let createSDD =
+        [sql|CREATE TABLE IF NOT EXISTS epoch_sdd
+              ( epochNo INT NOT NULL
+              , poolId BLOB NOT NULL
+              , lovelace INT NOT NULL
+              , blockNo INT NOT NULL
+              , slotNo INT NOT NULL
+              )|]
+      sddInsertQuery =
+        [sql|INSERT INTO epoch_sdd
+                ( epochNo
+                , poolId
+                , lovelace
+                , blockNo
+                , slotNo
+                ) VALUES (?, ?, ?, ?, ?)|]
+      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) sddInsertQuery]
+  Core.mkSqliteIndexer
     path
-    (Lens.view Core.point)
-    Sync.syncTableCreation
-    [sql|INSERT INTO sync (slotNo, blockHeaderHash) VALUES (?, ?)|]
-    Sync.syncRollbackPlan
+    [Sync.syncTableCreation, createSDD]
+    [insertEvent]
+    (Just Sync.syncInsertPlan)
+    [ Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo
+    , Sync.syncRollbackPlan
+    ]
     Sync.syncLastPointsQuery
 
--- TODO placeholder, to implement (at the moment we don't store any info except the point)
 buildEpochNonceIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath
   -> m (Core.SQLiteIndexer EpochNonce)
-buildEpochNonceIndexer path =
-  Core.mkSingleInsertSqliteIndexer
+buildEpochNonceIndexer path = do
+  let createNonce =
+        [sql|CREATE TABLE IF NOT EXISTS epoch_nonce
+              ( epochNo INT NOT NULL
+              , nonce BLOB NOT NULL
+              , blockNo INT NOT NULL
+              , slotNo INT NOT NULL
+              )|]
+      nonceInsertQuery =
+        [sql|INSERT INTO epoch_nonce
+                ( epochNo
+                , nonce
+                , blockNo
+                , slotNo
+                ) VALUES (?, ?, ?, ?)|]
+      insertEvent = [Core.SQLInsertPlan pure nonceInsertQuery]
+  Core.mkSqliteIndexer
     path
-    (Lens.view Core.point)
-    Sync.syncTableCreation
-    [sql|INSERT INTO sync (slotNo, blockHeaderHash) VALUES (?, ?)|]
-    Sync.syncRollbackPlan
+    [Sync.syncTableCreation, createNonce]
+    [insertEvent]
+    (Just Sync.syncInsertPlan)
+    [ Core.SQLRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo
+    , Sync.syncRollbackPlan
+    ]
     Sync.syncLastPointsQuery
 
 updateEpochState
