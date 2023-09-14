@@ -509,9 +509,7 @@ instance
   where
   index timedEvent@(Core.Timed p Nothing) indexer = do
     let newTimeToSnapshot = pred $ indexer ^. blocksBeforeNextSnapshot
-    indexer' <-
-      indexer
-        & performSnapshots newTimeToSnapshot timedEvent
+    indexer' <- indexer & performSnapshots newTimeToSnapshot timedEvent
     storeEmptyEpochStateRelatedInfo p indexer'
   index timedEvent@(Core.Timed p (Just (WithDistance d bim))) indexer = do
     let oldEpoch = currentEpoch indexer
@@ -523,6 +521,7 @@ instance
         & currentLedgerState .~ newEpochState
         & performSnapshots newTimeToSnapshot timedEvent
     let epochIsNew = oldEpoch /= newEpoch
+        -- We dont populate the event for SQL indexers if we don't have a new epoch
         epochStateEvent = Core.Timed p $ guard epochIsNew $> WithDistance d newEpochState
     storeEpochStateRelatedInfo epochStateEvent indexer'
 
