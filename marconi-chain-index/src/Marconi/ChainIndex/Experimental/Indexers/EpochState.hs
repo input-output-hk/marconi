@@ -36,8 +36,10 @@ import Cardano.Ledger.Shelley.API qualified as Ledger
 import Cardano.Ledger.UMap qualified as Ledger
 import Cardano.Protocol.TPraos.API qualified as Shelley
 import Cardano.Protocol.TPraos.Rules.Tickn qualified as Shelley
+
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
+
 import Control.Exception (throw)
 import Control.Lens (Lens')
 import Control.Lens qualified as Lens
@@ -45,6 +47,7 @@ import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (foldM, guard, (<=<))
 import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+
 import Data.Bifunctor (bimap)
 import Data.ByteString.Base16 qualified as Base16
 import Data.Coerce (coerce)
@@ -63,13 +66,16 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.VMap (VMap)
 import Data.VMap qualified as VMap
+
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
+
 import GHC.Generics (Generic)
+
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (
   WithDistance (WithDistance),
-  chainDistance,
  )
+import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
@@ -82,6 +88,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Marconi.Core.Experiment qualified as Core
+
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
@@ -90,8 +97,10 @@ import Ouroboros.Consensus.Protocol.Praos qualified as O
 import Ouroboros.Consensus.Protocol.TPraos qualified as O
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Ouroboros.Consensus.Storage.Serialisation qualified as O
+
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
+
 import Text.Read qualified as Text
 
 type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -131,12 +140,23 @@ type instance Core.Point EpochSDD = C.ChainPoint
 
 Lens.makeLenses ''EpochSDD
 
+type LedgerStateFileIndexer =
+  Core.WithTransform
+    (Core.FileIndexer EpochMetadata)
+    EpochState
+    (WithDistance EpochState)
+
+type BlockFileIndexer =
+  Core.WithTransform
+    (Core.FileIndexer EpochMetadata)
+    (C.BlockInMode C.CardanoMode)
+    (WithDistance (C.BlockInMode C.CardanoMode))
+
 data EpochStateIndexerState event = EpochStateIndexerState
   { _stateCurrentLedgerState :: EpochState
   , _stateTimeToNextSnapshot :: Word
-  , _stateEpochStateIndexer :: StandardIndexer IO (Core.FileIndexer EpochMetadata) EpochState
-  , _stateBlockIndexer
-      :: StandardIndexer IO (Core.FileIndexer EpochMetadata) (C.BlockInMode C.CardanoMode)
+  , _stateEpochStateIndexer :: LedgerStateFileIndexer
+  , _stateBlockIndexer :: BlockFileIndexer
   , _stateEpochNonceIndexer :: StandardIndexer IO Core.SQLiteIndexer EpochNonce
   , _stateEpochSDDIndexer :: StandardIndexer IO Core.SQLiteIndexer (NonEmpty EpochSDD)
   }
@@ -181,16 +201,10 @@ epochSDDIndexer
       (StandardIndexer IO Core.SQLiteIndexer (NonEmpty EpochSDD))
 epochSDDIndexer = epochStateIndexerState . stateEpochSDDIndexer
 
-epochStateIndexer
-  :: Lens'
-      (EpochStateIndexer event)
-      (StandardIndexer IO (Core.FileIndexer EpochMetadata) EpochState)
+epochStateIndexer :: Lens' (EpochStateIndexer event) LedgerStateFileIndexer
 epochStateIndexer = epochStateIndexerState . stateEpochStateIndexer
 
-blockIndexer
-  :: Lens'
-      (EpochStateIndexer event)
-      (StandardIndexer IO (Core.FileIndexer EpochMetadata) (C.BlockInMode C.CardanoMode))
+blockIndexer :: Lens' (EpochStateIndexer event) BlockFileIndexer
 blockIndexer = epochStateIndexerState . stateBlockIndexer
 
 snapshotInterval :: Lens' (EpochStateIndexer event) Word
@@ -240,14 +254,19 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
       config = EpochStateIndexerConfig (snapshotIntervalInBlocks cfg) genesisCfg securityParam'
       extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
       configCodec = O.configCodec . O.getExtLedgerCfg $ extLedgerCfg
+      addTransform
+        :: (Core.Point a ~ C.ChainPoint)
+        => indexer a
+        -> Core.WithTransform indexer a (WithDistance a)
+      addTransform = Core.withTransform id (Just . Distance.getEvent)
   liftIO $ createDirectoryIfMissing True rootDir
   epochSDDIndexer' <- mkStandardIndexer workerCfg =<< buildEpochSDDIndexer (rootDir </> "epochSDD.db")
   epochNonceIndexer' <-
     mkStandardIndexer workerCfg =<< buildEpochNonceIndexer (rootDir </> "epochNonce.db")
   epochStateIndexer' <-
-    mkStandardIndexer workerCfg =<< buildEpochStateIndexer configCodec (rootDir </> "epochState")
+    addTransform <$> buildEpochStateIndexer configCodec (rootDir </> "epochState")
   epochBlocksIndexer <-
-    mkStandardIndexer workerCfg =<< buildBlockIndexer configCodec (rootDir </> "epochBlocks")
+    addTransform <$> buildBlockIndexer configCodec (rootDir </> "epochBlocks")
   let state =
         EpochStateIndexerState
           (EpochState (CE.mkInitExtLedgerState genesisCfg) 0)
@@ -417,7 +436,7 @@ performSnapshots newBlocksBeforeNextSnapshot bim indexer = do
           then (Core.Timed (bim ^. Core.point) (Just epochState), indexer ^. snapshotInterval)
           else (Core.Timed (bim ^. Core.point) Nothing, newBlocksBeforeNextSnapshot)
       SecurityParam s = indexer ^. securityParam
-      distanceToTip = chainDistance <$> bim ^. Core.event
+      distanceToTip = Distance.chainDistance <$> bim ^. Core.event
       isStable = maybe True (s <) distanceToTip
       attachDistance e = do
         d <- distanceToTip
@@ -452,7 +471,7 @@ storeEpochStateRelatedInfo ledgerState indexer = do
 
 getLatestNonEmpty
   :: EpochState
-  -> StandardIndexer IO (Core.FileIndexer EpochMetadata) EpochState
+  -> LedgerStateFileIndexer
   -> ExceptT Core.IndexerError IO (Core.Timed C.ChainPoint EpochState)
 getLatestNonEmpty firstEpochState indexer = do
   result <- runExceptT $ Core.queryLatest Core.latestEvent indexer
@@ -463,7 +482,7 @@ getLatestNonEmpty firstEpochState indexer = do
 
 getBlocksFrom
   :: C.ChainPoint
-  -> StandardIndexer IO (Core.FileIndexer EpochMetadata) (C.BlockInMode C.CardanoMode)
+  -> BlockFileIndexer
   -> ExceptT Core.IndexerError IO [C.BlockInMode C.CardanoMode]
 getBlocksFrom from indexer = do
   result <- runExceptT $ Core.queryLatest (Core.EventsFromQuery from) indexer
