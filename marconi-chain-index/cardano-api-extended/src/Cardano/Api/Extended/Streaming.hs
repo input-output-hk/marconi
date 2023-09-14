@@ -109,6 +109,7 @@ data BlockEvent = BlockEvent
   , epochNo :: C.EpochNo
   , blockTime :: POSIXTime
   }
+  deriving (Show)
 
 {- | Uses the chain-sync mini-protocol to connect to a locally running node and fetch blocks from the
     given starting point, along with their @EpochNo@ and creation time.
@@ -188,8 +189,10 @@ withChainSyncBlockEventStream socketPath networkId points consumer =
         client = chainSyncStreamingClient points nextChainSyncEventVar
 
         -- Compute the next event and upgrade history if needed
-        eventLoop history =
-          takeMVar nextChainSyncEventVar >>= fmap Right . attachEpochAndTime history
+        eventLoop
+          :: C.EraHistory C.CardanoMode
+          -> IO (Either r (ChainSyncEvent BlockEvent, C.EraHistory C.CardanoMode))
+        eventLoop history = takeMVar nextChainSyncEventVar >>= fmap Right . attachEpochAndTime history
 
     history <- askHistory
     withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a -> do
@@ -226,8 +229,8 @@ connectToLocalNodeWithChainSyncClient connectInfo client =
 -}
 chainSyncStreamingClient
   :: [C.ChainPoint]
-  -> MVar (ChainSyncEvent e)
-  -> C.ChainSyncClient e C.ChainPoint C.ChainTip IO ()
+  -> MVar (ChainSyncEvent block)
+  -> C.ChainSyncClient block C.ChainPoint C.ChainTip IO ()
 chainSyncStreamingClient points nextChainEventVar =
   C.ChainSyncClient $ pure $ SendMsgFindIntersect points onIntersect
   where

@@ -648,11 +648,12 @@ open dbPath (Depth k) isToVacuume = do
     SQL.execute_
       c
       [sql|CREATE TABLE IF NOT EXISTS blockInfo
-                    ( slotNo INT PRIMARY KEY
+                    ( slotNo INT NOT NULL
                     , blockHeaderHash BLOB NOT NULL
                     , blockNo INT NOT NULL
                     , blockTimestamp INT NOT NULL
                     , epochNo INT NOT NULL
+                    , PRIMARY KEY (slotNo, blockHeaderHash)
                     )|]
 
   lift $

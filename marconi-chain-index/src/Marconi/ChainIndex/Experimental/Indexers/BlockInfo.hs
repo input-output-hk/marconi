@@ -54,7 +54,7 @@ data BlockInfo = BlockInfo
   , _timestamp :: !Word64
   , _epochNo :: !C.EpochNo
   }
-  deriving (Eq, Show, Ord, Generic, SQL.FromRow, SQL.ToRow)
+  deriving (Eq, Show, Ord, Generic, SQL.FromRow)
 
 -- we use deriveJSON to drop the underscore prefix
 Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = tail} ''BlockInfo
@@ -70,13 +70,14 @@ type BlockInfoIndexer = Core.SQLiteIndexer BlockInfo
 type StandardBlockInfoIndexer m = StandardSQLiteIndexer m BlockInfo
 
 instance SQL.ToRow (Core.Timed C.ChainPoint BlockInfo) where
+  toRow b = SQL.toRow (b ^. Core.point) ++ SQL.toRow (b ^. Core.event)
+
+instance SQL.ToRow BlockInfo where
   toRow b =
     SQL.toRow
-      [ SQL.toField $ b ^. Core.point . Lens.to C.chainPointToSlotNo
-      , SQL.toField $ b ^. Core.point . Lens.to C.chainPointToHeaderHash
-      , SQL.toField $ b ^. Core.event . blockNo
-      , SQL.toField $ b ^. Core.event . timestamp
-      , SQL.toField $ b ^. Core.event . epochNo
+      [ SQL.toField $ b ^. blockNo
+      , SQL.toField $ b ^. timestamp
+      , SQL.toField $ b ^. epochNo
       ]
 
 instance SQL.FromRow (Core.Timed C.ChainPoint BlockInfo) where
@@ -94,11 +95,12 @@ mkBlockInfoIndexer
 mkBlockInfoIndexer path = do
   let createBlockInfo =
         [sql|CREATE TABLE IF NOT EXISTS blockInfo
-               ( slotNo INT PRIMARY KEY
+               ( slotNo INT NOT NULL
                , blockHeaderHash BLOB NOT NULL
                , blockNo INT NOT NULL
                , blockTimestamp INT NOT NULL
                , epochNo INT NOT NULL
+               , PRIMARY KEY (slotNo, blockHeaderHash)
                )|]
       blockInfoInsertQuery :: SQL.Query
       blockInfoInsertQuery =
@@ -106,7 +108,10 @@ mkBlockInfoIndexer path = do
              VALUES (?, ?, ?, ?, ?)|]
       lastPointQuery :: Core.GetLastSyncPointsQuery
       lastPointQuery = Core.GetLastSyncPointsQuery $ \limit ->
-        [sql|SELECT slotNo, blockHeaderHash FROM blockInfo ORDER BY slotNo DESC LIMIT |]
+        [sql|SELECT slotNo, blockHeaderHash
+             FROM blockInfo
+             ORDER BY slotNo DESC, blockNo DESC
+             LIMIT |]
           <> fromString (show limit)
   Core.mkSingleInsertSqliteIndexer
     path

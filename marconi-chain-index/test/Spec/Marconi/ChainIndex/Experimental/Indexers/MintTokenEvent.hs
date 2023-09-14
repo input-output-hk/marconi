@@ -123,8 +123,8 @@ propActLikeListIndexerOnEventsMatchingQuery = H.property $ do
   (actualResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
     H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents sqlIndexer
   expectedResult <-
-    H.evalExceptT $ Core.queryLatest (MintTokenEventsMatchingQuery Just) listIndexer
-  List.sort actualResult === expectedResult
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents listIndexer
+  actualResult === expectedResult
 
 -- | On EventsMatchingQuery, the 'UtxoIndexer' behaves like a 'ListIndexer'.
 propActLikeListIndexerOnQueryByAssetId :: H.Property
@@ -315,7 +315,7 @@ propRunnerTracksSelectedAssetId = H.property $ do
   sqlIndexer <- indexWithRunner trackedAssetIds events
   sqlIndexerEvents <- H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents sqlIndexer
 
-  List.sort sqlIndexerEvents === listIndexerEvents
+  sqlIndexerEvents === listIndexerEvents
 
 -- | Check that an 'mintTokenEventWorker' doesn't track other 'C.AssetId's.
 propRunnerDoesntTrackUnselectedAssetId :: H.Property
@@ -444,8 +444,9 @@ genMintTokenEvent :: Gen MintTokenEvent
 genMintTokenEvent = do
   mintLocation <-
     MintTokenEventLocation
-      <$> (fmap TxIndexInBlock $ H.Gen.word64 (H.Range.linear 0 100))
+      <$> Gen.genBlockNo
       <*> CGen.genTxId
+      <*> (fmap TxIndexInBlock $ H.Gen.word64 (H.Range.linear 0 100))
   scriptData <- Gen.genSimpleHashableScriptData
   let genMintAssetRedeemer =
         MintAssetRedeemer

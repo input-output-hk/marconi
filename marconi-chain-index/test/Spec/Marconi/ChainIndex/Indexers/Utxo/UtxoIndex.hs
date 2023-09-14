@@ -24,7 +24,7 @@ import Data.Maybe (isJust, isNothing, mapMaybe)
 import Data.Set qualified as Set
 import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents, genUtxoEvents)
 import Gen.Marconi.ChainIndex.Indexers.Utxo qualified as UtxoGen
-import Gen.Marconi.ChainIndex.Mockchain (MockBlock (mockBlockChainPoint, mockBlockTxs))
+import Gen.Marconi.ChainIndex.Mockchain (MockBlock (mockBlockHeader, mockBlockTxs))
 import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Gen, Property, cover, forAll, property, (/==), (===))
@@ -826,7 +826,7 @@ propGetUtxoEventFromBlock :: Property
 propGetUtxoEventFromBlock = Hedgehog.property $ do
   utxoEventsWithTxs <- Hedgehog.forAll UtxoGen.genUtxoEventsWithTxs
   forM_ utxoEventsWithTxs $ \(expectedUtxoEvent, block) -> do
-    let (C.BlockHeader sno bhh bn) = mockBlockChainPoint block
+    let (C.BlockHeader sno bhh bn) = mockBlockHeader block
         txs = mockBlockTxs block
         bi = BlockInfo sno bhh bn 0 1
         tip = C.ChainTip sno bhh bn

@@ -4,7 +4,6 @@
 -}
 module Marconi.Sidechain.Bootstrap where
 
-import Cardano.Api qualified as C
 import Control.Concurrent.STM (atomically)
 import Control.Lens (view, (^.))
 import Control.Monad.Reader (ReaderT, lift)
@@ -85,7 +84,7 @@ runSidechainIndexers = do
       (CLI.optionsRetryConfig cliArgs)
       (CLI.socketFilePath cliArgs)
       (CLI.networkId cliArgs)
-      C.ChainPointAtGenesis
+      (CLI.optionsChainPoint cliArgs)
       (CLI.minIndexingDepth cliArgs)
       (CLI.optionsFailsIfResync cliArgs)
       indexers

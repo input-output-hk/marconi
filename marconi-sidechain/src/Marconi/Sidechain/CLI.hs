@@ -44,6 +44,7 @@ data CliArgs = CliArgs
   -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
   -- synced point.
   , optionsRetryConfig :: !RetryConfig
+  , optionsChainPoint :: !C.ChainPoint
   }
   deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -72,3 +73,4 @@ parserCliArgs =
     <*> Cli.commonMaybeTargetAssetParser
     <*> Cli.commonShouldFailIfResyncParser
     <*> Cli.commonRetryConfigParser
+    <*> Cli.chainPointParser
