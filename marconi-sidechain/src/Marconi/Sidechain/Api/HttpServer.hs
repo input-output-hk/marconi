@@ -8,11 +8,14 @@
 module Marconi.Sidechain.Api.HttpServer where
 
 import Cardano.Api ()
-import Cardano.BM.Trace (logDebug)
+import Cardano.BM.Trace (Trace, logDebug, logError)
+import Control.Exception (SomeAsyncException, SomeException, catches, displayException, throwIO)
+import Control.Exception qualified as Exception
 import Control.Lens (view, (^.))
 import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask, lift, runReaderT)
+import Data.Aeson qualified as Aeson
 import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.ByteString qualified as BS
 import Data.Default (def)
@@ -51,10 +54,13 @@ import Marconi.Sidechain.Env (
 import Marconi.Sidechain.Error (
   QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult, UntrackedPolicy),
  )
+import Network.HTTP.Types (hContentType)
 import Network.JsonRpc.Server.Types ()
 import Network.JsonRpc.Types (
   JsonRpcErr (JsonRpcErr),
+  JsonRpcResponse (Errors),
   UnusedRequestParams,
+  mkJsonRpcInternalErr,
   mkJsonRpcParseErr,
  )
 import Network.Wai.Handler.Warp (runSettings)
@@ -68,7 +74,15 @@ import Network.Wai.Middleware.RequestLogger (
  )
 import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
-import Servant.Server (Application, Handler (Handler), ServerError, ServerT, hoistServer, serve)
+import Servant.Server (
+  Application,
+  Handler (Handler),
+  ServerError (errBody, errHeaders, errReasonPhrase),
+  ServerT,
+  err500,
+  hoistServer,
+  serve,
+ )
 import System.Log.FastLogger (fromLogStr)
 
 -- | Bootstraps the HTTP server
@@ -96,8 +110,26 @@ marconiApp env =
 type ReaderHandler env = ExceptT ServerError (ReaderT env IO)
 type ReaderServer env api = ServerT api (ReaderHandler env)
 
-hoistHandler :: env -> ReaderHandler env a -> Handler a
-hoistHandler env = Handler . ExceptT . flip runReaderT env . runExceptT
+hoistHandler :: SidechainEnv -> ReaderHandler SidechainEnv a -> Handler a
+hoistHandler env = Handler . ExceptT . catchExceptions (env ^. sidechainTrace) . flip runReaderT env . runExceptT
+
+catchExceptions :: Trace IO Text -> IO (Either ServerError a) -> IO (Either ServerError a)
+catchExceptions trace action =
+  action
+    `catches` [ Exception.Handler $ \(e :: ServerError) -> pure $ Left e
+              , Exception.Handler $ \(e :: SomeAsyncException) -> throwIO e
+              , Exception.Handler $ \(e :: SomeException) -> do
+                  logError trace . Text.pack $ "Exception caught while handling HTTP request: " <> displayException e
+                  let
+                    -- TODO: Provide better info, especially the request ID
+                    jsonErr = Errors @Int @Aeson.Value Nothing $ mkJsonRpcInternalErr Nothing
+                  pure . Left $
+                    err500
+                      { errHeaders = [(hContentType, "application/json; charset=utf-8")]
+                      , errReasonPhrase = "Internal server error"
+                      , errBody = Aeson.encode jsonErr
+                      }
+              ]
 
 jsonRpcServer :: ReaderServer SidechainEnv JsonRpcAPI
 jsonRpcServer =

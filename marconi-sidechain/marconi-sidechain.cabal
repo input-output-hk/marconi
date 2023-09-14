@@ -83,6 +83,7 @@ library
     , data-default
     , fast-logger
     , filepath
+    , http-types
     , lens
     , mtl
     , optparse-applicative
