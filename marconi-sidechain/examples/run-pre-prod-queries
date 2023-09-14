@@ -11,6 +11,15 @@ banner() {
   echo ''
 }
 
+get() {
+  local ENDPOINT=$1
+  local FORMAT=${2-cat}
+
+  echo -n "GET /$ENDPOINT -> "
+  curl -sS --fail-with-body "http://localhost:$PORT/$ENDPOINT" | "$FORMAT"
+  echo ''
+}
+
 query() {
   local method=$1
   local params=$2
@@ -24,9 +33,20 @@ query() {
   echo ''
 }
 
+banner "REST APIs"
+
+get time
+get params jq
+get addresses jq
+get metrics
+
 banner "unknownMethod"
 
 query "unknownMethod" '""'
+
+banner "echo"
+
+query "echo" '"Hello, World!"'
 
 banner "getTargetAddresses"
 
