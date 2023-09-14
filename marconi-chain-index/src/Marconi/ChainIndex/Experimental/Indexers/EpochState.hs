@@ -36,10 +36,8 @@ import Cardano.Ledger.Shelley.API qualified as Ledger
 import Cardano.Ledger.UMap qualified as Ledger
 import Cardano.Protocol.TPraos.API qualified as Shelley
 import Cardano.Protocol.TPraos.Rules.Tickn qualified as Shelley
-
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
-
 import Control.Exception (throw)
 import Control.Lens (Lens')
 import Control.Lens qualified as Lens
@@ -47,7 +45,6 @@ import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (foldM, guard, (<=<))
 import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
-
 import Data.Bifunctor (bimap)
 import Data.ByteString.Base16 qualified as Base16
 import Data.Coerce (coerce)
@@ -66,12 +63,10 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.VMap (VMap)
 import Data.VMap qualified as VMap
-
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
-
+import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (
   WithDistance (WithDistance),
  )
@@ -88,7 +83,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Marconi.Core.Experiment qualified as Core
-
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
@@ -97,11 +91,8 @@ import Ouroboros.Consensus.Protocol.Praos qualified as O
 import Ouroboros.Consensus.Protocol.TPraos qualified as O
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Ouroboros.Consensus.Storage.Serialisation qualified as O
-
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
-
-import Database.SQLite.Simple.ToField qualified as SQL
 import Text.Read qualified as Text
 
 type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
