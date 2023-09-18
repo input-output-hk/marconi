@@ -17,6 +17,7 @@
 module Marconi.Core.Experiment.Transformer.WithResume (
   WithResume,
   withResume,
+  resumedIndexer,
   OrdPoint (comparePoint),
   PointCompare (..),
 ) where
@@ -95,8 +96,8 @@ deriving via
   instance
     (Class.Queryable m event query indexer) => Class.Queryable m event query (WithResume indexer)
 
-resumeIndexer :: Lens.Lens' (WithResume indexer event) (indexer event)
-resumeIndexer = resumeWrapper . Wrapper.wrappedIndexer
+resumedIndexer :: Lens.Lens' (WithResume indexer event) (indexer event)
+resumedIndexer = resumeWrapper . Wrapper.wrappedIndexer
 
 resumeState :: Lens.Lens' (WithResume indexer event) (ResumeState event)
 resumeState = resumeWrapper . Wrapper.wrapperConfig
@@ -111,7 +112,7 @@ hasStarted :: Lens.Lens' (WithResume indexer event) Bool
 hasStarted = resumeState . stateHasStarted
 
 instance IndexerTrans WithResume where
-  unwrap = resumeIndexer
+  unwrap = resumedIndexer
 
 -- | A comparison for points, quite similar to 'Ordering' but add a way to identify forks
 data PointCompare

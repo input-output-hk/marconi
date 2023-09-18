@@ -112,7 +112,8 @@ mkStandardWorkerWithFilter
   -> indexer event
   -> n (StandardWorker m input event indexer)
 mkStandardWorkerWithFilter config eventFilter indexer = do
-  let mapEventUnderDistance = fmap sequence . traverse (eventExtractor config)
+  let mapEventUnderDistance =
+        Core.traverseMaybeEvent $ fmap sequence . traverse (eventExtractor config)
   transformedIndexer <- mkStandardIndexerWithFilter config eventFilter indexer
   Core.WorkerIndexer idx worker <-
     Core.createWorker (workerName config) mapEventUnderDistance transformedIndexer

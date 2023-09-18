@@ -34,13 +34,16 @@ import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsIndex (index, rollback),
+  IsIndex (index, indexAllDescending, rollback),
   IsSync (lastSyncPoint, lastSyncPoints),
   computeResumePoints,
  )
-import Marconi.Core.Experiment.Type (IndexerError (StopIndexer), Point)
+import Marconi.Core.Experiment.Type (
+  IndexerError (StopIndexer),
+  Point,
+  ProcessedInput (Index, IndexAllDescending, Rollback, Stop),
+ )
 import Marconi.Core.Experiment.Worker (
-  ProcessedInput (Index, Rollback, Stop),
   Worker,
   WorkerM (Worker),
   startWorker,
@@ -60,7 +63,7 @@ data Coordinator input = Coordinator
   -- ^ used to synchronise the worker
   , _endTokens :: QSemN
   -- ^ used to check workers end
-  , _channel :: TChan (ProcessedInput input)
+  , _channel :: TChan (ProcessedInput (Point input) input)
   -- ^ to dispatch input to workers
   , _errorBox :: MVar IndexerError
   -- ^ keep track of workers error
@@ -68,7 +71,6 @@ data Coordinator input = Coordinator
   -- ^ how many workers are we waiting for, should always be equal to @length workers@
   }
 
--- TODO handwrite lenses to avoid invalid states
 makeLenses 'Coordinator
 
 -- | create a coordinator and starts its workers
@@ -96,7 +98,7 @@ processQueue
      , IsIndex (ExceptT IndexerError IO) event indexer
      , Closeable IO indexer
      )
-  => STM.TBQueue (ProcessedInput event)
+  => STM.TBQueue (ProcessedInput (Point event) event)
   -> Con.MVar (indexer event)
   -> IO r
 processQueue q cBox =
@@ -118,10 +120,11 @@ step
      , MonadError IndexerError m
      )
   => indexer input
-  -> ProcessedInput input
+  -> ProcessedInput (Point input) input
   -> m (indexer input)
 step indexer = \case
   Index e -> index e indexer
+  IndexAllDescending es -> indexAllDescending es indexer
   Rollback p -> rollback p indexer
   Stop -> throwError $ StopIndexer Nothing
 
@@ -131,7 +134,7 @@ waitWorkers coordinator = Con.waitQSemN (coordinator ^. tokens) (coordinator ^. 
 waitEnd :: Coordinator input -> IO ()
 waitEnd coordinator = Con.waitQSemN (coordinator ^. endTokens) (coordinator ^. nbWorkers)
 
-dispatchNewInput :: Coordinator input -> ProcessedInput input -> IO ()
+dispatchNewInput :: Coordinator input -> ProcessedInput (Point input) input -> IO ()
 dispatchNewInput coordinator = STM.atomically . STM.writeTChan (coordinator ^. channel)
 
 healthCheck
@@ -142,7 +145,7 @@ healthCheck c = liftIO $ Con.tryReadMVar $ c ^. errorBox
 
 safeDispatch
   :: (MonadIO m, MonadError IndexerError m)
-  => ProcessedInput event
+  => ProcessedInput (Point event) event
   -> Coordinator event
   -> m (Coordinator event)
 safeDispatch event coordinator = do

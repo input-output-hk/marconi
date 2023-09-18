@@ -30,4 +30,4 @@ coordinatorWorker
   -> m (Core.WorkerIndexer IO (WithDistance a) b (Core.WithTrace IO Core.Coordinator))
 coordinatorWorker name logger extract workers = liftIO $ do
   coordinator <- standardCoordinator logger workers
-  Core.createWorker name extract coordinator
+  Core.createWorker name (Core.traverseMaybeEvent extract) coordinator
