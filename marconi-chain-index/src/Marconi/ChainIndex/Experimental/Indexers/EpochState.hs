@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -7,6 +8,7 @@
 module Marconi.ChainIndex.Experimental.Indexers.EpochState (
   -- * Events
   EpochState (EpochState),
+  ExtLedgerState,
   extLedgerState,
   blockNo,
   EpochNonce (EpochNonce),
@@ -38,12 +40,12 @@ import Cardano.Protocol.TPraos.Rules.Tickn qualified as Shelley
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Exception (throw)
-import Control.Lens (Lens')
+import Control.Lens (Lens', (&), (.~), (^.))
 import Control.Lens qualified as Lens
-import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (foldM, guard, (<=<))
-import Control.Monad.Cont (MonadIO (liftIO))
+import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Control.Monad.State.Strict (MonadState (get, put), StateT)
 import Data.Bifunctor (bimap)
 import Data.ByteString.Base16 qualified as Base16
 import Data.Coerce (coerce)
@@ -259,7 +261,7 @@ mkEpochStateIndexer
   => StandardWorkerConfig IO a b
   -> EpochStateConfig
   -> FilePath
-  -> n (Core.WithResume EpochStateIndexer (WithDistance (C.BlockInMode C.CardanoMode)))
+  -> n (Core.WithResume EpochStateIndexer (WithDistance (ExtLedgerState, C.BlockInMode C.CardanoMode)))
 mkEpochStateIndexer workerCfg cfg rootDir = do
   genesisCfg <- readGenesisFile (nodeConfig cfg)
   let securityParam' = securityParamConfig workerCfg
@@ -306,7 +308,8 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
         indexer & currentLedgerState .~ extLedgerState'
 
 mkEpochStateWorker
-  :: (MonadIO n, MonadError Core.IndexerError n)
+  :: forall n input
+   . (MonadIO n, MonadError Core.IndexerError n)
   => StandardWorkerConfig IO input (C.BlockInMode C.CardanoMode)
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> EpochStateConfig
@@ -315,13 +318,53 @@ mkEpochStateWorker
       ( Core.WorkerIndexer
           IO
           (WithDistance input)
-          (WithDistance (C.BlockInMode C.CardanoMode))
+          (WithDistance (ExtLedgerState, C.BlockInMode C.CardanoMode))
           (Core.WithResume EpochStateIndexer)
       )
 mkEpochStateWorker workerConfig epochStateConfig rootDir = do
   indexer <- mkEpochStateIndexer workerConfig epochStateConfig rootDir
-  let mapEventUnderDistance = fmap sequence . traverse (eventExtractor workerConfig)
-  Core.createWorker (workerName workerConfig) mapEventUnderDistance indexer
+  let ledgerState = pure $ extLedgerState $ indexer ^. Core.resumedIndexer . currentLedgerState
+      extLedgerCfg = extLedgerConfig $ indexer ^. Core.resumedIndexer
+
+      mapOneEvent
+        :: Maybe (WithDistance input)
+        -> StateT
+            ExtLedgerState
+            IO
+            (Maybe (WithDistance (ExtLedgerState, C.BlockInMode C.CardanoMode)))
+      mapOneEvent Nothing = pure Nothing
+      mapOneEvent (Just (WithDistance d e)) = do
+        let applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
+            extract = eventExtractor workerConfig
+        mblock <- lift $ extract e
+        currentLedgerState' <- get
+        case mblock of
+          Nothing -> pure Nothing
+          Just block -> case applyBlock block currentLedgerState' of
+            Left err -> throw . Core.IndexerInternalError . Text.pack . show $ err
+            Right res -> do
+              put res
+              let isNewEpoch = getEpochNo currentLedgerState' /= getEpochNo res
+                  isVolatile = SecurityParam d < securityParamConfig workerConfig
+              pure $ guard (isNewEpoch || isVolatile) $> WithDistance d (res, block)
+
+      processAsEpochState = Core.transformerM $ \case
+        Core.Index x ->
+          Just . Core.Index <$> traverse mapOneEvent x
+        Core.IndexAllDescending xs ->
+          Just . Core.IndexAllDescending <$> traverse (traverse mapOneEvent) xs
+        Core.Rollback p -> do
+          queryResult <- Right . Just <$> get
+          -- queryResult <- runExceptT $ Core.query p Core.EventAtQuery indexer
+          case queryResult of
+            Left _err -> throw $ Core.IndexerInternalError "Can't rollback to the given epoch"
+            Right Nothing -> throw $ Core.IndexerInternalError "Can't rollback to the given epoch"
+            Right (Just res) -> do
+              put res
+              pure $ Just $ Core.Rollback p
+        Core.Stop -> pure $ Just Core.Stop
+
+  Core.createWorker (workerName workerConfig) (processAsEpochState ledgerState) indexer
 
 deserialiseMetadata :: [Text] -> Maybe EpochMetadata
 deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
@@ -479,37 +522,33 @@ buildEpochNonceIndexer path = do
     ]
     Sync.syncLastPointsQuery
 
-updateEpochState
-  :: (MonadIO m) => C.BlockInMode C.CardanoMode -> EpochStateIndexer event -> m EpochState
-updateEpochState block indexer = do
-  let nextLedgerState = buildNextEpochState (extLedgerConfig indexer)
-      currentState = indexer ^. currentLedgerState
-  liftIO $ nextLedgerState currentState block
+updateEpochState :: (ExtLedgerState, C.BlockInMode C.CardanoMode) -> EpochState
+updateEpochState (ls, bim) = EpochState ls (getBlockNo bim)
 
 performSnapshots
   :: Word
-  -> Core.Timed C.ChainPoint (Maybe (WithDistance (C.BlockInMode C.CardanoMode)))
+  -> Core.Timed C.ChainPoint (Maybe (WithDistance (ExtLedgerState, C.BlockInMode C.CardanoMode)))
   -> EpochStateIndexer event
   -> ExceptT Core.IndexerError IO (EpochStateIndexer event)
-performSnapshots newBlocksBeforeNextSnapshot bim indexer = do
+performSnapshots newBlocksBeforeNextSnapshot evt indexer = do
   let epochState = indexer ^. currentLedgerState
-      (evt, blocksBeforeNextSnapshot') =
+      (evt', blocksBeforeNextSnapshot') =
         if newBlocksBeforeNextSnapshot == 0
-          then (Core.Timed (bim ^. Core.point) (Just epochState), indexer ^. snapshotInterval)
-          else (Core.Timed (bim ^. Core.point) Nothing, newBlocksBeforeNextSnapshot)
+          then (Core.Timed (evt ^. Core.point) (Just epochState), indexer ^. snapshotInterval)
+          else (Core.Timed (evt ^. Core.point) Nothing, newBlocksBeforeNextSnapshot)
       SecurityParam s = indexer ^. securityParam
-      distanceToTip = Distance.chainDistance <$> bim ^. Core.event
+      distanceToTip = Distance.chainDistance <$> evt ^. Core.event
       isStable = maybe True (s <) distanceToTip
       attachDistance e = do
         d <- distanceToTip
         e' <- e
         pure $ WithDistance d e'
-      dEvt = attachDistance <$> evt
+      dEvt = attachDistance <$> evt'
       snapshotEpochState = epochStateIndexer $ Core.index dEvt
       snapshotBlock =
         if isStable
           then pure
-          else blockIndexer $ Core.index bim
+          else blockIndexer $ Core.index (fmap (fmap $ fmap snd) evt)
       indexer' = indexer & blocksBeforeNextSnapshot .~ blocksBeforeNextSnapshot'
   snapshotEpochState <=< snapshotBlock $ indexer'
 
@@ -566,16 +605,16 @@ restoreLedgerState indexer = do
 instance
   Core.IsIndex
     (ExceptT Core.IndexerError IO)
-    (WithDistance (C.BlockInMode C.CardanoMode))
+    (WithDistance (ExtLedgerState, C.BlockInMode C.CardanoMode))
     EpochStateIndexer
   where
   index timedEvent@(Core.Timed p Nothing) indexer = do
     let newTimeToSnapshot = pred $ indexer ^. blocksBeforeNextSnapshot
     indexer' <- indexer & performSnapshots newTimeToSnapshot timedEvent
     storeEmptyEpochStateRelatedInfo p indexer'
-  index timedEvent@(Core.Timed p (Just (WithDistance d bim))) indexer = do
-    newEpochState <- updateEpochState bim indexer
-    let oldEpoch = currentEpoch indexer
+  index timedEvent@(Core.Timed p (Just (WithDistance d evt))) indexer = do
+    let newEpochState = updateEpochState evt
+        oldEpoch = currentEpoch indexer
         newEpoch = getEpochNo $ extLedgerState newEpochState
         newTimeToSnapshot = pred $ indexer ^. blocksBeforeNextSnapshot
     indexer' <-

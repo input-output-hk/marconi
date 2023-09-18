@@ -78,6 +78,7 @@ library
     Marconi.Core.Experiment.Transformer.WithTransform
     Marconi.Core.Experiment.Type
     Marconi.Core.Experiment.Worker
+    Marconi.Core.Experiment.Worker.Transformer
     Marconi.Core.Storable
     Marconi.Core.TracedStorable
 
@@ -101,6 +102,7 @@ library
     , containers
     , directory
     , filepath
+    , foldl
     , lens
     , mtl
     , primitive

@@ -360,6 +360,18 @@ module Marconi.Core.Experiment (
   createWorkerPure,
   ProcessedInput (..),
 
+  -- ***  Workers transformers
+  Transformer,
+  mapEvent,
+  mapMaybeEvent,
+  traverseEvent,
+  traverseMaybeEvent,
+  scanEvent,
+  scanEventM,
+  scanMaybeEventM,
+  transformer,
+  transformerM,
+
   -- ** Coordinator
   Coordinator,
   workers,
@@ -410,6 +422,7 @@ module Marconi.Core.Experiment (
   PointCompare (..),
   WithResume,
   withResume,
+  resumedIndexer,
 
   -- ** Delay
   WithDelay,
@@ -619,6 +632,7 @@ import Marconi.Core.Experiment.Transformer.WithResume (
   OrdPoint (comparePoint),
   PointCompare (..),
   WithResume,
+  resumedIndexer,
   withResume,
  )
 import Marconi.Core.Experiment.Transformer.WithTracer (
@@ -642,6 +656,7 @@ import Marconi.Core.Experiment.Transformer.WithTransform (
 import Marconi.Core.Experiment.Type (
   IndexerError (..),
   Point,
+  ProcessedInput (..),
   QueryError (..),
   Result,
   Timed (..),
@@ -649,7 +664,6 @@ import Marconi.Core.Experiment.Type (
   point,
  )
 import Marconi.Core.Experiment.Worker (
-  ProcessedInput (..),
   Worker,
   WorkerIndexer (..),
   WorkerIndexerType,
@@ -658,6 +672,18 @@ import Marconi.Core.Experiment.Worker (
   createWorker',
   createWorkerPure,
   startWorker,
+ )
+import Marconi.Core.Experiment.Worker.Transformer (
+  Transformer,
+  mapEvent,
+  mapMaybeEvent,
+  scanEvent,
+  scanEventM,
+  scanMaybeEventM,
+  transformer,
+  transformerM,
+  traverseEvent,
+  traverseMaybeEvent,
  )
 
 {- | Try to rollback to a given point to resume the indexer.

@@ -92,7 +92,7 @@ runIndexer trace securityParam retryConfig socketPath networkId startingPoints i
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: STM.TBQueue (Core.ProcessedInput (WithDistance BlockEvent))
+  :: STM.TBQueue (Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent))
   -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
   -> IO r
 mkEventStream q =
@@ -106,7 +106,7 @@ mkEventStream q =
 
       processEvent
         :: ChainSyncEvent BlockEvent
-        -> Core.ProcessedInput (WithDistance BlockEvent)
+        -> Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)
       processEvent (RollForward x ct) = Core.Index $ Just <$> blockTimed x ct
       processEvent (RollBackward x _) = Core.Rollback x
    in S.mapM_ $ STM.atomically . STM.writeTBQueue q . processEvent
