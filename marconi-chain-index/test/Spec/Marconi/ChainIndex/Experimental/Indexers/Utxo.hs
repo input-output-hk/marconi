@@ -216,14 +216,12 @@ getTimedUtxosEvents =
    in fmap getBlockTimedUtxosEvent
 
 getBlockUtxosEvent :: (C.IsCardanoEra era) => Gen.MockBlock era -> Maybe (NonEmpty Utxo.Utxo)
-getBlockUtxosEvent = NonEmpty.nonEmpty . join . zipWith Utxo.getUtxosFromTx [0 ..] . Gen.mockBlockTxs
+getBlockUtxosEvent (Gen.MockBlock _ txs) =
+  NonEmpty.nonEmpty $ join $ zipWith Utxo.getUtxosFromTx [0 ..] txs
 
 extractChainPoint :: Gen.MockBlock era -> C.ChainPoint
-extractChainPoint =
-  let getChainPoint :: Gen.BlockHeader -> C.ChainPoint
-      getChainPoint (Gen.BlockHeader slotNo blockHeaderHash _blockNo) =
-        C.ChainPoint slotNo blockHeaderHash
-   in getChainPoint . Gen.mockBlockChainPoint
+extractChainPoint (Gen.MockBlock (C.BlockHeader slotNo blockHeaderHash _) _) =
+  C.ChainPoint slotNo blockHeaderHash
 
 -- Generate a random 'Utxo'
 genUtxo :: Hedgehog.Gen Utxo.Utxo

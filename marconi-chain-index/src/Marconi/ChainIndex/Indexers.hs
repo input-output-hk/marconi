@@ -626,9 +626,9 @@ mkIndexerStream' f coordinator =
       waitQSemN _barrier _indexerCount
       pure c'
 
-    -- give 3 minutes (180s) for a step to finish
+    -- give 30 minutes (1800s) for a step to finish
     safeStep c event = do
-      result <- timeout 180_000_000 $ step c event
+      result <- timeout 1_800_000_000 $ step c event
       case result of
         Nothing -> error "At least one indexer is stuck, closing marconi"
         Just res -> pure res

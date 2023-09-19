@@ -44,7 +44,6 @@ import Data.Maybe (listToMaybe, mapMaybe)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
-import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Sync
@@ -71,16 +70,14 @@ type DatumEvent = NonEmpty DatumInfo
 Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = tail} ''DatumInfo
 Lens.makeLenses ''DatumInfo
 
+instance SQL.FromRow (Core.Timed C.ChainPoint DatumInfo) where
+  fromRow = do
+    datumInfo <- SQL.fromRow
+    point <- SQL.fromRow
+    pure $ Core.Timed point datumInfo
+
 instance SQL.ToRow (Core.Timed C.ChainPoint DatumInfo) where
-  toRow d =
-    let snoField = case d ^. Core.point of
-          C.ChainPointAtGenesis -> SQL.SQLNull
-          C.ChainPoint sno _ -> SQL.toField sno
-     in SQL.toRow
-          [ SQL.toField (d ^. Core.event . datumHash)
-          , SQL.toField (d ^. Core.event . datum)
-          , snoField
-          ]
+  toRow d = SQL.toRow (d ^. Core.event) ++ SQL.toRow (d ^. Core.point)
 
 type instance Core.Point DatumEvent = C.ChainPoint
 
@@ -90,12 +87,6 @@ type DatumIndexer = Core.SQLiteIndexer DatumEvent
 -- | A SQLite Datum indexer with Catchup
 type StandardDatumIndexer m = StandardSQLiteIndexer m DatumEvent
 
-instance SQL.FromRow (Core.Timed C.ChainPoint DatumInfo) where
-  fromRow = do
-    utxo <- SQL.fromRow
-    point <- SQL.fromRow
-    pure $ Core.Timed point utxo
-
 -- | A smart constructor for 'DatumIndexer'
 mkDatumIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -103,11 +94,21 @@ mkDatumIndexer
   -> m (Core.SQLiteIndexer DatumEvent)
 mkDatumIndexer path = do
   let createDatumQuery =
-        [sql|CREATE TABLE IF NOT EXISTS datum (datumHash BLOB PRIMARY KEY, datum BLOB, slotNo Int)|]
+        [sql|CREATE TABLE IF NOT EXISTS datum
+             ( datumHash BLOB PRIMARY KEY
+             , datum BLOB
+             , slotNo INT
+             , blockHeaderHash BLOB
+             )|]
       datumInsertQuery :: SQL.Query
       datumInsertQuery =
-        [sql|INSERT OR IGNORE INTO datum (datumHash, datum, slotNo)
-          VALUES (?, ?, ?)|]
+        [sql|INSERT OR IGNORE INTO datum
+             ( datumHash
+             , datum
+             , slotNo
+             , blockHeaderHash
+             )
+          VALUES (?, ?, ?, ?)|]
       createDatumTables = [createDatumQuery, Sync.syncTableCreation]
   Core.mkSqliteIndexer
     path
@@ -117,6 +118,9 @@ mkDatumIndexer path = do
     [ Core.SQLRollbackPlan "datum" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
+    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
+    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
+    -- There needs to be a design change in marconi-core.
     Sync.syncLastPointsQuery
 
 -- | A worker with catchup for a 'DatumIndexer'
@@ -161,10 +165,9 @@ instance
         datumQuery =
           [sql|
           SELECT datumHash, datum,
-                 sync.slotNo, sync.blockHeaderHash
+                 slotNo, blockHeaderHash
           FROM datum
-          JOIN sync ON datum.slotNo == sync.slotNo
-          WHERE datum.slotNo <= :slotNo
+          WHERE slotNo <= :slotNo
           |]
         groupEvents
           :: NonEmpty (Core.Timed point a)

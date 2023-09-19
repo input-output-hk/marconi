@@ -47,7 +47,7 @@ type Mockchain era = [MockBlock era]
 deriving stock instance Show C.BlockHeader
 
 data MockBlock era = MockBlock
-  { mockBlockChainPoint :: !C.BlockHeader
+  { mockBlockHeader :: !C.BlockHeader
   , mockBlockTxs :: ![C.Tx era]
   }
   deriving (Show)

@@ -21,10 +21,18 @@ import Database.SQLite.Simple.QQ (sql)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
 
--- | A simple table to store the passed chainpoints
+{- | A simple table to store the passed chain points.
+
+Note that in Byron era, there can be multiple added blocks in the same slot. That explains why we
+can't use the `PRIMARY KEY` constraint for `slotNo` only.
+-}
 syncTableCreation :: SQL.Query
 syncTableCreation =
-  [sql|CREATE TABLE IF NOT EXISTS sync (slotNo INT PRIMARY KEY, blockHeaderHash BLOB)|]
+  [sql|CREATE TABLE IF NOT EXISTS sync
+         ( slotNo INT NOT NULL
+         , blockHeaderHash BLOB NOT NULL
+         , PRIMARY KEY (slotNo, blockHeaderHash)
+         )|]
 
 {- | NOTE: NOT AT ALL PERFORMANT. DO NOT USE.
 

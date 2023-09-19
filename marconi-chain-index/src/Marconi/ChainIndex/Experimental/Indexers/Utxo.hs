@@ -125,7 +125,8 @@ mkUtxoIndexer path = do
                  , value BLOB
                  , inlineScript BLOB
                  , inlineScriptHash BLOB
-                 , slotNo INT
+                 , slotNo INT NOT NULL
+                 , blockHeaderHash BLOB NOT NULL
                  )|]
       createAddressIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_address ON utxo (address)|]
       createSlotNoIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_slotNo ON utxo (slotNo)|]
@@ -140,16 +141,18 @@ mkUtxoIndexer path = do
                  value,
                  inlineScript,
                  inlineScriptHash,
-                 slotNo
+                 slotNo,
+                 blockHeaderHash
               ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createUtxoTables =
-        [ Sync.syncTableCreation
-        , createUtxo
+        [ createUtxo
         , createAddressIndex
         , createSlotNoIndex
+        , Sync.syncTableCreation
         ]
       insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery]
+
   Core.mkSqliteIndexer
     path
     createUtxoTables
@@ -158,6 +161,9 @@ mkUtxoIndexer path = do
     [ Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
+    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
+    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
+    -- There needs to be a design change in marconi-core.
     Sync.syncLastPointsQuery
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
@@ -210,8 +216,14 @@ instance ToRow (Core.Timed C.ChainPoint Utxo) where
           , toField $ u ^. Core.event . value
           , toField $ u ^. Core.event . inlineScript
           , toField $ u ^. Core.event . inlineScriptHash
-          , toField $ u ^. Core.point . Lens.to C.chainPointToSlotNo
           ]
+          ++ toRow (u ^. Core.point)
+
+instance SQL.FromRow (Core.Timed C.ChainPoint Utxo) where
+  fromRow = do
+    utxo <- SQL.fromRow
+    point <- SQL.fromRow
+    pure $ Core.Timed point utxo
 
 instance SQL.FromRow Utxo where
   fromRow = do
@@ -233,12 +245,6 @@ instance SQL.FromRow Utxo where
         , _inlineScript
         , _inlineScriptHash
         }
-
-instance SQL.FromRow (Core.Timed C.ChainPoint Utxo) where
-  fromRow = do
-    utxo <- SQL.fromRow
-    point <- SQL.fromRow
-    pure $ Core.Timed point utxo
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery UtxoEvent)) m)
@@ -266,10 +272,9 @@ instance
         utxoQuery =
           [sql|
           SELECT address, txIndex, txId, txIx, datumHash, value, inlineScript, inlineScriptHash,
-                 sync.slotNo, sync.blockHeaderHash
+                 slotNo, blockHeaderHash
           FROM utxo
-          JOIN sync ON utxo.slotNo == sync.slotNo
-          WHERE utxo.slotNo <= :slotNo
+          WHERE slotNo <= :slotNo
           |]
         -- Group utxos that are of the same block in the same event
         groupEvents
@@ -298,7 +303,8 @@ getUtxoEventsFromBlock
   => C.Block era
   -> [Utxo]
   -- ^ UtxoEvents are stored in storage after conversion to UtxoRow
-getUtxoEventsFromBlock (C.Block _ txs) = zip [0 ..] txs >>= uncurry getUtxosFromTx
+getUtxoEventsFromBlock (C.Block _ txs) =
+  zip [0 ..] txs >>= uncurry getUtxosFromTx
 
 getUtxosFromTx
   :: (C.IsCardanoEra era)

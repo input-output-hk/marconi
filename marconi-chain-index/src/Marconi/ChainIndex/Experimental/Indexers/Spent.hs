@@ -9,8 +9,8 @@ module Marconi.ChainIndex.Experimental.Indexers.Spent (
   -- * Event
   SpentInfo (SpentInfo),
   SpentInfoEvent,
-  spent,
-  spentAt,
+  spentTxOutRef,
+  spentAtTxId,
 
   -- * Indexer and worker
   SpentIndexer,
@@ -49,9 +49,9 @@ import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
 
 data SpentInfo = SpentInfo
-  { _spent :: C.TxIn
+  { _spentTxOutRef :: C.TxIn
   -- ^ The Spent tx output
-  , _spentAt :: C.TxId
+  , _spentAtTxId :: C.TxId
   -- ^ The transaction that spent this tx output
   }
   deriving (Show, Eq, Ord, Generic)
@@ -65,26 +65,26 @@ Lens.makeLenses ''SpentInfo
 
 instance SQL.ToRow (Core.Timed C.ChainPoint SpentInfo) where
   toRow s =
-    let C.TxIn txid txix = s ^. Core.event . spent
+    let C.TxIn txid txix = s ^. Core.event . spentTxOutRef
      in SQL.toRow
           [ SQL.toField txid
           , SQL.toField txix
-          , SQL.toField $ s ^. Core.event . spentAt
-          , SQL.toField $ s ^. Core.point . Lens.to C.chainPointToSlotNo
+          , SQL.toField $ s ^. Core.event . spentAtTxId
           ]
-
-instance SQL.FromRow SpentInfo where
-  fromRow = do
-    txId <- SQL.field
-    txIx <- SQL.field
-    _spentAt <- SQL.field
-    pure $ SpentInfo{_spent = C.TxIn txId txIx, _spentAt}
+          ++ SQL.toRow (s ^. Core.point)
 
 instance SQL.FromRow (Core.Timed C.ChainPoint SpentInfo) where
   fromRow = do
     spentInfo <- SQL.fromRow
     point <- SQL.fromRow
     pure $ Core.Timed point spentInfo
+
+instance SQL.FromRow SpentInfo where
+  fromRow = do
+    txId <- SQL.field
+    txIx <- SQL.field
+    _spentAtTxId <- SQL.field
+    pure $ SpentInfo{_spentTxOutRef = C.TxIn txId txIx, _spentAtTxId}
 
 type instance Core.Point SpentInfoEvent = C.ChainPoint
 
@@ -103,24 +103,26 @@ mkSpentIndexer path = do
         [sql|CREATE TABLE IF NOT EXISTS spent
                ( txId TEXT NOT NULL
                , txIx INT NOT NULL
-               , spentAt TEXT NOT NULL
+               , spentAtTxId TEXT NOT NULL
                , slotNo INT NOT NULL
+               , blockHeaderHash BLOB NOT NULL
                )|]
       createSlotNoIndex =
         [sql|CREATE INDEX IF NOT EXISTS spent_slotNo ON spent (slotNo)|]
       createTxInIndex =
         [sql|CREATE INDEX IF NOT EXISTS spent_txIn ON spent (txId, txIx)|]
       createSpentAtIndex =
-        [sql|CREATE INDEX IF NOT EXISTS spent_spentAt ON spent (spentAt)|]
+        [sql|CREATE INDEX IF NOT EXISTS spent_spentAtTxId ON spent (spentAtTxId)|]
       spentInsertQuery :: SQL.Query
       spentInsertQuery =
         [sql|INSERT OR IGNORE INTO spent
                ( txId
                , txIx
-               , spentAt
+               , spentAtTxId
                , slotNo
+               , blockHeaderHash
                )
-               VALUES (?, ?, ?, ?)|]
+               VALUES (?, ?, ?, ?, ?)|]
       createSpentTables =
         [createSpent, createSlotNoIndex, createTxInIndex, createSpentAtIndex, Sync.syncTableCreation]
       spentInsert =
@@ -133,6 +135,9 @@ mkSpentIndexer path = do
     [ Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
+    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
+    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
+    -- There needs to be a design change in marconi-core.
     Sync.syncLastPointsQuery
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
@@ -155,7 +160,7 @@ instance
     let spentInfoQuery :: SQL.Query
         spentInfoQuery =
           [sql|
-          SELECT txId, txIx, spentAt
+          SELECT txId, txIx, spentAtTxId
           FROM spent
           WHERE slotNo == :slotNo
           |]
@@ -176,11 +181,10 @@ instance
     let spentQuery :: SQL.Query
         spentQuery =
           [sql|
-          SELECT txId, txIx, spentAt,
-                 sync.slotNo, sync.blockHeaderHash
+          SELECT txId, txIx, spentAtTxId,
+                 slotNo, blockHeaderHash
           FROM spent
-          JOIN sync ON spent.slotNo == sync.slotNo
-          WHERE spent.slotNo <= :slotNo
+          WHERE slotNo <= :slotNo
           |]
         groupEvents
           :: NonEmpty (Core.Timed point a)
@@ -212,5 +216,4 @@ getInputs
           C.ScriptInvalid -> case txInsCollateral of
             C.TxInsCollateralNone -> []
             C.TxInsCollateral _ txins -> txins
-        spentAt' = C.getTxId b
-     in flip SpentInfo spentAt' <$> inputs
+     in fmap (\input -> SpentInfo input (C.getTxId b)) inputs

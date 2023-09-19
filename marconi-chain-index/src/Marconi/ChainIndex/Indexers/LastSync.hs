@@ -24,8 +24,9 @@ createLastSyncTable c =
   SQL.execute_
     c
     [sql|CREATE TABLE IF NOT EXISTS lastSync
-    ( slotNo INT PRIMARY KEY
+    ( slotNo INT NOT NULL
     , blockHeaderHash BLOB NOT NULL
+    , PRIMARY KEY (slotNo, blockHeaderHash)
     )|]
 
 -- | update the last sync point of the indexer

@@ -264,7 +264,7 @@ baseQuery =
     spentBlockInfo.blockNo,
     spentBlockInfo.blockTimestamp,
     spentBlockInfo.epochNo,
-    futureSpent.spentAt,
+    futureSpent.spentAtTxId,
 
     -- UtxoResult.inputs
     GROUP_CONCAT(HEX(txIn.txId)),
@@ -276,7 +276,7 @@ baseQuery =
   -- Attach datum
   LEFT JOIN datum.datum d ON d.datumHash = u.datumHash
   -- Attach TxIns
-  LEFT JOIN spent.spent txIn ON txIn.spentAt = u.txId
+  LEFT JOIN spent.spent txIn ON txIn.spentAtTxId = u.txId
   -- Attach utxo block info
   LEFT JOIN blockInfo.blockInfo utxoBlockInfo ON utxoBlockInfo.slotNo = u.slotNo
   -- Attach spent block info

@@ -9,20 +9,18 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.Spent (
   genSpent,
 ) where
 
-import Control.Lens ((^.))
-import Data.Maybe (mapMaybe)
-
-import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
-import Marconi.Core.Experiment qualified as Core
-
 import Cardano.Api qualified as C
+import Control.Lens ((^.))
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
+import Data.Maybe (mapMaybe)
 import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
+import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
+import Marconi.Core.Experiment qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
@@ -104,19 +102,14 @@ getSpentsEvents
 getSpentsEvents =
   let getTxBody :: C.Tx era -> C.TxBody era
       getTxBody (C.Tx txBody _) = txBody
-      getChainPoint :: Gen.BlockHeader -> C.ChainPoint
-      getChainPoint (Gen.BlockHeader slotNo blockHeaderHash _blockNo) =
-        C.ChainPoint slotNo blockHeaderHash
 
       getBlockSpentsEvent
         :: Gen.MockBlock era
         -> Core.Timed C.ChainPoint (Maybe (NonEmpty Spent.SpentInfo))
-
-      getBlockSpentsEvent block =
-        Core.Timed (getChainPoint $ Gen.mockBlockChainPoint block)
-          . NonEmpty.nonEmpty
-          . (Spent.getInputs . getTxBody =<<)
-          $ Gen.mockBlockTxs block
+      getBlockSpentsEvent (Gen.MockBlock (C.BlockHeader slotNo blockHeaderHash _) txs) =
+        Core.Timed (C.ChainPoint slotNo blockHeaderHash) $
+          NonEmpty.nonEmpty $
+            concatMap (Spent.getInputs . getTxBody) txs
    in fmap getBlockSpentsEvent
 
 genSpent :: Hedgehog.Gen Spent.SpentInfo

@@ -34,7 +34,7 @@ import Marconi.ChainIndex.Types (
 import Marconi.Core.Experiment qualified as Core
 import System.FilePath ((</>))
 
-data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody TxIndexInBlock (C.TxBody era)
+data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
 type instance Core.Point [AnyTxBody] = C.ChainPoint
 
 {- | Build all the indexers of marconi-chain-index
@@ -77,10 +77,11 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
   StandardWorker _mintTokenMVar mintTokenWorker <-
     mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
 
-  let getTxBody :: (C.IsCardanoEra era) => TxIndexInBlock -> C.Tx era -> AnyTxBody
-      getTxBody ix tx = AnyTxBody ix (C.getTxBody tx)
+  let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+      getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
       toTxBodys :: BlockEvent -> [AnyTxBody]
-      toTxBodys (BlockEvent (C.BlockInMode (C.Block _ txs) _) _ _) = zipWith getTxBody [0 ..] txs
+      toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+        zipWith (getTxBody bn) [0 ..] txs
 
   coordinatorTxBodyWorkers <-
     buildTxBodyCoordinator
@@ -146,7 +147,7 @@ utxoBuilder
   -> n (StandardWorker m [AnyTxBody] Utxo.UtxoEvent Core.SQLiteIndexer)
 utxoBuilder securityParam catchupConfig utxoConfig logger path =
   let extractUtxos :: AnyTxBody -> [Utxo.Utxo]
-      extractUtxos (AnyTxBody indexInBlock txb) = Utxo.getUtxosFromTxBody indexInBlock txb
+      extractUtxos (AnyTxBody _ indexInBlock txb) = Utxo.getUtxosFromTxBody indexInBlock txb
       utxoWorkerConfig =
         StandardWorkerConfig
           "Utxo"
@@ -166,7 +167,7 @@ spentBuilder
   -> n (StandardWorker m [AnyTxBody] Spent.SpentInfoEvent Core.SQLiteIndexer)
 spentBuilder securityParam catchupConfig logger path =
   let extractSpent :: AnyTxBody -> [Spent.SpentInfo]
-      extractSpent (AnyTxBody _ txb) = Spent.getInputs txb
+      extractSpent (AnyTxBody _ _ txb) = Spent.getInputs txb
       spentWorkerConfig =
         StandardWorkerConfig
           "spent"
@@ -186,7 +187,7 @@ datumBuilder
   -> n (StandardWorker m [AnyTxBody] Datum.DatumEvent Core.SQLiteIndexer)
 datumBuilder securityParam catchupConfig logger path =
   let extractDatum :: AnyTxBody -> [Datum.DatumInfo]
-      extractDatum (AnyTxBody _ txb) = Datum.getDataFromTxBody txb
+      extractDatum (AnyTxBody _ _ txb) = Datum.getDataFromTxBody txb
       datumWorkerConfig =
         StandardWorkerConfig
           "datum"
@@ -207,7 +208,7 @@ mintBuilder
   -> n (StandardWorker m [AnyTxBody] MintTokenEvent.MintTokenBlockEvents Core.SQLiteIndexer)
 mintBuilder securityParam catchupConfig mintEventConfig logger path =
   let extractMint :: AnyTxBody -> [MintTokenEvent.MintTokenEvent]
-      extractMint (AnyTxBody ix txb) = MintTokenEvent.extractEventsFromTx ix txb
+      extractMint (AnyTxBody bn ix txb) = MintTokenEvent.extractEventsFromTx bn ix txb
       mintTokenWorkerConfig =
         StandardWorkerConfig
           "mintToken"

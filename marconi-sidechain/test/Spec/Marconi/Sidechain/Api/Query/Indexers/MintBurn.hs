@@ -8,7 +8,6 @@ module Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn (tests) where
 import Cardano.Api (AssetName, PolicyId)
 import Control.Concurrent.STM (atomically)
 import Control.Lens.Operators ((^.))
-import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty qualified as NonEmpty
@@ -58,8 +57,8 @@ tests rpcClientAction =
         queryMintingPolicyTest
     , testPropertyNamed
         "marconi-sidechain-mint-burn invalid TxId"
-        "propUnmatchedTxIdIsRjected"
-        propUnmatchedTxIdIsRjected
+        "propUnmatchedTxIdIsRejected"
+        propUnmatchedTxIdIsRejected
     , testPropertyNamed
         "marconi-sidechain-mint-burn invalid policyId"
         "propUnmatchedPolicyId"
@@ -126,8 +125,8 @@ queryMintingPolicyTest = property $ do
   (Set.fromList . mapMaybe (Aeson.decode . Aeson.encode) $ fetchedRows) === Set.fromList fetchedRows
 
 -- | make sure we throw an error if the given txId in the query doesn't exist
-propUnmatchedTxIdIsRjected :: Property
-propUnmatchedTxIdIsRjected = property $ do
+propUnmatchedTxIdIsRejected :: Property
+propUnmatchedTxIdIsRejected = property $ do
   (events, (securityParam, _)) <- forAll genMintEvents
   env <-
     liftIO $
@@ -142,15 +141,18 @@ propUnmatchedTxIdIsRjected = property $ do
             (env ^. sidechainMintBurnIndexer . mintBurnIndexerEnvIndexer)
       txIds = events >>= fmap MintBurn.txMintTxId . MintBurn.txMintEventTxAssets
   txId <- forAll CGen.genTxId
-  when (txId `elem` txIds) Hedgehog.discard
+  Hedgehog.classify "txId `elem` txIds" $ txId `elem` txIds
+  Hedgehog.classify "txId `notElem` txIds" $ txId `notElem` txIds
   pId <- forAll Gen.genPolicyId
   liftIO $
     mocUtxoWorker (atomically . Utxo.updateEnvState (env ^. Env.sidechainAddressUtxoIndexer)) []
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
   result <- liftIO $ queryByPolicyAndAssetId securityParam env pId Nothing Nothing (Just txId)
   case result of
-    Left (QueryError _) -> Hedgehog.success
-    _other -> fail "Invalid txId wasn't caught"
+    Left (QueryError _) -> Hedgehog.assert $ txId `notElem` txIds
+    _other -> do
+      Hedgehog.footnote "Invalid txId wasn't caught"
+      Hedgehog.assert $ txId `elem` txIds
 
 -- | make sure we throw an error if the given policyId isn't tracked
 propUnmatchedPolicyId :: Property
@@ -158,7 +160,8 @@ propUnmatchedPolicyId = property $ do
   (events, (securityParam, _)) <- forAll genMintEvents
   pId <- forAll Gen.genPolicyId
   pId2 <- forAll Gen.genPolicyId
-  when (pId == pId2) Hedgehog.discard
+  Hedgehog.cover 10 "pId == pId2" $ pId == pId2
+  Hedgehog.cover 50 "pId /= pId2" $ pId /= pId2
   env <-
     liftIO $
       Env.SidechainIndexersEnv
@@ -175,17 +178,20 @@ propUnmatchedPolicyId = property $ do
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
   result <- liftIO $ queryByPolicyAndAssetId securityParam env pId2 Nothing Nothing Nothing
   case result of
-    Left (UntrackedPolicy _ _) -> Hedgehog.success
-    _other -> fail "Unmatched policyId wasn't caught"
+    Left (UntrackedPolicy _ _) -> Hedgehog.assert $ pId /= pId2
+    _other -> do
+      Hedgehog.footnote "Unmatched policyId wasn't caught"
+      Hedgehog.assert $ pId == pId2
 
--- | make sure we throw an error if the given policyId isn't tracked
+-- | make sure we throw an error if the given policyId+assetname isn't tracked
 propUnmatchedAssetName :: Property
 propUnmatchedAssetName = property $ do
   (events, (securityParam, _)) <- forAll genMintEvents
   pId <- forAll Gen.genPolicyId
   assetName <- forAll Gen.genAssetName
   assetName2 <- forAll Gen.genAssetName
-  when (assetName == assetName2) Hedgehog.discard
+  Hedgehog.classify "assetName == assetName2" $ assetName == assetName2
+  Hedgehog.classify "assetName /= assetName2" $ assetName /= assetName2
   env <-
     liftIO $
       Env.SidechainIndexersEnv
@@ -202,8 +208,10 @@ propUnmatchedAssetName = property $ do
   liftIO $ mocMintBurnWorker callback $ MintBurn.MintBurnEvent <$> events
   result <- liftIO $ queryByPolicyAndAssetId securityParam env pId (Just assetName2) Nothing Nothing
   case result of
-    Left (UntrackedPolicy _ _) -> Hedgehog.success
-    _other -> fail "Unmatched assetName wasn't caught"
+    Left (UntrackedPolicy _ _) -> Hedgehog.assert $ assetName /= assetName2
+    _other -> do
+      Hedgehog.footnote "Unmatched assetName wasn't caught"
+      Hedgehog.assert $ assetName == assetName2
 
 {- Commented at the moment because the generator doesn't file enough mint/burn events
 

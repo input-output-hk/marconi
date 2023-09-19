@@ -13,6 +13,8 @@ table 'minting_policy_events' with the following fields:
 
 @
 ( slotNo INT NOT NULL
+, blockHeaderHash BLOB NOT NULL
+, blockNo INT NOT NULL
 , txId BLOB NOT NULL
 , txIndexInBlock INT NOT NULL
 , policyId BLOB NOT NULL
@@ -31,6 +33,7 @@ module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   mintTokenEventLocation,
   mintTokenEventAsset,
   MintTokenEventLocation (MintTokenEventLocation),
+  mintTokenEventBlockNo,
   mintTokenEventIndexInBlock,
   mintTokenEventTxId,
   MintAsset (MintAsset),
@@ -109,6 +112,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardWorkerConfig,
   mkStandardWorkerWithFilter,
  )
+import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   TxIndexInBlock,
  )
@@ -139,8 +143,9 @@ data MintTokenEvent = MintTokenEvent
   deriving (Show, Eq, Ord, Generic)
 
 data MintTokenEventLocation = MintTokenEventLocation
-  { _mintTokenEventIndexInBlock :: !TxIndexInBlock
+  { _mintTokenEventBlockNo :: !C.BlockNo
   , _mintTokenEventTxId :: !C.TxId
+  , _mintTokenEventIndexInBlock :: !TxIndexInBlock
   }
   deriving (Show, Eq, Ord, Generic)
 
@@ -200,14 +205,16 @@ instance SQL.FromRow MintTokenEvent where
 instance SQL.ToRow MintTokenEventLocation where
   toRow l =
     SQL.toRow
-      [ SQL.toField $ l ^. mintTokenEventIndexInBlock
+      [ SQL.toField $ l ^. mintTokenEventBlockNo
       , SQL.toField $ l ^. mintTokenEventTxId
+      , SQL.toField $ l ^. mintTokenEventIndexInBlock
       ]
 
 instance SQL.FromRow MintTokenEventLocation where
   fromRow =
     MintTokenEventLocation
       <$> SQL.field
+      <*> SQL.field
       <*> SQL.field
 
 instance SQL.ToRow MintAsset where
@@ -260,9 +267,9 @@ filterByTargetAssetIds assetIds =
 
 -- Events extraction
 
-extractEventsFromTx :: TxIndexInBlock -> C.TxBody era -> [MintTokenEvent]
-extractEventsFromTx txIndexInBlock txb =
-  let mintEventLocation = MintTokenEventLocation txIndexInBlock (C.getTxId txb)
+extractEventsFromTx :: C.BlockNo -> TxIndexInBlock -> C.TxBody era -> [MintTokenEvent]
+extractEventsFromTx blockNo txIndexInBlock txb =
+  let mintEventLocation = MintTokenEventLocation blockNo (C.getTxId txb) txIndexInBlock
 
       extactMintEventsFromTxBody :: [MintAsset]
       extactMintEventsFromTxBody = case txb of
@@ -317,6 +324,7 @@ mkMintTokenIndexer dbPath = do
               minting_policy_events
               ( slotNo INT NOT NULL
               , blockHeaderHash BLOB NOT NULL
+              , blockNo INT NOT NULL
               , txId BLOB NOT NULL
               , txIndexInBlock INT NOT NULL
               , policyId BLOB NOT NULL
@@ -336,19 +344,19 @@ mkMintTokenIndexer dbPath = do
                INTO minting_policy_events (
                  slotNo,
                  blockHeaderHash,
-                 txIndexInBlock,
+                 blockNo,
                  txId,
+                 txIndexInBlock,
                  policyId,
                  assetName,
                  quantity,
                  redeemerHash,
                  redeemerData
               ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createMintPolicyEventTables =
         [createMintPolicyEvent, createMintPolicyIdIndex, Sync.syncTableCreation]
       mintInsertPlans = [Core.SQLInsertPlan fromTimedMintEvents mintEventInsertQuery]
-
   Core.mkSqliteIndexer
     dbPath
     createMintPolicyEventTables
@@ -357,6 +365,9 @@ mkMintTokenIndexer dbPath = do
     [ Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo
     , Sync.syncRollbackPlan
     ]
+    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
+    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
+    -- There needs to be a design change in marconi-core.
     Sync.syncLastPointsQuery
 
 fromTimedMintEvents
@@ -408,16 +419,7 @@ instance
       Core.SQLiteIndexer
   where
   query =
-    let mintTokenEventQuery :: SQL.Query
-        mintTokenEventQuery =
-          [sql|
-          SELECT slotNo, blockHeaderHash, txIndexInBlock, txId, policyId, assetName, quantity, redeemerHash, redeemerData
-          FROM minting_policy_events
-          WHERE slotNo <= :slotNo
-          ORDER BY slotNo ASC, txIndexInBlock ASC
-          |]
-
-        parseResult
+    let parseResult
           :: (MintTokenBlockEvents -> Maybe MintTokenBlockEvents)
           -> [Core.Timed C.ChainPoint MintTokenEvent]
           -> [Core.Timed C.ChainPoint MintTokenBlockEvents]
@@ -425,7 +427,7 @@ instance
           mapMaybe (sequence . over Core.event eventsFilterFunc) $ toTimedMintEvents es
      in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const mintTokenEventQuery)
+          (const $ mkMintTokenEventQueryBy Nothing)
           (\(MintTokenEventsMatchingQuery p) r -> parseResult p r)
 
 instance
@@ -503,7 +505,13 @@ sortEventsByOrderOfBlockchainAppearance =
         te
           & Core.event . mintTokenEvents
             %~ NonEmpty.sortBy
-              (comparing (^. mintTokenEventLocation . mintTokenEventIndexInBlock))
+              ( comparing
+                  ( \e ->
+                      ( e ^. mintTokenEventLocation . mintTokenEventBlockNo
+                      , e ^. mintTokenEventLocation . mintTokenEventIndexInBlock
+                      )
+                  )
+              )
     )
     . List.sort
 
@@ -520,43 +528,41 @@ instance
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.SQLiteIndexer
   where
   query =
-    let mintTokenEventQueryByAssetId :: Maybe Text -> SQL.Query
-        mintTokenEventQueryByAssetId whereClauseM =
-          SQL.Query $
-            Text.intercalate " " $
-              catMaybes
-                [ Just
-                    "SELECT slotNo, blockHeaderHash, txIndexInBlock, txId, policyId, assetName, quantity, redeemerHash, redeemerData"
-                , Just "FROM minting_policy_events"
-                , Just "WHERE slotNo <= :slotNo"
-                , fmap (\e -> Text.append " AND " e) whereClauseM
-                , Just "ORDER BY slotNo ASC, txIndexInBlock ASC"
-                ]
-     in Core.querySyncedOnlySQLiteIndexerWith
-          ( \cp ->
-              \case
-                QueryByAssetId policyId (Just assetName) _ ->
-                  [ ":slotNo" := C.chainPointToSlotNo cp
-                  , ":policyId" := policyId
-                  , ":assetName" := assetName
-                  ]
-                QueryByAssetId policyId Nothing _ ->
-                  [ ":slotNo" := C.chainPointToSlotNo cp
-                  , ":policyId" := policyId
-                  ]
-          )
-          ( \(QueryByAssetId _ assetNameM eventType) ->
-              let policyIdWhereClause = Just "policyId = :policyId"
-                  assetNameWhereClause = fmap (const "assetName = :assetName") assetNameM
-                  eventTypeWhereClause =
-                    case eventType of
-                      Nothing -> Nothing
-                      Just MintEventType -> Just "quantity > 0"
-                      Just BurnEventType -> Just "quantity < 0"
-                  whereClause =
-                    fmap (\e -> Text.intercalate " AND " $ NonEmpty.toList e) $
-                      NonEmpty.nonEmpty $
-                        catMaybes [policyIdWhereClause, assetNameWhereClause, eventTypeWhereClause]
-               in mintTokenEventQueryByAssetId whereClause
-          )
-          (const toTimedMintEvents)
+    let mkNamedParams cp =
+          \case
+            QueryByAssetId policyId (Just assetName) _ ->
+              [ ":slotNo" := C.chainPointToSlotNo cp
+              , ":policyId" := policyId
+              , ":assetName" := assetName
+              ]
+            QueryByAssetId policyId Nothing _ ->
+              [ ":slotNo" := C.chainPointToSlotNo cp
+              , ":policyId" := policyId
+              ]
+        mkQuery (QueryByAssetId _ assetNameM eventType) =
+          let policyIdWhereClause = Just "policyId = :policyId"
+              assetNameWhereClause = fmap (const "assetName = :assetName") assetNameM
+              eventTypeWhereClause =
+                case eventType of
+                  Nothing -> Nothing
+                  Just MintEventType -> Just "quantity > 0"
+                  Just BurnEventType -> Just "quantity < 0"
+              whereClause =
+                fmap (\e -> Text.intercalate " AND " $ NonEmpty.toList e) $
+                  NonEmpty.nonEmpty $
+                    catMaybes [policyIdWhereClause, assetNameWhereClause, eventTypeWhereClause]
+           in mkMintTokenEventQueryBy whereClause
+     in Core.querySyncedOnlySQLiteIndexerWith mkNamedParams mkQuery (const toTimedMintEvents)
+
+mkMintTokenEventQueryBy :: Maybe Text -> SQL.Query
+mkMintTokenEventQueryBy whereClauseM =
+  SQL.Query $
+    Text.intercalate " " $
+      catMaybes
+        [ Just
+            "SELECT slotNo, blockHeaderHash, blockNo, txId, txIndexInBlock, policyId, assetName, quantity, redeemerHash, redeemerData"
+        , Just "FROM minting_policy_events"
+        , Just "WHERE slotNo <= :slotNo"
+        , fmap (\e -> Text.append " AND " e) whereClauseM
+        , Just "ORDER BY slotNo ASC, blockNo ASC, txIndexInBlock ASC"
+        ]

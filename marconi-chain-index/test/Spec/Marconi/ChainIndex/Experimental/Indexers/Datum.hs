@@ -80,17 +80,11 @@ getDatumsEvents
   :: Gen.Mockchain era
   -> [Core.Timed C.ChainPoint (Maybe (NonEmpty Datum.DatumInfo))]
 getDatumsEvents =
-  let getChainPoint :: Gen.BlockHeader -> C.ChainPoint
-      getChainPoint (Gen.BlockHeader slotNo blockHeaderHash _blockNo) =
-        C.ChainPoint slotNo blockHeaderHash
-
-      getBlockDatumsEvent
+  let getBlockDatumsEvent
         :: Gen.MockBlock era
         -> Core.Timed C.ChainPoint (Maybe (NonEmpty Datum.DatumInfo))
-
-      getBlockDatumsEvent block =
-        Core.Timed (getChainPoint $ Gen.mockBlockChainPoint block)
-          . NonEmpty.nonEmpty
-          . (Datum.getDataFromTxBody . C.getTxBody =<<)
-          $ Gen.mockBlockTxs block
+      getBlockDatumsEvent (Gen.MockBlock (C.BlockHeader slotNo bhh _) txs) =
+        Core.Timed (C.ChainPoint slotNo bhh) $
+          NonEmpty.nonEmpty $
+            concatMap (Datum.getDataFromTxBody . C.getTxBody) txs
    in fmap getBlockDatumsEvent
