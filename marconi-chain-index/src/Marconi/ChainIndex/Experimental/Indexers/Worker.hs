@@ -15,7 +15,7 @@ module Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing (Trace)
 import Control.Concurrent (MVar)
-import Control.Monad.Cont (MonadIO)
+import Control.Monad.Cont (MonadIO, MonadTrans (lift))
 import Control.Monad.Except (ExceptT)
 import Data.Text (Text)
 import Data.Word (Word64)
@@ -113,7 +113,7 @@ mkStandardWorkerWithFilter
   -> n (StandardWorker m input event indexer)
 mkStandardWorkerWithFilter config eventFilter indexer = do
   let mapEventUnderDistance =
-        Core.traverseMaybeEvent $ fmap sequence . traverse (eventExtractor config)
+        Core.traverseMaybeEvent $ fmap sequence . traverse (lift . eventExtractor config)
   transformedIndexer <- mkStandardIndexerWithFilter config eventFilter indexer
   Core.WorkerIndexer idx worker <-
     Core.createWorker (workerName config) mapEventUnderDistance transformedIndexer

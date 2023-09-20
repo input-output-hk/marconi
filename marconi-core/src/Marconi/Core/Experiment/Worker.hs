@@ -69,7 +69,7 @@ data WorkerM m input point = forall indexer event n.
   -- ^ use to identify the worker in logs
   , workerState :: MVar (indexer event)
   -- ^ the indexer controlled by this worker
-  , transformInput :: Transformer m point input event
+  , transformInput :: Transformer (ExceptT IndexerError m) point input event
   -- ^ adapt the input event givent by the coordinator to the worker type
   , hoistError :: forall a. n a -> ExceptT IndexerError m a
   -- ^ adapt the monadic stack of the indexer to the one of the worker
@@ -85,7 +85,7 @@ createWorker'
   :: (MonadIO f, WorkerIndexerType n event indexer)
   => (forall a. n a -> ExceptT IndexerError m a)
   -> Text
-  -> Transformer m (Point event) input event
+  -> Transformer (ExceptT IndexerError m) (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
 createWorker' hoist name f ix = liftIO $ do
@@ -96,7 +96,7 @@ createWorker' hoist name f ix = liftIO $ do
 createWorkerPure
   :: (MonadIO f, MonadIO m, WorkerIndexerType m event indexer)
   => Text
-  -> Transformer m (Point event) input event
+  -> Transformer (ExceptT IndexerError m) (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
 createWorkerPure = createWorker' lift
@@ -105,7 +105,7 @@ createWorkerPure = createWorker' lift
 createWorker
   :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
   => Text
-  -> Transformer m (Point event) input event
+  -> Transformer (ExceptT IndexerError m) (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
 createWorker = createWorker' id
@@ -175,14 +175,19 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
         IndexAllDescending es -> indexAllEventsDescending es
         Stop -> pure $ Just $ OtherIndexError "Stop"
 
+      displayError :: (Show a) => a -> Text
+      displayError e = name <> ": " <> Text.pack (show e)
+
       onProcessError (SomeException e) =
-        pure $ Just $ StopIndexer (Just $ name <> " " <> Text.pack (show e))
+        pure . Just . StopIndexer . Just $ displayError e
 
       safeProcessEvent f input = do
-        (processedInput, f') <- runTransformer f (Just input)
-        case processedInput of
-          Nothing -> pure (Nothing, f)
-          Just p -> (,f') <$> process p `catch` onProcessError
+        processed <- runExceptT $ runTransformer f (Just input)
+        case processed of
+          Left err -> (,f) <$> onProcessError (SomeException err)
+          Right (processedInput, f') -> case processedInput of
+            Nothing -> pure (Nothing, f)
+            Just p -> (,f') <$> process p `catch` onProcessError
 
       loop :: TChan (ProcessedInput (Point input) input) -> IO ()
       loop chan' =
