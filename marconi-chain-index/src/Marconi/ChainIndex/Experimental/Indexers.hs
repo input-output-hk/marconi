@@ -46,7 +46,7 @@ buildIndexers
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
-  -> EpochState.EpochStateConfig
+  -> EpochState.EpochStateWorkerConfig
   -> BM.Trace IO Text
   -> FilePath
   -> ExceptT
@@ -223,14 +223,14 @@ epochStateBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
   -> Core.CatchupConfig
-  -> EpochState.EpochStateConfig
+  -> EpochState.EpochStateWorkerConfig
   -> BM.Trace IO (Core.IndexerEvent C.ChainPoint)
   -> FilePath
   -> n
       ( Core.WorkerIndexer
           IO
           (WithDistance BlockEvent)
-          (WithDistance (EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
+          (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
           (Core.WithResume EpochState.EpochStateIndexer)
       )
 epochStateBuilder securityParam catchupConfig epochStateConfig logger path =

@@ -29,6 +29,7 @@ run appName = do
   o <- Cli.parseOptions
   let batchSize = 5000
       stopCatchupDistance = 100
+      volatileEpochStateSnapshotInterval = 100
       filteredAddresses = []
       filteredAssetIds = []
       includeScript = True
@@ -52,7 +53,10 @@ run appName = do
         (Core.CatchupConfig batchSize stopCatchupDistance)
         (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
         (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
-        (EpochState.EpochStateConfig nodeConfigPath 500)
+        ( EpochState.EpochStateWorkerConfig
+            (EpochState.NodeConfig nodeConfigPath)
+            volatileEpochStateSnapshotInterval
+        )
         trace
         (Cli.optionsDbPath o)
   (indexerLastSyncPoints, _utxoQueryIndexer, indexers) <-
