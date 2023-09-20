@@ -50,7 +50,7 @@ import Control.Lens qualified as Lens
 import Control.Monad (foldM, when, (<=<))
 import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
-import Control.Monad.State.Strict (StateT)
+import Control.Monad.State.Strict (MonadState)
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
 import Data.Bifunctor (bimap)
 import Data.ByteString qualified as BS
@@ -299,13 +299,13 @@ data EpochStateWorkerConfig = EpochStateWorkerConfig
   }
 
 mkEpochStateWorker
-  :: forall n input
-   . (MonadIO n, MonadError Core.IndexerError n)
+  :: forall m input
+   . (MonadIO m, MonadError Core.IndexerError m)
   => StandardWorkerConfig IO input (C.BlockInMode C.CardanoMode)
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> EpochStateWorkerConfig
   -> FilePath
-  -> n
+  -> m
       ( Core.WorkerIndexer
           IO
           (WithDistance input)
@@ -324,20 +324,18 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
       initialState = pure $ WorkerState epochState snapshotInterval
 
       mapOneEvent
-        :: Maybe (WithDistance input)
-        -> StateT
-            WorkerState
-            IO
-            (Maybe (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)))
+        :: (MonadState WorkerState n, MonadError Core.IndexerError n, MonadIO n)
+        => Maybe (WithDistance input)
+        -> n (Maybe (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)))
       mapOneEvent Nothing = pure Nothing
       mapOneEvent (Just (WithDistance d e)) = runMaybeT $ do
         let applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
             extract = eventExtractor workerConfig
-        block <- MaybeT $ lift $ extract e
+        block <- MaybeT $ liftIO $ extract e
         let newBlockNo = getBlockNo block
         EpochState currentLedgerState' _block <- Lens.use lastEpochState
         case applyBlock block currentLedgerState' of
-          Left err -> throw . Core.IndexerInternalError . Text.pack . show $ err
+          Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
           Right res -> do
             lastEpochState .= EpochState res newBlockNo
             blocksToNextSnapshot -= 1
@@ -351,6 +349,13 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
               | isVolatile -> pure $ WithDistance d (Nothing, block)
               | otherwise -> empty
 
+      processAsEpochState
+        :: ExceptT Core.IndexerError IO WorkerState
+        -> Core.Transformer
+            (ExceptT Core.IndexerError IO)
+            C.ChainPoint
+            (WithDistance input)
+            (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
       processAsEpochState = Core.transformerM $ \case
         Core.Index x -> do
           Just . Core.Index <$> traverse mapOneEvent x
@@ -359,8 +364,8 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
         Core.Rollback p -> do
           queryResult <- lift $ runExceptT $ Core.query p Core.EventAtQuery indexer
           case queryResult of
-            Left _err -> throw $ Core.IndexerInternalError "Can't rollback to the given epoch"
-            Right Nothing -> throw $ Core.IndexerInternalError "Can't rollback to the given epoch"
+            Left _err -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch"
+            Right Nothing -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch"
             Right (Just res) -> do
               lastEpochState .= res
               pure $ Just $ Core.Rollback p
