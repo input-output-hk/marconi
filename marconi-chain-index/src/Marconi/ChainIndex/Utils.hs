@@ -115,7 +115,7 @@ querySecurityParamEra shelleyBasedEra networkId socketPath = do
     Left err -> toError err
     Right (Left err) -> toError err
     Right (Right x) -> pure x
-  return $ fromIntegral $ C.protocolParamSecurity genesisParameters
+  pure $ fromIntegral $ C.protocolParamSecurity genesisParameters
   where
     localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
     localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
