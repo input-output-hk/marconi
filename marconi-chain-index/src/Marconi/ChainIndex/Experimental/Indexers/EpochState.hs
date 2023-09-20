@@ -155,6 +155,7 @@ instance SQL.FromRow (Core.Timed C.ChainPoint EpochSDD) where
     point <- SQL.fromRow
     pure $ Core.Timed point sdd
 
+-- | Metadata used to cerate 'EpochStateIndexer' filenames
 data EpochMetadata = EpochMetadata
   { metadataBlockNo :: Maybe C.BlockNo
   , metadataChainpoint :: C.ChainPoint
@@ -186,6 +187,9 @@ data EpochStateIndexerConfig event = EpochStateIndexerConfig
 
 Lens.makeLenses ''EpochStateIndexerConfig
 
+{- | The main type of the epoch state indexer, it contains both the indexers it operates and its
+configuration
+-}
 data EpochStateIndexer event = EpochStateIndexer
   { _epochStateIndexerState :: EpochStateIndexerState event
   , _epochStateIndexerConfig :: EpochStateIndexerConfig event
@@ -195,6 +199,7 @@ Lens.makeLenses ''EpochStateIndexer
 
 type StandardEpochStateIndexer = EpochStateIndexer (WithDistance (C.BlockInMode C.CardanoMode))
 
+-- | The state maintained by the indexer to decide how to handle incoming events
 data WorkerState = WorkerState
   { _lastEpochState :: EpochState
   -- ^ The last computed ledger state
@@ -331,6 +336,7 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
       mapOneEvent (Just (WithDistance d e)) = runMaybeT $ do
         let applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
             extract = eventExtractor workerConfig
+            resetBlocksToSnapshot = blocksToNextSnapshot .= snapshotInterval
         block <- MaybeT $ liftIO $ extract e
         let newBlockNo = getBlockNo block
         EpochState currentLedgerState' _block <- Lens.use lastEpochState
@@ -343,7 +349,7 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
             let isNewEpoch = getEpochNo currentLedgerState' /= getEpochNo res
                 isVolatile = SecurityParam d < securityParamConfig workerConfig
                 snapshotEpoch = (snapshotTime && isVolatile) || isNewEpoch
-            when (snapshotTime || isNewEpoch) $ blocksToNextSnapshot .= snapshotInterval
+            when (snapshotTime || isNewEpoch) resetBlocksToSnapshot
             if
               | snapshotEpoch -> pure $ WithDistance d (Just res, block)
               | isVolatile -> pure $ WithDistance d (Nothing, block)

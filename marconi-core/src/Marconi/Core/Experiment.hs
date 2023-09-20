@@ -361,6 +361,11 @@ module Marconi.Core.Experiment (
   ProcessedInput (..),
 
   -- ***  Workers transformers
+
+  -- | Transformers are used to alter the incoming the events sent to an indexer
+  -- through a worker.
+  --
+  -- It allows to transform the content of a block or to silence some events.
   Transformer,
   mapEvent,
   mapMaybeEvent,
