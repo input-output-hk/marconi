@@ -36,6 +36,7 @@ module Marconi.ChainIndex.Experimental.Indexers.Utxo (
   UtxoIndexerConfig (UtxoIndexerConfig),
   StandardUtxoIndexer,
   utxoWorker,
+  catchupConfigEventHook,
 
   -- * Extractors
   getUtxoEventsFromBlock,
@@ -45,6 +46,7 @@ module Marconi.ChainIndex.Experimental.Indexers.Utxo (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.BM.Data.Trace (Trace)
 import Control.Lens (
   (&),
   (.~),
@@ -59,6 +61,8 @@ import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
+import Data.String (fromString)
+import Data.Text (Text)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -128,8 +132,6 @@ mkUtxoIndexer path = do
                  , slotNo INT NOT NULL
                  , blockHeaderHash BLOB NOT NULL
                  )|]
-      createAddressIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_address ON utxo (address)|]
-      createSlotNoIndex = [sql|CREATE INDEX IF NOT EXISTS utxo_slotNo ON utxo (slotNo)|]
       utxoInsertQuery :: SQL.Query
       utxoInsertQuery =
         [sql|INSERT INTO utxo (
@@ -145,11 +147,7 @@ mkUtxoIndexer path = do
                  blockHeaderHash
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-      createUtxoTables =
-        [ createUtxo
-        , createAddressIndex
-        , createSlotNoIndex
-        ]
+      createUtxoTables = [createUtxo]
       insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery]
 
   Sync.mkSyncedSqliteIndexer
@@ -157,6 +155,23 @@ mkUtxoIndexer path = do
     createUtxoTables
     [insertEvent]
     [Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo]
+
+catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
+catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
+  SQL.withConnection dbPath $ \c -> do
+    let addressIndexName = "utxo_address"
+        createAddressIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString addressIndexName
+            <> " ON utxo (address)"
+    Core.createIndexTable "Utxo" stdoutTrace c addressIndexName createAddressIndexStatement
+
+    let slotNoIndexName = "utxo_slotNo"
+        createSlotNoIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString slotNoIndexName
+            <> " ON utxo (slotNo)"
+    Core.createIndexTable "Utxo" stdoutTrace c slotNoIndexName createSlotNoIndexStatement
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker

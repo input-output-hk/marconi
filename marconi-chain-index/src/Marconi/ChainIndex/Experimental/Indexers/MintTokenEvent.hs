@@ -51,6 +51,7 @@ module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   StandardMintTokenEventIndexer,
   MintTokenEventConfig (..),
   configTrackedAssetIds,
+  catchupConfigEventHook,
   mkMintTokenIndexer,
   mkMintTokenEventWorker,
   filterByTargetAssetIds,
@@ -71,6 +72,7 @@ where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.BM.Trace (Trace)
 import Cardano.Ledger.Alonzo.Tx qualified as LA
 import Cardano.Ledger.Api (
   RdmrPtr (RdmrPtr),
@@ -99,6 +101,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Ord (comparing)
+import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
@@ -348,11 +351,6 @@ mkMintTokenIndexer dbPath = do
               , redeemerHash BLOB
               , redeemerData BLOB
               )|]
-      createMintPolicyIdIndex =
-        [sql|CREATE INDEX IF NOT EXISTS
-             minting_policy_events__txId_policyId
-             ON minting_policy_events (txId, policyId)|]
-
   let mintEventInsertQuery :: SQL.Query
       mintEventInsertQuery =
         [sql|INSERT
@@ -369,14 +367,35 @@ mkMintTokenIndexer dbPath = do
                  redeemerData
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-      createMintPolicyEventTables =
-        [createMintPolicyEvent, createMintPolicyIdIndex]
+      createMintPolicyEventTables = [createMintPolicyEvent]
       mintInsertPlans = [Core.SQLInsertPlan fromTimedMintEvents mintEventInsertQuery]
   Sync.mkSyncedSqliteIndexer
     dbPath
     createMintPolicyEventTables
     [mintInsertPlans]
     [Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo]
+
+catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
+catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
+  SQL.withConnection dbPath $ \c -> do
+    let txIdPolicyIdIndexName = "minting_policy_events__txId_policyId"
+        createMintPolicyIdIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString txIdPolicyIdIndexName
+            <> " ON minting_policy_events (txId, policyId)"
+    Core.createIndexTable
+      indexerName
+      stdoutTrace
+      c
+      txIdPolicyIdIndexName
+      createMintPolicyIdIndexStatement
+
+    let slotNoIndexName = "minting_policy_events__slotNo"
+        createSlotNoIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString slotNoIndexName
+            <> " ON minting_policy_events (slotNo)"
+    Core.createIndexTable indexerName stdoutTrace c slotNoIndexName createSlotNoIndexStatement
 
 fromTimedMintEvents
   :: Core.Timed point MintTokenBlockEvents

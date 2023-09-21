@@ -72,6 +72,7 @@ library
     Marconi.Core.Transformer.IndexTransformer
     Marconi.Core.Transformer.WithCache
     Marconi.Core.Transformer.WithCatchup
+    Marconi.Core.Transformer.WithCatchup.SQLite
     Marconi.Core.Transformer.WithDelay
     Marconi.Core.Transformer.WithFold
     Marconi.Core.Transformer.WithPruning

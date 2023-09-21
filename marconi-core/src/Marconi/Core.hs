@@ -430,7 +430,13 @@ module Marconi.Core (
   WithCatchup,
   withCatchup,
   CatchupConfig (CatchupConfig),
-  HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
+  mkCatchupConfig,
+  configCatchupEventHook,
+  HasCatchupConfig (catchupBypassDistance, catchupBatchSize, catchupEventHook),
+  CatchupEvent (Synced),
+
+  -- *** SQLite
+  createIndexTable,
 
   -- ** Delay
   WithDelay,
@@ -625,10 +631,14 @@ import Marconi.Core.Transformer.WithCache (
  )
 import Marconi.Core.Transformer.WithCatchup (
   CatchupConfig (CatchupConfig),
-  HasCatchupConfig (catchupBatchSize, catchupBypassDistance),
+  CatchupEvent (Synced),
+  HasCatchupConfig (catchupBatchSize, catchupBypassDistance, catchupEventHook),
   WithCatchup,
+  configCatchupEventHook,
+  mkCatchupConfig,
   withCatchup,
  )
+import Marconi.Core.Transformer.WithCatchup.SQLite (createIndexTable)
 import Marconi.Core.Transformer.WithDelay (
   HasDelayConfig (delayCapacity),
   WithDelay,

@@ -146,7 +146,13 @@ propRunnerTracksSelectedAddress = Hedgehog.property $ do
   StandardWorker ix w <-
     Hedgehog.evalExceptT $
       Utxo.utxoWorker
-        (StandardWorkerConfig "test" 1 (Core.CatchupConfig 4 2) (pure . getBlockUtxosEvent) nullTracer)
+        ( StandardWorkerConfig
+            "test"
+            1
+            (Core.mkCatchupConfig 4 2)
+            (pure . getBlockUtxosEvent)
+            nullTracer
+        )
         (Utxo.UtxoIndexerConfig followedAddresses True)
         ":memory:"
   -- we create a coordinator to perform indexing through the worker
@@ -187,7 +193,13 @@ propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
   StandardWorker ix w <-
     Hedgehog.evalExceptT $
       Utxo.utxoWorker
-        (StandardWorkerConfig "test" 1 (Core.CatchupConfig 4 2) (pure . getBlockUtxosEvent) nullTracer)
+        ( StandardWorkerConfig
+            "test"
+            1
+            (Core.mkCatchupConfig 4 2)
+            (pure . getBlockUtxosEvent)
+            nullTracer
+        )
         (Utxo.UtxoIndexerConfig followedAddresses True)
         ":memory:"
   -- we create a coordinator to perform indexing through the worker

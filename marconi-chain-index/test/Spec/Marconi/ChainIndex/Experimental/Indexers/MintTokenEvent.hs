@@ -565,7 +565,7 @@ indexWithRunner trackedAssetIds events = do
   StandardWorker indexerVar worker <-
     H.evalExceptT $
       MintTokenEvent.mkMintTokenEventWorker
-        (StandardWorkerConfig "MintTokenEventWorker" 1 (Core.CatchupConfig 4 2) pure nullTracer)
+        (StandardWorkerConfig "MintTokenEventWorker" 1 (Core.mkCatchupConfig 4 2) pure nullTracer)
         (MintTokenEventConfig trackedAssetIds)
         ":memory:"
 
