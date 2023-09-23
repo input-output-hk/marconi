@@ -79,6 +79,7 @@ library
     Marconi.Core.Experiment.Type
     Marconi.Core.Experiment.Worker
     Marconi.Core.Experiment.Worker.Transformer
+    Marconi.Core.Experiment.Worker.Transformer.Resume
     Marconi.Core.Storable
     Marconi.Core.TracedStorable
 

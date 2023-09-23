@@ -46,6 +46,7 @@ import Codec.CBOR.Encoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Applicative (Alternative (empty))
+import Control.Arrow ((<<<))
 import Control.Exception (throw)
 import Control.Lens (Lens', (%~), (&), (-=), (.=), (.~), (^.))
 import Control.Lens qualified as Lens
@@ -68,7 +69,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
-import Data.Ord (comparing)
+import Data.Ord (Down (Down), comparing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -93,8 +94,10 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
+import Marconi.Core.Experiment (IsSync (lastStablePoint))
 import Marconi.Core.Experiment qualified as Core
 import Marconi.Core.Experiment.Indexer.FileIndexer (EventInfo (fileMetadata))
+import Marconi.Core.Experiment.Worker.Transformer.Resume (withResume)
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
@@ -272,7 +275,7 @@ mkEpochStateIndexer
   -> NodeConfig
   -> FilePath
   -> n
-      ( Core.WithResume EpochStateIndexer (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
+      ( EpochStateIndexer (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
       )
 mkEpochStateIndexer workerCfg cfg rootDir = do
   genesisCfg <- readGenesisFile (nodeConfig cfg)
@@ -283,10 +286,10 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
   liftIO $ createDirectoryIfMissing True rootDir
   let epochSDDConfig = workerCfg{logger = BM.appendName "epochSDD" $ logger workerCfg}
   epochSDDIndexer' <-
-    mkStandardIndexer epochSDDConfig =<< buildEpochSDDIndexer (rootDir </> "epochSDD.db")
+    mkStandardIndexer epochSDDConfig <$> buildEpochSDDIndexer (rootDir </> "epochSDD.db")
   let epochNonceConfig = workerCfg{logger = BM.appendName "nonce" $ logger workerCfg}
   epochNonceIndexer' <-
-    mkStandardIndexer epochNonceConfig =<< buildEpochNonceIndexer (rootDir </> "epochNonce.db")
+    mkStandardIndexer epochNonceConfig <$> buildEpochNonceIndexer (rootDir </> "epochNonce.db")
   epochStateIndexer' <-
     buildEpochStateIndexer
       configCodec
@@ -306,7 +309,7 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
           []
 
   let indexer = EpochStateIndexer state config
-  Core.withResume indexer
+  pure indexer
 
 data EpochStateWorkerConfig = EpochStateWorkerConfig
   { indexerConfig :: NodeConfig
@@ -325,15 +328,16 @@ mkEpochStateWorker
           IO
           (WithDistance input)
           (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
-          (Core.WithResume EpochStateIndexer)
+          EpochStateIndexer
       )
 mkEpochStateWorker workerConfig epochStateConfig rootDir = do
   indexer <- mkEpochStateIndexer workerConfig (indexerConfig epochStateConfig) rootDir
-  ledgerStateE <- runExceptT $ restoreLedgerState Nothing (indexer ^. Core.resumedIndexer)
+  lastStable <- lastStablePoint indexer
+  ledgerStateE <- runExceptT $ restoreLedgerState (Just lastStable) indexer
   epochState <- case ledgerStateE of
     Left _err -> throwError $ Core.IndexerInternalError "can't restore ledger state"
     Right res -> pure res
-  let extLedgerCfg = extLedgerConfig $ indexer ^. Core.resumedIndexer
+  let extLedgerCfg = extLedgerConfig indexer
 
       snapshotInterval = epochSnapshotInterval epochStateConfig
       initialState = pure $ WorkerState epochState snapshotInterval
@@ -388,7 +392,10 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
         Core.StableAt p -> pure . pure $ Core.StableAt p
         Core.Stop -> pure $ pure Core.Stop
 
-  Core.createWorker (workerName workerConfig) (processAsEpochState initialState) indexer
+  Debug.Trace.traceM "EpochStateAt:"
+  Debug.Trace.traceShowM lastStable
+  let eventPreprocessing = processAsEpochState initialState <<< withResume lastStable
+  Core.createWorker (workerName workerConfig) eventPreprocessing indexer
 
 deserialiseMetadata :: [Text] -> Maybe EpochMetadata
 deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
@@ -455,7 +462,7 @@ buildEpochStateIndexer codecConfig securityParam' path = do
               _ -> init immutableEvents
   Core.mkFileIndexer
     path
-    (Core.FileStorageConfig False immutableEpochs (comparing metadataBlockNo))
+    (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState deserialisePoint)
 
@@ -472,13 +479,13 @@ deserialisePoint bs =
   let pointDecoding = do
         b <- CBOR.decodeBool
         if b
-          then pure C.ChainPointAtGenesis
-          else do
+          then do
             s <- C.SlotNo <$> CBOR.decodeWord64
             bhh <- C.HeaderHash . BS.Short.toShort <$> CBOR.decodeBytes
             pure $ C.ChainPoint s bhh
+          else pure C.ChainPointAtGenesis
    in case CBOR.deserialiseFromBytes pointDecoding . BS.fromStrict $ bs of
-        Right (other, res) | BS.Lazy.null other -> Debug.Trace.trace "EpochStatePoint" $ Debug.Trace.traceShowId $ Right res
+        Right (remain, res) | BS.Lazy.null remain -> Right res
         _other -> Left "Can't read chainpoint"
 
 buildBlockIndexer
@@ -635,12 +642,14 @@ getLatestNonEmpty
   -> LedgerStateFileIndexer
   -> m (Core.Timed C.ChainPoint EpochState)
 getLatestNonEmpty p firstEpochState indexer = do
+  Debug.Trace.traceM "Get latest at:"
+  Debug.Trace.traceShowM p
   let query = maybe Core.queryLatest Core.query
   result <- runExceptT $ query p Core.latestEvent indexer
   case result of
     Left _err -> throwError $ Core.IndexerQueryError "Cant resolve last epochState"
     Right [] -> pure $ Core.Timed Core.genesis firstEpochState
-    Right (x : _) -> pure x
+    Right (x : _) -> Debug.Trace.traceShow (x ^. Core.point) $ pure x
 
 getBlocksFrom
   :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m)
@@ -718,7 +727,7 @@ instance
     if lastBlock == Core.genesis
       then Core.lastSyncPoint $ indexer ^. epochStateIndexer
       else pure lastBlock
-  lastStablePoint indexer = Core.lastStablePoint $ indexer ^. epochNonceIndexer
+  lastStablePoint indexer = Core.lastStablePoint $ indexer ^. epochStateIndexer
 
 instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
   close indexer = do

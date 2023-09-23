@@ -155,8 +155,8 @@ mkSqliteIndexer
   _rollbackPlan
   _setLastStablePointQuery
   lastStablePointQuery =
-    let getLastSyncPoint :: SQL.Connection -> m (Point event)
-        getLastSyncPoint h = do
+    let getLastStablePoint :: SQL.Connection -> m (Point event)
+        getLastStablePoint h = do
           res <- runLastStablePointQuery h lastStablePointQuery
           pure $ maybe genesis NonEmpty.last $ NonEmpty.nonEmpty res
      in do
@@ -165,7 +165,7 @@ mkSqliteIndexer
           -- allow for concurrent insert/query.
           -- see SQLite WAL, https://www.sqlite.org/wal.html
           liftIO $ SQL.execute_ _connection "PRAGMA journal_mode=WAL"
-          _dbLastStable <- getLastSyncPoint _connection
+          _dbLastStable <- getLastStablePoint _connection
           let indexer =
                 SQLiteIndexer
                   { _databasePath

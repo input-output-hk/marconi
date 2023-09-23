@@ -38,8 +38,10 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Function ((&))
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Debug.Trace qualified
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
@@ -146,33 +148,36 @@ compareMeta ix = ix ^. storageConfig . fileComparison
 
 -- Create a 'FileIndexer', rebuilding the contenc
 mkFileIndexer
-  :: (MonadIO m, MonadError IndexerError m, HasGenesis (Point event), Ord (Point event))
+  :: ( MonadIO m
+     , MonadError IndexerError m
+     , Ord (Point event)
+     , HasGenesis (Point event)
+     )
   => FilePath
   -> FileStorageConfig meta event
   -> FileBuilder meta event
   -> EventBuilder meta event
   -> m (FileIndexer meta event)
-mkFileIndexer path storageCfg filenameBuilder' eventBuilder' =
-  let getEventsInfo =
-        extractEventsInfo
-          (filenameBuilder' ^. eventPrefix)
-          (eventBuilder' ^. deserialiseMeta)
+mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
+  liftIO $ createDirectoryIfMissing True path
+  let indexer =
+        FileIndexer
           path
-   in do
-        liftIO $ createDirectoryIfMissing True path
-        eventFiles <- runExceptT getEventsInfo
-        lastSyncPoint' <- case eventFiles of
-          Left _ -> throwError $ IndexerInternalError "Invalid files in the indexer directory"
-          Right [] -> pure genesis
-          Right xs -> pure $ maximum $ (eventBuilder' ^. extractPoint) . fileMetadata <$> xs
-        pure $
-          FileIndexer
-            path
-            storageCfg
-            filenameBuilder'
-            eventBuilder'
-            lastSyncPoint'
-            lastSyncPoint'
+          storageCfg
+          filenameBuilder'
+          eventBuilder'
+          genesis
+          genesis
+  Debug.Trace.traceM "read stable point"
+  lastStablePoint' <- fromMaybe genesis <$> readCurrentStable indexer
+  let indexer' =
+        indexer
+          & fileIndexerLastSyncPoint .~ lastStablePoint'
+          & fileIndexerLastStablePoint .~ lastStablePoint'
+  Debug.Trace.traceM "Rolling back"
+  indexer'' <- rollback lastStablePoint' indexer'
+  Debug.Trace.traceM "Rolled back"
+  pure indexer''
 
 toFilename :: FilePath -> FileBuilder meta event -> Timed (Point event) (Maybe event) -> FilePath
 toFilename dir indexer evt =

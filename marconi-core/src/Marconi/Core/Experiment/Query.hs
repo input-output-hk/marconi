@@ -20,7 +20,7 @@ import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError), MonadIO (liftIO), runExceptT)
 import Data.ByteString qualified as BS
 import Data.Function (on)
-import Data.List (find, sortBy, sortOn)
+import Data.List (find, sortBy)
 import Data.Maybe (catMaybes, mapMaybe)
 import Marconi.Core.Experiment.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
 import Marconi.Core.Experiment.Indexer.FileIndexer (
@@ -192,7 +192,7 @@ instance
     result <- traverse (runExceptT . FileIndexer.deserialiseTimedEvent ix) resultFile
     case extractEvents result of
       Left err -> throwError $ IndexerQueryError err
-      Right res -> pure $ take (fromIntegral $ nbOfEvents q) $ sortOn (Lens.view point) $ catMaybes res
+      Right res -> pure $ take (fromIntegral $ nbOfEvents q) $ catMaybes res
 
 -- | Get the non empty events from the given point (excluded) to the one of the query (included)
 newtype EventsFromQuery event = EventsFromQuery {startingPoint :: Point event}
