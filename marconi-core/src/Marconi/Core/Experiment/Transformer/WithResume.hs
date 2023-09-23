@@ -18,9 +18,6 @@ module Marconi.Core.Experiment.Transformer.WithResume (
   WithResume,
   withResume,
   resumedIndexer,
-  OrdPoint (comparePoint),
-  PointStatus (..),
-  PointCompare (..),
 ) where
 
 import Control.Lens ((&), (.~), (^.))
@@ -103,32 +100,20 @@ hasStarted = resumeState . stateHasStarted
 instance IndexerTrans WithResume where
   unwrap = resumedIndexer
 
--- | A comparison for points, quite similar to 'Ordering' but add a way to identify forks
-data PointCompare
-  = Fork
-  | Before
-  | Same
-  | After
-
-data PointStatus = ResumingEnded | OngoingResuming PointCompare
-
-class OrdPoint point where
-  comparePoint :: point -> point -> PointCompare
-
 instance
   ( Class.IsIndex m event indexer
   , Class.HasGenesis (Point event)
   , MonadError IndexerError m
-  , OrdPoint (Point event)
   , Ord (Point event)
   , MonadIO m
   )
   => Class.IsIndex m event (WithResume indexer)
   where
   index timedEvent indexer =
-    if (timedEvent ^. point) > (indexer ^. lastPoint)
-      then Wrapper.indexVia unwrap timedEvent (indexer & hasStarted .~ True)
-      else pure indexer
+    let indexer' = indexer & hasStarted .~ True
+     in if (timedEvent ^. point) > (indexer ^. lastPoint)
+          then Wrapper.indexVia unwrap timedEvent indexer'
+          else pure indexer'
 
   rollback p indexer
     | p > (indexer ^. lastPoint) = Wrapper.rollbackVia unwrap p indexer

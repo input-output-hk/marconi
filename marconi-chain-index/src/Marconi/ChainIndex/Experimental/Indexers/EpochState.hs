@@ -47,7 +47,7 @@ import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Applicative (Alternative (empty))
 import Control.Exception (throw)
-import Control.Lens (Lens', (&), (-=), (.=), (^.))
+import Control.Lens (Lens', (%~), (&), (-=), (.=), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (foldM, when, (<=<))
 import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
@@ -77,6 +77,7 @@ import Data.VMap qualified as VMap
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
+import Debug.Trace qualified
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (
   WithDistance (WithDistance),
@@ -179,6 +180,7 @@ data EpochStateIndexerState event = EpochStateIndexerState
   , _stateBlockIndexer :: BlockFileIndexer
   , _stateEpochNonceIndexer :: StandardIndexer IO Core.SQLiteIndexer EpochNonce
   , _stateEpochSDDIndexer :: StandardIndexer IO Core.SQLiteIndexer (NonEmpty EpochSDD)
+  , _stateSnapshots :: [C.ChainPoint]
   }
 
 Lens.makeLenses ''EpochStateIndexerState
@@ -236,6 +238,9 @@ genesisConfig = epochStateIndexerConfig . configGenesisConfig
 
 securityParam :: Lens' (EpochStateIndexer event) SecurityParam
 securityParam = epochStateIndexerConfig . configSecurityParam
+
+snapshots :: Lens' (EpochStateIndexer event) [C.ChainPoint]
+snapshots = epochStateIndexerState . stateSnapshots
 
 extLedgerConfig :: EpochStateIndexer event -> ExtLedgerConfig
 extLedgerConfig = Lens.views genesisConfig CE.mkExtLedgerConfig
@@ -298,6 +303,7 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
           epochBlocksIndexer
           epochNonceIndexer'
           epochSDDIndexer'
+          []
 
   let indexer = EpochStateIndexer state config
   Core.withResume indexer
@@ -472,7 +478,7 @@ deserialisePoint bs =
             bhh <- C.HeaderHash . BS.Short.toShort <$> CBOR.decodeBytes
             pure $ C.ChainPoint s bhh
    in case CBOR.deserialiseFromBytes pointDecoding . BS.fromStrict $ bs of
-        Right (other, res) | BS.Lazy.null other -> Right res
+        Right (other, res) | BS.Lazy.null other -> Debug.Trace.trace "EpochStatePoint" $ Debug.Trace.traceShowId $ Right res
         _other -> Left "Can't read chainpoint"
 
 buildBlockIndexer
@@ -580,9 +586,8 @@ performSnapshots
       Core.IndexerError
       IO
       (Maybe (Core.Timed C.ChainPoint (Maybe (WithDistance EpochState))), EpochStateIndexer event)
-performSnapshots timedEvent indexer = do
-  let evtWithDistance = timedEvent ^. Core.event
-      (epochStateWithDistance, block) = fromMaybe (Nothing, Nothing) $ do
+performSnapshots (Core.Timed point evtWithDistance) indexer = do
+  let (epochStateWithDistance, block) = fromMaybe (Nothing, Nothing) $ do
         WithDistance d (ledgerState, block') <- evtWithDistance
         let securityParam' = indexer ^. securityParam
             isVolatile = securityParam' > SecurityParam d
@@ -594,12 +599,15 @@ performSnapshots timedEvent indexer = do
       (epochStateTimed, snapshotEpochState) = case epochStateWithDistance of
         Nothing -> (Nothing, pure)
         Just e@(WithDistance _ e') ->
-          let epochStateTimedWithDistance = Core.Timed (timedEvent ^. Core.point) $ Just e
-              epochStateTimed' = Core.Timed (timedEvent ^. Core.point) $ Just e'
-           in (Just epochStateTimedWithDistance, epochStateIndexer $ Core.index epochStateTimed')
+          let epochStateTimedWithDistance = Core.Timed point $ Just e
+              epochStateTimed' = Core.Timed point $ Just e'
+              addSnapshot = fmap (snapshots %~ (point :))
+           in ( Just epochStateTimedWithDistance
+              , addSnapshot . epochStateIndexer (Core.index epochStateTimed')
+              )
       snapshotBlock = case block of
         Nothing -> pure
-        Just e -> blockIndexer $ Core.index $ Core.Timed (timedEvent ^. Core.point) $ Just e
+        Just e -> blockIndexer $ Core.index $ Core.Timed point $ Just e
   (epochStateTimed,) <$> (snapshotEpochState <=< snapshotBlock $ indexer)
 
 storeEmptyEpochStateRelatedInfo
@@ -691,12 +699,15 @@ instance
     rollbackIndexers indexer
 
   setLastStablePoint p indexer =
-    let setStablePointOnIndexers =
-          epochStateIndexer (Core.setLastStablePoint p)
-            <=< blockIndexer (Core.setLastStablePoint p)
-            <=< epochSDDIndexer (Core.setLastStablePoint p)
-            <=< epochNonceIndexer (Core.setLastStablePoint p)
-     in setStablePointOnIndexers indexer
+    let (volatile, immutable) = span (> p) $ indexer ^. snapshots
+        p' = listToMaybe immutable
+        indexer' = indexer & snapshots .~ volatile
+        setStablePointOnIndexers point =
+          epochStateIndexer (Core.setLastStablePoint point)
+            <=< blockIndexer (Core.setLastStablePoint point)
+            <=< epochSDDIndexer (Core.setLastStablePoint point)
+            <=< epochNonceIndexer (Core.setLastStablePoint point)
+     in maybe pure setStablePointOnIndexers p' indexer'
 
 instance
   (MonadIO m, MonadError Core.IndexerError m, Core.Point event ~ C.ChainPoint)

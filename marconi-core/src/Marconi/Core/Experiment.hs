@@ -422,8 +422,6 @@ module Marconi.Core.Experiment (
   HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
 
   -- ** Resuming/draining
-  OrdPoint (comparePoint),
-  PointCompare (..),
   WithResume,
   withResume,
   resumedIndexer,
@@ -634,8 +632,6 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
   withPruning,
  )
 import Marconi.Core.Experiment.Transformer.WithResume (
-  OrdPoint (comparePoint),
-  PointCompare (..),
   WithResume,
   resumedIndexer,
   withResume,
