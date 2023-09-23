@@ -376,6 +376,10 @@ module Marconi.Core.Experiment (
   transformer,
   transformerM,
 
+  -- **** Resuming/draining
+  Resume,
+  withResume,
+
   -- ** Coordinator
   Coordinator,
   workers,
@@ -420,11 +424,6 @@ module Marconi.Core.Experiment (
   withCatchup,
   CatchupConfig (CatchupConfig),
   HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
-
-  -- ** Resuming/draining
-  WithResume,
-  withResume,
-  resumedIndexer,
 
   -- ** Delay
   WithDelay,
@@ -631,11 +630,6 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
   stepsBeforeNext,
   withPruning,
  )
-import Marconi.Core.Experiment.Transformer.WithResume (
-  WithResume,
-  resumedIndexer,
-  withResume,
- )
 import Marconi.Core.Experiment.Transformer.WithTracer (
   HasTraceConfig (trace),
   HasTracerConfig (tracer),
@@ -685,6 +679,10 @@ import Marconi.Core.Experiment.Worker.Transformer (
   transformerM,
   traverseEvent,
   traverseMaybeEvent,
+ )
+import Marconi.Core.Experiment.Worker.Transformer.Resume (
+  Resume,
+  withResume,
  )
 
 {- | Try to rollback to a given point to resume the indexer.

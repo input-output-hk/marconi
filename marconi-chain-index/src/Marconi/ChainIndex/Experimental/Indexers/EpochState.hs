@@ -78,7 +78,6 @@ import Data.VMap qualified as VMap
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
-import Debug.Trace qualified
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (
   WithDistance (WithDistance),
@@ -392,8 +391,6 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
         Core.StableAt p -> pure . pure $ Core.StableAt p
         Core.Stop -> pure $ pure Core.Stop
 
-  Debug.Trace.traceM "EpochStateAt:"
-  Debug.Trace.traceShowM lastStable
   let eventPreprocessing = processAsEpochState initialState <<< withResume lastStable
   Core.createWorker (workerName workerConfig) eventPreprocessing indexer
 
@@ -642,14 +639,12 @@ getLatestNonEmpty
   -> LedgerStateFileIndexer
   -> m (Core.Timed C.ChainPoint EpochState)
 getLatestNonEmpty p firstEpochState indexer = do
-  Debug.Trace.traceM "Get latest at:"
-  Debug.Trace.traceShowM p
   let query = maybe Core.queryLatest Core.query
   result <- runExceptT $ query p Core.latestEvent indexer
   case result of
     Left _err -> throwError $ Core.IndexerQueryError "Cant resolve last epochState"
     Right [] -> pure $ Core.Timed Core.genesis firstEpochState
-    Right (x : _) -> Debug.Trace.traceShow (x ^. Core.point) $ pure x
+    Right (x : _) -> pure x
 
 getBlocksFrom
   :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m)

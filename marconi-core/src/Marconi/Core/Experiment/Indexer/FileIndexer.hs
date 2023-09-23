@@ -41,7 +41,6 @@ import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Debug.Trace qualified
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
@@ -168,15 +167,12 @@ mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
           eventBuilder'
           genesis
           genesis
-  Debug.Trace.traceM "read stable point"
   lastStablePoint' <- fromMaybe genesis <$> readCurrentStable indexer
   let indexer' =
         indexer
           & fileIndexerLastSyncPoint .~ lastStablePoint'
           & fileIndexerLastStablePoint .~ lastStablePoint'
-  Debug.Trace.traceM "Rolling back"
   indexer'' <- rollback lastStablePoint' indexer'
-  Debug.Trace.traceM "Rolled back"
   pure indexer''
 
 toFilename :: FilePath -> FileBuilder meta event -> Timed (Point event) (Maybe event) -> FilePath
