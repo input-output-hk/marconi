@@ -109,19 +109,12 @@ mkDatumIndexer path = do
              , blockHeaderHash
              )
           VALUES (?, ?, ?, ?)|]
-      createDatumTables = [createDatumQuery, Sync.syncTableCreation]
-  Core.mkSqliteIndexer
+      createDatumTables = [createDatumQuery]
+  Sync.mkSyncedSqliteIndexer
     path
     createDatumTables
     [[Core.SQLInsertPlan (traverse NonEmpty.toList) datumInsertQuery]]
-    (Just Sync.syncInsertPlan)
-    [ Core.SQLRollbackPlan "datum" "slotNo" C.chainPointToSlotNo
-    , Sync.syncRollbackPlan
-    ]
-    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
-    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
-    -- There needs to be a design change in marconi-core.
-    Sync.syncLastPointsQuery
+    [Core.SQLRollbackPlan "datum" "slotNo" C.chainPointToSlotNo]
 
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker

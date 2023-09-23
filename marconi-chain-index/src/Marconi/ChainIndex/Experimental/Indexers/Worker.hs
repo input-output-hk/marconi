@@ -62,7 +62,7 @@ mkStandardIndexer config indexer =
   let chainPointDistance :: Core.Point (WithDistance a) -> WithDistance a -> Word64
       chainPointDistance _ = Distance.chainDistance
    in fmap (Core.withTrace (logger config)) $
-        Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig config) + 1) $
+        Core.withResume $
           Core.withCatchup chainPointDistance (catchupConfig config) $
             Core.withTransform id (Just . Distance.getEvent) indexer
 
@@ -94,7 +94,7 @@ mkStandardIndexerWithFilter config eventFilter indexer =
   let chainPointDistance :: Core.Point (WithDistance a) -> WithDistance a -> Word64
       chainPointDistance _ = Distance.chainDistance
    in fmap (Core.withTrace (logger config)) $
-        Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig config) + 1) $
+        Core.withResume $
           Core.withCatchup chainPointDistance (catchupConfig config) $
             Core.withTransform id (eventFilter . Distance.getEvent) indexer
 

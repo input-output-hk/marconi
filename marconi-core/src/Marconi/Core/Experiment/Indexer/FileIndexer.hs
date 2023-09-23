@@ -17,8 +17,10 @@ module Marconi.Core.Experiment.Indexer.FileIndexer (
   eventSuffix,
   eventBuilder,
   deserialiseEvent,
+  deserialisePoint,
   extractPoint,
   serialiseEvent,
+  serialisePoint,
   deserialiseTimedEvent,
   fileEventIdentifier,
   fileIndexerLastSyncPoint,
@@ -29,8 +31,8 @@ module Marconi.Core.Experiment.Indexer.FileIndexer (
 import Control.Exception (Exception (displayException), handle)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
-import Control.Monad (forM_, when)
-import Control.Monad.Except (ExceptT (ExceptT), MonadError (throwError), runExceptT)
+import Control.Monad (forM_, join, void, when)
+import Control.Monad.Except (ExceptT (ExceptT), MonadError (catchError, throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -41,8 +43,8 @@ import Data.Text qualified as Text
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError),
@@ -52,7 +54,7 @@ import Marconi.Core.Experiment.Type (
   event,
   point,
  )
-import System.Directory (createDirectoryIfMissing, listDirectory, removeFile)
+import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory, removeFile)
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
 
@@ -67,6 +69,7 @@ data FileBuilder meta event = FileBuilder
   , _fileEventIdentifier :: Timed (Point event) (Maybe event) -> [Text]
   -- ^ build a list of identifier used in the filename of an event
   , _serialiseEvent :: event -> ByteString
+  , _serialisePoint :: Point event -> ByteString
   }
 
 Lens.makeLenses ''FileBuilder
@@ -82,6 +85,7 @@ data EventBuilder meta event = EventBuilder
   -- there
   , _extractPoint :: meta -> Point event
   , _deserialiseEvent :: meta -> ByteString -> Either Text (Maybe event)
+  , _deserialisePoint :: ByteString -> Either Text (Point event)
   }
 
 Lens.makeLenses ''EventBuilder
@@ -127,6 +131,8 @@ data FileIndexer meta event = FileIndexer
   -- ^ Gather deserialisation functions
   , _fileIndexerLastSyncPoint :: Point event
   -- ^ keep track of the last sync point
+  , _fileIndexerLastStablePoint :: Point event
+  -- ^ keep track of the last stable point
   }
 
 Lens.makeLenses ''FileIndexer
@@ -147,7 +153,11 @@ mkFileIndexer
   -> EventBuilder meta event
   -> m (FileIndexer meta event)
 mkFileIndexer path storageCfg filenameBuilder' eventBuilder' =
-  let getEventsInfo = extractEventsInfo (eventBuilder' ^. deserialiseMeta) path
+  let getEventsInfo =
+        extractEventsInfo
+          (filenameBuilder' ^. eventPrefix)
+          (eventBuilder' ^. deserialiseMeta)
+          path
    in do
         liftIO $ createDirectoryIfMissing True path
         eventFiles <- runExceptT getEventsInfo
@@ -161,6 +171,7 @@ mkFileIndexer path storageCfg filenameBuilder' eventBuilder' =
             storageCfg
             filenameBuilder'
             eventBuilder'
+            lastSyncPoint'
             lastSyncPoint'
 
 toFilename :: FilePath -> FileBuilder meta event -> Timed (Point event) (Maybe event) -> FilePath
@@ -188,23 +199,27 @@ fullPath indexer info = indexer ^. eventDirectory </> path info
 
 extractEventsInfo
   :: (MonadIO m, MonadError (QueryError q) m)
-  => ([Text] -> Maybe meta)
+  => Text
+  -> ([Text] -> Maybe meta)
   -> FilePath
   -> m [EventInfo meta]
-extractEventsInfo metaExtractor eventDir =
+extractEventsInfo expectedPrefix metaExtractor eventDir =
   let extractEventInfo path = do
         let filename = FilePath.dropExtension $ FilePath.takeFileName path
         case Text.splitOn "_" $ Text.pack filename of
-          (_ : contentFlag : parts) -> do
+          (prefix : contentFlag : parts) | prefix == expectedPrefix -> do
             let hasContent' = contentFlag == "just"
-            meta <- metaExtractor parts
-            Just $ EventInfo hasContent' meta path
-          _ -> Nothing
+            meta <- case metaExtractor parts of
+              Nothing ->
+                throwError $
+                  IndexerQueryError $
+                    "Invalid file in a file indexer: " <> Text.pack filename
+              Just x -> pure x
+            pure [EventInfo hasContent' meta path]
+          _ -> pure []
    in do
         files <- liftIO $ listDirectory eventDir
-        case traverse extractEventInfo files of
-          Nothing -> throwError $ IndexerQueryError $ "Invalid file in directory: " <> Text.pack eventDir
-          Just points -> pure points
+        fmap join $ traverse extractEventInfo files
 
 getDirectoryMetadata
   :: (MonadIO m, MonadError (QueryError q) m)
@@ -212,7 +227,10 @@ getDirectoryMetadata
   -> m [EventInfo meta]
 getDirectoryMetadata indexer = do
   let eventDir = indexer ^. eventDirectory
-  extractEventsInfo (indexer ^. eventBuilder . deserialiseMeta) eventDir
+  extractEventsInfo
+    (indexer ^. fileBuilder . eventPrefix)
+    (indexer ^. eventBuilder . deserialiseMeta)
+    eventDir
 
 deserialiseTimedEvent
   :: (MonadIO m)
@@ -231,7 +249,7 @@ deserialiseTimedEvent indexer eventFile = do
 
 instance (Applicative m) => IsSync m event (FileIndexer meta) where
   lastSyncPoint = pure . Lens.view fileIndexerLastSyncPoint
-  lastSyncPoints _n = pure . lastSyncPoint -- TODO Query the directory content to get the n last sync points
+  lastStablePoint = pure . Lens.view fileIndexerLastStablePoint
 
 writeTimedEvent
   :: (MonadIO m, MonadError IndexerError m)
@@ -292,6 +310,49 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
           let filename = fullPath indexer eventFile
           liftIO $ removeFile filename
     pure indexer
+
+  setLastStablePoint p indexer = do
+    currentStable <- readCurrentStable indexer `catchError` const (pure Nothing)
+    case currentStable of
+      Nothing -> writeStable p indexer
+      Just p' -> do
+        when (p > p') $ void $ writeStable p indexer
+        pure indexer
+
+lastStableFilename :: FileIndexer meta event -> FilePath
+lastStableFilename indexer =
+  let
+    dir = indexer ^. eventDirectory
+    filename = indexer ^. fileBuilder . eventPrefix <> "LatestStable.cbor"
+   in
+    dir </> Text.unpack filename
+
+readCurrentStable
+  :: (MonadIO m, MonadError IndexerError m)
+  => FileIndexer meta event
+  -> m (Maybe (Point event))
+readCurrentStable indexer = do
+  let f = lastStableFilename indexer
+      deserialise = indexer ^. eventBuilder . deserialisePoint
+  fileExists <- liftIO $ doesFileExist f
+  if fileExists
+    then do
+      res <- deserialise <$> liftIO (BS.readFile f)
+      case res of
+        Left _ -> throwError $ IndexerInternalError "Can't read current stable"
+        Right r -> pure $ Just r
+    else pure Nothing
+
+writeStable
+  :: (MonadIO m)
+  => Point event
+  -> FileIndexer meta event
+  -> m (FileIndexer meta event)
+writeStable p indexer = do
+  let f = lastStableFilename indexer
+      serialise = indexer ^. fileBuilder . serialisePoint
+  liftIO $ BS.writeFile f $ serialise p
+  pure indexer
 
 instance (Applicative m) => Closeable m (FileIndexer meta) where
   close = const $ pure ()

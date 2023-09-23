@@ -52,9 +52,9 @@ buildIndexers
   -> ExceptT
       Core.IndexerError
       IO
-      -- Query part (should probably be wrapped in a more complex object later)
-      ( [C.ChainPoint]
-      , UtxoQuery.UtxoQueryIndexer IO
+      ( C.ChainPoint
+      , -- Query part (should probably be wrapped in a more complex object later)
+        UtxoQuery.UtxoQueryIndexer IO
       , -- Indexing part
         Core.WithTrace IO Core.Coordinator (WithDistance BlockEvent)
       )
@@ -100,11 +100,11 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
         mainLogger
         [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-  resumePoints <- Core.lastSyncPoints (fromIntegral securityParam + 1) mainCoordinator
+  resumePoint <- Core.lastStablePoint mainCoordinator
 
   -- TODO Create a dedicated return type for it instead of a tuple.
   -- However, we should wait until we have more stuff in the query side before we do it.
-  pure (resumePoints, queryIndexer, mainCoordinator)
+  pure (resumePoint, queryIndexer, mainCoordinator)
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildTxBodyCoordinator

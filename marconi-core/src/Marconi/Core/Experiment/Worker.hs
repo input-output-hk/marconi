@@ -34,13 +34,13 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsIndex (index, indexAllDescending, rollback),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
   IsSync,
  )
 import Marconi.Core.Experiment.Type (
   IndexerError (OtherIndexError, StopIndexer),
   Point,
-  ProcessedInput (Index, IndexAllDescending, Rollback, Stop),
+  ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
  )
 import Marconi.Core.Experiment.Worker.Transformer (Transformer, runTransformer)
 
@@ -152,6 +152,14 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
             Left err -> pure (indexer, Just err)
             Right res -> pure (res, Nothing)
 
+      handleStableAt :: Point input -> IO (Maybe IndexerError)
+      handleStableAt p = do
+        Con.modifyMVar ix $ \indexer -> do
+          result <- runExceptT $ hoistError $ setLastStablePoint p indexer
+          case result of
+            Left err -> pure (indexer, Just err)
+            Right res -> pure (res, Nothing)
+
       checkError :: IO (Maybe IndexerError)
       checkError = Con.tryReadMVar errorBox
 
@@ -173,7 +181,16 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
         Rollback p -> handleRollback p
         Index e -> indexEvent e
         IndexAllDescending es -> indexAllEventsDescending es
+        StableAt p -> handleStableAt p
         Stop -> pure $ Just $ OtherIndexError "Stop"
+
+      -- TODO replace with foldM on either
+      processAll [] = pure Nothing
+      processAll (x : xs) = do
+        merr <- process x
+        case merr of
+          Nothing -> processAll xs
+          Just _err -> pure merr
 
       displayError :: (Show a) => a -> Text
       displayError e = name <> ": " <> Text.pack (show e)
@@ -182,12 +199,11 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
         pure . Just . StopIndexer . Just $ displayError e
 
       safeProcessEvent f input = do
-        processed <- runExceptT $ runTransformer f (Just input)
+        processed <- runExceptT $ runTransformer f (pure input)
         case processed of
           Left err -> (,f) <$> onProcessError (SomeException err)
-          Right (processedInput, f') -> case processedInput of
-            Nothing -> pure (Nothing, f)
-            Just p -> (,f') <$> process p `catch` onProcessError
+          Right (processedInputs, f') ->
+            (,f') <$> processAll processedInputs `catch` onProcessError
 
       loop :: TChan (ProcessedInput (Point input) input) -> IO ()
       loop chan' =

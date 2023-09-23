@@ -28,8 +28,7 @@ import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsSync (lastSyncPoint, lastSyncPoints),
-  computeResumePoints,
+  IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (SQLiteIndexer)
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer qualified as SQLite
@@ -110,9 +109,9 @@ instance
           lastSyncPoint ix'
      in fmap minimum . traverse getPoint . Lens.view databases
 
-  lastSyncPoints n =
-    let getPoints :: SQLiteSourceProvider m point -> m [point]
-        getPoints (SQLiteSourceProvider ix) = do
+  lastStablePoint =
+    let getPoint :: SQLiteSourceProvider m point -> m point
+        getPoint (SQLiteSourceProvider ix) = do
           ix' <- liftIO $ Con.readMVar ix
-          lastSyncPoints n ix'
-     in fmap computeResumePoints . traverse getPoints . Lens.view databases
+          lastStablePoint ix'
+     in fmap minimum . traverse getPoint . Lens.view databases

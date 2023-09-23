@@ -202,7 +202,6 @@ module Marconi.Core.Experiment (
   Resetable (..),
   resumeFrom,
   IsSync (..),
-  computeResumePoints,
   isAheadOfSync,
   Closeable (..),
   Queryable (..),
@@ -256,7 +255,8 @@ module Marconi.Core.Experiment (
   -- (and the corresponding 'Queryable' interface)
   -- should be enough to have an operational indexer.
   SQLiteIndexer (SQLiteIndexer),
-  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
+  GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
+  SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   InsertPointQuery (InsertPointQuery),
   -- | Start a new indexer or resume an existing SQLite indexer
   --
@@ -275,7 +275,6 @@ module Marconi.Core.Experiment (
 
   -- **** Reexport from SQLite
   ToRow (..),
-  lastSyncPointsQuery,
   dbLastSync,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
@@ -496,8 +495,9 @@ module Marconi.Core.Experiment (
   resetVia,
   indexVia,
   indexAllDescendingVia,
+  setLastStablePointVia,
+  lastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
   closeVia,
   queryVia,
   queryLatestVia,
@@ -513,7 +513,6 @@ import Marconi.Core.Experiment.Class (
   IsSync (..),
   Queryable (..),
   Resetable (..),
-  computeResumePoints,
   indexAllDescendingEither,
   indexAllEither,
   indexEither,
@@ -558,16 +557,16 @@ import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
   mkSQLiteAggregateQuery,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
-  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
+  GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
   InsertPointQuery (InsertPointQuery),
   SQLInsertPlan (..),
   SQLRollbackPlan (..),
   SQLiteIndexer (..),
+  SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   ToRow (..),
   connection,
   dbLastSync,
   handleSQLErrors,
-  lastSyncPointsQuery,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
   querySQLiteIndexerWith,
@@ -587,12 +586,13 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   closeVia,
   indexAllDescendingVia,
   indexVia,
+  lastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
   queryLatestVia,
   queryVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
   wrappedIndexer,
   wrapperConfig,
  )

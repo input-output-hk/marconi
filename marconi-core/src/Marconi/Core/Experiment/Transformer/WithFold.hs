@@ -28,8 +28,8 @@ import Data.Maybe (fromMaybe)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
   Queryable (query),
   Resetable (reset),
   queryEither,
@@ -40,11 +40,12 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   closeVia,
   indexAllDescendingVia,
   indexVia,
+  lastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
   queryVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
  )
 import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError),
@@ -135,7 +136,7 @@ instance
   => IsSync m event (WithFold m indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
-  lastSyncPoints = lastSyncPointsVia unwrapMap
+  lastStablePoint = lastStablePointVia unwrapMap
 
 instance
   ( Queryable m output query indexer
@@ -194,3 +195,4 @@ instance
       indexAllDescendingVia unwrapMap evts indexer
 
   rollback = rollbackVia unwrapMap
+  setLastStablePoint = setLastStablePointVia unwrapMap

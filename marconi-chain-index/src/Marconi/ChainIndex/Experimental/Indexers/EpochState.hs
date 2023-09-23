@@ -41,6 +41,8 @@ import Cardano.Ledger.Shelley.API qualified as Ledger
 import Cardano.Ledger.UMap qualified as Ledger
 import Cardano.Protocol.TPraos.API qualified as Shelley
 import Cardano.Protocol.TPraos.Rules.Tickn qualified as Shelley
+import Codec.CBOR.Decoding qualified as CBOR
+import Codec.CBOR.Encoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Applicative (Alternative (empty))
@@ -55,6 +57,8 @@ import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
 import Data.Bifunctor (bimap)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
+import Data.ByteString.Lazy qualified as BS.Lazy
+import Data.ByteString.Short qualified as BS.Short
 import Data.Coerce (coerce)
 import Data.Data (Proxy (Proxy))
 import Data.Foldable (Foldable (toList))
@@ -296,7 +300,7 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
           epochSDDIndexer'
 
   let indexer = EpochStateIndexer state config
-  Core.withResume Core.lastSyncPoints (fromIntegral (securityParamConfig workerCfg) + 1) indexer
+  Core.withResume indexer
 
 data EpochStateWorkerConfig = EpochStateWorkerConfig
   { indexerConfig :: NodeConfig
@@ -364,9 +368,9 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
             (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
       processAsEpochState = Core.transformerM $ \case
         Core.Index x -> do
-          Just . Core.Index <$> traverse mapOneEvent x
+          pure . Core.Index <$> traverse mapOneEvent x
         Core.IndexAllDescending xs ->
-          Just . Core.IndexAllDescending <$> traverse (traverse mapOneEvent) xs
+          pure . Core.IndexAllDescending <$> traverse (traverse mapOneEvent) xs
         Core.Rollback p -> do
           queryResult <- lift $ runExceptT $ Core.query p Core.EventAtQuery indexer
           case queryResult of
@@ -374,8 +378,9 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
             Right Nothing -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch"
             Right (Just res) -> do
               lastEpochState .= res
-              pure $ Just $ Core.Rollback p
-        Core.Stop -> pure $ Just Core.Stop
+              pure . pure $ Core.Rollback p
+        Core.StableAt p -> pure . pure $ Core.StableAt p
+        Core.Stop -> pure $ pure Core.Stop
 
   Core.createWorker (workerName workerConfig) (processAsEpochState initialState) indexer
 
@@ -445,8 +450,30 @@ buildEpochStateIndexer codecConfig securityParam' path = do
   Core.mkFileIndexer
     path
     (Core.FileStorageConfig False immutableEpochs (comparing metadataBlockNo))
-    (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState)
-    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState)
+    (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
+    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState deserialisePoint)
+
+serialisePoint :: C.ChainPoint -> BS.ByteString
+serialisePoint =
+  let pointEncoding :: C.ChainPoint -> CBOR.Encoding
+      pointEncoding C.ChainPointAtGenesis = CBOR.encodeBool False
+      pointEncoding (C.ChainPoint (C.SlotNo s) (C.HeaderHash bhh)) =
+        CBOR.encodeBool True <> CBOR.encodeWord64 s <> CBOR.encodeBytes (BS.Short.fromShort bhh)
+   in CBOR.toStrictByteString . pointEncoding
+
+deserialisePoint :: BS.ByteString -> Either Text C.ChainPoint
+deserialisePoint bs =
+  let pointDecoding = do
+        b <- CBOR.decodeBool
+        if b
+          then pure C.ChainPointAtGenesis
+          else do
+            s <- C.SlotNo <$> CBOR.decodeWord64
+            bhh <- C.HeaderHash . BS.Short.toShort <$> CBOR.decodeBytes
+            pure $ C.ChainPoint s bhh
+   in case CBOR.deserialiseFromBytes pointDecoding . BS.fromStrict $ bs of
+        Right (other, res) | BS.Lazy.null other -> Right res
+        _other -> Left "Can't read chainpoint"
 
 buildBlockIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -489,8 +516,8 @@ buildBlockIndexer codecConfig securityParam' path = do
   Core.mkFileIndexer
     path
     (Core.FileStorageConfig True immutableBlocks (comparing metadataBlockNo))
-    (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock)
-    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock)
+    (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock serialisePoint)
+    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock deserialisePoint)
 
 buildEpochSDDIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -514,15 +541,11 @@ buildEpochSDDIndexer path = do
                 , slotNo
                 ) VALUES (?, ?, ?, ?, ?)|]
       insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) sddInsertQuery]
-  Core.mkSqliteIndexer
+  Sync.mkSyncedSqliteIndexer
     path
-    [Sync.syncTableCreation, createSDD]
+    [createSDD]
     [insertEvent]
-    (Just Sync.syncInsertPlan)
-    [ Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo
-    , Sync.syncRollbackPlan
-    ]
-    Sync.syncLastPointsQuery
+    [Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo]
 
 buildEpochNonceIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -544,15 +567,11 @@ buildEpochNonceIndexer path = do
                 , slotNo
                 ) VALUES (?, ?, ?, ?)|]
       insertEvent = [Core.SQLInsertPlan pure nonceInsertQuery]
-  Core.mkSqliteIndexer
+  Sync.mkSyncedSqliteIndexer
     path
-    [Sync.syncTableCreation, createNonce]
+    [createNonce]
     [insertEvent]
-    (Just Sync.syncInsertPlan)
-    [ Core.SQLRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo
-    , Sync.syncRollbackPlan
-    ]
-    Sync.syncLastPointsQuery
+    [Core.SQLRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo]
 
 performSnapshots
   :: Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)))
@@ -671,6 +690,14 @@ instance
             <=< epochNonceIndexer (Core.rollback p)
     rollbackIndexers indexer
 
+  setLastStablePoint p indexer =
+    let setStablePointOnIndexers =
+          epochStateIndexer (Core.setLastStablePoint p)
+            <=< blockIndexer (Core.setLastStablePoint p)
+            <=< epochSDDIndexer (Core.setLastStablePoint p)
+            <=< epochNonceIndexer (Core.setLastStablePoint p)
+     in setStablePointOnIndexers indexer
+
 instance
   (MonadIO m, MonadError Core.IndexerError m, Core.Point event ~ C.ChainPoint)
   => Core.IsSync m event EpochStateIndexer
@@ -680,11 +707,7 @@ instance
     if lastBlock == Core.genesis
       then Core.lastSyncPoint $ indexer ^. epochStateIndexer
       else pure lastBlock
-  lastSyncPoints n indexer = do
-    blockLastSyncPoints <- Core.lastSyncPoints n $ indexer ^. blockIndexer
-    case blockLastSyncPoints of
-      [C.ChainPointAtGenesis] -> Core.lastSyncPoints n $ indexer ^. epochStateIndexer
-      xs -> pure xs
+  lastStablePoint indexer = Core.lastStablePoint $ indexer ^. epochNonceIndexer
 
 instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
   close indexer = do

@@ -7,18 +7,16 @@
 -}
 module Marconi.Core.Experiment.Indexer.LastPointIndexer (
   LastPointIndexer,
-  lastPoint,
   lastPointIndexer,
 ) where
 
 import Control.Lens (makeLenses, view)
-import Control.Lens.Operators ((^.))
+import Control.Lens.Operators ((.~), (^.))
 import Data.Foldable (Foldable (toList))
-import Data.List qualified as List
 import Marconi.Core.Experiment.Class (
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Experiment.Type (Point, point)
 
@@ -27,7 +25,10 @@ import Marconi.Core.Experiment.Type (Point, point)
  While it may sound useless,
  it can be usefull when you want to benefit of the capabilities of a transformer.
 -}
-newtype LastPointIndexer event = LastPointIndexer {_lastPoint :: Point event}
+data LastPointIndexer event = LastPointIndexer
+  { _latestSyncPoint :: Point event
+  , _latestStablePoint :: Point event
+  }
 
 deriving stock instance (Show event, Show (Point event)) => Show (LastPointIndexer event)
 
@@ -35,20 +36,21 @@ makeLenses 'LastPointIndexer
 
 -- | A smart constructor for 'LastPointIndexer'
 lastPointIndexer :: (HasGenesis (Point event)) => LastPointIndexer event
-lastPointIndexer = LastPointIndexer genesis
+lastPointIndexer = LastPointIndexer genesis genesis
 
 instance
   (HasGenesis (Point event), Monad m)
   => IsIndex m event LastPointIndexer
   where
-  index timedEvent _ = pure $ LastPointIndexer $ timedEvent ^. point
+  index timedEvent = pure . (latestSyncPoint .~ timedEvent ^. point)
 
-  indexAllDescending evts _ = case toList evts of
-    [] -> pure $ LastPointIndexer genesis
-    (evt : _) -> pure $ LastPointIndexer $ evt ^. point
+  indexAllDescending evts = case toList evts of
+    [] -> pure
+    (evt : _) -> pure . (latestSyncPoint .~ evt ^. point)
 
-  rollback p _ = pure $ LastPointIndexer p
+  rollback p = pure . (latestSyncPoint .~ p)
+  setLastStablePoint p = pure . (latestStablePoint .~ p)
 
-instance (Applicative m, HasGenesis (Point event)) => IsSync m event LastPointIndexer where
-  lastSyncPoint = pure . view lastPoint
-  lastSyncPoints _ indexer = List.singleton <$> lastSyncPoint indexer
+instance (Applicative m) => IsSync m event LastPointIndexer where
+  lastSyncPoint = pure . view latestSyncPoint
+  lastStablePoint = pure . view latestStablePoint

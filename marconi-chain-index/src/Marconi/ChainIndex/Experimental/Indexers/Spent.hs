@@ -124,21 +124,18 @@ mkSpentIndexer path = do
                )
                VALUES (?, ?, ?, ?, ?)|]
       createSpentTables =
-        [createSpent, createSlotNoIndex, createTxInIndex, createSpentAtIndex, Sync.syncTableCreation]
+        [createSpent, createSlotNoIndex, createTxInIndex, createSpentAtIndex]
       spentInsert =
         [Core.SQLInsertPlan (traverse NonEmpty.toList) spentInsertQuery]
-  Core.mkSqliteIndexer
+  Sync.mkSyncedSqliteIndexer
     path
     createSpentTables
     [spentInsert]
-    (Just Sync.syncInsertPlan)
-    [ Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo
-    , Sync.syncRollbackPlan
-    ]
-    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
-    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
-    -- There needs to be a design change in marconi-core.
-    Sync.syncLastPointsQuery
+    [Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo]
+
+-- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
+-- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
+-- There needs to be a design change in marconi-core.
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker

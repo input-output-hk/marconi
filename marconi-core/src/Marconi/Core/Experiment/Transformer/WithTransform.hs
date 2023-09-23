@@ -19,8 +19,8 @@ import Control.Lens.Operators ((^.))
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
   Queryable (query),
   Resetable (reset),
  )
@@ -31,11 +31,12 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   getDatabasePathVia,
   indexAllDescendingVia,
   indexVia,
+  lastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
   queryVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
  )
 import Marconi.Core.Experiment.Type (Point, Timed (Timed), event, point)
 
@@ -101,13 +102,14 @@ instance
     indexAllDescendingVia unwrapMap asOutputs indexer
 
   rollback = rollbackVia unwrapMap
+  setLastStablePoint = setLastStablePointVia unwrapMap
 
 instance
   (Point output ~ Point event, IsSync m output indexer)
   => IsSync m event (WithTransform indexer output)
   where
   lastSyncPoint = lastSyncPointVia unwrapMap
-  lastSyncPoints = lastSyncPointsVia unwrapMap
+  lastStablePoint = lastStablePointVia unwrapMap
 
 instance (HasDatabasePath indexer) => HasDatabasePath (WithTransform indexer output) where
   getDatabasePath = getDatabasePathVia unwrapMap

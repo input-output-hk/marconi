@@ -35,7 +35,7 @@ import Data.Map qualified as Map
 import Marconi.Core.Experiment.Class (
   Closeable,
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending, rollback),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
   IsSync,
   Queryable (query),
   Resetable (reset),
@@ -54,6 +54,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   queryVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
   wrappedIndexer,
   wrapperConfig,
  )
@@ -219,6 +220,8 @@ instance
   rollback p indexer = do
     res <- rollbackVia unwrap p indexer
     rollbackCache p res
+
+  setLastStablePoint = setLastStablePointVia unwrap
 
 {- | Rollback the underlying indexer, clear the cache,
  repopulate it with queries to the underlying indexer.

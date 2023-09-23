@@ -33,7 +33,6 @@ module Marconi.Core.Spec.Experiment (
   indexingTestGroup,
   storageBasedModelProperty,
   lastSyncPointBasedModelProperty,
-  lastSyncPointsBasedModelProperty,
 
   -- ** Cache test suite
   cacheTestGroup,
@@ -110,6 +109,7 @@ module Marconi.Core.Spec.Experiment (
 ) where
 
 import Control.Applicative (Const (Const))
+import Control.Category qualified as Category
 import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
 import Control.Lens (
@@ -143,9 +143,8 @@ import Data.Function ((&))
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import Data.Monoid (Sum (Sum))
-import Data.String (fromString)
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import Data.Word (Word64)
@@ -153,9 +152,11 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.FromRow qualified as SQL
+import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
 import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
 import GHC.Generics (Generic)
+import Marconi.Core.Experiment (IsSync (lastStablePoint))
 import Marconi.Core.Experiment qualified as Core
 import Marconi.Core.Experiment.Coordinator qualified as Core (errorBox, threadIds)
 import System.IO.Temp qualified as Tmp
@@ -520,15 +521,6 @@ indexingTestGroup indexerName runner =
                 Test.withMaxSuccess 10_000 $
                   lastSyncPointBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
             ]
-        , Tasty.testGroup
-            "lastSyncPoints"
-            [ Tasty.testProperty "in a chain without rollback" $
-                Test.withMaxSuccess 5_000 $
-                  lastSyncPointsBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
-            , Tasty.testProperty "in a chain with rollbacks" $
-                Test.withMaxSuccess 10_000 $
-                  lastSyncPointsBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
-            ]
         ]
     ]
 
@@ -594,50 +586,47 @@ lastSyncPointBasedModelProperty gen runner =
     (views model (maybe Core.genesis fst . listToMaybe))
     Core.lastSyncPoint
 
--- | The 'Core.lastSyncPoints' of an indexer is correctly set
-lastSyncPointsBasedModelProperty
-  :: ( Core.IsIndex m event indexer
-     , Core.IsSync m event indexer
-     , Core.Point event ~ TestPoint
-     , Show event
-     )
-  => Gen [Item event]
-  -> Model.IndexerTestRunner m event indexer
-  -> Property
-lastSyncPointsBasedModelProperty gen runner = do
-  behaveLikeModel
-    gen
-    runner
-    ( views model $ \timedEvents ->
-        take 10 $
-          reverse $
-            List.sort $
-              fmap fst $
-                filter (\(_, maybeEvent) -> isJust maybeEvent) timedEvents
-    )
-    (Core.lastSyncPoints 10)
-
 sqliteModelIndexerWithFile
   :: FilePath -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexerWithFile filepath = do
   let extractor :: TestPoint -> Maybe Int
       extractor (TestPoint 0 _) = Nothing
       extractor (TestPoint p _) = Just p
-  Core.mkSingleInsertSqliteIndexer
+  Core.mkSqliteIndexer
     filepath
-    ( \t ->
-        (t ^. Core.point . testPointSlot, UUID.toText $ t ^. Core.point . testPointHash, t ^. Core.event)
-    )
-    " CREATE TABLE IF NOT EXISTS index_model \
-    \   ( pointSlotNo INT NOT NULL   \
-    \   , pointHash TEXT NOT NULL   \
-    \   , value INT NOT NULL   \
-    \   )"
-    "INSERT INTO index_model VALUES (?, ?, ?)"
-    (Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor)
-    ( Core.GetLastSyncPointsQuery $ \limit ->
-        "SELECT pointSlotNo, pointHash FROM index_model ORDER BY pointSlotNo DESC LIMIT "
-          <> fromString (show limit)
+    [ [sql|
+      CREATE TABLE IF NOT EXISTS index_model
+        ( pointSlotNo INT NOT NULL
+        , pointHash TEXT NOT NULL
+        , value INT NOT NULL
+        )
+      |]
+    , [sql|
+      CREATE TABLE IF NOT EXISTS sync
+        ( lock TEXT PRIMARY KEY DEFAULT 'only one key'
+        , pointSlotNo INT NOT NULL
+        , pointHash TEXT NOT NULL
+        , CONSTRAINT sync_lock CHECK (lock='only one key')
+        )
+      |]
+    ]
+    [
+      [ Core.SQLInsertPlan
+          ( \t ->
+              [
+                ( t ^. Core.point . testPointSlot
+                , UUID.toText $ t ^. Core.point . testPointHash
+                , t ^. Core.event
+                )
+              ]
+          )
+          "INSERT INTO index_model VALUES (?, ?, ?)"
+      ]
+    ]
+    [Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor]
+    (Core.SetLastStablePointQuery "INSERT OR REPLACE INTO sync (pointSlotNo, pointHash) VALUES (?,?)")
+    ( Core.GetLastStablePointQuery
+        "SELECT pointSlotNo, pointHash FROM sync ORDER BY pointSlotNo DESC LIMIT 1"
     )
 
 sqliteModelIndexer :: ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
@@ -775,6 +764,7 @@ instance
   index = Core.indexVia underCoordinator
   indexAllDescending = Core.indexAllDescendingVia underCoordinator
   rollback = Core.rollbackVia $ underCoordinator . Core.wrappedIndexer
+  setLastStablePoint = Core.setLastStablePointVia $ underCoordinator . Core.wrappedIndexer
 
 instance
   ( MonadIO m
@@ -785,7 +775,7 @@ instance
   => Core.IsSync m event (UnderCoordinator indexer)
   where
   lastSyncPoint = Core.lastSyncPointVia underCoordinator
-  lastSyncPoints = Core.lastSyncPointsVia underCoordinator
+  lastStablePoint = Core.lastStablePointVia underCoordinator
 
 instance
   (Core.Closeable (ExceptT Core.IndexerError IO) Core.Coordinator)
@@ -820,7 +810,7 @@ coordinatorIndexerRunner wRunner =
         lift $
           Core.createWorker
             "TestWorker"
-            (pure . pure)
+            Category.id
             wrapped
       UnderCoordinator . Core.IndexTransformer (IndexerMVar $ Core.workerIndexerVar workerIndexer)
         <$> lift (Core.mkCoordinator [Core.worker workerIndexer])
@@ -1494,12 +1484,7 @@ propWithResumeShouldDrainAlreadySyncedEvents =
         -- Initialize a 'WithResume' indexer using the previously created ListIndexer.
         -- Then, re-index the full chain from scratch.
         -- Resume indexing by restarting from genesis and using last immutable sync point.
-        initialIndexerWithResume <-
-          GenM.run $
-            Core.withResume
-              Core.lastSyncPoints
-              (k + 1)
-              indexer
+        initialIndexerWithResume <- GenM.run $ Core.withResume indexer
         let immutableChainPart = take (length chain - fromIntegral k) chain
             immutableChainPartWithoutRollbacks = applyRollbacksOnChain immutableChainPart
             mutableChainPart = drop (length chain - fromIntegral k) chain
@@ -1516,48 +1501,7 @@ propWithResumeShouldDrainAlreadySyncedEvents =
         listIndexer <- GenM.run $ foldM (flip process) Core.mkListIndexer (Rollback Core.genesis : chain)
         (expectedChainEvents :: [TestEvent]) <- fmap (fmap (view Core.event)) $ getIndexerEvents listIndexer
 
-        -- Calculate some statistics for 'cover'.
-        resumedIndexerLastSyncPoints <-
-          fmap
-            ( NonEmpty.toList
-                . fromMaybe (NonEmpty.singleton Core.genesis)
-                . NonEmpty.nonEmpty
-            )
-            $ Core.lastSyncPoints (k + 1) resumedIndexer
-        let resumedIndexerLowestLastSyncPoint = minimum resumedIndexerLastSyncPoints
-        let resumedIndexerHighestLastSyncPoint = maximum resumedIndexerLastSyncPoints
-        let chainHasAtLeastOnePointBeforeLastSyncedPoint = isJust $ find (\item -> item ^. testPoint < resumedIndexerLowestLastSyncPoint) fullChain
-        let chainHasAtLeastOnePointAfterLastSyncedPoint = isJust $ find (\item -> item ^. testPoint > resumedIndexerHighestLastSyncPoint) fullChain
-        let chainHasAtLeastOnePointSameAsLastSyncedPoint = isJust $ find (\item -> List.elem (item ^. testPoint) resumedIndexerLastSyncPoints) fullChain
-        let chainHasAtLeastOnePointForkOfLastSyncedPoint =
-              isJust $
-                find
-                  ( \item -> case Core.comparePoint resumedIndexerLowestLastSyncPoint (item ^. testPoint) of
-                      Core.Fork -> True
-                      _ -> False
-                  )
-                  fullChain
-
-        let runPropertyWithCover =
-              Test.cover
-                70
-                chainHasAtLeastOnePointBeforeLastSyncedPoint
-                "Generated chain has at least one point before the lowest last sync point of the resumed indexer"
-                . Test.cover
-                  70
-                  chainHasAtLeastOnePointSameAsLastSyncedPoint
-                  "Generated chain has at least one point that is the same as one of the last sync points"
-                . Test.cover 50 (not $ null expectedChainEvents) "Expected chain events is not empty"
-                . Test.cover
-                  5
-                  chainHasAtLeastOnePointAfterLastSyncedPoint
-                  "Generated chain has at least one point after the highest last sync point of the resumed indexer"
-                . Test.cover
-                  5
-                  chainHasAtLeastOnePointForkOfLastSyncedPoint
-                  "Generated chain has at least one point that has the same slot as one of the last sync points, but with a different point hash"
-
-        pure $ runPropertyWithCover $ withResumeIndexedEvents === expectedChainEvents
+        pure $ withResumeIndexedEvents === expectedChainEvents
 
 withResumeTest :: Tasty.TestTree
 withResumeTest =
@@ -1655,6 +1599,7 @@ deriving via
 instance (Core.IsIndex m event indexer) => Core.IsIndex m event (WithRollbackFailure indexer) where
   index = Core.indexVia Core.unwrap
   rollback _ _ = error "STOP"
+  setLastStablePoint = Core.setLastStablePointVia Core.unwrap
 
 deriving via
   (Core.IndexTransformer (Const ()) indexer)

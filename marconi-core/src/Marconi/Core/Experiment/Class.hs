@@ -17,7 +17,6 @@ module Marconi.Core.Experiment.Class (
   AppendResult (..),
   Closeable (..),
   IsSync (..),
-  computeResumePoints,
   isAheadOfSync,
   HasGenesis (..),
 ) where
@@ -25,8 +24,7 @@ module Marconi.Core.Experiment.Class (
 import Control.Lens ((^.))
 import Control.Monad ((<=<))
 import Control.Monad.Except (ExceptT, MonadError, runExceptT)
-import Data.Foldable (foldlM, foldrM, minimumBy)
-import Data.List.NonEmpty qualified as NonEmpty
+import Data.Foldable (foldlM, foldrM)
 import Marconi.Core.Experiment.Type (Point, QueryError, Result, Timed, point)
 
 -- IsIndex
@@ -78,7 +76,12 @@ class (Monad m) => IsIndex m event indexer where
   -- | Rollback to a previous point
   rollback :: (Ord (Point event)) => Point event -> indexer event -> m (indexer event)
 
-  {-# MINIMAL index, rollback #-}
+  -- | Set the last stable point known by the indexer.
+  -- Note that the last stable point should always increase, so implementation should usually filter
+  -- out lower stable points.
+  setLastStablePoint :: (Ord (Point event)) => Point event -> indexer event -> m (indexer event)
+
+  {-# MINIMAL index, rollback, setLastStablePoint #-}
 
 {- | If the event is @Nothing@, just updat the last sync event.
  Otherwise, store the event and update the last sync event.
@@ -215,43 +218,11 @@ class Closeable m indexer where
 
 -- | We know how far an indexer went in the indexation of events.
 class (Functor m) => IsSync m event indexer where
+  -- | Get the latest stable point known by the indexer
+  lastStablePoint :: indexer event -> m (Point event)
+
   -- | Last sync point of the indexer.
   lastSyncPoint :: indexer event -> m (Point event)
-
-  -- | Last sync points of the indexer. By default, it wraps the point from 'lastSyncPoint' into a
-  -- list. If you need more than one element, then you need to reimplement this function.
-  lastSyncPoints :: Word -> indexer event -> m [Point event]
-
-{- | Calculates the final resume points given list of resume points for multiple indexers.
-
-This is a helper function to implement the @lastSyncPoints@ functon of 'IsSync' for any indexers
-that handle several indexers (like 'Coordinator' and 'SQLiteAggregateQuery').
-
-The logic is as follows.
-We first find the resume points, identified as @ps@, of the indexer with the lowest overall point.
-Then, we take the largest resume point of each indexer and, out of those, take the lowest point identified as @p@.
-Finally, we return @ps@, but remove all points that are larger than @p@.
-
-Here's an example:
-
->>> computeResumePoints [[0,1,2,3], [10], [2,3,4], [1,2]]
-[0,1,2]
--}
-computeResumePoints
-  :: forall f point
-   . (Traversable f, Ord point)
-  => f [point]
-  -- ^ Resume points of each indexer
-  -> [point]
-  -- ^ Common resume points shared by each indexer
-computeResumePoints points =
-  case mapM NonEmpty.nonEmpty points of
-    Nothing -> []
-    Just nonEmptyPoints ->
-      let pointsWithLowestMinValue = minimumBy (\x y -> minimum x `compare` minimum y) nonEmptyPoints
-          lowestPointOfMaxOfPoints = minimum $ fmap maximum points
-       in NonEmpty.filter (<= lowestPointOfMaxOfPoints) $
-            NonEmpty.sortBy (\x y -> y `compare` x) pointsWithLowestMinValue
 
 -- | Check if the given point is ahead of the last syncPoint of an indexer
 isAheadOfSync

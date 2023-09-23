@@ -15,12 +15,11 @@ module Marconi.Core.Experiment.Indexer.ListIndexer (
 
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators ((%~), (&), (.~), (^.))
-import Data.List qualified as List
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
   Resetable (reset),
   indexIfJust,
  )
@@ -32,6 +31,8 @@ data ListIndexer event = ListIndexer
   -- ^ Stored @event@s, associated with their history 'Point'
   , _latestPoint :: Point event
   -- ^ Ease access to the latest sync point
+  , _latestStablePoint :: Point event
+  -- ^ Ease access to the latest sync point
   }
 
 deriving stock instance (Show event, Show (Point event)) => Show (ListIndexer event)
@@ -40,7 +41,7 @@ makeLenses ''ListIndexer
 
 -- | A smart constructor for list indexer, starting at genesis with an empty list.
 mkListIndexer :: (HasGenesis (Point event)) => ListIndexer event
-mkListIndexer = ListIndexer [] genesis
+mkListIndexer = ListIndexer [] genesis genesis
 
 instance (Monad m) => IsIndex m event ListIndexer where
   index =
@@ -67,16 +68,11 @@ instance (Monad m) => IsIndex m event ListIndexer where
           if isIndexBeforeRollback ix
             then ix -- if we're already before the rollback, we don't have to do anything
             else adjustLatestPoint $ cleanEventsAfterRollback ix
+  setLastStablePoint p = pure . (latestStablePoint .~ p)
 
-instance (Applicative m, Ord (Point event)) => IsSync m event ListIndexer where
+instance (Applicative m) => IsSync m event ListIndexer where
   lastSyncPoint = pure . view latestPoint
-  lastSyncPoints n indexer =
-    pure $
-      take (fromIntegral n) $
-        reverse $
-          List.sort $
-            fmap (view point) $
-              indexer ^. events
+  lastStablePoint = pure . view latestStablePoint
 
 instance
   ( HasGenesis (Point event)

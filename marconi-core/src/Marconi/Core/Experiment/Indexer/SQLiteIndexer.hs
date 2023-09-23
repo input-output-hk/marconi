@@ -14,16 +14,19 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   connection,
   insertPlan,
   InsertPointQuery (InsertPointQuery, getInsertPointQuery),
-  GetLastSyncPointsQuery (
-    GetLastSyncPointsQuery,
-    getLastSyncPointsQuery
+  SetLastStablePointQuery (
+    SetLastStablePointQuery,
+    getSetLastStablePointQuery
+  ),
+  GetLastStablePointQuery (
+    GetLastStablePointQuery,
+    getLastStablePointQuery
   ),
   mkSqliteIndexer,
   mkSingleInsertSqliteIndexer,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
-  lastSyncPointsQuery,
   dbLastSync,
   SQLInsertPlan (SQLInsertPlan, planInsert, planExtractor),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
@@ -35,12 +38,11 @@ module Marconi.Core.Experiment.Indexer.SQLiteIndexer (
 import Control.Concurrent.Async qualified as Async
 import Control.Exception (Handler (Handler), catches)
 import Control.Lens (makeLenses)
-import Control.Lens.Operators ((&), (.~), (^.), (^..))
+import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
-import Control.Monad.Except (MonadError (throwError), runExceptT)
+import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (toList), traverse_)
-import Data.List qualified as List
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import Data.Text qualified as Text
@@ -49,8 +51,8 @@ import Database.SQLite.Simple.ToField qualified as SQL
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Experiment.Type (
   IndexerError (IndexerInternalError, InvalidIndexer),
@@ -89,9 +91,14 @@ data SQLRollbackPlan point = forall a.
   -- rows with a point higher than 'point'.
   }
 
--- | A newtype to get the 'n' last sync points from an indexer.
-newtype GetLastSyncPointsQuery = GetLastSyncPointsQuery
-  { getLastSyncPointsQuery :: Word -> SQL.Query
+-- | A newtype to set the last stable point of an indexer.
+newtype SetLastStablePointQuery = SetLastStablePointQuery
+  { getSetLastStablePointQuery :: SQL.Query
+  }
+
+-- | A newtype to get the last stable point from an indexer.
+newtype GetLastStablePointQuery = GetLastStablePointQuery
+  { getLastStablePointQuery :: SQL.Query
   }
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
@@ -103,14 +110,14 @@ data SQLiteIndexer event = SQLiteIndexer
   , _insertPlan :: [[SQLInsertPlan event]]
   -- ^ A plan is a list of lists : each 'SQLInsertPlan' in a list is executed concurrently.
   -- The different @[SQLInsertPlan]@ are executed in sequence.
-  , _insertPoint :: Maybe InsertPointQuery
-  -- ^ The query to keep track of the indexed point
   , _rollbackPlan :: [SQLRollbackPlan (Point event)]
   -- ^ The list of tables we update on rollback, with the information required to update them
-  , _lastSyncPointsQuery :: GetLastSyncPointsQuery
+  , _setLastStablePointQuery :: SetLastStablePointQuery
   -- ^ The SQL query to fetch the last sync points from the indexer.
   , _dbLastSync :: Point event
-  -- ^ We keep the sync point in memory to avoid an SQL to retrieve it
+  -- ^ We keep the last sync point in memory to avoid an SQL query to retrieve it
+  , _dbLastStable :: Point event
+  -- ^ We keep the last stable point in memory to avoid an SQL query to retrieve it
   }
 
 makeLenses ''SQLiteIndexer
@@ -126,45 +133,50 @@ mkSqliteIndexer
      , MonadError IndexerError m
      , HasGenesis (Point event)
      , SQL.FromRow (Point event)
+     , SQL.ToRow (Point event)
+     , Ord (Point event)
      )
   => FilePath
   -> [SQL.Query]
   -- ^ cration statement
   -> [[SQLInsertPlan event]]
   -- ^ extract @param@ out of a 'Timed'
-  -> Maybe InsertPointQuery
-  -- ^ we may omit the insert point query if the SQLInsertPlan makes it redundant
   -> [SQLRollbackPlan (Point event)]
   -- ^ the rollbackQuery
-  -> GetLastSyncPointsQuery
-  -- ^ The SQL query to fetch the last sync points from the indexer.
+  -> SetLastStablePointQuery
+  -- ^ The SQL query to set the last stable point of the indexer.
+  -> GetLastStablePointQuery
+  -- ^ The SQL query to fetch the last stable point from the indexer.
   -> m (SQLiteIndexer event)
-mkSqliteIndexer _databasePath _creationStatements _insertPlan _insertPoint _rollbackPlan _lastSyncPointsQuery =
-  let getLastSyncPoint :: SQL.Connection -> m (Point event)
-      getLastSyncPoint h = do
-        res <-
-          runLastSyncPointsQuery
-            h
-            _lastSyncPointsQuery
-            1
-        pure $ maybe genesis NonEmpty.last $ NonEmpty.nonEmpty res
-   in do
-        _connection <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
-        traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
-        -- allow for concurrent insert/query.
-        -- see SQLite WAL, https://www.sqlite.org/wal.html
-        liftIO $ SQL.execute_ _connection "PRAGMA journal_mode=WAL"
-        _dbLastSync <- getLastSyncPoint _connection
-        pure $
-          SQLiteIndexer
-            { _databasePath
-            , _connection
-            , _insertPlan
-            , _insertPoint
-            , _rollbackPlan
-            , _lastSyncPointsQuery
-            , _dbLastSync
-            }
+mkSqliteIndexer
+  _databasePath
+  _creationStatements
+  _insertPlan
+  _rollbackPlan
+  _setLastStablePointQuery
+  lastStablePointQuery =
+    let getLastSyncPoint :: SQL.Connection -> m (Point event)
+        getLastSyncPoint h = do
+          res <- runLastStablePointQuery h lastStablePointQuery
+          pure $ maybe genesis NonEmpty.last $ NonEmpty.nonEmpty res
+     in do
+          _connection <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
+          traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
+          -- allow for concurrent insert/query.
+          -- see SQLite WAL, https://www.sqlite.org/wal.html
+          liftIO $ SQL.execute_ _connection "PRAGMA journal_mode=WAL"
+          _dbLastStable <- getLastSyncPoint _connection
+          let indexer =
+                SQLiteIndexer
+                  { _databasePath
+                  , _connection
+                  , _insertPlan
+                  , _rollbackPlan
+                  , _setLastStablePointQuery
+                  , _dbLastSync = _dbLastStable
+                  , _dbLastStable
+                  }
+          rollback _dbLastStable indexer
 
 {- | A smart constructor for indexer that want to map an event to a single table.
  We just have to set the type family of `InsertRecord event` to `[param]` and
@@ -173,11 +185,15 @@ mkSqliteIndexer _databasePath _creationStatements _insertPlan _insertPoint _roll
  It is monomorphic restriction of 'mkSqliteIndexer'
 -}
 mkSingleInsertSqliteIndexer
-  :: (MonadIO m)
-  => (MonadError IndexerError m)
-  => (SQL.FromRow (Point event))
-  => (SQL.ToRow param)
-  => (HasGenesis (Point event))
+  :: forall m event param
+   . ( MonadIO m
+     , MonadError IndexerError m
+     , HasGenesis (Point event)
+     , SQL.FromRow (Point event)
+     , SQL.ToRow (Point event)
+     , SQL.ToRow param
+     , Ord (Point event)
+     )
   => FilePath
   -> (Timed (Point event) event -> param)
   -- ^ extract @param@ out of a 'Timed'
@@ -187,11 +203,13 @@ mkSingleInsertSqliteIndexer
   -- ^ the insert query
   -> SQLRollbackPlan (Point event)
   -- ^ the rollback query
-  -> GetLastSyncPointsQuery
-  -- ^ The SQL query to fetch the last sync points from the indexer.
+  -> SetLastStablePointQuery
+  -- ^ The SQL query to set the last stable point of the indexer.
+  -> GetLastStablePointQuery
+  -- ^ The SQL query to fetch the last stable point from the indexer.
   -> m (SQLiteIndexer event)
 mkSingleInsertSqliteIndexer path extract create insert rollback' =
-  mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) insert]] Nothing [rollback']
+  mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) insert]] [rollback']
 
 -- | Map SQLite errors to an indexer error
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
@@ -226,35 +244,19 @@ runIndexPlan
   -> IO ()
 runIndexPlan c = traverse_ . runIndexQueriesStep c
 
-runInsertPoint
-  :: (SQL.ToRow point)
-  => SQL.Connection
-  -> [point]
-  -> InsertPointQuery
-  -> IO ()
-runInsertPoint c points (InsertPointQuery insertPoint') =
-  SQL.executeMany c insertPoint' points
-
 -- | Run a list of insert queries in one single transaction.
 runIndexQueries
-  :: (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))
+  :: (MonadIO m, MonadError IndexerError m)
   => SQL.Connection
   -> [Timed (Point event) (Maybe event)]
   -> [[SQLInsertPlan event]]
-  -> Maybe InsertPointQuery
   -> m ()
-runIndexQueries c events' plan insertPoint' =
+runIndexQueries c events' plan =
   let nonEmptyEvents = (catMaybes . toList $ sequence <$> events')
       indexEvent = case nonEmptyEvents of
         [] -> Nothing
         _nonEmpty -> Just $ runIndexPlan c nonEmptyEvents plan
-      indexPoints = runInsertPoint c (events' ^.. traverse . point) <$> insertPoint'
-      allIndex = case (indexEvent, indexPoints) of
-        (Nothing, Nothing) -> Nothing
-        (Just rPlan, Nothing) -> Just rPlan
-        (Nothing, Just rPoint) -> Just rPoint
-        (Just rPlan, Just rPoint) -> Just $ Async.concurrently_ rPlan rPoint
-   in case allIndex of
+   in case indexEvent of
         Nothing -> pure ()
         Just runIndexers ->
           let
@@ -262,25 +264,24 @@ runIndexQueries c events' plan insertPoint' =
                 handleSQLErrors (SQL.withTransaction c runIndexers)
 
 indexEvents
-  :: (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))
+  :: (MonadIO m, MonadError IndexerError m)
   => [Timed (Point event) (Maybe event)]
   -> SQLiteIndexer event
   -> m (SQLiteIndexer event)
 indexEvents [] indexer = pure indexer
 indexEvents evts@(e : _) indexer = do
   let setDbLastSync p = pure $ indexer & dbLastSync .~ p
-  runIndexQueries (indexer ^. connection) evts (indexer ^. insertPlan) (indexer ^. insertPoint)
+  runIndexQueries (indexer ^. connection) evts (indexer ^. insertPlan)
   setDbLastSync (e ^. point)
 
-runLastSyncPointsQuery
+runLastStablePointQuery
   :: (MonadError IndexerError m, MonadIO m, SQL.FromRow r)
   => SQL.Connection
-  -> GetLastSyncPointsQuery
-  -> Word
+  -> GetLastStablePointQuery
   -> m [r]
-runLastSyncPointsQuery conn (GetLastSyncPointsQuery mkQuery) n =
+runLastStablePointQuery conn (GetLastStablePointQuery q) =
   either throwError pure <=< liftIO $
-    handleSQLErrors (SQL.query_ conn (mkQuery n))
+    handleSQLErrors (SQL.query_ conn q)
 
 instance
   (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))
@@ -311,23 +312,15 @@ instance
         traverse_ rollbackTable (indexer ^. rollbackPlan)
     pure $ indexer & dbLastSync .~ p
 
-instance
-  (MonadIO m, SQL.FromRow (Point event))
-  => IsSync m event SQLiteIndexer
-  where
-  lastSyncPoint indexer =
-    pure $ indexer ^. dbLastSync
+  setLastStablePoint p indexer = do
+    let c = indexer ^. connection
+        SetLastStablePointQuery query = indexer ^. setLastStablePointQuery
+    liftIO $ SQL.execute c query p
+    pure $ indexer & dbLastStable .~ p
 
-  lastSyncPoints :: Word -> SQLiteIndexer event -> m [Point event]
-  lastSyncPoints n indexer = do
-    let getLastSyncPointsQuery = indexer ^. lastSyncPointsQuery
-    resultE <- runExceptT $ runLastSyncPointsQuery (indexer ^. connection) getLastSyncPointsQuery n
-    case resultE of
-      -- TODO Revisit this. Should probably throw error. However, can't just add constraint
-      -- 'MonadError IndexerError event' because then it conflicts with other functions which have
-      -- 'MonadError (QueryError query) event)'
-      Left _err -> List.singleton <$> lastSyncPoint indexer -- throwError $ OtherIndexError ""
-      Right v -> pure v
+instance (Monad m) => IsSync m event SQLiteIndexer where
+  lastStablePoint indexer = pure $ indexer ^. dbLastStable
+  lastSyncPoint indexer = pure $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
   close indexer = liftIO $ SQL.close $ indexer ^. connection

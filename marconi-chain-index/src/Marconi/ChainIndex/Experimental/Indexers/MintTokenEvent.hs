@@ -355,20 +355,13 @@ mkMintTokenIndexer dbPath = do
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createMintPolicyEventTables =
-        [createMintPolicyEvent, createMintPolicyIdIndex, Sync.syncTableCreation]
+        [createMintPolicyEvent, createMintPolicyIdIndex]
       mintInsertPlans = [Core.SQLInsertPlan fromTimedMintEvents mintEventInsertQuery]
-  Core.mkSqliteIndexer
+  Sync.mkSyncedSqliteIndexer
     dbPath
     createMintPolicyEventTables
     [mintInsertPlans]
-    (Just Sync.syncInsertPlan)
-    [ Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo
-    , Sync.syncRollbackPlan
-    ]
-    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
-    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
-    -- There needs to be a design change in marconi-core.
-    Sync.syncLastPointsQuery
+    [Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo]
 
 fromTimedMintEvents
   :: Core.Timed point MintTokenBlockEvents

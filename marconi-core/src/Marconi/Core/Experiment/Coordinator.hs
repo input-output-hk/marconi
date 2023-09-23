@@ -29,25 +29,29 @@ import Control.Exception (throwIO)
 import Control.Exception.Base (finally)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((^.))
-import Control.Monad (forever)
+import Control.Monad (foldM)
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.State.Strict (State)
+import Data.Foldable (Foldable (toList))
+import Data.Maybe (catMaybes)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
-  computeResumePoints,
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Experiment.Type (
   IndexerError (StopIndexer),
   Point,
-  ProcessedInput (Index, IndexAllDescending, Rollback, Stop),
+  ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
+  Timed,
  )
 import Marconi.Core.Experiment.Worker (
   Worker,
   WorkerM (Worker),
   startWorker,
  )
+import Marconi.Core.Experiment.Worker.Transformer (Transformer, runTransformer, transformer)
 
 {- | A coordinator synchronises the event processing of a list of indexers.
  A coordinator is itself is an indexer.
@@ -94,22 +98,42 @@ mkCoordinator workers' = do
  Note that this function silently throw an @IndexError@ if the event processing fails.
 -}
 processQueue
-  :: ( Ord (Point event)
+  :: forall indexer event s r
+   . ( Ord (Point event)
      , IsIndex (ExceptT IndexerError IO) event indexer
      , Closeable IO indexer
      )
-  => STM.TBQueue (ProcessedInput (Point event) event)
+  => (Timed (Point event) (Maybe event) -> State s (Maybe (Point event)))
+  -- ^ emit stable point based on incoming information
+  -> s
+  -> STM.TBQueue (ProcessedInput (Point event) event)
   -> Con.MVar (indexer event)
   -> IO r
-processQueue q cBox =
-  let queueStep = do
+processQueue f initialState q cBox =
+  let attachStable :: Transformer IO (Point event) event event
+      attachStable = flip transformer initialState $ \case
+        Index timedEvent -> do
+          stablePointM <- f timedEvent
+          case stablePointM of
+            Nothing -> pure [Index timedEvent]
+            Just stablePoint -> pure [Index timedEvent, StableAt stablePoint]
+        IndexAllDescending timedEvents -> do
+          stablePoints <- catMaybes . toList <$> traverse f timedEvents
+          case stablePoints of
+            [] -> pure [IndexAllDescending timedEvents]
+            xs -> pure [IndexAllDescending timedEvents, StableAt (maximum xs)]
+        other -> pure [other]
+
+      queueStep g = do
         e <- STM.atomically $ STM.readTBQueue q
-        Con.modifyMVar_ cBox $ \c -> do
-          mres <- runExceptT (step c e)
+        g' <- Con.modifyMVar cBox $ \c -> do
+          (events, g') <- runTransformer g [e]
+          mres <- runExceptT (foldM step c events)
           case mres of
             Left (err :: IndexerError) -> throwIO err
-            Right res -> pure res
-   in forever queueStep `finally` Con.withMVar cBox close
+            Right res -> pure (res, g')
+        queueStep g'
+   in queueStep attachStable `finally` Con.withMVar cBox close
 
 {- | A coordinator step
 (send an input to its workers, wait for an ack of every worker before listening again)
@@ -126,6 +150,7 @@ step indexer = \case
   Index e -> index e indexer
   IndexAllDescending es -> indexAllDescending es indexer
   Rollback p -> rollback p indexer
+  StableAt p -> setLastStablePoint p indexer
   Stop -> throwError $ StopIndexer Nothing
 
 waitWorkers :: Coordinator input -> IO ()
@@ -161,6 +186,7 @@ safeDispatch event coordinator = do
 instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator where
   index = safeDispatch . Index
   rollback = safeDispatch . Rollback
+  setLastStablePoint = safeDispatch . StableAt
 
 instance
   (Ord (Point event), MonadIO m, MonadError IndexerError m)
@@ -176,15 +202,15 @@ instance
             Right res' -> pure res'
      in minimum <$> traverse workerLastSyncPoint (indexer ^. workers)
 
-  lastSyncPoints n indexer =
-    let getWorkerLastSyncPoints :: Worker event (Point event) -> m [Point event]
-        getWorkerLastSyncPoints (Worker _name state _f hoistError) = do
+  lastStablePoint indexer =
+    let workerLastSyncPoint :: Worker event (Point event) -> m (Point event)
+        workerLastSyncPoint (Worker _name state _f hoistError) = do
           ix <- liftIO $ Con.readMVar state
-          res <- liftIO $ runExceptT $ hoistError $ lastSyncPoints n ix
+          res <- liftIO $ runExceptT $ hoistError $ lastStablePoint ix
           case res of
             Left err -> throwError err
             Right res' -> pure res'
-     in fmap computeResumePoints $ traverse getWorkerLastSyncPoints (indexer ^. workers)
+     in minimum <$> traverse workerLastSyncPoint (indexer ^. workers)
 
 instance (MonadIO m) => Closeable m Coordinator where
   close coordinator = liftIO $ do

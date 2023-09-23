@@ -11,6 +11,8 @@
     we dequeue the oldest flush point and send all the in memory events that
     are older or equal to this flush point on disk.
 
+    The implementation considers that all the events sent to disk are immutable.
+
     See "Marconi.Core.Experiment" for documentation.
 -}
 module Marconi.Core.Experiment.Indexer.MixedIndexer (
@@ -26,9 +28,11 @@ module Marconi.Core.Experiment.Indexer.MixedIndexer (
 ) where
 
 import Control.Lens (Lens', makeLenses, view, (%~), (+~), (-~))
+import Control.Lens qualified as Lens
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (guard)
 import Data.Bifunctor (Bifunctor (first))
+import Data.Foldable (Foldable (toList))
 import Data.Functor.Compose (Compose (Compose, getCompose))
 import Data.Kind (Type)
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
@@ -37,8 +41,8 @@ import Marconi.Core.Experiment.Class (
   AppendResult (appendResult),
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
   Queryable (query),
  )
 import Marconi.Core.Experiment.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)
@@ -273,7 +277,10 @@ flush
   -> m (MixedIndexer store mem event)
 flush flushPoint indexer = do
   (eventsToFlush, indexer') <- getCompose $ inMemory (Compose . flushMemory flushPoint) indexer
-  inDatabase (indexAllDescending $ fmap Just <$> eventsToFlush) indexer'
+  indexer'' <- inDatabase (indexAllDescending $ fmap Just <$> eventsToFlush) indexer'
+  case toList eventsToFlush of
+    [] -> pure indexer''
+    xs -> inDatabase (setLastStablePoint $ maximum $ Lens.view point <$> xs) indexer''
 
 instance
   ( Ord (Point event)
@@ -315,19 +322,11 @@ instance
         & removeFlushPointsAfterRollback p
         & currentMemorySize .~ memorySize'
 
-instance (IsSync event m mem, IsSync event m store, Monad event) => IsSync event m (MixedIndexer store mem) where
+  setLastStablePoint p = inMemory (setLastStablePoint p)
+
+instance (IsSync event m mem, Monad event) => IsSync event m (MixedIndexer store mem) where
   lastSyncPoint = lastSyncPoint . view inMemory
-  lastSyncPoints n indexer = do
-    lastSyncMemPoints <- lastSyncPoints n $ view inMemory indexer
-    let numLastSyncMemPoints = fromIntegral $ length lastSyncMemPoints
-    if numLastSyncMemPoints >= n
-      then pure lastSyncMemPoints
-      else do
-        lastSyncDbPoints <-
-          lastSyncPoints
-            (n - numLastSyncMemPoints)
-            $ view inDatabase indexer
-        pure $ lastSyncMemPoints ++ lastSyncDbPoints
+  lastStablePoint = lastStablePoint . view inMemory
 
 instance
   ( AppendResult m event query ListIndexer

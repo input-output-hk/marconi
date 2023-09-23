@@ -15,8 +15,9 @@ module Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexVia,
   indexAllDescendingVia,
   indexAllVia,
+  setLastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
+  lastStablePointVia,
   closeVia,
   getDatabasePathVia,
   queryVia,
@@ -27,8 +28,8 @@ import Control.Lens (Getter, Lens', makeLenses, view)
 import Control.Monad.Except (MonadError)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
-  IsIndex (index, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
   Queryable (query),
   Resetable (reset),
   indexAll,
@@ -85,11 +86,23 @@ indexAllVia
   -> m s
 indexAllVia l = l . indexAll
 
+{- | Helper to implement the @index@ functon of 'IsIndex' when we use a wrapper.
+ If you don't want to perform any other side logic, use @deriving via@ instead.
+-}
+setLastStablePointVia
+  :: (Ord (Point event), IsIndex m event indexer)
+  => Lens' s (indexer event)
+  -> Point event
+  -> s
+  -> m s
+setLastStablePointVia l = l . setLastStablePoint
+
 instance (IsIndex m event indexer) => IsIndex m event (IndexTransformer config indexer) where
   index = indexVia wrappedIndexer
   indexAll = indexAllVia wrappedIndexer
   indexAllDescending = indexAllDescendingVia wrappedIndexer
   rollback = rollbackVia wrappedIndexer
+  setLastStablePoint = setLastStablePointVia wrappedIndexer
 
 {- | Helper to implement the @lastSyncPoint@ functon of 'IsSync' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.
@@ -101,23 +114,22 @@ lastSyncPointVia
   -> m (Point event)
 lastSyncPointVia l = lastSyncPoint . view l
 
-{- | Helper to implement the @lastSyncPoints@ functon of 'IsSync' when we use a wrapper.
+{- | Helper to implement the @lastSyncPoint@ functon of 'IsSync' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.
 -}
-lastSyncPointsVia
+lastStablePointVia
   :: (IsSync m event indexer)
   => Getter s (indexer event)
-  -> Word
   -> s
-  -> m [Point event]
-lastSyncPointsVia l n = lastSyncPoints n . view l
+  -> m (Point event)
+lastStablePointVia l = lastStablePoint . view l
 
 instance
   (IsSync event m index)
   => IsSync event m (IndexTransformer config index)
   where
   lastSyncPoint = lastSyncPointVia wrappedIndexer
-  lastSyncPoints = lastSyncPointsVia wrappedIndexer
+  lastStablePoint = lastStablePointVia wrappedIndexer
 
 {- | Helper to implement the @close@ functon of 'Closeable' when we use a wrapper.
  If you don't want to perform any other side logic, use @deriving via@ instead.

@@ -5,9 +5,6 @@ module Marconi.ChainIndex.Experimental.Run where
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logError, logInfo)
 import Control.Monad.Except (runExceptT)
-import Data.List.NonEmpty (NonEmpty)
-import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -59,7 +56,7 @@ run appName = do
         )
         trace
         (Cli.optionsDbPath o)
-  (indexerLastSyncPoints, _utxoQueryIndexer, indexers) <-
+  (indexerLastStablePoint, _utxoQueryIndexer, indexers) <-
     ( case mindexers of
         Left err -> do
           logError trace $ Text.pack $ show err
@@ -67,7 +64,7 @@ run appName = do
         Right result -> pure result
       )
 
-  let startingPoints = getStartingPoints preferredStartingPoint indexerLastSyncPoints
+  let startingPoints = getStartingPoints preferredStartingPoint indexerLastStablePoint
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
@@ -80,10 +77,8 @@ run appName = do
     startingPoints
     indexers
 
-getStartingPoints :: C.ChainPoint -> [C.ChainPoint] -> NonEmpty C.ChainPoint
-getStartingPoints preferredStartingPoint indexerLastSyncPoints =
+getStartingPoints :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint
+getStartingPoints preferredStartingPoint indexerLastSyncPoint =
   case preferredStartingPoint of
-    C.ChainPointAtGenesis ->
-      fromMaybe (NonEmpty.singleton C.ChainPointAtGenesis) $
-        NonEmpty.nonEmpty indexerLastSyncPoints
-    nonGenesisPreferedChainPoint -> NonEmpty.singleton nonGenesisPreferedChainPoint
+    C.ChainPointAtGenesis -> indexerLastSyncPoint
+    nonGenesisPreferedChainPoint -> nonGenesisPreferedChainPoint

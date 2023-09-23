@@ -1,5 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {- | The catch-up mechanism buffered events to pass them in batch to an indexer, to reduce the time
  needed for an indexer to catch-up with the tip.
@@ -18,12 +19,12 @@ module Marconi.Core.Experiment.Transformer.WithCatchup (
 ) where
 
 import Control.Lens qualified as Lens
-import Control.Lens.Operators ((%~), (+~), (.~), (^.))
+import Control.Lens.Operators ((%~), (+~), (.~), (?~), (^.))
 import Data.Function ((&))
 import Data.Word (Word64)
 import Marconi.Core.Experiment.Class (
   Closeable,
-  IsIndex (index, rollback),
+  IsIndex (index, rollback, setLastStablePoint),
   IsSync,
   Queryable,
   Resetable (reset),
@@ -39,6 +40,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
   wrappedIndexer,
   wrapperConfig,
  )
@@ -65,6 +67,8 @@ data CatchupContext event = CatchupContext
   -- ^ How many event do we have in the batch
   , _contextCatchupBuffer :: [Timed (Point event) (Maybe event)]
   -- ^ Where we store the event that must be batched
+  , _contextCatchupLastStable :: Maybe (Point event)
+  -- ^ The latest last stable point stored in the batch
   }
 
 Lens.makeLenses ''CatchupContext
@@ -95,7 +99,7 @@ withCatchup
   -- ^ the underlying indexer
   -> WithCatchup indexer event
 withCatchup computeDistance config =
-  WithCatchup . IndexTransformer (CatchupContext computeDistance config 0 [])
+  WithCatchup . IndexTransformer (CatchupContext computeDistance config 0 [] Nothing)
 
 deriving via
   (IndexTransformer CatchupContext indexer)
@@ -159,10 +163,16 @@ catchupBuffer = catchupWrapper . wrapperConfig . contextCatchupBuffer
 catchupBufferLength :: Lens.Lens' (WithCatchup indexer event) Word64
 catchupBufferLength = catchupWrapper . wrapperConfig . contextCatchupBufferLength
 
+catchupLastStable :: Lens.Lens' (WithCatchup indexer event) (Maybe (Point event))
+catchupLastStable = catchupWrapper . wrapperConfig . contextCatchupLastStable
+
 resetBuffer :: WithCatchup indexer event -> WithCatchup indexer event
 resetBuffer = (catchupBufferLength .~ 0) . (catchupBuffer .~ [])
 
-instance (IsIndex m event indexer) => IsIndex m event (WithCatchup indexer) where
+instance
+  (IsIndex m event indexer, IsSync m event indexer, Ord (Point event))
+  => IsIndex m event (WithCatchup indexer)
+  where
   index timedEvent indexer =
     let bufferIsFull ix = (ix ^. catchupBufferLength) >= (ix ^. catchupBatchSize)
         pushEvent ix =
@@ -173,7 +183,10 @@ instance (IsIndex m event indexer) => IsIndex m event (WithCatchup indexer) wher
           maybe False ((< indexer ^. catchupBypassDistance) . (indexer ^. catchupDistance) p) e
         sendBatch ix = do
           ix' <- indexAllDescendingVia caughtUpIndexer (ix ^. catchupBuffer) ix
-          pure $ resetBuffer ix'
+          ix'' <- case ix' ^. catchupLastStable of
+            Nothing -> pure ix'
+            Just lastStable -> setLastStablePointVia caughtUpIndexer lastStable ix'
+          pure $ resetBuffer ix''
      in if hasCaughtUp timedEvent
           then do
             indexer' <-
@@ -194,6 +207,12 @@ instance (IsIndex m event indexer) => IsIndex m event (WithCatchup indexer) wher
      in if indexer' ^. catchupBufferLength == 0
           then rollbackVia caughtUpIndexer p indexer'
           else pure indexer'
+
+  setLastStablePoint p ix =
+    if null $ ix ^. catchupBuffer
+      then -- on an empty buffer, we just forward the update
+        setLastStablePointVia caughtUpIndexer p ix
+      else pure $ ix & catchupLastStable ?~ p
 
 instance
   (Applicative m, Resetable m event indexer)

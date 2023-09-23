@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 {- |
@@ -17,13 +18,13 @@ module Marconi.Core.Experiment.Transformer.WithDelay (
 ) where
 
 import Control.Lens (Lens', makeLenses, view)
-import Control.Lens.Operators ((%~), (&), (+~), (.~), (^.))
+import Control.Lens.Operators ((%~), (&), (+~), (.~), (?~), (^.))
 import Data.Sequence (Seq (Empty, (:|>)), (<|))
 import Data.Sequence qualified as Seq
 
 import Marconi.Core.Experiment.Class (
   Closeable,
-  IsIndex (index, rollback),
+  IsIndex (index, rollback, setLastStablePoint),
   IsSync,
   Queryable,
   Resetable (reset),
@@ -38,6 +39,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
   wrappedIndexer,
   wrapperConfig,
  )
@@ -47,6 +49,7 @@ data DelayConfig event = DelayConfig
   { _configDelayCapacity :: Word
   , _configDelayLength :: Word
   , _configDelayBuffer :: Seq (Timed (Point event) (Maybe event))
+  , _configLastStablePoint :: Maybe (Point event)
   }
 
 makeLenses 'DelayConfig
@@ -68,7 +71,7 @@ withDelay
   -- ^ capacity
   -> indexer event
   -> WithDelay indexer event
-withDelay c = WithDelay . IndexTransformer (DelayConfig c 0 Seq.empty)
+withDelay c = WithDelay . IndexTransformer (DelayConfig c 0 Seq.empty Nothing)
 
 makeLenses 'WithDelay
 
@@ -129,8 +132,11 @@ delayBuffer = delayWrapper . wrapperConfig . configDelayBuffer
 delayLength :: Lens' (WithDelay indexer event) Word
 delayLength = delayWrapper . wrapperConfig . configDelayLength
 
+delayLastStable :: Lens' (WithDelay indexer event) (Maybe (Point event))
+delayLastStable = delayWrapper . wrapperConfig . configLastStablePoint
+
 instance
-  (Monad m, IsIndex m event indexer)
+  (Monad m, IsIndex m event indexer, Ord (Point event))
   => IsIndex m event (WithDelay indexer)
   where
   index timedEvent indexer =
@@ -146,7 +152,11 @@ instance
           let b = indexer ^. delayBuffer
               (oldest, buffer') = pushAndGetOldest b
           res <- indexVia delayedIndexer oldest indexer
-          pure $ res & delayBuffer .~ buffer'
+          res' <-
+            if Just (oldest ^. point) < (indexer ^. delayLastStable)
+              then setLastStablePointVia delayedIndexer (oldest ^. point) res
+              else pure res
+          pure $ res' & delayBuffer .~ buffer'
      in do
           if bufferIsFull indexer
             then doWhenFull
@@ -165,6 +175,13 @@ instance
               indexer
                 & delayBuffer .~ before
                 & delayLength .~ fromIntegral (Seq.length before)
+
+  setLastStablePoint p indexer =
+    let current = indexer ^. delayLastStable
+     in pure $
+          if Just p < current
+            then indexer
+            else indexer & delayLastStable ?~ p
 
 resetBuffer :: WithDelay indexer event -> WithDelay indexer event
 resetBuffer = (delayLength .~ 0) . (delayBuffer .~ Seq.empty)

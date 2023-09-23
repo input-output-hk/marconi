@@ -69,6 +69,8 @@ data ProcessedInput point event
     Index (Timed point (Maybe event))
   | -- | A new event has to be indexed
     IndexAllDescending (NonEmpty (Timed point (Maybe event)))
+  | -- | Inform the indexer of the latest stable point reached
+    StableAt point
   | -- | Processing stops
     Stop
 
