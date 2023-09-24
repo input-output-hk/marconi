@@ -26,25 +26,17 @@ module Marconi.Core.Experiment.Preprocessor (
   -- * Generic builder
   preprocessor,
   preprocessorM,
-
-  -- * Optimisation of a list of Processed inputs
-  compactInputs,
 ) where
 
 import Control.Arrow (Arrow (arr))
-import Control.Lens (Lens')
-import Control.Lens.Operators ((%~), (&), (.~), (<>~), (^.))
+import Control.Lens.Operators ((%~))
 import Control.Monad.State.Strict (StateT (runStateT), join, (<=<))
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
 import Control.Monad.Trans.State.Strict (State)
 import Control.Scanl (Scan (Scan), ScanM (ScanM), arrM, generalize)
-import Data.Foldable (Foldable (toList))
-import Data.List.NonEmpty (NonEmpty ((:|)))
 import Marconi.Core.Experiment.Type (
   ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
-  Timed,
   event,
-  point,
  )
 
 {- | Stateful tranformer.
@@ -151,62 +143,6 @@ preprocessorM
   -> m s
   -> Preprocessor m point a b
 preprocessorM = ScanM . traverseJoin
-
-data AccumulateInputs point event = AccumulateInputs
-  { _ongoingIndex :: [Timed point (Maybe event)]
-  , _initialRollback :: Maybe point
-  , _currentStable :: Maybe point
-  , _shouldStop :: Bool
-  }
-
-deriving stock instance (Show point, Show event) => Show (AccumulateInputs point event)
-
-ongoingIndex :: Lens' (AccumulateInputs point event) [Timed point (Maybe event)]
-ongoingIndex f acc = fmap (\_ongoingIndex -> acc{_ongoingIndex}) $ f $ _ongoingIndex acc
-
-initialRollback :: Lens' (AccumulateInputs point event) (Maybe point)
-initialRollback f acc = fmap (\_initialRollback -> acc{_initialRollback}) $ f $ _initialRollback acc
-
-currentStable :: Lens' (AccumulateInputs point event) (Maybe point)
-currentStable f acc = fmap (\_currentStable -> acc{_currentStable}) $ f $ _currentStable acc
-
-shouldStop :: Lens' (AccumulateInputs point event) Bool
-shouldStop f acc = fmap (\_shouldStop -> acc{_shouldStop}) $ f $ _shouldStop acc
-
-asInputs :: AccumulateInputs point event -> [ProcessedInput point event]
-asInputs acc =
-  let stop = if acc ^. shouldStop then [Stop] else []
-      rollbackFirst = toList $ Rollback <$> acc ^. initialRollback
-      asIndex [] = Nothing
-      asIndex [x] = Just $ Index x
-      asIndex (x : xs) = Just $ IndexAllDescending (x :| xs)
-      finalIndex = toList $ asIndex $ acc ^. ongoingIndex
-   in join [rollbackFirst, finalIndex, stop]
-
--- | Compact a list of input provided in a left to right order to optimise indexers operations
-compactInputs :: (Ord point) => [ProcessedInput point event] -> [ProcessedInput point event]
-compactInputs inputs =
-  let isStop = \case
-        Stop -> True
-        _other -> False
-      chooseStable p = Just . maybe p (max p)
-      chooseRollback p = Just . maybe p (min p)
-      go acc = \case
-        Index e -> case acc ^. initialRollback of
-          Nothing -> acc & ongoingIndex %~ (e :)
-          Just p | p <= e ^. point -> acc & ongoingIndex %~ (e :)
-          _otherwise -> acc
-        IndexAllDescending es -> acc & ongoingIndex <>~ toList es
-        Rollback p -> acc & initialRollback %~ chooseRollback p
-        StableAt p -> case acc ^. initialRollback of
-          Nothing -> acc & currentStable %~ chooseStable p
-          Just p' | p' <= p -> acc & currentStable %~ chooseStable p
-          _otherwise -> acc
-        Stop -> acc & shouldStop .~ True
-      foldInput = asInputs . foldr (flip go) (AccumulateInputs [] Nothing Nothing False)
-   in case span isStop inputs of
-        (xs, []) -> foldInput xs
-        (xs, _) -> foldInput xs <> [Stop]
 
 traverseJoin :: (Applicative f, Monad m, Traversable m) => (a -> f (m b)) -> m a -> f (m b)
 traverseJoin f = fmap join . traverse f
