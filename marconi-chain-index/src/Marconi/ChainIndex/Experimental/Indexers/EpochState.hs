@@ -93,10 +93,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
-import Marconi.Core.Experiment (IsSync (lastStablePoint))
 import Marconi.Core.Experiment qualified as Core
-import Marconi.Core.Experiment.Indexer.FileIndexer (EventInfo (fileMetadata))
-import Marconi.Core.Experiment.Worker.Transformer.Resume (withResume)
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
@@ -331,7 +328,7 @@ mkEpochStateWorker
       )
 mkEpochStateWorker workerConfig epochStateConfig rootDir = do
   indexer <- mkEpochStateIndexer workerConfig (indexerConfig epochStateConfig) rootDir
-  lastStable <- lastStablePoint indexer
+  lastStable <- Core.lastStablePoint indexer
   ledgerStateE <- runExceptT $ restoreLedgerState (Just lastStable) indexer
   epochState <- case ledgerStateE of
     Left _err -> throwError $ Core.IndexerInternalError "can't restore ledger state"
@@ -370,12 +367,12 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
 
       processAsEpochState
         :: ExceptT Core.IndexerError IO WorkerState
-        -> Core.Transformer
+        -> Core.Preprocessor
             (ExceptT Core.IndexerError IO)
             C.ChainPoint
             (WithDistance input)
             (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
-      processAsEpochState = Core.transformerM $ \case
+      processAsEpochState = Core.preprocessorM $ \case
         Core.Index x -> do
           pure . Core.Index <$> traverse mapOneEvent x
         Core.IndexAllDescending xs ->
@@ -391,7 +388,7 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
         Core.StableAt p -> pure . pure $ Core.StableAt p
         Core.Stop -> pure $ pure Core.Stop
 
-  let eventPreprocessing = processAsEpochState initialState <<< withResume lastStable
+  let eventPreprocessing = processAsEpochState initialState <<< Core.withResume lastStable
   Core.createWorker (workerName workerConfig) eventPreprocessing indexer
 
 deserialiseMetadata :: [Text] -> Maybe EpochMetadata
@@ -445,14 +442,16 @@ buildEpochStateIndexer codecConfig securityParam' path = do
          in blockNoAsText evt : chainPointTexts
       immutableEpochs
         :: Core.Timed (Core.Point EpochState) (Maybe EpochState)
-        -> [EventInfo EpochMetadata]
-        -> [EventInfo EpochMetadata]
+        -> [Core.EventInfo EpochMetadata]
+        -> [Core.EventInfo EpochMetadata]
       immutableEpochs timedEvent eventsInfo =
-        let sortedEvents = sortOn (metadataBlockNo . fileMetadata) eventsInfo
+        let sortedEvents = sortOn (metadataBlockNo . Core.fileMetadata) eventsInfo
             lastBlockNo = maybe 0 blockNo $ timedEvent ^. Core.event
             blockDepth = (\(C.BlockNo b) -> b) . (lastBlockNo -)
             isImmutable =
-              maybe True ((> securityParam') . fromIntegral . blockDepth) . metadataBlockNo . fileMetadata
+              maybe True ((> securityParam') . fromIntegral . blockDepth)
+                . metadataBlockNo
+                . Core.fileMetadata
             immutableEvents = takeWhile isImmutable sortedEvents
          in case immutableEvents of
               [] -> []
@@ -511,14 +510,16 @@ buildBlockIndexer codecConfig securityParam' path = do
          in blockNoAsText evt : chainPointTexts
       immutableBlocks
         :: Core.Timed (Core.Point EpochState) (Maybe (C.BlockInMode C.CardanoMode))
-        -> [EventInfo EpochMetadata]
-        -> [EventInfo EpochMetadata]
+        -> [Core.EventInfo EpochMetadata]
+        -> [Core.EventInfo EpochMetadata]
       immutableBlocks timedEvent eventsInfo =
-        let sortedEvents = sortOn (metadataBlockNo . fileMetadata) eventsInfo
+        let sortedEvents = sortOn (metadataBlockNo . Core.fileMetadata) eventsInfo
             lastBlockNo = maybe 0 getBlockNo $ timedEvent ^. Core.event
             blockDepth = (\(C.BlockNo b) -> b) . (lastBlockNo -)
             isImmutable =
-              maybe True ((> securityParam') . fromIntegral . blockDepth) . metadataBlockNo . fileMetadata
+              maybe True ((> securityParam') . fromIntegral . blockDepth)
+                . metadataBlockNo
+                . Core.fileMetadata
             immutableEvents = takeWhile isImmutable sortedEvents
          in case immutableEvents of
               [] -> []

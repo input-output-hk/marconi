@@ -15,7 +15,7 @@ module Marconi.Core.Experiment.Worker (
   Worker,
   createWorker,
   createWorkerPure,
-  createWorker',
+  createWorkerHoist,
   startWorker,
 ) where
 
@@ -37,12 +37,12 @@ import Marconi.Core.Experiment.Class (
   IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
   IsSync,
  )
+import Marconi.Core.Experiment.Preprocessor (Preprocessor, runPreprocessor)
 import Marconi.Core.Experiment.Type (
   IndexerError (OtherIndexError, StopIndexer),
   Point,
   ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
  )
-import Marconi.Core.Experiment.Worker.Transformer (Transformer, runTransformer)
 
 -- | Worker which also provides direct access to the indexer hidden inside it.
 data WorkerIndexer m input event indexer = WorkerIndexer
@@ -69,7 +69,7 @@ data WorkerM m input point = forall indexer event n.
   -- ^ use to identify the worker in logs
   , workerState :: MVar (indexer event)
   -- ^ the indexer controlled by this worker
-  , transformInput :: Transformer (ExceptT IndexerError m) point input event
+  , transformInput :: Preprocessor (ExceptT IndexerError m) point input event
   -- ^ adapt the input event givent by the coordinator to the worker type
   , hoistError :: forall a. n a -> ExceptT IndexerError m a
   -- ^ adapt the monadic stack of the indexer to the one of the worker
@@ -81,14 +81,14 @@ type Worker = WorkerM IO
 -- Create workers
 
 -- | create a worker for an indexer, retuning the worker and the @MVar@ it's using internally
-createWorker'
+createWorkerHoist
   :: (MonadIO f, WorkerIndexerType n event indexer)
   => (forall a. n a -> ExceptT IndexerError m a)
   -> Text
-  -> Transformer (ExceptT IndexerError m) (Point event) input event
+  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
-createWorker' hoist name f ix = liftIO $ do
+createWorkerHoist hoist name f ix = liftIO $ do
   workerState <- Con.newMVar ix
   pure $ WorkerIndexer workerState $ Worker name workerState f hoist
 
@@ -96,19 +96,19 @@ createWorker' hoist name f ix = liftIO $ do
 createWorkerPure
   :: (MonadIO f, MonadIO m, WorkerIndexerType m event indexer)
   => Text
-  -> Transformer (ExceptT IndexerError m) (Point event) input event
+  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
-createWorkerPure = createWorker' lift
+createWorkerPure = createWorkerHoist lift
 
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
   :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
   => Text
-  -> Transformer (ExceptT IndexerError m) (Point event) input event
+  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
-createWorker = createWorker' id
+createWorker = createWorkerHoist id
 
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come
@@ -199,7 +199,7 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
         pure . Just . StopIndexer . Just $ displayError e
 
       safeProcessEvent f input = do
-        processed <- runExceptT $ runTransformer f (pure input)
+        processed <- runExceptT $ runPreprocessor f (pure input)
         case processed of
           Left err -> (,f) <$> onProcessError (SomeException err)
           Right (processedInputs, f') ->

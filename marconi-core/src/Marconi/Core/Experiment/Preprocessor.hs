@@ -1,30 +1,31 @@
 {-# LANGUAGE LambdaCase #-}
 
-{- | 'Transformer's are used in a worker to transform the incoming events.
+{- | 'Preprocessor's are used to transform the incoming events of an indexer, generally in a @Worker@.
 
-   'Transformer's can carry an internal state, that can be updated on each incoming @ProcessingInput@.
+   'Preprocessor's can carry an internal state, that can be updated on each incoming @ProcessingInput@.
 
-   'Transfromer's are composable using 'Control.Category' operators (@.@, @>>>@ and @<<<@)
+   'Transfromer's are composable using 'Control.Category' and 'Control.Arrow' operators
+   ('.', '>>>' and '<<<').
 -}
-module Marconi.Core.Experiment.Worker.Transformer (
-  Transformer,
-  runTransformer,
+module Marconi.Core.Experiment.Preprocessor (
+  Preprocessor,
+  runPreprocessor,
 
-  -- * Stateless transformers
+  -- * Stateless preprocessors
   mapEvent,
   mapMaybeEvent,
   traverseEvent,
   traverseMaybeEvent,
 
-  -- * Stateful transformers
+  -- * Stateful preprocessors
   scanEvent,
   scanEventM,
   scanMaybeEvent,
   scanMaybeEventM,
 
   -- * Generic builder
-  transformer,
-  transformerM,
+  preprocessor,
+  preprocessorM,
 
   -- * Optimisation of a list of Processed inputs
   compactInputs,
@@ -47,30 +48,30 @@ import Marconi.Core.Experiment.Type (
  )
 
 {- | Stateful tranformer.
-Map a list of transformer actions to a new lis of actions.
+Map a list of preprocessor actions to a new lis of actions.
 Actions should be read from left to right
 element of the list
 -}
-type Transformer m point a b =
+type Preprocessor m point a b =
   ScanM m [ProcessedInput point a] [ProcessedInput point b]
 
--- | Apply a transformer to an element and retrieve the updated transformer
-runTransformer
+-- | Apply a preprocessor to an element and retrieve the updated transformer
+runPreprocessor
   :: (Monad m)
-  => Transformer m point a b
+  => Preprocessor m point a b
   -> [ProcessedInput point a]
-  -> m ([ProcessedInput point b], Transformer m point a b)
-runTransformer (ScanM f mState) input = do
+  -> m ([ProcessedInput point b], Preprocessor m point a b)
+runPreprocessor (ScanM f mState) input = do
   state <- mState
   (res, state') <- f input `runStateT` state
   pure (res, ScanM f (pure state'))
 
--- | Lift a function on events to a transformer
-mapEvent :: (Monad m) => (a -> b) -> Transformer m point a b
+-- | Lift a function on events to a preprocessor
+mapEvent :: (Monad m) => (a -> b) -> Preprocessor m point a b
 mapEvent = arr . fmap . fmap
 
--- | Lift a function that may emit an event to a transformer.
-mapMaybeEvent :: forall m point a b. (Monad m) => (a -> Maybe b) -> Transformer m point a b
+-- | Lift a function that may emit an event to a preprocessor.
+mapMaybeEvent :: forall m point a b. (Monad m) => (a -> Maybe b) -> Preprocessor m point a b
 mapMaybeEvent f =
   let mapOneEvent = event %~ (>>= f)
       go :: (Applicative f) => ProcessedInput point a -> f (ProcessedInput point b)
@@ -81,12 +82,12 @@ mapMaybeEvent f =
       go Stop = pure Stop
    in arr (go =<<)
 
--- | Lift an effectful function on events to a transformer
-traverseEvent :: (Monad m) => (a -> m b) -> Transformer m point a b
+-- | Lift an effectful function on events to a preprocessor
+traverseEvent :: (Monad m) => (a -> m b) -> Preprocessor m point a b
 traverseEvent f = arrM (traverse $ traverse f)
 
--- | Lift an effectful function that may emit an event to a transformer
-traverseMaybeEvent :: (Monad m) => (a -> m (Maybe b)) -> Transformer m point a b
+-- | Lift an effectful function that may emit an event to a preprocessor
+traverseMaybeEvent :: (Monad m) => (a -> m (Maybe b)) -> Preprocessor m point a b
 traverseMaybeEvent f =
   let mapOneEvent = event (runMaybeT . (MaybeT . f <=< MaybeT . pure))
       go (Index x) = pure . Index <$> mapOneEvent x
@@ -97,7 +98,7 @@ traverseMaybeEvent f =
    in arrM $ traverseJoin go
 
 -- | Create a tranformer from a strict stateful computation
-scanEvent :: forall m s point a b. (Monad m) => (a -> State s b) -> s -> Transformer m point a b
+scanEvent :: forall m s point a b. (Monad m) => (a -> State s b) -> s -> Preprocessor m point a b
 scanEvent f x =
   let go :: [ProcessedInput point a] -> State s [ProcessedInput point b]
       go = traverse (traverse f)
@@ -105,7 +106,7 @@ scanEvent f x =
 
 -- | Create a tranformer from a strict stateful computation
 scanMaybeEvent
-  :: forall m s point a b. (Monad m) => (a -> State s (Maybe b)) -> s -> Transformer m point a b
+  :: forall m s point a b. (Monad m) => (a -> State s (Maybe b)) -> s -> Preprocessor m point a b
 scanMaybeEvent f =
   let mapOneEvent = event (runMaybeT . (MaybeT . f <=< MaybeT . pure))
       go :: (Applicative f) => ProcessedInput point a -> State s (f (ProcessedInput point b))
@@ -118,7 +119,7 @@ scanMaybeEvent f =
 
 -- | Create a tranformer from a strict stateful computation
 scanEventM
-  :: forall m s point a b. (Monad m) => (a -> StateT s m b) -> m s -> Transformer m point a b
+  :: forall m s point a b. (Monad m) => (a -> StateT s m b) -> m s -> Preprocessor m point a b
 scanEventM f x =
   let go :: [ProcessedInput point a] -> StateT s m [ProcessedInput point b]
       go = traverse (traverse f)
@@ -126,7 +127,7 @@ scanEventM f x =
 
 -- | Create a tranformer from a strict stateful computation
 scanMaybeEventM
-  :: forall m s point a b. (Monad m) => (a -> StateT s m (Maybe b)) -> m s -> Transformer m point a b
+  :: forall m s point a b. (Monad m) => (a -> StateT s m (Maybe b)) -> m s -> Preprocessor m point a b
 scanMaybeEventM f =
   let mapOneEvent = event (runMaybeT . (MaybeT . f <=< MaybeT . pure))
       go :: (Applicative f) => ProcessedInput point a -> StateT s m (f (ProcessedInput point b))
@@ -137,19 +138,19 @@ scanMaybeEventM f =
       go Stop = pure . pure $ Stop
    in ScanM $ traverseJoin go
 
-transformer
+preprocessor
   :: (Monad m)
   => (ProcessedInput point a -> State s [ProcessedInput point b])
   -> s
-  -> Transformer m point a b
-transformer f = generalize . Scan (traverseJoin f)
+  -> Preprocessor m point a b
+preprocessor f = generalize . Scan (traverseJoin f)
 
-transformerM
+preprocessorM
   :: (Monad m)
   => (ProcessedInput point a -> StateT s m [ProcessedInput point b])
   -> m s
-  -> Transformer m point a b
-transformerM = ScanM . traverseJoin
+  -> Preprocessor m point a b
+preprocessorM = ScanM . traverseJoin
 
 data AccumulateInputs point event = AccumulateInputs
   { _ongoingIndex :: [Timed point (Maybe event)]

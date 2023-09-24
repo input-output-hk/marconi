@@ -40,6 +40,7 @@ import Marconi.Core.Experiment.Class (
   IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
   IsSync (lastStablePoint, lastSyncPoint),
  )
+import Marconi.Core.Experiment.Preprocessor (Preprocessor, preprocessor, runPreprocessor)
 import Marconi.Core.Experiment.Type (
   IndexerError (StopIndexer),
   Point,
@@ -51,7 +52,6 @@ import Marconi.Core.Experiment.Worker (
   WorkerM (Worker),
   startWorker,
  )
-import Marconi.Core.Experiment.Worker.Transformer (Transformer, runTransformer, transformer)
 
 {- | A coordinator synchronises the event processing of a list of indexers.
  A coordinator is itself is an indexer.
@@ -110,8 +110,8 @@ processQueue
   -> Con.MVar (indexer event)
   -> IO r
 processQueue f initialState q cBox =
-  let attachStable :: Transformer IO (Point event) event event
-      attachStable = flip transformer initialState $ \case
+  let attachStable :: Preprocessor IO (Point event) event event
+      attachStable = flip preprocessor initialState $ \case
         Index timedEvent -> do
           stablePointM <- f timedEvent
           case stablePointM of
@@ -127,7 +127,7 @@ processQueue f initialState q cBox =
       queueStep g = do
         e <- STM.atomically $ STM.readTBQueue q
         g' <- Con.modifyMVar cBox $ \c -> do
-          (events, g') <- runTransformer g [e]
+          (events, g') <- runPreprocessor g [e]
           mres <- runExceptT (foldM step c events)
           case mres of
             Left (err :: IndexerError) -> throwIO err

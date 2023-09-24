@@ -13,7 +13,7 @@
 
  = Motivation
 
- The point we wanted to address are the folowing:
+ The point we wanted to address are the following:
 
     * @Storable@ implementation is designed in a way that strongly promotes indexers
       that rely on a mix of database and in-memory storage.
@@ -26,8 +26,9 @@
         * group of indexers, synchronised as a single indexer
         * implement in-memory/database storage that rely on other query heuristic
 
-    * The original implementation considered the @StorablePoint@ as data that can be derived from @Event@,
-      leading to the design of synthetic events to deal with indexer that didn't index enough data.
+    * The original implementation considered the @StorablePoint@ as data that can be derived from
+      @Event@, leading to the design of synthetic events to deal with indexer that didn't index
+      enough data.
 
     * In marconi, the original design uses a callback design to handle `MVar` modification,
       we wanted to address this point as well.
@@ -38,18 +39,22 @@
     * Each /event/ is emitted at a givent /point/ in time.
     * A /query/ is a request that the /indexer/ should be able to answer.
     * An /indexer instance/ corresponds to the use of an indexer for a specific type of events.
-    * Most of the time, an /indexer instance/ requires the implementation of some typeclasses to specify its behaviour.
+    * Most of the time, an /indexer instance/ requires the implementation of some typeclasses to
+      specify its behaviour.
     * An /indexer transformer/ slightly alter the behaviour of an existing transformer.
       In general, an /indexer transformer/ should add its logic to one of the typeclasses
       that specify the behaviour of an indexer.
     * A /coordinator/ is a specific kind of indexer that pass events to a set of indexer it coordonates.
     * A /worker/ is a wrapper around an indexer, that hides the indexer types to a coordinator
       and handle locally the lifecycle of the indexer.
+    * A /preprocessor/ is a stateful function that transforms events before they are sent to an
+    indexer or to a worker.
 
 
  = Content
 
-    * Base type classes to define an indexer, its query interface, and the required plumbing to handle rollback.
+    * Base type classes to define an indexer, its query interface, and the required plumbing to handle
+      rollback.
     * A full in-memory indexer (naive), a full SQLite indexer
       and an indexer that compose it with a SQL layer for persistence.
     * A coordinator for indexers, that can be exposed as an itdexer itself.
@@ -293,6 +298,7 @@ module Marconi.Core.Experiment (
   FileStorageConfig (FileStorageConfig),
   FileBuilder (FileBuilder),
   EventBuilder (EventBuilder),
+  EventInfo (fileMetadata),
   mkFileIndexer,
 
   -- ** Mixed indexer
@@ -354,18 +360,18 @@ module Marconi.Core.Experiment (
   WorkerIndexer (..),
   WorkerIndexerType,
   startWorker,
-  createWorker',
   createWorker,
+  createWorkerHoist,
   createWorkerPure,
   ProcessedInput (..),
 
-  -- ***  Workers transformers
+  -- *** Preprocessors
 
-  -- | Transformers are used to alter the incoming the events sent to an indexer
+  -- | Preprocessors are used to alter the incoming the events sent to an indexer
   -- through a worker.
   --
   -- It allows to transform the content of a block or to silence some events.
-  Transformer,
+  Preprocessor,
   mapEvent,
   mapMaybeEvent,
   traverseEvent,
@@ -373,8 +379,8 @@ module Marconi.Core.Experiment (
   scanEvent,
   scanEventM,
   scanMaybeEventM,
-  transformer,
-  transformerM,
+  preprocessor,
+  preprocessorM,
 
   -- **** Resuming/draining
   Resume,
@@ -529,6 +535,7 @@ import Marconi.Core.Experiment.Coordinator (
  )
 import Marconi.Core.Experiment.Indexer.FileIndexer (
   EventBuilder (EventBuilder),
+  EventInfo (fileMetadata),
   FileBuilder (FileBuilder),
   FileIndexer (FileIndexer),
   FileStorageConfig (FileStorageConfig),
@@ -568,6 +575,22 @@ import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
   mkSqliteIndexer,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+ )
+import Marconi.Core.Experiment.Preprocessor (
+  Preprocessor,
+  mapEvent,
+  mapMaybeEvent,
+  preprocessor,
+  preprocessorM,
+  scanEvent,
+  scanEventM,
+  scanMaybeEventM,
+  traverseEvent,
+  traverseMaybeEvent,
+ )
+import Marconi.Core.Experiment.Preprocessor.Resume (
+  Resume,
+  withResume,
  )
 import Marconi.Core.Experiment.Query (
   EventAtQuery (..),
@@ -664,25 +687,9 @@ import Marconi.Core.Experiment.Worker (
   WorkerIndexerType,
   WorkerM (..),
   createWorker,
-  createWorker',
+  createWorkerHoist,
   createWorkerPure,
   startWorker,
- )
-import Marconi.Core.Experiment.Worker.Transformer (
-  Transformer,
-  mapEvent,
-  mapMaybeEvent,
-  scanEvent,
-  scanEventM,
-  scanMaybeEventM,
-  transformer,
-  transformerM,
-  traverseEvent,
-  traverseMaybeEvent,
- )
-import Marconi.Core.Experiment.Worker.Transformer.Resume (
-  Resume,
-  withResume,
  )
 
 {- | Try to rollback to a given point to resume the indexer.

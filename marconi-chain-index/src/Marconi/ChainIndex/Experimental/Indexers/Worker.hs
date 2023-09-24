@@ -25,7 +25,6 @@ import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distanc
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core.Experiment qualified as Core
-import Marconi.Core.Experiment.Worker.Transformer.Resume (withResume)
 
 -- | An alias for an indexer with catchup and transformation to perform filtering
 type StandardIndexer m indexer event =
@@ -45,6 +44,7 @@ data StandardWorkerConfig m input event = StandardWorkerConfig
   , logger :: Trace m (Core.IndexerEvent C.ChainPoint)
   }
 
+-- | Contains a worker for a given indexer and the `MVar` that is modified by this worker
 data StandardWorker m input event indexer = StandardWorker
   { standardWorkerIndexerVar :: !(MVar (StandardIndexer m indexer event))
   , standardWorker :: Core.WorkerM m (WithDistance input) (Core.Point event)
@@ -112,7 +112,7 @@ mkStandardWorkerWithFilter config eventFilter indexer = do
         Core.traverseMaybeEvent $ fmap sequence . traverse (lift . eventExtractor config)
       transformedIndexer = mkStandardIndexerWithFilter config eventFilter indexer
   lastStable <- Core.lastStablePoint indexer
-  let eventPreprocessing = withResume lastStable <<< mapEventUnderDistance
+  let eventPreprocessing = Core.withResume lastStable <<< mapEventUnderDistance
   Core.WorkerIndexer idx worker <-
     Core.createWorker (workerName config) eventPreprocessing transformedIndexer
   pure $ StandardWorker idx worker
