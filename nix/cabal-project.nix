@@ -93,10 +93,20 @@ let
   };
 
 
+  overlays = [
+    (_: prev: {
+      hsPkgs = pkgs.pkgsBuildBuild.setGitRevForPaths pkgs.gitrev [
+        "marconi-chain-index.components.exes.marconi-chain-index"
+      ]
+        prev.hsPkgs;
+    })
+  ];
+
+
   modules = [{ inherit packages; }];
 
 
-  project = { inherit sha256map modules; };
+  project = { inherit sha256map modules overlays; };
 
 in
 
