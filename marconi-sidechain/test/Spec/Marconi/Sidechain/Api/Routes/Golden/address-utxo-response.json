@@ -4,6 +4,7 @@
         "blockNo": 1,
         "datum": null,
         "datumHash": null,
+        "epochNo": 0,
         "slotNo": 1,
         "spentBy": null,
         "txId": "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000",
@@ -28,6 +29,7 @@
             "int": 34
         },
         "datumHash": "6d683f9bd0c3b874cdf3da1793b5eb0ea73a074d3e4b66bc62279b09d387fa8d",
+        "epochNo": 0,
         "slotNo": 1,
         "spentBy": {
             "slotNo": 12,
