@@ -176,6 +176,7 @@ propJSONRountripGetUtxosFromAddressResult = property $ do
     AddressUtxoResult
       <$> Gen.genSlotNo
       <*> Gen.genHashBlockHeader
+      <*> Gen.genEpochNo
       <*> Gen.genBlockNo
       <*> fmap fromIntegral (Gen.word64 $ Range.linear 0 5)
       <*> CGen.genTxIn
@@ -307,6 +308,7 @@ goldenAddressUtxoResult = do
         [ AddressUtxoResult
             (C.SlotNo 1)
             blockHeaderHash
+            (C.EpochNo 0)
             (C.BlockNo 1)
             (TxIndexInBlock 0)
             (C.TxIn txId (C.TxIx 0))
@@ -318,6 +320,7 @@ goldenAddressUtxoResult = do
         , AddressUtxoResult
             (C.SlotNo 1)
             blockHeaderHash
+            (C.EpochNo 0)
             (C.BlockNo 1)
             (TxIndexInBlock 0)
             (C.TxIn txId (C.TxIx 0))

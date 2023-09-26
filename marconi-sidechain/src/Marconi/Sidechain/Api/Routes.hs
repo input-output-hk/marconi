@@ -277,6 +277,7 @@ instance FromJSON SidechainValue where
 data AddressUtxoResult = AddressUtxoResult
   { utxoResultSlotNo :: !C.SlotNo
   , utxoResultBlockHeader :: !(C.Hash C.BlockHeader)
+  , utxoResultEpochNo :: !C.EpochNo
   , utxoResultBlockNo :: !C.BlockNo
   , utxoResultTxIndex :: !TxIndexInBlock
   , utxoResultTxIn :: !C.TxIn
@@ -289,11 +290,12 @@ data AddressUtxoResult = AddressUtxoResult
   deriving (Eq, Show, Generic)
 
 instance ToJSON AddressUtxoResult where
-  toJSON (AddressUtxoResult slotNo bhh bn txIndexInBlock txIn dath dat value spentBy txInputs) =
+  toJSON (AddressUtxoResult slotNo bhh en bn txIndexInBlock txIn dath dat value spentBy txInputs) =
     let C.TxIn txId txIx = txIn
      in Aeson.object
           [ "slotNo" .= slotNo
           , "blockHeaderHash" .= bhh
+          , "epochNo" .= en
           , "blockNo" .= bn
           , "txIndexInBlock" .= txIndexInBlock
           , "txId" .= txId
@@ -311,6 +313,7 @@ instance FromJSON AddressUtxoResult where
           AddressUtxoResult
             <$> v .: "slotNo"
             <*> v .: "blockHeaderHash"
+            <*> v .: "epochNo"
             <*> v .: "blockNo"
             <*> v .: "txIndexInBlock"
             <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
