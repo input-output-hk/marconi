@@ -123,7 +123,7 @@ let
 
 
   project = project'.appendOverlays [
-    (_: prev: {
+    (prev: _: {
       hsPkgs = pkgs.pkgsBuildBuild.setGitRevForPaths pkgs.gitrev [
         "marconi-chain-index.components.exes.marconi-chain-index"
       ]
