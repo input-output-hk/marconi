@@ -111,14 +111,14 @@ mkSidechainEnvFromCliArgs securityParam cliArgs@CliArgs{httpPort, targetAddresse
 
 mkSidechainEnv
   :: SecurityParam
-  -> Maybe Port
+  -> Port
   -> Maybe TargetAddresses
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> CliArgs
   -> Trace IO Text
   -> IO SidechainEnv
 mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace = do
-  let httpSettings = maybe defaultSettings (flip setPort defaultSettings) httpPort
+  let httpSettings = setPort httpPort defaultSettings
   let sidechainQueryEnv = SidechainQueryEnv securityParam httpSettings
   sidechainIndexers <-
     SidechainIndexersEnv

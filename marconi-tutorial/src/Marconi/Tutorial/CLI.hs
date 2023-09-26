@@ -6,7 +6,7 @@ import Options.Applicative qualified as Opt
 data Options = Options
   { commonOptions :: !CLI.CommonOptions
   , optionsDbPath :: !FilePath
-  , optionsHttpPort :: !(Maybe Int)
+  , optionsHttpPort :: !Int
   }
 
 parseOptions :: IO Options
@@ -23,7 +23,7 @@ optionsParser =
   Options
     <$> CLI.commonOptionsParser
     <*> CLI.commonDbDirParser
-    <*> CLI.commonMaybePortParser
+    <*> CLI.commonPortParser
 
 programDescription :: Opt.InfoMod a
 programDescription =
