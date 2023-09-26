@@ -95,7 +95,8 @@ let
 
   overlays = [
     (_: prev: {
-      hsPkgs = pkgs.pkgsBuildBuild.setGitRevForPaths pkgs.gitrev [
+      hsPkgs = pkgs.pkgsBuildBuild.setGitRevForPaths
+        (inputs.self.rev or "0000000000000000000000000000000000000000") [
         "marconi-chain-index.components.exes.marconi-chain-index"
       ]
         prev.hsPkgs;
