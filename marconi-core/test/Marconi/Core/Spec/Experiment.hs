@@ -820,7 +820,7 @@ coordinatorIndexerRunnerWithPreprocessor
   -> Model.IndexerTestRunner (ExceptT Core.IndexerError IO) event (UnderCoordinator wrapped)
 coordinatorIndexerRunnerWithPreprocessor pre wRunner = Model.IndexerTestRunner monadicExceptTIO $ do
   wrapped <- wRunner ^. Model.indexerGenerator
-  workerIndexer <- lift $ Core.createWorker "TestWorker" pre wrapped
+  workerIndexer <- lift $ Core.createWorkerWithPreprocessing "TestWorker" pre wrapped
   UnderCoordinator . Core.IndexTransformer (IndexerMVar $ Core.workerIndexerVar workerIndexer)
     <$> lift (Core.mkCoordinator [Core.worker workerIndexer])
 
