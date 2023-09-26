@@ -75,7 +75,7 @@ run appName = do
         Right result -> pure result
       )
 
-  let startingPoints = getStartingPoints preferredStartingPoint indexerLastStablePoint
+  let startingPoint = getStartingPoint preferredStartingPoint indexerLastStablePoint
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
@@ -85,13 +85,13 @@ run appName = do
         retryConfig
         securityParam
         networkId
-        startingPoints
+        startingPoint
         socketPath
     )
     indexers
 
-getStartingPoints :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint
-getStartingPoints preferredStartingPoint indexerLastSyncPoint =
+getStartingPoint :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint
+getStartingPoint preferredStartingPoint indexerLastSyncPoint =
   case preferredStartingPoint of
     C.ChainPointAtGenesis -> indexerLastSyncPoint
     nonGenesisPreferedChainPoint -> nonGenesisPreferedChainPoint

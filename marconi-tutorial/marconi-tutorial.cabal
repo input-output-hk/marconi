@@ -38,6 +38,7 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Tutorial.CLI
+    Marconi.Tutorial.Env
     Marconi.Tutorial.HttpServer
     Marconi.Tutorial.Indexers
     Marconi.Tutorial.Indexers.AddressCount
@@ -61,6 +62,7 @@ library
   -- Non-IOG dependencies
   ------------------------
   build-depends:
+    , aeson
     , async
     , base                  >=4.9 && <5
     , containers
@@ -69,7 +71,6 @@ library
     , lens
     , mtl
     , optparse-applicative
-    , servant
     , servant-server
     , sqlite-simple
     , text
