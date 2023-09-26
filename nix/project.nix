@@ -122,15 +122,15 @@ let
   };
 
 
-  project = project'.appendOverlays [
-    (prev: _: {
-      hsPkgs = pkgs.pkgsBuildBuild.setGitRevForPaths pkgs.gitrev [
-        "marconi-chain-index.components.exes.marconi-chain-index"
-      ]
-        prev.hsPkgs;
-    })
-  ];
+  # project = project'.appendOverlays [
+  #   (_: prev: {
+  #     hsPkgs = pkgs.pkgsBuildBuild.setGitRevForPaths (lib.trace pkgs.gitrev pkgs.gitrev) [
+  #       "marconi-chain-index.components.exes.marconi-chain-index"
+  #     ]
+  #       prev.hsPkgs;
+  #   })
+  # ];
 
 in
 
-project
+project'

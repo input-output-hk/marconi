@@ -14,6 +14,7 @@ in
   {
     packages.pre-commit-check = cabalProject.iogx.pre-commit-check;
     packages.read-the-docs-site = cabalProject.iogx.read-the-docs-site;
+    packages.marconi2 = pkgs.pkgsBuildBuild.setGitRev (lib.trace "s:${pkgs.gitrev}" pkgs.gitrev) cabalProject.hsPkgs.marconi-chain-index.components.exes.marconi-chain-index;
   }
   {
     hydraJobs.native = cabalProject.iogx.hydraJobs;
