@@ -114,5 +114,5 @@ mkStandardWorkerWithFilter config eventFilter indexer = do
   lastStable <- Core.lastStablePoint indexer
   let eventPreprocessing = Core.withResume lastStable <<< mapEventUnderDistance
   Core.WorkerIndexer idx worker <-
-    Core.createWorker (workerName config) eventPreprocessing transformedIndexer
+    Core.createWorkerWithPreprocessing (workerName config) eventPreprocessing transformedIndexer
   pure $ StandardWorker idx worker

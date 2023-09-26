@@ -16,6 +16,7 @@ module Marconi.Core.Experiment.Worker (
   createWorker,
   createWorkerPure,
   createWorkerHoist,
+  createWorkerWithPreprocessing,
   startWorker,
 ) where
 
@@ -37,7 +38,7 @@ import Marconi.Core.Experiment.Class (
   IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
   IsSync,
  )
-import Marconi.Core.Experiment.Preprocessor (Preprocessor, runPreprocessor)
+import Marconi.Core.Experiment.Preprocessor (Preprocessor, mapMaybeEvent, runPreprocessor)
 import Marconi.Core.Experiment.Type (
   IndexerError (OtherIndexError, StopIndexer),
   Point,
@@ -92,6 +93,15 @@ createWorkerHoist hoist name f ix = liftIO $ do
   workerState <- Con.newMVar ix
   pure $ WorkerIndexer workerState $ Worker name workerState f hoist
 
+-- | create a worker for an indexer that already throws IndexerError
+createWorkerWithPreprocessing
+  :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
+  => Text
+  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
+  -> indexer event
+  -> f (WorkerIndexer m input event indexer)
+createWorkerWithPreprocessing = createWorkerHoist id
+
 -- | create a worker for an indexer that doesn't throw error
 createWorkerPure
   :: (MonadIO f, MonadIO m, WorkerIndexerType m event indexer)
@@ -105,10 +115,10 @@ createWorkerPure = createWorkerHoist lift
 createWorker
   :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
   => Text
-  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
+  -> (input -> Maybe event)
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
-createWorker = createWorkerHoist id
+createWorker name = createWorkerWithPreprocessing name . mapMaybeEvent
 
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come

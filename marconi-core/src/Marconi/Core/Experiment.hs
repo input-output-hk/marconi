@@ -363,6 +363,7 @@ module Marconi.Core.Experiment (
   createWorker,
   createWorkerHoist,
   createWorkerPure,
+  createWorkerWithPreprocessing,
   ProcessedInput (..),
 
   -- *** Preprocessors
@@ -689,6 +690,7 @@ import Marconi.Core.Experiment.Worker (
   createWorker,
   createWorkerHoist,
   createWorkerPure,
+  createWorkerWithPreprocessing,
   startWorker,
  )
 

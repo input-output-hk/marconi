@@ -3,7 +3,6 @@
 module Marconi.Tutorial.Indexers where
 
 import Cardano.BM.Trace (Trace)
-import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
@@ -42,5 +41,5 @@ runIndexers trace o = do
     retryConfig
     socketPath
     networkId
-    (NonEmpty.singleton preferedStartingPoint)
+    preferedStartingPoint
     indexers

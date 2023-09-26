@@ -389,7 +389,7 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
         Core.Stop -> pure $ pure Core.Stop
 
   let eventPreprocessing = processAsEpochState initialState <<< Core.withResume lastStable
-  Core.createWorker (workerName workerConfig) eventPreprocessing indexer
+  Core.createWorkerWithPreprocessing (workerName workerConfig) eventPreprocessing indexer
 
 deserialiseMetadata :: [Text] -> Maybe EpochMetadata
 deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
