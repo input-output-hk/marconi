@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
@@ -32,6 +33,10 @@ module Marconi.ChainIndex.Experimental.Indexers.EpochState (
   StandardEpochStateIndexer,
   mkEpochStateIndexer,
   mkEpochStateWorker,
+
+  -- * Queries
+  ActiveSDDByEpochNoQuery,
+  NonceByEpochNoQuery,
 ) where
 
 import Cardano.Api qualified as C
@@ -57,6 +62,7 @@ import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.State.Strict (MonadState)
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Bifunctor (bimap)
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
@@ -126,7 +132,8 @@ data EpochNonce = EpochNonce
   , _nonceNonce :: !Ledger.Nonce
   , _nonceBlockNo :: !C.BlockNo
   }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (SQL.FromRow, SQL.ToRow, FromJSON, ToJSON)
 
 instance SQL.ToRow (Core.Timed C.ChainPoint EpochNonce) where
   toRow epochNonce =
@@ -150,7 +157,8 @@ data EpochSDD = EpochSDD
   , _sddLovelace :: !C.Lovelace
   , _sddBlockNo :: !C.BlockNo
   }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (SQL.FromRow, SQL.ToRow, FromJSON, ToJSON)
 
 type instance Core.Point (NonEmpty EpochSDD) = C.ChainPoint
 
@@ -798,6 +806,7 @@ instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
     Core.close $ indexer ^. epochNonceIndexer
 
 newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
+  deriving newtype (FromJSON, ToJSON)
 
 type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
 
@@ -837,6 +846,7 @@ instance
   query cp _ = fmap Just . restoreLedgerState (Just cp)
 
 newtype NonceByEpochNoQuery = NonceByEpochNoQuery C.EpochNo
+  deriving newtype (FromJSON, ToJSON)
 
 type instance Core.Result NonceByEpochNoQuery = Maybe (Core.Timed C.ChainPoint EpochNonce)
 

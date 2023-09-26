@@ -33,7 +33,7 @@ main = do
     traceConfig <- defaultConfigTesting
     withTrace traceConfig "marconi-sidechain" $ \trace -> do
       cliArgs <- mkCliArgs tempDir
-      env <- mkSidechainEnv 2160 Nothing Nothing Nothing cliArgs trace
+      env <- mkSidechainEnv 2160 (CLI.httpPort cliArgs) Nothing Nothing cliArgs trace
       Warp.testWithApplication (pure $ marconiApp env) $ \port -> do
         rpcClientAction <- flip runReaderT env $ mkRpcClientAction port
         defaultMain $ tests env rpcClientAction
