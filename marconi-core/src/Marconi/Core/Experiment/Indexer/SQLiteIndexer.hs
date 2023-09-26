@@ -43,8 +43,7 @@ import Control.Monad (when, (<=<))
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (toList), traverse_)
-import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -158,7 +157,7 @@ mkSqliteIndexer
     let getLastStablePoint :: SQL.Connection -> m (Point event)
         getLastStablePoint h = do
           res <- runLastStablePointQuery h lastStablePointQuery
-          pure $ maybe genesis NonEmpty.last $ NonEmpty.nonEmpty res
+          pure $ fromMaybe genesis res
      in do
           _connection <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
           traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
@@ -278,9 +277,9 @@ runLastStablePointQuery
   :: (MonadError IndexerError m, MonadIO m, SQL.FromRow r)
   => SQL.Connection
   -> GetLastStablePointQuery
-  -> m [r]
+  -> m (Maybe r)
 runLastStablePointQuery conn (GetLastStablePointQuery q) =
-  either throwError pure <=< liftIO $
+  either throwError (pure . listToMaybe) <=< liftIO $
     handleSQLErrors (SQL.query_ conn q)
 
 instance

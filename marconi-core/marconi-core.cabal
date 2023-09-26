@@ -95,7 +95,6 @@ library
   -- Other dependencies
   ------------------------
   build-depends:
-  build-depends:
     , async
     , base           >=4.7 && <5
     , bytestring
@@ -146,6 +145,7 @@ test-suite marconi-core-test
   hs-source-dirs: test
   build-depends:
     , base                   >=4.7    && <5
+    , containers
     , contra-tracer
     , lens
     , marconi-core

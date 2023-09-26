@@ -22,7 +22,7 @@ import Marconi.Core.Experiment.Preprocessor (Preprocessor, preprocessorM)
 import Marconi.Core.Experiment.Type (
   IndexerError (ResumingFailed),
   Point,
-  ProcessedInput (Index, IndexAllDescending, Rollback, Stop),
+  ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
   Timed,
   point,
  )

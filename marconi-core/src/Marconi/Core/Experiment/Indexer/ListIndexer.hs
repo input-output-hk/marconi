@@ -68,6 +68,7 @@ instance (Monad m) => IsIndex m event ListIndexer where
           if isIndexBeforeRollback ix
             then ix -- if we're already before the rollback, we don't have to do anything
             else adjustLatestPoint $ cleanEventsAfterRollback ix
+
   setLastStablePoint p = pure . (latestStablePoint .~ p)
 
 instance (Applicative m) => IsSync m event ListIndexer where

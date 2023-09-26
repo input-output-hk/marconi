@@ -77,8 +77,7 @@ syncLastPointQuery = Core.GetLastStablePointQuery syncHistoryQuery
 Used to find resuming points on restart.
 -}
 syncHistoryQuery :: SQL.Query
-syncHistoryQuery =
-  [sql|SELECT slotNo, blockHeaderHash FROM sync ORDER BY slotNo DESC LIMIT 1 |]
+syncHistoryQuery = [sql|SELECT slotNo, blockHeaderHash FROM sync ORDER BY slotNo|]
 
 -- | A helper to create an indexer for Cardano for a single table, with an immutable point tracker
 mkSingleInsertSyncedSqliteIndexer
