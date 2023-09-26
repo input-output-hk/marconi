@@ -32,8 +32,6 @@ in
     CARDANO_NODE = "${cardano-node}/bin/cardano-node";
   };
 
-  tools.haskellCompiler = cabalProject.args.compiler-nix-name;
-
   preCommit = {
     fourmolu.enable = true;
     shellcheck.enable = false;

@@ -1,4 +1,4 @@
-{ inputs, pkgs, config, ... }:
+{ inputs, pkgs, ... }:
 
 cabalProject:
 

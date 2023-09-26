@@ -34,7 +34,7 @@
     inherit inputs;
     repoRoot = ./.;
     systems = [ "x86_64-linux" "x86_64-darwin" ];
-    outputs = ./nix/outputs.nix;
+    outputs = import ./nix/outputs.nix;
   };
 
 

@@ -9,9 +9,9 @@ let
 
   packages = { config, ... }: {
     # These rely on the plutus-tx-plugin, so they don't cross-compile.
-    marconi-chain-index.components.tests.marconi-chain-index-test.buildable = l.mkForce (!isCross);
-    marconi-chain-index.components.tests.marconi-chain-index-test-compare-cardano-db-sync.buildable = l.mkForce (!isCross);
-    marconi-chain-index.components.sublibs.marconi-chain-index-test-lib.buildable = l.mkForce (!isCross);
+    marconi-chain-index.components.tests.marconi-chain-index-test.buildable = lib.mkForce (!isCross);
+    marconi-chain-index.components.tests.marconi-chain-index-test-compare-cardano-db-sync.buildable = lib.mkForce (!isCross);
+    marconi-chain-index.components.sublibs.marconi-chain-index-test-lib.buildable = lib.mkForce (!isCross);
 
     # These don't cross-compile anymore after updating hackage.
     # There was an error with wai-app-static (a transitive dependency).
@@ -101,6 +101,8 @@ let
 
     compiler-nix-name = "ghc928";
 
+    shell.withHoogle = false;
+
     sha256map = {
       "https://github.com/input-output-hk/cardano-node"."a158a679690ed8b003ee06e1216ac8acd5ab823d" = "sha256-uY7wPyCgKuIZcGu0+vGacjGw2kox8H5ZsVGsfTNtU0c=";
     };
@@ -113,11 +115,21 @@ let
   };
 
 
-  project = lib.iogx.mkHaskellProject {
+  project' = lib.iogx.mkHaskellProject {
     inherit cabalProjectArgs;
-    shellFor = repoRoot.nix.shell;
+    shellArgsForProjectVariant = repoRoot.nix.shell;
     readTheDocs.siteFolder = "doc/read-the-docs-site";
   };
+
+
+  project = project'.appendOverlays [
+    (_: prev: {
+      hsPkgs = pkgs.pkgsBuildBuild.setGitRevForPaths pkgs.gitrev [
+        "marconi-chain-index.components.exes.marconi-chain-index"
+      ]
+        prev.hsPkgs;
+    })
+  ];
 
 in
 
