@@ -95,11 +95,11 @@ let
 
   overlays = [
     (_: prev: {
-      hsPkgs = prev.pkgs.pkgsBuildBuild.setGitRevForPaths
+      hsPkgs = l.trace "build=${prev.pkgs.buildPlatform.system} host=${prev.pkgs.hostPlatform.system}" (prev.pkgs.pkgsBuildBuild.setGitRevForPaths
         (inputs.self.rev or "0000000000000000000000000000000000000000") [
         "marconi-chain-index.components.exes.marconi-chain-index"
       ]
-        prev.hsPkgs;
+        prev.hsPkgs);
     })
   ];
 
