@@ -1406,11 +1406,11 @@
         "sodium": "sodium_2"
       },
       "locked": {
-        "lastModified": 1695803856,
-        "narHash": "sha256-j25eUgNw1WKGuUIiZk52rHAeK46Mzr2JpxPNfR/QE58=",
+        "lastModified": 1695804072,
+        "narHash": "sha256-cSWupd7Sb2kGXeU6kcFth/RBtS2dYpTyYl5ujHGjDZ4=",
         "owner": "zeme-wana",
         "repo": "iohk-nix",
-        "rev": "06f71f77b5c9a2b6fd7cce13371e77c0435b1d63",
+        "rev": "07db12a36f707c761ce9f627ddf24902198a36b4",
         "type": "github"
       },
       "original": {
