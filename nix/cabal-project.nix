@@ -95,11 +95,14 @@ let
 
   overlays = [
     (_: prev: {
-      hsPkgs = l.trace "build=${prev.pkgs.buildPlatform.system} host=${prev.pkgs.hostPlatform.system}" (prev.pkgs.pkgsBuildBuild.setGitRevForPaths
-        (inputs.self.rev or "0000000000000000000000000000000000000000") [
-        "marconi-chain-index.components.exes.marconi-chain-index"
-      ]
-        prev.hsPkgs);
+      hsPkgs =
+        if prev.pkgs.buildPlatform.isWindows then
+          l.throw "IT IS WINDOWS"
+        else
+          prev.pkgs.pkgsBuildBuild.setGitRevForPaths
+            (inputs.self.rev or "0000000000000000000000000000000000000000")
+            [ "marconi-chain-index.components.exes.marconi-chain-index" ]
+            prev.hsPkgs;
     })
   ];
 

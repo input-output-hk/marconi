@@ -1,0 +1,4 @@
+{ projects, ... }:
+{
+  cabalProject = projects.default;
+}
