@@ -81,6 +81,7 @@ library
     , base                  >=4.9 && <5
     , bytestring
     , data-default
+    , directory
     , fast-logger
     , filepath
     , http-types
