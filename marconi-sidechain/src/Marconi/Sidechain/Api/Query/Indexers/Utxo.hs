@@ -147,6 +147,7 @@ withQueryAction env query =
                  in AddressUtxoResult
                       (Utxo._blockInfoSlotNo bi)
                       (Utxo._blockInfoBlockHeaderHash bi)
+                      (Utxo._blockInfoEpochNo $ Utxo.utxoResultBlockInfo row)
                       (Utxo._blockInfoBlockNo $ Utxo.utxoResultBlockInfo row)
                       (Utxo.utxoResultTxIndexInBlock row)
                       (Utxo.utxoResultTxIn row)
