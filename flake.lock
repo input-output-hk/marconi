@@ -1370,7 +1370,9 @@
         "haskell-language-server-1_8_0_0": "haskell-language-server-1_8_0_0",
         "haskell-language-server-1_9_0_0": "haskell-language-server-1_9_0_0",
         "haskell-nix": "haskell-nix",
-        "iohk-nix": "iohk-nix",
+        "iohk-nix": [
+          "iohk-nix"
+        ],
         "nixpkgs": [
           "iogx",
           "haskell-nix",
@@ -1404,15 +1406,15 @@
         "sodium": "sodium_2"
       },
       "locked": {
-        "lastModified": 1687951625,
-        "narHash": "sha256-jwUD9tyGAvcuIl4TZYc+qGFTCEwIMriim+whXO+fiE4=",
-        "owner": "input-output-hk",
+        "lastModified": 1695803856,
+        "narHash": "sha256-j25eUgNw1WKGuUIiZk52rHAeK46Mzr2JpxPNfR/QE58=",
+        "owner": "zeme-wana",
         "repo": "iohk-nix",
-        "rev": "7bb42e5de0c1318e57017eedbe206751d58b78b3",
+        "rev": "06f71f77b5c9a2b6fd7cce13371e77c0435b1d63",
         "type": "github"
       },
       "original": {
-        "owner": "input-output-hk",
+        "owner": "zeme-wana",
         "repo": "iohk-nix",
         "type": "github"
       }
@@ -2528,6 +2530,7 @@
         "CHaP": "CHaP",
         "cardano-node": "cardano-node",
         "iogx": "iogx",
+        "iohk-nix": "iohk-nix",
         "mithril": "mithril"
       }
     },
