@@ -39,12 +39,12 @@ import Streaming.Prelude qualified as S
 -- | Wraps as a datatype log message emitted by the 'runIndexer' et al. functions.
 data RunIndexerLog
   = -- | The last sync points of all indexers that will be used to start the chain-sync protocol.
-    StartingPointsLog [C.ChainPoint]
+    StartingPointLog C.ChainPoint
   | NoIntersectionFoundLog
 
 instance PP.Pretty RunIndexerLog where
-  pretty (StartingPointsLog lastSyncPoints) =
-    "Possible starting points for chain-sync protocol are" PP.<+> PP.pretty lastSyncPoints
+  pretty (StartingPointLog lastSyncPoint) =
+    "The starting point for the chain-sync protocol is" PP.<+> PP.pretty lastSyncPoint
   pretty NoIntersectionFoundLog = "No intersection found"
 
 type instance Core.Point BlockEvent = C.ChainPoint
@@ -69,6 +69,11 @@ runIndexer
   -> IO ()
 runIndexer trace securityParam retryConfig socketPath networkId startingPoint indexer = do
   withNodeConnectRetry trace retryConfig socketPath $ do
+    Trace.logInfo trace $
+      PP.renderStrict $
+        PP.layoutPretty PP.defaultLayoutOptions $
+          PP.pretty $
+            StartingPointLog startingPoint
     eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
     cBox <- Concurrent.newMVar indexer
     let runChainSyncStream =

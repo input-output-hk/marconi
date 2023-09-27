@@ -2,7 +2,7 @@
 
    'Preprocessor's can carry an internal state, that can be updated on each incoming @ProcessingInput@.
 
-   'Transfromer's are composable using 'Control.Category' and 'Control.Arrow' operators
+   'Preprocessor's are composable using 'Control.Category' and 'Control.Arrow' operators.
    ('.', '>>>' and '<<<').
 -}
 module Marconi.Core.Experiment.Preprocessor (

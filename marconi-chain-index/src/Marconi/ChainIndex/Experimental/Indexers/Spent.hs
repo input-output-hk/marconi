@@ -133,10 +133,6 @@ mkSpentIndexer path = do
     [spentInsert]
     [Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo]
 
--- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
--- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
--- There needs to be a design change in marconi-core.
-
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
