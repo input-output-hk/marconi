@@ -149,22 +149,14 @@ mkUtxoIndexer path = do
         [ createUtxo
         , createAddressIndex
         , createSlotNoIndex
-        , Sync.syncTableCreation
         ]
       insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery]
 
-  Core.mkSqliteIndexer
+  Sync.mkSyncedSqliteIndexer
     path
     createUtxoTables
     [insertEvent]
-    (Just Sync.syncInsertPlan)
-    [ Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo
-    , Sync.syncRollbackPlan
-    ]
-    -- TODO Not correct as there *can* be multiple blocks per slot in Byron era.
-    -- Therefore, we would need to sort per blockNo, but the Sync table doesn't known about blocks.
-    -- There needs to be a design change in marconi-core.
-    Sync.syncLastPointsQuery
+    [Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo]
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker

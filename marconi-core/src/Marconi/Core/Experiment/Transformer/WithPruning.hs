@@ -32,7 +32,7 @@ import Data.Sequence qualified as Seq
 import Marconi.Core.Experiment.Class (
   Closeable,
   HasGenesis,
-  IsIndex (index, rollback),
+  IsIndex (index, rollback, setLastStablePoint),
   IsSync,
   Queryable,
   Resetable (reset),
@@ -47,6 +47,7 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
   wrappedIndexer,
   wrapperConfig,
  )
@@ -286,6 +287,8 @@ instance
       . removePruningPointsAfterRollback p
       . resetStep
       <$> rollbackVia unwrap p indexer
+
+  setLastStablePoint = setLastStablePointVia unwrap
 
 instance
   ( Monad m

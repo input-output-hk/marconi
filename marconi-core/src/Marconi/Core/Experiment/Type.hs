@@ -10,6 +10,7 @@
 module Marconi.Core.Experiment.Type (
   -- * Types and type families
   Point,
+  ProcessedInput (..),
   Result,
   Timed (Timed),
   point,
@@ -23,6 +24,7 @@ module Marconi.Core.Experiment.Type (
 import Control.Exception (Exception)
 import Control.Lens (Lens, Lens')
 import Data.Data (Typeable)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
@@ -56,6 +58,29 @@ deriving stock instance Functor (Timed point)
 deriving stock instance Foldable (Timed point)
 deriving stock instance Traversable (Timed point)
 deriving stock instance Generic (Timed point event)
+
+{- | The different types of input event that should be handled by an indexer
+used to map the chain incoming events to something that an indexer should be able to digest.
+-}
+data ProcessedInput point event
+  = -- | A rollback happen and indexers need to go back to the given point in time
+    Rollback point
+  | -- | A new event has to be indexed
+    Index (Timed point (Maybe event))
+  | -- | A new event has to be indexed
+    IndexAllDescending (NonEmpty (Timed point (Maybe event)))
+  | -- | Inform the indexer of the latest stable point reached
+    StableAt point
+  | -- | Processing stops
+    Stop
+
+deriving stock instance (Show event, Show point) => Show (ProcessedInput point event)
+deriving stock instance (Eq event, Eq point) => Eq (ProcessedInput point event)
+deriving stock instance (Ord event, Ord point) => Ord (ProcessedInput point event)
+deriving stock instance Functor (ProcessedInput point)
+deriving stock instance Foldable (ProcessedInput point)
+deriving stock instance Traversable (ProcessedInput point)
+deriving stock instance Generic (ProcessedInput point event)
 
 -- | When was this event created
 point :: Lens' (Timed point event) point

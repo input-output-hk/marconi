@@ -19,16 +19,17 @@ import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
 import Control.Monad.Except (ExceptT, void)
-import Data.List.NonEmpty (NonEmpty)
-import Data.List.NonEmpty qualified as NonEmpty
 
+import Control.Monad.State.Strict (MonadState (put), State, gets)
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text (Text)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
+import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance, chainDistance, getEvent)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
-import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Types (BlockEvent (blockInMode), SecurityParam)
 import Marconi.Core.Experiment qualified as Core
 import Prettyprinter qualified as PP
 import Prettyprinter.Render.Text qualified as PP
@@ -38,12 +39,12 @@ import Streaming.Prelude qualified as S
 -- | Wraps as a datatype log message emitted by the 'runIndexer' et al. functions.
 data RunIndexerLog
   = -- | The last sync points of all indexers that will be used to start the chain-sync protocol.
-    StartingPointsLog [C.ChainPoint]
+    StartingPointLog C.ChainPoint
   | NoIntersectionFoundLog
 
 instance PP.Pretty RunIndexerLog where
-  pretty (StartingPointsLog lastSyncPoints) =
-    "Possible starting points for chain-sync protocol are" PP.<+> PP.pretty lastSyncPoints
+  pretty (StartingPointLog lastSyncPoint) =
+    "The starting point for the chain-sync protocol is" PP.<+> PP.pretty lastSyncPoint
   pretty NoIntersectionFoundLog = "No intersection found"
 
 type instance Core.Point BlockEvent = C.ChainPoint
@@ -63,24 +64,23 @@ runIndexer
   -> RetryConfig
   -> FilePath
   -> C.NetworkId
-  -> NonEmpty C.ChainPoint
+  -> C.ChainPoint
   -> indexer (WithDistance BlockEvent)
   -> IO ()
-runIndexer trace securityParam retryConfig socketPath networkId startingPoints indexer = do
+runIndexer trace securityParam retryConfig socketPath networkId startingPoint indexer = do
   withNodeConnectRetry trace retryConfig socketPath $ do
     Trace.logInfo trace $
       PP.renderStrict $
         PP.layoutPretty PP.defaultLayoutOptions $
           PP.pretty $
-            StartingPointsLog $
-              NonEmpty.toList startingPoints
+            StartingPointLog startingPoint
     eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
     cBox <- Concurrent.newMVar indexer
     let runChainSyncStream =
           withChainSyncBlockEventStream
             socketPath
             networkId
-            (NonEmpty.toList startingPoints)
+            [startingPoint]
             (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
         whenNoIntersectionFound NoIntersectionFound =
           Trace.logError trace $
@@ -88,11 +88,34 @@ runIndexer trace securityParam retryConfig socketPath networkId startingPoints i
               PP.layoutPretty PP.defaultLayoutOptions $
                 PP.pretty NoIntersectionFoundLog
     void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-    Core.processQueue eventQueue cBox
+    Core.processQueue (stablePointComputation securityParam) Map.empty eventQueue cBox
+
+stablePointComputation
+  :: SecurityParam
+  -> Core.Timed C.ChainPoint (Maybe (WithDistance BlockEvent))
+  -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
+stablePointComputation _s (Core.Timed _ Nothing) = pure Nothing
+stablePointComputation s (Core.Timed point (Just event)) =
+  if chainDistance event > fromIntegral s
+    then do
+      put mempty
+      pure $ Just point
+    else do
+      let currentBlock = getBlockNo . blockInMode . getEvent $ event
+          lastVolatileBlock = currentBlock + fromIntegral (chainDistance event) - fromIntegral s
+      (immutable, volatile) <- gets (Map.spanAntitone (< lastVolatileBlock))
+      put (Map.insert currentBlock point volatile)
+      pure $ case Map.elems immutable of
+        [] -> Nothing
+        xs -> Just $ last xs
+
+getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
+getBlockNo (C.BlockInMode block _eraInMode) =
+  case C.getBlockHeader block of C.BlockHeader _ _ b -> b
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: STM.TBQueue (Core.ProcessedInput (WithDistance BlockEvent))
+  :: STM.TBQueue (Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent))
   -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
   -> IO r
 mkEventStream q =
@@ -106,7 +129,7 @@ mkEventStream q =
 
       processEvent
         :: ChainSyncEvent BlockEvent
-        -> Core.ProcessedInput (WithDistance BlockEvent)
+        -> Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)
       processEvent (RollForward x ct) = Core.Index $ Just <$> blockTimed x ct
       processEvent (RollBackward x _) = Core.Rollback x
    in S.mapM_ $ STM.atomically . STM.writeTBQueue q . processEvent

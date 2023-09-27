@@ -1,27 +1,27 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 -- | Provide standard query and helper functions to track the last sync points of an indexer
 module Marconi.ChainIndex.Experimental.Indexers.SyncHelper (
   syncTableCreation,
-  syncSizeLimitTrigger,
-  withSyncTable,
-  syncInsertPlan,
-  syncLastPointsQuery,
+  syncSetStablePoint,
+  syncLastPointQuery,
   syncHistoryQuery,
-  syncRollbackPlan,
+  mkSingleInsertSyncedSqliteIndexer,
+  mkSyncedSqliteIndexer,
 ) where
 
 import Cardano.Api qualified as C
-import Data.String (fromString)
-import Data.Text qualified as Text
-import Data.Word (Word64)
+import Control.Monad.Cont (MonadIO)
+import Control.Monad.Except (MonadError)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
+import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.Experiment qualified as Core
 
-{- | A simple table to store the passed chain points.
+{- | A simple table to store the last stable point of an indexer.
 
 Note that in Byron era, there can be multiple added blocks in the same slot. That explains why we
 can't use the `PRIMARY KEY` constraint for `slotNo` only.
@@ -29,57 +29,102 @@ can't use the `PRIMARY KEY` constraint for `slotNo` only.
 syncTableCreation :: SQL.Query
 syncTableCreation =
   [sql|CREATE TABLE IF NOT EXISTS sync
-         ( slotNo INT NOT NULL
-         , blockHeaderHash BLOB NOT NULL
-         , PRIMARY KEY (slotNo, blockHeaderHash)
-         )|]
-
-{- | NOTE: NOT AT ALL PERFORMANT. DO NOT USE.
-
-Used to keep only the @securityParam + 1@ most recent rows of the sync table.
-Do not use if some of your request relies on data from the sync table
--}
-syncSizeLimitTrigger :: Word64 -> SQL.Query
-syncSizeLimitTrigger securityParam =
-  [sql| CREATE TRIGGER IF NOT EXISTS clear_sync
-        AFTER INSERT ON sync
-        WHEN (SELECT COUNT(*) FROM sync) > |]
-    <> SQL.Query (Text.pack $ show $ securityParam + 1)
-    <> [sql| BEGIN
-          DELETE FROM sync
-          WHERE slotNo = (SELECT MIN(slotNo) FROM sync);
-        END|]
-
-withSyncTable :: Word64 -> [SQL.Query] -> [SQL.Query]
-withSyncTable syncTableSize = mappend [syncTableCreation, syncSizeLimitTrigger syncTableSize]
+  ( lock TEXT NOT NULL DEFAULT 'there should be only one row'
+  , slotNo INT NOT NULL
+  , blockHeaderHash BLOB NOT NULL
+  , CONSTRAINT sync_pk PRIMARY KEY (lock)
+  , CONSTRAINT sync_lock CHECK (lock='there should be only one row')
+  )|]
 
 {- | Used to insert data in the snc table.
 The parameter order is @slotNo@, @blockHeaderHash@.
 This should not be used in general, as 'syncInsertPlan' provides a higher level function to
 handle insertion of data.
+
+  The query ensure that we only replace the content on a greater slot.
+
+  Considering the issue of the blocks issued at the same slots during the Byron era, there is very
+  few chance that the current implementation would lead to an issue. The problematic scenario would
+  be:
+
+  1. The indexer must index an event that in the second block of the two issue at the same slot at
+  the end of an epoch of the Byron era.
+  2. The indexer has stopped right after indexing this second block.
+  3. On restart, another indexer is behind this second block.
 -}
-syncInsertPlan :: Core.InsertPointQuery
-syncInsertPlan =
-  Core.InsertPointQuery [sql|INSERT INTO sync (slotNo, blockHeaderHash) VALUES (?, ?)|]
+syncSetStablePoint :: Core.SetLastStablePointQuery
+syncSetStablePoint =
+  Core.SetLastStablePointQuery
+    [sql|
+      INSERT INTO sync (slotNo, blockHeaderHash) VALUES (?, ?)
+      ON CONFLICT (lock)
+      DO UPDATE SET
+      slotNo = excluded.slotNo,
+      blockHeaderHash = excluded.blockHeaderHash
+      WHERE sync.slotNo < excluded.slotNo
+    |]
 
 -- TODO Revisit comment
 
 -- | Query for the last point of an indexer
-syncLastPointsQuery :: Core.GetLastSyncPointsQuery
-syncLastPointsQuery = Core.GetLastSyncPointsQuery syncHistoryQuery
+syncLastPointQuery :: Core.GetLastStablePointQuery
+syncLastPointQuery = Core.GetLastStablePointQuery syncHistoryQuery
 
 -- TODO Revisit comment
 
 {- | Query the last sync point up to the first immutable event
 
 Used to find resuming points on restart.
-
-Note that if you want to get one stable point, you need to pass @securityParam + 1@
 -}
-syncHistoryQuery :: Word -> SQL.Query
-syncHistoryQuery n =
-  [sql|SELECT * FROM sync ORDER BY slotNo DESC LIMIT |] <> fromString (show n)
+syncHistoryQuery :: SQL.Query
+syncHistoryQuery = [sql|SELECT slotNo, blockHeaderHash FROM sync ORDER BY slotNo|]
 
--- | Standard rollback plan for the sync table
-syncRollbackPlan :: Core.SQLRollbackPlan C.ChainPoint
-syncRollbackPlan = Core.SQLRollbackPlan "sync" "slotNo" C.chainPointToSlotNo
+-- | A helper to create an indexer for Cardano for a single table, with an immutable point tracker
+mkSingleInsertSyncedSqliteIndexer
+  :: forall m event param
+   . ( MonadIO m
+     , MonadError Core.IndexerError m
+     , SQL.ToRow param
+     , Core.Point event ~ C.ChainPoint
+     )
+  => FilePath
+  -> (Core.Timed (Core.Point event) event -> param)
+  -> SQL.Query
+  -- ^ the creation query
+  -> SQL.Query
+  -- ^ the insert query
+  -> Core.SQLRollbackPlan (Core.Point event)
+  -- ^ the rollback query
+  -> m (Core.SQLiteIndexer event)
+mkSingleInsertSyncedSqliteIndexer path extract tableCreation insertQuery rollbackPlan =
+  Core.mkSqliteIndexer
+    path
+    [tableCreation, syncTableCreation]
+    [[Core.SQLInsertPlan (pure . extract) insertQuery]]
+    [rollbackPlan]
+    syncSetStablePoint
+    syncLastPointQuery
+
+-- | A helper to create an indexer for Cardano, with an immutable point tracker
+mkSyncedSqliteIndexer
+  :: forall m event
+   . ( MonadIO m
+     , MonadError Core.IndexerError m
+     , Core.Point event ~ C.ChainPoint
+     )
+  => FilePath
+  -> [SQL.Query]
+  -- ^ cration statement
+  -> [[Core.SQLInsertPlan event]]
+  -- ^ extract relevent data out of an event and store them
+  -> [Core.SQLRollbackPlan (Core.Point event)]
+  -- ^ the rollback queries
+  -> m (Core.SQLiteIndexer event)
+mkSyncedSqliteIndexer path tablesCreation insertPlans rollbackPlans =
+  Core.mkSqliteIndexer
+    path
+    (syncTableCreation : tablesCreation)
+    insertPlans
+    rollbackPlans
+    syncSetStablePoint
+    syncLastPointQuery

@@ -30,7 +30,6 @@ import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
-import Data.String (fromString)
 import Data.Time qualified as Time
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
@@ -40,6 +39,7 @@ import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
+import Marconi.ChainIndex.Experimental.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -93,7 +93,7 @@ mkBlockInfoIndexer
   -- ^ SQL connection to database
   -> m (Core.SQLiteIndexer BlockInfo)
 mkBlockInfoIndexer path = do
-  let createBlockInfo =
+  let createBlockInfoTable =
         [sql|CREATE TABLE IF NOT EXISTS blockInfo
                ( slotNo INT NOT NULL
                , blockHeaderHash BLOB NOT NULL
@@ -106,20 +106,12 @@ mkBlockInfoIndexer path = do
       blockInfoInsertQuery =
         [sql|INSERT INTO blockInfo (slotNo, blockHeaderHash, blockNo, blockTimestamp, epochNo)
              VALUES (?, ?, ?, ?, ?)|]
-      lastPointQuery :: Core.GetLastSyncPointsQuery
-      lastPointQuery = Core.GetLastSyncPointsQuery $ \limit ->
-        [sql|SELECT slotNo, blockHeaderHash
-             FROM blockInfo
-             ORDER BY slotNo DESC, blockNo DESC
-             LIMIT |]
-          <> fromString (show limit)
-  Core.mkSingleInsertSqliteIndexer
+  mkSingleInsertSyncedSqliteIndexer
     path
     id
-    createBlockInfo
+    createBlockInfoTable
     blockInfoInsertQuery
     (Core.SQLRollbackPlan "blockInfo" "slotNo" C.chainPointToSlotNo)
-    lastPointQuery
 
 -- | Create a worker for 'BlockInfoIndexer' with catchup
 blockInfoWorker

@@ -25,18 +25,17 @@ import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.String (fromString)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
+import Marconi.ChainIndex.Experimental.Indexers.SyncHelper (mkSyncedSqliteIndexer)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment (
-  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
   IndexerError,
   ListIndexer,
   MixedIndexer,
@@ -52,7 +51,6 @@ import Marconi.Core.Experiment (
   events,
   mkListIndexer,
   mkMixedIndexer,
-  mkSqliteIndexer,
   point,
  )
 import Marconi.Core.Experiment qualified as Core
@@ -70,7 +68,7 @@ addressCountWorker
 addressCountWorker dbPath securityParam = do
   let extract = getEventsFromBlock
   ix <- Utils.toException $ mkAddressCountMixedIndexer dbPath securityParam
-  Core.createWorker "AddressCount" (pure . extract) ix
+  Core.createWorker "AddressCount" extract ix
 
 newtype AddressCountEvent = AddressCountEvent {unAddressCountEvent :: Map C.AddressAny Int}
   deriving (Show)
@@ -178,16 +176,14 @@ mkAddressCountSqliteIndexer
   => FilePath
   -> m (SQLiteIndexer AddressCountEvent)
 mkAddressCountSqliteIndexer dbPath = do
-  mkSqliteIndexer
+  mkSyncedSqliteIndexer
     dbPath
     [dbCreation] -- request launched when the indexer is created
     [
       [ SQLInsertPlan eventToRows addressCountInsertQuery
       ]
     ] -- requests launched when an event is stored
-    Nothing
     [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
-    (GetLastSyncPointsQuery lastSyncPointsQuery)
   where
     dbCreation =
       [sql|CREATE TABLE IF NOT EXISTS address_count
@@ -205,14 +201,6 @@ mkAddressCountSqliteIndexer dbPath = do
                  slotNo,
                  blockHeaderHash
               ) VALUES (?, ?, ?, ?)|]
-
-    lastSyncPointsQuery :: Word -> SQL.Query -- AddressCount table SQL statement
-    lastSyncPointsQuery limit =
-      [sql|SELECT slotNo, blockHeaderHash
-               FROM address_count
-               ORDER BY slotNo DESC
-               LIMIT |]
-        <> fromString (show limit)
 
 -- | Make a SQLiteIndexer
 mkAddressCountMixedIndexer

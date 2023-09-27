@@ -65,6 +65,8 @@ library
     Marconi.Core.Experiment.Indexer.MixedIndexer
     Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery
     Marconi.Core.Experiment.Indexer.SQLiteIndexer
+    Marconi.Core.Experiment.Preprocessor
+    Marconi.Core.Experiment.Preprocessor.Resume
     Marconi.Core.Experiment.Query
     Marconi.Core.Experiment.Transformer.Class
     Marconi.Core.Experiment.Transformer.IndexTransformer
@@ -73,7 +75,6 @@ library
     Marconi.Core.Experiment.Transformer.WithDelay
     Marconi.Core.Experiment.Transformer.WithFold
     Marconi.Core.Experiment.Transformer.WithPruning
-    Marconi.Core.Experiment.Transformer.WithResume
     Marconi.Core.Experiment.Transformer.WithTracer
     Marconi.Core.Experiment.Transformer.WithTransform
     Marconi.Core.Experiment.Type
@@ -94,13 +95,13 @@ library
   -- Other dependencies
   ------------------------
   build-depends:
-  build-depends:
     , async
     , base           >=4.7 && <5
     , bytestring
     , containers
     , directory
     , filepath
+    , foldl
     , lens
     , mtl
     , primitive
@@ -144,6 +145,7 @@ test-suite marconi-core-test
   hs-source-dirs: test
   build-depends:
     , base                   >=4.7    && <5
+    , containers
     , contra-tracer
     , lens
     , marconi-core

@@ -33,7 +33,6 @@ module Marconi.Core.Spec.Experiment (
   indexingTestGroup,
   storageBasedModelProperty,
   lastSyncPointBasedModelProperty,
-  lastSyncPointsBasedModelProperty,
 
   -- ** Cache test suite
   cacheTestGroup,
@@ -110,26 +109,21 @@ module Marconi.Core.Spec.Experiment (
 ) where
 
 import Control.Applicative (Const (Const))
+import Control.Category qualified as Category
 import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
 import Control.Lens (
   Getter,
   Lens',
-  filtered,
-  folded,
-  lens,
-  makeLenses,
-  to,
-  use,
-  view,
-  views,
   (%=),
   (%~),
   (-~),
+  (.=),
   (.~),
   (^.),
   (^..),
  )
+import Control.Lens qualified as Lens
 import Control.Monad (foldM, replicateM, void)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -139,13 +133,14 @@ import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
 import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
+import Data.Foldable qualified as Foldable
 import Data.Function ((&))
 import Data.List qualified as List
-import Data.List.NonEmpty (NonEmpty)
-import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (catMaybes, fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Monoid (Sum (Sum))
-import Data.String (fromString)
+import Data.Ord (comparing)
+import Data.Sequence (Seq ((:<|), (:|>)))
+import Data.Sequence qualified as Seq
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
 import Data.Word (Word64)
@@ -153,6 +148,7 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.FromRow qualified as SQL
+import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
 import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
 import GHC.Generics (Generic)
@@ -197,38 +193,33 @@ instance SQL.ToRow TestPoint where
     , SQL.SQLText $ UUID.toText uuid
     ]
 
-makeLenses 'TestPoint
+Lens.makeLenses 'TestPoint
 
 instance Core.HasGenesis TestPoint where
   genesis = TestPoint 0 UUID.nil
-
-instance Core.OrdPoint TestPoint where
-  comparePoint (TestPoint p1 h1) (TestPoint p2 h2)
-    | p1 < p2 = Core.Before
-    | p1 > p2 = Core.After
-    | p1 == p2 && h1 == h2 = Core.Same
-    | otherwise = Core.Fork
 
 -- | We simplify the events to either `Insert` or `Rollback`.
 data Item event
   = Insert !TestPoint !(Maybe event)
   | Rollback !TestPoint
+  | StableAt !TestPoint
   deriving stock (Show, Eq)
 
 testPoint :: Lens' (Item event) TestPoint
-testPoint = lens getter setter
+testPoint = Lens.lens getter setter
   where
     getter (Insert point _) = point
     getter (Rollback point) = point
+    getter (StableAt point) = point
 
     setter (Insert _ event) newPoint = Insert newPoint event
     setter (Rollback _) newPoint = Rollback newPoint
+    setter (StableAt _) newPoint = StableAt newPoint
 
 instance (Eq event) => Ord (Item event) where
-  compare (Insert p1 _) (Insert p2 _) = p1 `compare` p2
-  compare (Insert p1 _) (Rollback p2) = p1 `compare` p2
-  compare (Rollback p1) (Insert p2 _) = p1 `compare` p2
-  compare (Rollback p1) (Rollback p2) = p1 `compare` p2
+  compare = comparing (Lens.view testPoint)
+
+data LastStable = ShouldSendStableAt TestPoint | LastStable TestPoint
 
 {- | 'GenChainConfig' is used in generators of chain events
  to determine the events that should be build
@@ -242,34 +233,45 @@ data GenChainConfig = GenChainConfig
   -- ^ How often an event is @Nothing@
   , _rollbackFrequency :: Word
   -- ^ How often a rollback can happen
-  , _rollbackDepth :: NonEmpty TestPoint -> Gen TestPoint
+  , _rollbackDepth :: Seq TestPoint -> Gen TestPoint
   -- ^ Rollback depth distribution
-  , _lastTestPoints :: NonEmpty TestPoint
+  , _lastStable :: LastStable
+  -- ^ the value of the last `StableAt` event we sent
+  , _lastTestPoints :: Seq TestPoint
   -- ^ Track the last 'chainStableDepth' unstable points.
   -- Used to generate the next point and to rollback to previous known points.
   }
 
 chainSize :: Getter GenChainConfig (Gen Int)
-chainSize = to _chainSize
+chainSize = Lens.to _chainSize
 
 chainStableDepth :: Getter GenChainConfig Word
-chainStableDepth = to _chainStableDepth
+chainStableDepth = Lens.to _chainStableDepth
 
 emptyEventFrequency :: Lens' GenChainConfig Word
 emptyEventFrequency =
-  lens _emptyEventFrequency (\g f -> g{_emptyEventFrequency = f})
+  Lens.lens _emptyEventFrequency (\g f -> g{_emptyEventFrequency = f})
 
 rollbackFrequency :: Lens' GenChainConfig Word
 rollbackFrequency =
-  lens _rollbackFrequency (\g f -> g{_rollbackFrequency = f})
+  Lens.lens _rollbackFrequency (\g f -> g{_rollbackFrequency = f})
 
-rollbackDepth :: Lens' GenChainConfig (NonEmpty TestPoint -> Gen TestPoint)
+rollbackDepth :: Lens' GenChainConfig (Seq TestPoint -> Gen TestPoint)
 rollbackDepth =
-  lens _rollbackDepth (\g d -> g{_rollbackDepth = d})
+  Lens.lens _rollbackDepth (\g d -> g{_rollbackDepth = d})
 
-lastTestPoints :: Lens' GenChainConfig (NonEmpty TestPoint)
+lastStable :: Lens' GenChainConfig LastStable
+lastStable =
+  Lens.lens _lastStable (\g points -> g{_lastStable = points})
+
+lastStablePoint :: GenChainConfig -> TestPoint
+lastStablePoint cfg = case cfg ^. lastStable of
+  ShouldSendStableAt p -> p
+  LastStable p -> p
+
+lastTestPoints :: Lens' GenChainConfig (Seq TestPoint)
 lastTestPoints =
-  lens _lastTestPoints (\g points -> g{_lastTestPoints = points})
+  Lens.lens _lastTestPoints (\g points -> g{_lastTestPoints = points})
 
 -- | Generate an insert at the given slot
 genInsert :: (Arbitrary event) => Word -> TestPoint -> Gen (Item event)
@@ -290,39 +292,46 @@ genInsert f no = do
 -- | Generate a rollback, 'GenState' set the maximal depth of the rollback
 genRollback :: GenChainConfig -> Gen (Item event)
 genRollback cfg = do
-  let gen = view rollbackDepth cfg
-  Rollback <$> gen (cfg ^. lastTestPoints)
+  let gen = Lens.view rollbackDepth cfg
+  Rollback <$> gen (cfg ^. lastTestPoints :|> lastStablePoint cfg)
 
 -- | Generate an insert or a rollback, rollback depth is uniform on the chain length
 genItem
   :: (Arbitrary event)
   => StateT GenChainConfig Gen (Item event)
 genItem = do
-  point <- gets (NonEmpty.last . _lastTestPoints)
-  genRollback' <- gets genRollback
-  f <- use rollbackFrequency
-  let f' = if point ^. testPointSlot > 0 then f else 0 -- no rollback on genesis
-  g <- use emptyEventFrequency
-  item <-
-    lift $
-      Test.frequency
-        [ (fromIntegral f', genRollback')
-        , (100 - fromIntegral f', genInsert g point)
-        ]
-  k <- use chainStableDepth
-  case item of
-    Insert newPoint _ -> do
-      lastTestPoints %= \points ->
-        -- We remove the oldest point if the size the test points list is equal to K.
-        if length points + 1 == fromIntegral k
-          then NonEmpty.tail points `NonEmpty.prependList` NonEmpty.singleton newPoint
-          else points <> NonEmpty.singleton newPoint
-    Rollback newPoint -> do
-      lastTestPoints %= \points ->
-        fromMaybe (NonEmpty.singleton Core.genesis) $
-          NonEmpty.nonEmpty $
-            NonEmpty.filter (<= newPoint) points
-  pure item
+  lastStable' <- Lens.use lastStable
+  case lastStable' of
+    ShouldSendStableAt pt -> do
+      lastStable .= LastStable pt
+      pure $ StableAt pt
+    LastStable p -> do
+      points <- Lens.use lastTestPoints
+      genRollback' <- gets genRollback
+      f <- Lens.use rollbackFrequency
+      let f' = if null points then 0 else f -- no rollback on genesis
+      g <- Lens.use emptyEventFrequency
+      k <- Lens.use chainStableDepth
+      let lastPoint = case points of
+            Seq.Empty -> p
+            (e :<| _) -> e
+      item <-
+        lift $
+          Test.frequency
+            [ (fromIntegral f', genRollback')
+            , (100 - fromIntegral f', genInsert g lastPoint)
+            ]
+      case item of
+        Insert newPoint _ -> do
+          case points of
+            other :|> stable | length points >= fromIntegral k -> do
+              -- We remove the oldest point if the size the test points list is equal to K.
+              lastTestPoints .= newPoint :<| other
+              lastStable .= ShouldSendStableAt stable
+            points' -> lastTestPoints .= newPoint :<| points'
+        Rollback newPoint -> lastTestPoints %= Seq.filter (<= newPoint)
+        StableAt _newPoint -> error "shouldn't generate stable here"
+      pure item
 
 -- | Apply an item to an indexer
 process
@@ -335,6 +344,7 @@ process
 process = \case
   Insert ix evt -> Core.index (Core.Timed ix evt)
   Rollback n -> Core.rollback n
+  StableAt n -> Core.setLastStablePoint n
 
 -- | Generate a chain using the given configuration
 genChain
@@ -345,11 +355,8 @@ genChain cfg = flip evalStateT cfg $ do
   size <- lift $ cfg ^. chainSize
   replicateM size genItem
 
-uniformRollBack :: NonEmpty TestPoint -> Gen TestPoint
-uniformRollBack points = do
-  case NonEmpty.init points of
-    [] -> pure Core.genesis
-    pointsExpectLast -> Test.elements pointsExpectLast
+uniformRollBack :: Seq TestPoint -> Gen TestPoint
+uniformRollBack = Test.elements . Foldable.toList
 
 -- | Generate a chain with @1_000_000@ to @1_200_000@ elements, and 5% of empty events
 genLargeChain
@@ -360,41 +367,41 @@ genLargeChain
 genLargeChain p = do
   n <- Test.chooseInt (1_000_000, 1_200_000)
   let k = 2_160
-  genChain $ GenChainConfig (pure n) k 5 p uniformRollBack (NonEmpty.singleton Core.genesis)
+  genChain $ GenChainConfig (pure n) k 5 p uniformRollBack (LastStable Core.genesis) Seq.Empty
 
 -- | Chain events with 10% of rollback
 newtype DefaultChain event = DefaultChain {_defaultChain :: [Item event]}
 
-makeLenses 'DefaultChain
+Lens.makeLenses 'DefaultChain
 
 -- | Chain events with 10% of rollback
 instance (Arbitrary event) => Arbitrary (DefaultChain event) where
   arbitrary = Test.sized $ \n ->
-    let k = 2_160
+    let k = 50
      in DefaultChain
-          <$> genChain (GenChainConfig (pure n) k 5 10 uniformRollBack (NonEmpty.singleton Core.genesis))
+          <$> genChain (GenChainConfig (pure n) k 5 10 uniformRollBack (LastStable Core.genesis) Seq.Empty)
 
 -- | Chain events without any rollback
 newtype ForwardChain event = ForwardChain {_forwardChain :: [Item event]}
 
-makeLenses 'ForwardChain
+Lens.makeLenses 'ForwardChain
 
 instance (Arbitrary event) => Arbitrary (ForwardChain event) where
   arbitrary = Test.sized $ \n ->
-    let k = 2_160
+    let k = 50
      in ForwardChain
-          <$> genChain (GenChainConfig (pure n) k 5 0 uniformRollBack (NonEmpty.singleton Core.genesis))
+          <$> genChain (GenChainConfig (pure n) k 5 0 uniformRollBack (LastStable Core.genesis) Seq.Empty)
 
 -- | Chain events without empty event
 newtype ChainWithoutEmptyEvents event = ChainWithoutEmptyEvents {_chainWithoutEmptyEvents :: [Item event]}
 
-makeLenses 'ChainWithoutEmptyEvents
+Lens.makeLenses 'ChainWithoutEmptyEvents
 
 instance (Arbitrary event) => Arbitrary (ChainWithoutEmptyEvents event) where
   arbitrary = Test.sized $ \n ->
-    let k = 2_160
+    let k = 50
      in ChainWithoutEmptyEvents
-          <$> genChain (GenChainConfig (pure n) k 0 10 uniformRollBack (NonEmpty.singleton Core.genesis))
+          <$> genChain (GenChainConfig (pure n) k 0 10 uniformRollBack (LastStable Core.genesis) Seq.Empty)
 
 -- ** Event instances
 
@@ -427,7 +434,7 @@ instance SQL.FromRow (Core.Timed TestPoint TestEvent) where
 newtype IndexerModel e = IndexerModel {_model :: [(TestPoint, Maybe e)]}
   deriving stock (Show, Functor, Foldable, Traversable)
 
-makeLenses ''IndexerModel
+Lens.makeLenses ''IndexerModel
 
 -- | Build a model from a given chain of events
 runModel :: [Item event] -> IndexerModel event
@@ -435,6 +442,7 @@ runModel =
   let modelStep :: IndexerModel event -> Item event -> IndexerModel event
       modelStep m (Insert w xs) = m & model %~ ((w, xs) :)
       modelStep m (Rollback n) = m & model %~ dropWhile ((> n) . fst)
+      modelStep m (StableAt _n) = m
    in foldl' modelStep (IndexerModel [])
 
 -- | Compare an execution on the base model and one on the indexer
@@ -504,10 +512,10 @@ indexingTestGroup indexerName runner =
         "index"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              storageBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
+              storageBasedModelProperty (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              storageBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
+              storageBasedModelProperty (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "IsSync"
@@ -515,19 +523,10 @@ indexingTestGroup indexerName runner =
             "lastSyncPoint"
             [ Tasty.testProperty "in a chain without rollback" $
                 Test.withMaxSuccess 5_000 $
-                  lastSyncPointBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
+                  lastSyncPointBasedModelProperty (Lens.view forwardChain <$> Test.arbitrary) runner
             , Tasty.testProperty "in a chain with rollbacks" $
                 Test.withMaxSuccess 10_000 $
-                  lastSyncPointBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
-            ]
-        , Tasty.testGroup
-            "lastSyncPoints"
-            [ Tasty.testProperty "in a chain without rollback" $
-                Test.withMaxSuccess 5_000 $
-                  lastSyncPointsBasedModelProperty (view forwardChain <$> Test.arbitrary) runner
-            , Tasty.testProperty "in a chain with rollbacks" $
-                Test.withMaxSuccess 10_000 $
-                  lastSyncPointsBasedModelProperty (view defaultChain <$> Test.arbitrary) runner
+                  lastSyncPointBasedModelProperty (Lens.view defaultChain <$> Test.arbitrary) runner
             ]
         ]
     ]
@@ -568,13 +567,13 @@ storageBasedModelProperty
   -> Property
 storageBasedModelProperty gen runner =
   let indexerEvents indexer =
-        fmap (view Core.event)
+        fmap (Lens.view Core.event)
           . fromRight []
           <$> Core.queryLatestEither Core.allEvents indexer
    in behaveLikeModel
         gen
         runner
-        (catMaybes . views model (fmap snd))
+        (catMaybes . Lens.views model (fmap snd))
         indexerEvents
 
 -- | The lastSyncPoint of an indexer is correctly set
@@ -591,31 +590,8 @@ lastSyncPointBasedModelProperty gen runner =
   behaveLikeModel
     gen
     runner
-    (views model (maybe Core.genesis fst . listToMaybe))
+    (Lens.views model (maybe Core.genesis fst . listToMaybe))
     Core.lastSyncPoint
-
--- | The 'Core.lastSyncPoints' of an indexer is correctly set
-lastSyncPointsBasedModelProperty
-  :: ( Core.IsIndex m event indexer
-     , Core.IsSync m event indexer
-     , Core.Point event ~ TestPoint
-     , Show event
-     )
-  => Gen [Item event]
-  -> Model.IndexerTestRunner m event indexer
-  -> Property
-lastSyncPointsBasedModelProperty gen runner = do
-  behaveLikeModel
-    gen
-    runner
-    ( views model $ \timedEvents ->
-        take 10 $
-          reverse $
-            List.sort $
-              fmap fst $
-                filter (\(_, maybeEvent) -> isJust maybeEvent) timedEvents
-    )
-    (Core.lastSyncPoints 10)
 
 sqliteModelIndexerWithFile
   :: FilePath -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
@@ -623,22 +599,40 @@ sqliteModelIndexerWithFile filepath = do
   let extractor :: TestPoint -> Maybe Int
       extractor (TestPoint 0 _) = Nothing
       extractor (TestPoint p _) = Just p
-  Core.mkSingleInsertSqliteIndexer
+  Core.mkSqliteIndexer
     filepath
-    ( \t ->
-        (t ^. Core.point . testPointSlot, UUID.toText $ t ^. Core.point . testPointHash, t ^. Core.event)
-    )
-    " CREATE TABLE IF NOT EXISTS index_model \
-    \   ( pointSlotNo INT NOT NULL   \
-    \   , pointHash TEXT NOT NULL   \
-    \   , value INT NOT NULL   \
-    \   )"
-    "INSERT INTO index_model VALUES (?, ?, ?)"
-    (Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor)
-    ( Core.GetLastSyncPointsQuery $ \limit ->
-        "SELECT pointSlotNo, pointHash FROM index_model ORDER BY pointSlotNo DESC LIMIT "
-          <> fromString (show limit)
-    )
+    [ [sql|
+      CREATE TABLE IF NOT EXISTS index_model
+        ( pointSlotNo INT NOT NULL
+        , pointHash TEXT NOT NULL
+        , value INT NOT NULL
+        )
+      |]
+    , [sql|
+      CREATE TABLE IF NOT EXISTS sync
+        ( lock TEXT PRIMARY KEY DEFAULT 'only one key'
+        , pointSlotNo INT NOT NULL
+        , pointHash TEXT NOT NULL
+        , CONSTRAINT sync_lock CHECK (lock='only one key')
+        )
+      |]
+    ]
+    [
+      [ Core.SQLInsertPlan
+          ( \t ->
+              [
+                ( t ^. Core.point . testPointSlot
+                , UUID.toText $ t ^. Core.point . testPointHash
+                , t ^. Core.event
+                )
+              ]
+          )
+          "INSERT INTO index_model VALUES (?, ?, ?)"
+      ]
+    ]
+    [Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor]
+    (Core.SetLastStablePointQuery "INSERT OR REPLACE INTO sync (pointSlotNo, pointHash) VALUES (?,?)")
+    (Core.GetLastStablePointQuery "SELECT pointSlotNo, pointHash FROM sync")
 
 sqliteModelIndexer :: ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexer = sqliteModelIndexerWithFile ":memory:"
@@ -661,10 +655,12 @@ instance
       Core.querySQLiteIndexerWith
         (\p _ -> [":pointSlotNo" SQL.:= p ^. testPointSlot])
         ( const
-            " SELECT pointSlotNo, pointHash, value   \
-            \ FROM index_model      \
-            \ WHERE pointSlotNo <= :pointSlotNo \
-            \ ORDER BY pointSlotNo DESC"
+            [sql|
+            SELECT pointSlotNo, pointHash, value
+            FROM index_model
+            WHERE pointSlotNo <= :pointSlotNo
+            ORDER BY pointSlotNo DESC
+            |]
         )
         rowToResult
 
@@ -766,7 +762,7 @@ newtype IndexerMVar indexer event = IndexerMVar {getMVar :: MVar (indexer event)
 newtype UnderCoordinator indexer event = UnderCoordinator
   {_underCoordinator :: Core.IndexTransformer (IndexerMVar indexer) Core.Coordinator event}
 
-makeLenses ''UnderCoordinator
+Lens.makeLenses ''UnderCoordinator
 
 instance
   (MonadIO m, MonadError Core.IndexerError m)
@@ -775,6 +771,7 @@ instance
   index = Core.indexVia underCoordinator
   indexAllDescending = Core.indexAllDescendingVia underCoordinator
   rollback = Core.rollbackVia $ underCoordinator . Core.wrappedIndexer
+  setLastStablePoint = Core.setLastStablePointVia $ underCoordinator . Core.wrappedIndexer
 
 instance
   ( MonadIO m
@@ -785,7 +782,7 @@ instance
   => Core.IsSync m event (UnderCoordinator indexer)
   where
   lastSyncPoint = Core.lastSyncPointVia underCoordinator
-  lastSyncPoints = Core.lastSyncPointsVia underCoordinator
+  lastStablePoint = Core.lastStablePointVia underCoordinator
 
 instance
   (Core.Closeable (ExceptT Core.IndexerError IO) Core.Coordinator)
@@ -798,7 +795,7 @@ instance
   => Core.Queryable m event (Core.EventsMatchingQuery event) (UnderCoordinator indexer)
   where
   query p q ix = do
-    let tmvar = ix ^. underCoordinator . Core.wrapperConfig . to getMVar
+    let tmvar = ix ^. underCoordinator . Core.wrapperConfig . Lens.to getMVar
     indexer <- liftIO $ Con.takeMVar tmvar
     res <- Core.query p q indexer
     liftIO $ Con.putMVar tmvar indexer
@@ -811,19 +808,21 @@ coordinatorIndexerRunner
      )
   => Model.IndexerTestRunner (ExceptT Core.IndexerError IO) event wrapped
   -> Model.IndexerTestRunner (ExceptT Core.IndexerError IO) event (UnderCoordinator wrapped)
-coordinatorIndexerRunner wRunner =
-  Model.IndexerTestRunner
-    monadicExceptTIO
-    $ do
-      wrapped <- wRunner ^. Model.indexerGenerator
-      workerIndexer <-
-        lift $
-          Core.createWorker
-            "TestWorker"
-            (pure . pure)
-            wrapped
-      UnderCoordinator . Core.IndexTransformer (IndexerMVar $ Core.workerIndexerVar workerIndexer)
-        <$> lift (Core.mkCoordinator [Core.worker workerIndexer])
+coordinatorIndexerRunner = coordinatorIndexerRunnerWithPreprocessor Category.id
+
+coordinatorIndexerRunnerWithPreprocessor
+  :: ( Core.WorkerIndexerType (ExceptT Core.IndexerError IO) event wrapped
+     , Core.HasGenesis (Core.Point event)
+     , Ord (Core.Point event)
+     )
+  => Core.Preprocessor (ExceptT Core.IndexerError IO) (Core.Point event) event event
+  -> Model.IndexerTestRunner (ExceptT Core.IndexerError IO) event wrapped
+  -> Model.IndexerTestRunner (ExceptT Core.IndexerError IO) event (UnderCoordinator wrapped)
+coordinatorIndexerRunnerWithPreprocessor pre wRunner = Model.IndexerTestRunner monadicExceptTIO $ do
+  wrapped <- wRunner ^. Model.indexerGenerator
+  workerIndexer <- lift $ Core.createWorkerWithPreprocessing "TestWorker" pre wrapped
+  UnderCoordinator . Core.IndexTransformer (IndexerMVar $ Core.workerIndexerVar workerIndexer)
+    <$> lift (Core.mkCoordinator [Core.worker workerIndexer])
 
 data ParityQuery = OddTestEvent | EvenTestEvent
   deriving (Eq, Ord, Show)
@@ -842,10 +841,10 @@ instance
     pure $
       indexer
         ^.. Core.events
-          . folded
-          . filtered (isBefore p)
+          . Lens.folded
+          . Lens.filtered (isBefore p)
           . Core.event
-          . filtered f
+          . Lens.filtered f
 
 instance
   (MonadIO m)
@@ -933,19 +932,19 @@ cacheTestGroup =
         "With ListIndexer"
         [ Tasty.testProperty "Hit cache" $
             Test.withMaxSuccess 10_000 $
-              cacheHitProperty (view defaultChain <$> Test.arbitrary) oddCacheRunner
+              cacheHitProperty (Lens.view defaultChain <$> Test.arbitrary) oddCacheRunner
         , Tasty.testProperty "Miss cache" $
             Test.withMaxSuccess 10_000 $
-              cacheMissProperty (view defaultChain <$> Test.arbitrary) oddCacheRunner
+              cacheMissProperty (Lens.view defaultChain <$> Test.arbitrary) oddCacheRunner
         ]
     , Tasty.testGroup
         "With SQLiteIndexer"
         [ Tasty.testProperty "Hit cache" $
             Test.withMaxSuccess 10_000 $
-              cacheHitProperty (view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
+              cacheHitProperty (Lens.view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
         , Tasty.testProperty "Miss cache" $
             Test.withMaxSuccess 10_000 $
-              cacheMissProperty (view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
+              cacheMissProperty (Lens.view defaultChain <$> Test.arbitrary) sqlLiteCacheRunner
         ]
     , cacheUpdateTest
     ]
@@ -965,7 +964,7 @@ cacheHitProperty gen indexer =
    in behaveLikeModel
         gen
         indexer
-        (views model $ mapMaybe (find odd . snd))
+        (Lens.views model $ mapMaybe (find odd . snd))
         indexerEvents
 
 -- We ask even elements, which aren't cached
@@ -985,7 +984,7 @@ cacheMissProperty gen indexer =
   let indexerEvents indexer' =
         either (error . show) id
           <$> Core.queryLatestEither EvenTestEvent indexer'
-      modelEvents = views model $ mapMaybe (find even . snd)
+      modelEvents = Lens.views model $ mapMaybe (find even . snd)
    in behaveLikeModel
         gen
         indexer
@@ -1019,12 +1018,12 @@ delayProperty
   -> Property
 delayProperty delay gen runner =
   let indexerEvents indexer' =
-        fmap (view Core.event)
+        fmap (Lens.view Core.event)
           . fromRight []
           <$> Core.queryLatestEither Core.allEvents indexer'
 
       modelEvents lastSync =
-        views model (mapMaybe snd . filter ((lastSync >=) . fst))
+        Lens.views model (mapMaybe snd . filter ((lastSync >=) . fst))
 
       dRunner = withDelayRunner delay runner
 
@@ -1059,19 +1058,19 @@ delayTestGroup title runner =
         "0 delay"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              delayProperty 0 (view forwardChain <$> Test.arbitrary) runner
+              delayProperty 0 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              delayProperty 0 (view defaultChain <$> Test.arbitrary) runner
+              delayProperty 0 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "10 delay"
         [ Tasty.testProperty "in a chain without rollback" $
             Test.withMaxSuccess 5_000 $
-              delayProperty 10 (view forwardChain <$> Test.arbitrary) runner
+              delayProperty 10 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "in a chain with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              delayProperty 10 (view defaultChain <$> Test.arbitrary) runner
+              delayProperty 10 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     ]
 
@@ -1111,12 +1110,12 @@ catchupProperty
   -> Property
 catchupProperty batchSize bypassDistance gen runner =
   let indexerEvents indexer' =
-        fmap (view Core.event)
+        fmap (Lens.view Core.event)
           . fromRight []
           <$> Core.queryLatestEither Core.allEvents indexer'
 
       modelEvents lastSync =
-        views model (mapMaybe snd . filter ((lastSync >=) . fst))
+        Lens.views model (mapMaybe snd . filter ((lastSync >=) . fst))
 
       dRunner = withCatchupRunner batchSize bypassDistance runner
 
@@ -1151,55 +1150,55 @@ catchupTestGroup title runner =
         "0 bufferSize, stop on tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              catchupProperty 0 0 (view forwardChain <$> Test.arbitrary) runner
+              catchupProperty 0 0 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              catchupProperty 0 0 (view defaultChain <$> Test.arbitrary) runner
+              catchupProperty 0 0 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "100 bufferSize, stop on tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              catchupProperty 100 0 (view forwardChain <$> Test.arbitrary) runner
+              catchupProperty 100 0 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              catchupProperty 100 0 (view defaultChain <$> Test.arbitrary) runner
+              catchupProperty 100 0 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "1000 bufferSize, stop on tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              catchupProperty 1_000 0 (view forwardChain <$> Test.arbitrary) runner
+              catchupProperty 1_000 0 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              catchupProperty 1_000 0 (view defaultChain <$> Test.arbitrary) runner
+              catchupProperty 1_000 0 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "0 bufferSize, stop 10 to tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              catchupProperty 0 10 (view forwardChain <$> Test.arbitrary) runner
+              catchupProperty 0 10 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              catchupProperty 0 10 (view defaultChain <$> Test.arbitrary) runner
+              catchupProperty 0 10 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "100 bufferSize, stop 10 to tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              catchupProperty 100 10 (view forwardChain <$> Test.arbitrary) runner
+              catchupProperty 100 10 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              catchupProperty 100 10 (view defaultChain <$> Test.arbitrary) runner
+              catchupProperty 100 10 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     , Tasty.testGroup
         "1000 bufferSize, stop 10 to tip (100 events)"
         [ Tasty.testProperty "indexes events without rollback" $
             Test.withMaxSuccess 5_000 $
-              catchupProperty 1_000 10 (view forwardChain <$> Test.arbitrary) runner
+              catchupProperty 1_000 10 (Lens.view forwardChain <$> Test.arbitrary) runner
         , Tasty.testProperty "indexes events with rollbacks" $
             Test.withMaxSuccess 10_000 $
-              catchupProperty 1_000 10 (view defaultChain <$> Test.arbitrary) runner
+              catchupProperty 1_000 10 (Lens.view defaultChain <$> Test.arbitrary) runner
         ]
     ]
 
@@ -1259,7 +1258,7 @@ stopCoordinatorTest
 stopCoordinatorTest runner =
   Tasty.testProperty "stops coordinator workers" $
     Test.withMaxSuccess 1_000 $
-      stopCoordinatorProperty (view defaultChain <$> Test.arbitrary) runner
+      stopCoordinatorProperty (Lens.view defaultChain <$> Test.arbitrary) runner
 
 resumeLastSyncProperty
   :: (Core.IsIndex (ExceptT Core.IndexerError IO) TestEvent indexer)
@@ -1274,27 +1273,27 @@ resumeLastSyncProperty rehydrate gen =
     indexer <- lift $ rehydrate file
     indexer' <- GenM.run $ foldM (flip process) indexer chain
     indexer'' <- GenM.run $ rehydrate file
-    origSyncPoint <- GenM.run $ Core.lastSyncPoint indexer'
-    resumedSyncPoint <- GenM.run $ Core.lastSyncPoint indexer''
+    origSyncPoint <- GenM.run $ Core.lastStablePoint indexer'
+    resumedSyncPoint <- GenM.run $ Core.lastStablePoint indexer''
     lift $ Core.close indexer'
     lift $ Core.close indexer''
     pure $ origSyncPoint === resumedSyncPoint
 
 resumeSQLiteLastSyncTest :: Tasty.TestTree
 resumeSQLiteLastSyncTest =
-  Tasty.testProperty "SQLiteIndexer - stop and restart restore lastSyncPoint" $
+  Tasty.testProperty "SQLiteIndexer - stop and restart restore lastStablePoint" $
     Test.withMaxSuccess 100 $
       resumeLastSyncProperty
         sqliteModelIndexerWithFile
-        (view chainWithoutEmptyEvents <$> Test.arbitrary)
+        (Lens.view chainWithoutEmptyEvents <$> Test.arbitrary)
 
 resumeMixedLastSyncTest :: Tasty.TestTree
 resumeMixedLastSyncTest =
-  Tasty.testProperty "MixedIndexer - stop and restart restore lastSyncPoint" $
+  Tasty.testProperty "MixedIndexer - stop and restart restore lastStablePoint" $
     Test.withMaxSuccess 100 $
       resumeLastSyncProperty
         mixedModelNoMemoryIndexerWithFile
-        (view chainWithoutEmptyEvents <$> Test.arbitrary)
+        (Lens.view chainWithoutEmptyEvents <$> Test.arbitrary)
 
 memorySizeUpdateProperty
   :: Gen [Item TestEvent]
@@ -1306,7 +1305,7 @@ memorySizeUpdateProperty gen =
         pure (chain, changeAt)
 
       indexerEvents indexer =
-        fmap (view Core.event)
+        fmap (Lens.view Core.event)
           . fromRight []
           <$> Core.queryLatestEither Core.allEvents indexer
 
@@ -1335,7 +1334,7 @@ memorySizeUpdateTest :: Tasty.TestTree
 memorySizeUpdateTest =
   Tasty.testProperty "MixedIndexer can change its size while running" $
     Test.withMaxSuccess 10_000 $
-      memorySizeUpdateProperty (view defaultChain <$> Test.arbitrary)
+      memorySizeUpdateProperty (Lens.view defaultChain <$> Test.arbitrary)
 
 instance
   (Applicative m)
@@ -1388,7 +1387,7 @@ cacheUpdateTest :: Tasty.TestTree
 cacheUpdateTest =
   Tasty.testProperty "Adding a cache while indexing dont break anything" $
     Test.withMaxSuccess 10_000 $
-      cacheUpdateProperty (view defaultChain <$> Test.arbitrary)
+      cacheUpdateProperty (Lens.view defaultChain <$> Test.arbitrary)
 
 -- | A runner for a the 'WithTracer' tranformer
 withTracerRunner
@@ -1416,12 +1415,12 @@ withTransformProperty
   -> Property
 withTransformProperty gen =
   let indexerEvents indexer' =
-        fmap (view Core.event)
+        fmap (Lens.view Core.event)
           . fromRight []
           <$> Core.queryLatestEither Core.allEvents indexer'
 
       modelEvents lastSync =
-        views model (mapMaybe (fmap abs . snd) . filter ((lastSync >=) . fst))
+        Lens.views model (mapMaybe (fmap abs . snd) . filter ((lastSync >=) . fst))
 
       runner = withTransformRunner abs Model.listIndexerRunner
 
@@ -1440,7 +1439,7 @@ withTransformTest :: Tasty.TestTree
 withTransformTest =
   Tasty.testProperty "WithTransform apply transformation before indexing" $
     Test.withMaxSuccess 10_000 $
-      withTransformProperty (view defaultChain <$> Test.arbitrary)
+      withTransformProperty (Lens.view defaultChain <$> Test.arbitrary)
 
 {- | Outline of the property:
 
@@ -1481,83 +1480,35 @@ propWithResumeShouldDrainAlreadySyncedEvents =
         k <- Test.chooseInt (1, 10)
         (chain :: [Item TestEvent]) <-
           genChain $
-            GenChainConfig (pure n) (fromIntegral k) 5 50 uniformRollBack (NonEmpty.singleton Core.genesis)
+            GenChainConfig (pure n) (fromIntegral k) 5 50 uniformRollBack (LastStable Core.genesis) Seq.Empty
         chainSubsetSize <- Test.chooseInt (0, length chain)
         pure (chain, chainSubsetSize, fromIntegral k)
-   in Test.forAll gen $ \(chain, chainSubsetSize, k) -> monadicExceptTIO $ do
+   in monadicExceptTIO @() $ GenM.forAllM gen $ \(chain, chainSubsetSize, k) -> do
         -- Select random subset of the chain and index it with a ListIndexer
         -- This correspons to an indexer which starts indexing events from genesis up until a
         -- certain point before being stopped.
         let chainSubset = take chainSubsetSize chain
         indexer <- GenM.run $ foldM (flip process) Core.mkListIndexer chainSubset
-
         -- Initialize a 'WithResume' indexer using the previously created ListIndexer.
         -- Then, re-index the full chain from scratch.
         -- Resume indexing by restarting from genesis and using last immutable sync point.
-        initialIndexerWithResume <-
-          GenM.run $
-            Core.withResume
-              Core.lastSyncPoints
-              (k + 1)
-              indexer
-        let immutableChainPart = take (length chain - fromIntegral k) chain
+        lastStable' <- GenM.run $ Core.lastStablePoint indexer
+        let runner =
+              coordinatorIndexerRunnerWithPreprocessor (Core.withResume lastStable')
+              -- resume assumes that the indexer has rollbacked to its last stable point
+              $
+                Model.ioIndexerRunner (Core.rollback lastStable' indexer)
+        let (immutableChainPart, mutableChainPart) = splitAt (length chain - fromIntegral k) chain
             immutableChainPartWithoutRollbacks = applyRollbacksOnChain immutableChainPart
-            mutableChainPart = drop (length chain - fromIntegral k) chain
             fullChain = Rollback Core.genesis : immutableChainPartWithoutRollbacks ++ mutableChainPart
-        resumedIndexer <-
-          GenM.run $
-            foldM
-              (flip process)
-              initialIndexerWithResume
-              fullChain
-        withResumeIndexedEvents <- fmap (fmap (view Core.event)) $ getIndexerEvents resumedIndexer
 
-        -- Model results using a ListIndexer using the full chain
-        listIndexer <- GenM.run $ foldM (flip process) Core.mkListIndexer (Rollback Core.genesis : chain)
-        (expectedChainEvents :: [TestEvent]) <- fmap (fmap (view Core.event)) $ getIndexerEvents listIndexer
-
-        -- Calculate some statistics for 'cover'.
-        resumedIndexerLastSyncPoints <-
-          fmap
-            ( NonEmpty.toList
-                . fromMaybe (NonEmpty.singleton Core.genesis)
-                . NonEmpty.nonEmpty
-            )
-            $ Core.lastSyncPoints (k + 1) resumedIndexer
-        let resumedIndexerLowestLastSyncPoint = minimum resumedIndexerLastSyncPoints
-        let resumedIndexerHighestLastSyncPoint = maximum resumedIndexerLastSyncPoints
-        let chainHasAtLeastOnePointBeforeLastSyncedPoint = isJust $ find (\item -> item ^. testPoint < resumedIndexerLowestLastSyncPoint) fullChain
-        let chainHasAtLeastOnePointAfterLastSyncedPoint = isJust $ find (\item -> item ^. testPoint > resumedIndexerHighestLastSyncPoint) fullChain
-        let chainHasAtLeastOnePointSameAsLastSyncedPoint = isJust $ find (\item -> List.elem (item ^. testPoint) resumedIndexerLastSyncPoints) fullChain
-        let chainHasAtLeastOnePointForkOfLastSyncedPoint =
-              isJust $
-                find
-                  ( \item -> case Core.comparePoint resumedIndexerLowestLastSyncPoint (item ^. testPoint) of
-                      Core.Fork -> True
-                      _ -> False
-                  )
-                  fullChain
-
-        let runPropertyWithCover =
-              Test.cover
-                70
-                chainHasAtLeastOnePointBeforeLastSyncedPoint
-                "Generated chain has at least one point before the lowest last sync point of the resumed indexer"
-                . Test.cover
-                  70
-                  chainHasAtLeastOnePointSameAsLastSyncedPoint
-                  "Generated chain has at least one point that is the same as one of the last sync points"
-                . Test.cover 50 (not $ null expectedChainEvents) "Expected chain events is not empty"
-                . Test.cover
-                  5
-                  chainHasAtLeastOnePointAfterLastSyncedPoint
-                  "Generated chain has at least one point after the highest last sync point of the resumed indexer"
-                . Test.cover
-                  5
-                  chainHasAtLeastOnePointForkOfLastSyncedPoint
-                  "Generated chain has at least one point that has the same slot as one of the last sync points, but with a different point hash"
-
-        pure $ runPropertyWithCover $ withResumeIndexedEvents === expectedChainEvents
+            withResumeIndexedEvents = fmap (fmap (Lens.view Core.event)) . getIndexerEvents
+        GenM.stop $
+          behaveLikeModel
+            (pure fullChain)
+            runner
+            (catMaybes . Lens.views model (fmap snd))
+            withResumeIndexedEvents
 
 withResumeTest :: Tasty.TestTree
 withResumeTest =
@@ -1596,7 +1547,7 @@ withAggregateProperty
   -> Property
 withAggregateProperty gen =
   let indexerEvents indexer' =
-        fmap (view Core.event)
+        fmap (Lens.view Core.event)
           . fromRight []
           <$> Core.queryLatestEither Core.allEvents indexer'
 
@@ -1607,7 +1558,7 @@ withAggregateProperty gen =
 
       modelEvents lastSync =
         catMaybes . init . scanr modelAggregate Nothing
-          <$> views model (fmap snd . filter ((lastSync >=) . fst))
+          <$> Lens.views model (fmap snd . filter ((lastSync >=) . fst))
 
       runner = withFoldMapRunner id Model.listIndexerRunner
 
@@ -1626,13 +1577,13 @@ withAggregateTest :: Tasty.TestTree
 withAggregateTest =
   Tasty.testProperty "WithAggregate apply transformation before indexing" $
     Test.withMaxSuccess 10_000 $
-      withAggregateProperty (view defaultChain <$> Test.arbitrary)
+      withAggregateProperty (Lens.view defaultChain <$> Test.arbitrary)
 
 -- | Provide an indexer that fails on rollback
 newtype WithRollbackFailure indexer event = WithRollbackFailure
   {_withRollbackFailure :: Core.IndexTransformer (Const ()) indexer event}
 
-makeLenses ''WithRollbackFailure
+Lens.makeLenses ''WithRollbackFailure
 
 -- | A runner for a the 'WithAggregate' tranformer
 withRollbackFailureRunner
@@ -1655,6 +1606,7 @@ deriving via
 instance (Core.IsIndex m event indexer) => Core.IsIndex m event (WithRollbackFailure indexer) where
   index = Core.indexVia Core.unwrap
   rollback _ _ = error "STOP"
+  setLastStablePoint = Core.setLastStablePointVia Core.unwrap
 
 deriving via
   (Core.IndexTransformer (Const ()) indexer)
@@ -1678,4 +1630,4 @@ withRollbackFailureTest :: Tasty.TestTree
 withRollbackFailureTest =
   Tasty.testProperty "Rollback failure in a worker exit nicely" $
     Test.withMaxSuccess 10_000 $
-      checkOutOfRollback (view defaultChain <$> Test.arbitrary)
+      checkOutOfRollback (Lens.view defaultChain <$> Test.arbitrary)

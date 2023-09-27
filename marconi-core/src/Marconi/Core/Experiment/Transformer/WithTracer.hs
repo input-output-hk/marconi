@@ -40,8 +40,8 @@ import Data.Maybe (listToMaybe)
 import Marconi.Core.Experiment.Class (
   Closeable (close),
   HasGenesis,
-  IsIndex (index, indexAll, indexAllDescending, rollback),
-  IsSync (lastSyncPoint, lastSyncPoints),
+  IsIndex (index, indexAll, indexAllDescending, rollback, setLastStablePoint),
+  IsSync (lastStablePoint, lastSyncPoint),
   Queryable (query),
   Resetable (reset),
  )
@@ -56,11 +56,12 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   indexAllDescendingVia,
   indexAllVia,
   indexVia,
+  lastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
   queryVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
   wrapperConfig,
  )
 import Marconi.Core.Experiment.Type (Point, point)
@@ -109,7 +110,7 @@ makeLenses 'WithTracer
 
 instance (IsSync m event indexer) => IsSync m event (WithTracer n indexer) where
   lastSyncPoint = lastSyncPointVia unwrap
-  lastSyncPoints = lastSyncPointsVia unwrap
+  lastStablePoint = lastStablePointVia unwrap
 
 deriving via
   (IndexTransformer (IndexerTracer m) indexer)
@@ -206,6 +207,8 @@ instance
           trace IndexerHasRollbackedTo
           pure res
 
+  setLastStablePoint = setLastStablePointVia unwrap
+
 instance
   (MonadTrans t, Monad m, Monad (t m), IsIndex (t m) event index)
   => IsIndex (t m) event (WithTracer m index)
@@ -247,6 +250,8 @@ instance
           res <- rollbackWrappedIndexer p
           trace IndexerHasRollbackedTo
           pure res
+
+  setLastStablePoint = setLastStablePointVia unwrap
 
 instance
   ( HasGenesis (Point event)
@@ -299,7 +304,7 @@ makeLenses 'WithTrace
 
 instance (IsSync m event indexer) => IsSync m event (WithTrace n indexer) where
   lastSyncPoint = lastSyncPointVia unwrap
-  lastSyncPoints = lastSyncPointsVia unwrap
+  lastStablePoint = lastStablePointVia unwrap
 
 deriving via
   (IndexTransformer (IndexerTrace m) indexer)
@@ -354,10 +359,7 @@ instance
   where
   trace = unwrapMap . trace
 
-instance
-  (MonadIO m, IsIndex m event index)
-  => IsIndex m event (WithTrace m index)
-  where
+instance (MonadIO m, IsIndex m event index) => IsIndex m event (WithTrace m index) where
   index timedEvent indexer = do
     let tr = indexer ^. trace
         point' = timedEvent ^. point
@@ -395,6 +397,8 @@ instance
           res <- rollbackWrappedIndexer p
           Trace.logDebug tr IndexerHasRollbackedTo
           pure res
+
+  setLastStablePoint = setLastStablePointVia unwrap
 
 instance
   (MonadTrans t, MonadIO m, MonadIO (t m), IsIndex (t m) event index)
@@ -437,6 +441,8 @@ instance
           res <- rollbackWrappedIndexer p
           lift $ Trace.logDebug tr IndexerHasRollbackedTo
           pure res
+
+  setLastStablePoint = setLastStablePointVia unwrap
 
 instance
   ( HasGenesis (Point event)

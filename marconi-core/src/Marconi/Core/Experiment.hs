@@ -13,7 +13,7 @@
 
  = Motivation
 
- The point we wanted to address are the folowing:
+ The point we wanted to address are the following:
 
     * @Storable@ implementation is designed in a way that strongly promotes indexers
       that rely on a mix of database and in-memory storage.
@@ -26,8 +26,9 @@
         * group of indexers, synchronised as a single indexer
         * implement in-memory/database storage that rely on other query heuristic
 
-    * The original implementation considered the @StorablePoint@ as data that can be derived from @Event@,
-      leading to the design of synthetic events to deal with indexer that didn't index enough data.
+    * The original implementation considered the @StorablePoint@ as data that can be derived from
+      @Event@, leading to the design of synthetic events to deal with indexer that didn't index
+      enough data.
 
     * In marconi, the original design uses a callback design to handle `MVar` modification,
       we wanted to address this point as well.
@@ -38,18 +39,22 @@
     * Each /event/ is emitted at a givent /point/ in time.
     * A /query/ is a request that the /indexer/ should be able to answer.
     * An /indexer instance/ corresponds to the use of an indexer for a specific type of events.
-    * Most of the time, an /indexer instance/ requires the implementation of some typeclasses to specify its behaviour.
+    * Most of the time, an /indexer instance/ requires the implementation of some typeclasses to
+      specify its behaviour.
     * An /indexer transformer/ slightly alter the behaviour of an existing transformer.
       In general, an /indexer transformer/ should add its logic to one of the typeclasses
       that specify the behaviour of an indexer.
     * A /coordinator/ is a specific kind of indexer that pass events to a set of indexer it coordonates.
     * A /worker/ is a wrapper around an indexer, that hides the indexer types to a coordinator
       and handle locally the lifecycle of the indexer.
+    * A /preprocessor/ is a stateful function that transforms events before they are sent to an
+    indexer or to a worker.
 
 
  = Content
 
-    * Base type classes to define an indexer, its query interface, and the required plumbing to handle rollback.
+    * Base type classes to define an indexer, its query interface, and the required plumbing to handle
+      rollback.
     * A full in-memory indexer (naive), a full SQLite indexer
       and an indexer that compose it with a SQL layer for persistence.
     * A coordinator for indexers, that can be exposed as an itdexer itself.
@@ -202,7 +207,6 @@ module Marconi.Core.Experiment (
   Resetable (..),
   resumeFrom,
   IsSync (..),
-  computeResumePoints,
   isAheadOfSync,
   Closeable (..),
   Queryable (..),
@@ -256,7 +260,8 @@ module Marconi.Core.Experiment (
   -- (and the corresponding 'Queryable' interface)
   -- should be enough to have an operational indexer.
   SQLiteIndexer (SQLiteIndexer),
-  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
+  GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
+  SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   InsertPointQuery (InsertPointQuery),
   -- | Start a new indexer or resume an existing SQLite indexer
   --
@@ -275,7 +280,6 @@ module Marconi.Core.Experiment (
 
   -- **** Reexport from SQLite
   ToRow (..),
-  lastSyncPointsQuery,
   dbLastSync,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
@@ -294,6 +298,7 @@ module Marconi.Core.Experiment (
   FileStorageConfig (FileStorageConfig),
   FileBuilder (FileBuilder),
   EventBuilder (EventBuilder),
+  EventInfo (fileMetadata),
   mkFileIndexer,
 
   -- ** Mixed indexer
@@ -355,10 +360,32 @@ module Marconi.Core.Experiment (
   WorkerIndexer (..),
   WorkerIndexerType,
   startWorker,
-  createWorker',
   createWorker,
+  createWorkerHoist,
   createWorkerPure,
+  createWorkerWithPreprocessing,
   ProcessedInput (..),
+
+  -- *** Preprocessors
+
+  -- | Preprocessors are used to alter the incoming the events sent to an indexer
+  -- through a worker.
+  --
+  -- It allows to transform the content of a block or to silence some events.
+  Preprocessor,
+  mapEvent,
+  mapMaybeEvent,
+  traverseEvent,
+  traverseMaybeEvent,
+  scanEvent,
+  scanEventM,
+  scanMaybeEventM,
+  preprocessor,
+  preprocessorM,
+
+  -- **** Resuming/draining
+  Resume,
+  withResume,
 
   -- ** Coordinator
   Coordinator,
@@ -404,12 +431,6 @@ module Marconi.Core.Experiment (
   withCatchup,
   CatchupConfig (CatchupConfig),
   HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
-
-  -- ** Resuming/draining
-  OrdPoint (comparePoint),
-  PointCompare (..),
-  WithResume,
-  withResume,
 
   -- ** Delay
   WithDelay,
@@ -478,8 +499,9 @@ module Marconi.Core.Experiment (
   resetVia,
   indexVia,
   indexAllDescendingVia,
+  setLastStablePointVia,
+  lastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
   closeVia,
   queryVia,
   queryLatestVia,
@@ -495,7 +517,6 @@ import Marconi.Core.Experiment.Class (
   IsSync (..),
   Queryable (..),
   Resetable (..),
-  computeResumePoints,
   indexAllDescendingEither,
   indexAllEither,
   indexEither,
@@ -515,6 +536,7 @@ import Marconi.Core.Experiment.Coordinator (
  )
 import Marconi.Core.Experiment.Indexer.FileIndexer (
   EventBuilder (EventBuilder),
+  EventInfo (fileMetadata),
   FileBuilder (FileBuilder),
   FileIndexer (FileIndexer),
   FileStorageConfig (FileStorageConfig),
@@ -540,20 +562,36 @@ import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
   mkSQLiteAggregateQuery,
  )
 import Marconi.Core.Experiment.Indexer.SQLiteIndexer (
-  GetLastSyncPointsQuery (GetLastSyncPointsQuery),
+  GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
   InsertPointQuery (InsertPointQuery),
   SQLInsertPlan (..),
   SQLRollbackPlan (..),
   SQLiteIndexer (..),
+  SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   ToRow (..),
   connection,
   dbLastSync,
   handleSQLErrors,
-  lastSyncPointsQuery,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+ )
+import Marconi.Core.Experiment.Preprocessor (
+  Preprocessor,
+  mapEvent,
+  mapMaybeEvent,
+  preprocessor,
+  preprocessorM,
+  scanEvent,
+  scanEventM,
+  scanMaybeEventM,
+  traverseEvent,
+  traverseMaybeEvent,
+ )
+import Marconi.Core.Experiment.Preprocessor.Resume (
+  Resume,
+  withResume,
  )
 import Marconi.Core.Experiment.Query (
   EventAtQuery (..),
@@ -569,12 +607,13 @@ import Marconi.Core.Experiment.Transformer.IndexTransformer (
   closeVia,
   indexAllDescendingVia,
   indexVia,
+  lastStablePointVia,
   lastSyncPointVia,
-  lastSyncPointsVia,
   queryLatestVia,
   queryVia,
   resetVia,
   rollbackVia,
+  setLastStablePointVia,
   wrappedIndexer,
   wrapperConfig,
  )
@@ -615,12 +654,6 @@ import Marconi.Core.Experiment.Transformer.WithPruning (
   stepsBeforeNext,
   withPruning,
  )
-import Marconi.Core.Experiment.Transformer.WithResume (
-  OrdPoint (comparePoint),
-  PointCompare (..),
-  WithResume,
-  withResume,
- )
 import Marconi.Core.Experiment.Transformer.WithTracer (
   HasTraceConfig (trace),
   HasTracerConfig (tracer),
@@ -642,6 +675,7 @@ import Marconi.Core.Experiment.Transformer.WithTransform (
 import Marconi.Core.Experiment.Type (
   IndexerError (..),
   Point,
+  ProcessedInput (..),
   QueryError (..),
   Result,
   Timed (..),
@@ -649,14 +683,14 @@ import Marconi.Core.Experiment.Type (
   point,
  )
 import Marconi.Core.Experiment.Worker (
-  ProcessedInput (..),
   Worker,
   WorkerIndexer (..),
   WorkerIndexerType,
   WorkerM (..),
   createWorker,
-  createWorker',
+  createWorkerHoist,
   createWorkerPure,
+  createWorkerWithPreprocessing,
   startWorker,
  )
 
