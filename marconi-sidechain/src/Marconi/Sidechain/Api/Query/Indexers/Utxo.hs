@@ -18,8 +18,8 @@ import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
 import Data.Bifunctor (Bifunctor (bimap))
+import Data.Foldable (toList)
 import Data.Functor ((<&>))
-import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text, pack)
 import Marconi.ChainIndex.Error (IndexerError (InvalidIndexer))
 import Marconi.ChainIndex.Error qualified as CI
@@ -166,7 +166,7 @@ reportBech32Addresses
   :: AddressUtxoIndexerEnv
   -> [Text]
 reportBech32Addresses env =
-  let addrs = maybe [] NonEmpty.toList (env ^. addressUtxoIndexerEnvTargetAddresses)
+  let addrs = maybe [] toList (env ^. addressUtxoIndexerEnvTargetAddresses)
    in fmap C.serialiseAddress addrs
 
 updateEnvState :: AddressUtxoIndexerEnv -> Utxo.UtxoIndexer -> STM ()

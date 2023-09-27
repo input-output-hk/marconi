@@ -22,6 +22,7 @@ import Data.List.NonEmpty (nonEmpty)
 import Data.Map qualified as Map
 import Data.Maybe (isJust, isNothing, mapMaybe)
 import Data.Set qualified as Set
+import Data.Set.NonEmpty qualified as NESet
 import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents, genUtxoEvents)
 import Gen.Marconi.ChainIndex.Indexers.Utxo qualified as UtxoGen
 import Gen.Marconi.ChainIndex.Mockchain (MockBlock (mockBlockHeader, mockBlockTxs))
@@ -780,7 +781,9 @@ mkTargetAddressFromTxOuts
   :: [C.TxOut C.CtxTx C.BabbageEra]
   -> Maybe TargetAddresses
 mkTargetAddressFromTxOuts txOuts =
-  nonEmpty $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
+  fmap NESet.fromList
+    <$> nonEmpty
+    $ mapMaybe (\(C.TxOut addr _ _ _) -> addressAnyToShelley $ Utxo.toAddr addr) txOuts
 
 {- |
   TODO: Refactor/review
