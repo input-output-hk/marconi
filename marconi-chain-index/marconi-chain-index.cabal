@@ -137,6 +137,7 @@ library
     , lens
     , mtl
     , mwc-random
+    , nonempty-containers
     , optparse-applicative
     , prettyprinter
     , process
@@ -417,6 +418,7 @@ test-suite marconi-chain-index-test
     , filepath
     , hedgehog
     , lens
+    , nonempty-containers
     , optparse-applicative
     , postgresql-simple
     , prettyprinter

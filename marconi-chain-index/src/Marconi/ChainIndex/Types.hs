@@ -39,14 +39,14 @@ module Marconi.ChainIndex.Types (
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
 import Data.Aeson qualified as Aeson
-import Data.List.NonEmpty (NonEmpty)
+import Data.Set.NonEmpty (NESet)
 import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 
--- | Type represents non empty list of Bech32 Shelley compatable addresses
-type TargetAddresses = NonEmpty (C.Address C.ShelleyAddr)
+-- | Type represents non empty set of Bech32 Shelley compatible addresses
+type TargetAddresses = NESet (C.Address C.ShelleyAddr)
 
 data UtxoIndexerConfig = UtxoIndexerConfig
   { ucTargetAddresses :: Maybe TargetAddresses

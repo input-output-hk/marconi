@@ -20,7 +20,8 @@ import System.FilePath ((</>))
 
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
-import Data.List.NonEmpty qualified as NonEmpty
+import Data.List.NonEmpty qualified as NEList
+import Data.Set.NonEmpty qualified as NESet
 import Data.Word (Word64)
 import Marconi.ChainIndex.Git.Rev (gitRev)
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig))
@@ -94,10 +95,10 @@ pTestnetMagicParser =
 -}
 multiAddressesParser
   :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser TargetAddresses
-multiAddressesParser = fmap (NonEmpty.fromList . concat) . some . single
+multiAddressesParser = fmap (NESet.fromList . NEList.fromList . concat) . some . single
   where
     single :: Opt.Mod Opt.OptionFields [C.Address C.ShelleyAddr] -> Opt.Parser [C.Address C.ShelleyAddr]
-    single = Opt.option (Opt.str >>= fmap nub . traverse parseCardanoAddresses . Text.words)
+    single = Opt.option (Opt.str >>= traverse parseCardanoAddresses . Text.words)
 
     deserializeToCardano :: Text -> Either C.Bech32DecodeError (C.Address C.ShelleyAddr)
     deserializeToCardano = C.deserialiseFromBech32 (C.proxyToAsType Proxy)
@@ -310,7 +311,7 @@ commonMaybeTargetAssetParser =
         -> Opt.Parser [(C.PolicyId, Maybe C.AssetName)]
       assetPair = Opt.option $ Opt.str >>= fmap nub . traverse parseAsset . Text.words
    in Opt.optional $
-        (fmap (NonEmpty.fromList . concat) . some . assetPair) $
+        (fmap (NEList.fromList . concat) . some . assetPair) $
           Opt.long "match-asset-id"
             <> Opt.metavar "POLICY_ID[.ASSET_NAME]"
             <> Opt.help
