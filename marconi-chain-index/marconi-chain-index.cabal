@@ -139,6 +139,7 @@ library
     , mwc-random
     , nonempty-containers
     , optparse-applicative
+    , pretty-simple
     , prettyprinter
     , process
     , prometheus-client
