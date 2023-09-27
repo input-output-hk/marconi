@@ -1,6 +1,6 @@
 { repoRoot, inputs, ... }:
 
-cabalProject:
+_cabalProject:
 
 let
   cardano-cli = inputs.cardano-node.legacyPackages.cardano-cli;
@@ -19,11 +19,11 @@ in
   scripts = {
     start-benchmark-machine = {
       enable = false;
-      exec = repoRoot.scripts.start-benchmarking-machine cabalProject;
+      group = "benchmarking";
+      exec = repoRoot.scripts.start-benchmarking-machine;
       description = ''
         Start the benchmarking NixOS VM exposing Grafana dashboards and Prometheus metrics for Marconi.
       '';
-      group = "benchmarking";
     };
   };
 

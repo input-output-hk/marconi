@@ -8,7 +8,7 @@
   inputs = {
 
     iogx = {
-      url = "github:input-output-hk/iogx";
+      url = "github:input-output-hk/iogx?ref=v4";
       inputs.hackage.follows = "hackage";
       inputs.CHaP.follows = "CHaP";
     };
