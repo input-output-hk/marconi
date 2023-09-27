@@ -96,7 +96,7 @@ let
   overlays = [
     (_: prev: {
       hsPkgs =
-        if prev.pkgs.buildPlatform.isWindows then
+        if prev.pkgs.hostPlatform.isWindows then
           l.throw "IT IS WINDOWS"
         else
           prev.pkgs.pkgsBuildBuild.setGitRevForPaths
