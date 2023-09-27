@@ -1,5 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-
 {- | 'Preprocessor's are used to transform the incoming events of an indexer, generally in a @Worker@.
 
    'Preprocessor's can carry an internal state, that can be updated on each incoming @ProcessingInput@.
@@ -130,6 +128,7 @@ scanMaybeEventM f =
       go Stop = pure . pure $ Stop
    in ScanM $ traverseJoin go
 
+-- | Lift a stateful function as a preprocessor
 preprocessor
   :: (Monad m)
   => (ProcessedInput point a -> State s [ProcessedInput point b])
@@ -137,6 +136,7 @@ preprocessor
   -> Preprocessor m point a b
 preprocessor f = generalize . Scan (traverseJoin f)
 
+-- | Lift a stateful and effectful function as a preprocessor
 preprocessorM
   :: (Monad m)
   => (ProcessedInput point a -> StateT s m [ProcessedInput point b])
