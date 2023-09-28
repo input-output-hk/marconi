@@ -136,7 +136,7 @@ runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar = do
           , Just $ databaseDir </> utxoDbFileName
           )
         ]
-      networkId = C.Testnet $ C.NetworkMagic 1
+      networkId = C.Testnet $ C.NetworkMagic 1 -- TODO Needs to be passed a CLI param
       retryConfig = RetryConfig 30 (Just 900)
 
   securityParam <- withNodeConnectRetry trace retryConfig nodeSocketPath $ do
@@ -147,7 +147,7 @@ runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar = do
         trace
         retryConfig
         securityParam
-        networkId -- TODO Needs to be passed a CLI param
+        networkId
         C.ChainPointAtGenesis
         nodeSocketPath
     )
