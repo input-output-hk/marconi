@@ -174,11 +174,11 @@ executable db-utils-exe
     , optparse-applicative
 
 test-suite marconi-sidechain-test
-  import:         lang
-  ghc-options:    -Wno-unused-packages
-  type:           exitcode-stdio-1.0
-  main-is:        Spec.hs
-  hs-source-dirs: test
+  import:             lang
+  ghc-options:        -Wno-unused-packages
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  hs-source-dirs:     test
   other-modules:
     Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn
     Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo
@@ -189,6 +189,11 @@ test-suite marconi-sidechain-test
     Spec.Marconi.Sidechain.Routes
     Spec.Marconi.Sidechain.RpcClientAction
     Spec.Marconi.Sidechain.Utils
+
+  --------------------
+  -- Required local executable
+  --------------------
+  build-tool-depends: marconi-sidechain:marconi-sidechain
 
   --------------------
   -- Local components

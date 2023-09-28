@@ -17,6 +17,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Logger (defaultStdOutLogger)
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment qualified as Core
 import System.Directory (createDirectoryIfMissing)
@@ -79,12 +80,14 @@ run appName = do
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
   Runner.runIndexer
-    trace
-    securityParam
-    retryConfig
-    socketPath
-    networkId
-    startingPoints
+    ( RunIndexerConfig
+        trace
+        retryConfig
+        securityParam
+        networkId
+        startingPoints
+        socketPath
+    )
     indexers
 
 getStartingPoints :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint

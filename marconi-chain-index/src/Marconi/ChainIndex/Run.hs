@@ -7,10 +7,16 @@ import Cardano.BM.Trace (logInfo)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
+import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CLI
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Indexers qualified as Indexers
-import Marconi.ChainIndex.Types (UtxoIndexerConfig (UtxoIndexerConfig))
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Types (
+  RunIndexerConfig (RunIndexerConfig),
+  UtxoIndexerConfig (UtxoIndexerConfig),
+ )
+import Marconi.ChainIndex.Utils qualified as Utils
 import System.Directory (createDirectoryIfMissing)
 import Text.Pretty.Simple (pShowDarkBg)
 
@@ -48,12 +54,21 @@ run = do
 
     let retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
 
+    let socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
+        networkId = Cli.optionsNetworkId $ Cli.commonOptions o
+
+    securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
+      Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+
     Indexers.runIndexers
-      trace
-      retryConfig
-      (Cli.optionsSocketPath $ Cli.commonOptions o)
-      (Cli.optionsNetworkId $ Cli.commonOptions o)
-      (Cli.optionsChainPoint $ Cli.commonOptions o)
+      ( RunIndexerConfig
+          trace
+          retryConfig
+          securityParam
+          networkId
+          (Cli.optionsChainPoint $ Cli.commonOptions o)
+          socketPath
+      )
       (Cli.optionsMinIndexingDepth $ Cli.commonOptions o)
       (Cli.optionsFailsIfResync o)
       indexers

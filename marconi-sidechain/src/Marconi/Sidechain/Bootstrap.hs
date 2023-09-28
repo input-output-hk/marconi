@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeApplications #-}
+
 {- |
  This module bootstraps the marconi-sidechain JSON RPC server, it acts as a glue conntecting the
  JSON-RPC, HttpServer, marconiIndexer, and marconi cache
@@ -7,11 +9,14 @@ module Marconi.Sidechain.Bootstrap where
 import Control.Concurrent.STM (atomically)
 import Control.Lens (view, (^.))
 import Control.Monad.Reader (ReaderT, lift)
+import Data.Void (Void)
 import Marconi.ChainIndex.Indexers (epochStateWorker, mintBurnWorker, runIndexers, utxoWorker)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
+  RunIndexerConfig (RunIndexerConfig),
   UtxoIndexerConfig (UtxoIndexerConfig),
   epochStateDbName,
   mintBurnDbName,
@@ -19,6 +24,7 @@ import Marconi.ChainIndex.Types (
   ucTargetAddresses,
   utxoDbName,
  )
+import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable (State)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurn
@@ -78,13 +84,24 @@ runSidechainIndexers = do
           , Just $ dbPath </> mintBurnDbName
           )
         ]
+
+  let retryConfig = CLI.optionsRetryConfig cliArgs
+      socketPath = CLI.socketFilePath cliArgs
+      networkId = CLI.networkId cliArgs
+
+  securityParam <- lift $ withNodeConnectRetry trace retryConfig socketPath $ do
+    Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+
   lift $
     runIndexers
-      trace
-      (CLI.optionsRetryConfig cliArgs)
-      (CLI.socketFilePath cliArgs)
-      (CLI.networkId cliArgs)
-      (CLI.optionsChainPoint cliArgs)
+      ( RunIndexerConfig
+          trace
+          retryConfig
+          securityParam
+          networkId
+          (CLI.optionsChainPoint cliArgs)
+          socketPath
+      )
       (CLI.minIndexingDepth cliArgs)
       (CLI.optionsFailsIfResync cliArgs)
       indexers
