@@ -60,19 +60,19 @@ let
           # ```
           marconi-chain-index.components.sublibs.json-rpc.buildable = lib.mkForce (!isCross);
           marconi-sidechain.package.buildable = !isCross;
-          marconi-tutorialib.package.buildable = !isCross;
+          marconi-tutorial.package.buildable = !isCross;
 
-          # marconi-core.doHaddock = false;
-          # marconi-core.flags.defer-plugin-errors = false;
+          # marconi-core.doHaddock = meta.enableHaddock;
+          # marconi-core.flags.defer-plugin-errors = meta.enableHaddock;
 
-          # marconi-chain-index.doHaddock = false;
-          # marconi-chain-index.flags.defer-plugin-errors = false;
+          # marconi-chain-index.doHaddock = meta.enableHaddock;
+          # marconi-chain-index.flags.defer-plugin-errors = meta.enableHaddock;
 
-          # marconi-sidechain.doHaddock = false;
-          # marconi-sidechain.flags.defer-plugin-errors = false;
+          # marconi-sidechain.doHaddock = meta.enableHaddock;
+          # marconi-sidechain.flags.defer-plugin-errors = meta.enableHaddock;
 
-          # marconi-tutorialib.doHaddock = false;
-          # marconi-tutorialib.flags.defer-plugin-errors = false;
+          # marconi-tutorial.doHaddock = meta.enableHaddock;
+          # marconi-tutorial.flags.defer-plugin-errors = meta.enableHaddock;
 
           # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
           # is necessary to prevent the error
@@ -85,22 +85,22 @@ let
           # `configuration/defaults/byron-mainnet` directory.
           # Else, we'll get the error
           # `/nix/store/ls0ky8x6zi3fkxrv7n4vs4x9czcqh1pb-marconi/marconi/test/configuration.yaml: openFile: does not exist (No such file or directory)`
-          marconi-chain-index.preCheck = "
-              export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
-              export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
-              export CARDANO_NODE_SRC=${../.}
-            ";
+          marconi-chain-index.preCheck = ''
+            export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
+            export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
+            export CARDANO_NODE_SRC=${../.}
+          '';
 
           # Needed for running the marconi-sidechain integration tests in CI
-          marconi-sidechain.preCheck = "
-              export MARCONI_SIDECHAIN=${config.hsPkgs.marconi-sidechain.components.exes.marconi-sidechain}/bin/marconi-sidechain
-            ";
+          marconi-sidechain.preCheck = ''
+            export MARCONI_SIDECHAIN=${config.hsPkgs.marconi-sidechain.components.exes.marconi-sidechain}/bin/marconi-sidechain
+          '';
 
-          # Werror everything. This is a pain, see https://github.com/input-output-hk/haskellib.nix/issues/519
+          # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
           marconi-chain-index.ghcOptions = [ "-Werror" ];
           marconi-core.ghcOptions = [ "-Werror" ];
           marconi-sidechain.ghcOptions = [ "-Werror" ];
-          marconi-tutorialib.ghcOptions = [ "-Werror" ];
+          marconi-tutorial.ghcOptions = [ "-Werror" ];
         };
       }];
     });
