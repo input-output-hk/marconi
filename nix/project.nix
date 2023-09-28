@@ -227,7 +227,7 @@ let
   haskellDotNixProject = haskellDotNixProject'.appendOverlays [
 >>>>>>> 379d0b5 (Bump IOGX -> V4)
     (_: prev: {
-      hsPkgs = prev.pkgs.pkgsBuildBuild.setGitRevForPaths pkgs.gitrev [
+      hsPkgs = prev.pkgs.pkgsBuildBuild.setGitRevForPaths prev.pkgs.gitrev [
         "marconi-chain-index.components.exes.marconi-chain-index"
       ]
         prev.hsPkgs;
