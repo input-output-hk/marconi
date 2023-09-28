@@ -62,17 +62,17 @@ let
           marconi-sidechain.package.buildable = !isCross;
           marconi-tutorial.package.buildable = !isCross;
 
-          # marconi-core.doHaddock = meta.enableHaddock;
-          # marconi-core.flags.defer-plugin-errors = meta.enableHaddock;
+          marconi-core.doHaddock = false;
+          marconi-core.flags.defer-plugin-errors = false;
 
-          # marconi-chain-index.doHaddock = meta.enableHaddock;
-          # marconi-chain-index.flags.defer-plugin-errors = meta.enableHaddock;
+          marconi-chain-index.doHaddock = false;
+          marconi-chain-index.flags.defer-plugin-errors = false;
 
-          # marconi-sidechain.doHaddock = meta.enableHaddock;
-          # marconi-sidechain.flags.defer-plugin-errors = meta.enableHaddock;
+          marconi-sidechain.doHaddock = false;
+          marconi-sidechain.flags.defer-plugin-errors = false;
 
-          # marconi-tutorial.doHaddock = meta.enableHaddock;
-          # marconi-tutorial.flags.defer-plugin-errors = meta.enableHaddock;
+          marconi-tutorial.doHaddock = false;
+          marconi-tutorial.flags.defer-plugin-errors = false;
 
           # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
           # is necessary to prevent the error
