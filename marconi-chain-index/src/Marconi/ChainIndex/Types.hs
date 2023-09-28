@@ -34,16 +34,22 @@ module Marconi.ChainIndex.Types (
   IndexingDepth (MinIndexingDepth, MaxIndexingDepth),
   TxIndexInBlock (TxIndexInBlock),
   ShouldFailIfResync (ShouldFailIfResync),
+
+  -- * Configuration for index runners
+  RunIndexerConfig (RunIndexerConfig),
 ) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
+import Cardano.BM.Data.Trace (Trace)
 import Data.Aeson qualified as Aeson
 import Data.Set.NonEmpty (NESet)
+import Data.Text (Text)
 import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Node.Client.Retry (RetryConfig)
 
 -- | Type represents non empty set of Bech32 Shelley compatible addresses
 type TargetAddresses = NESet (C.Address C.ShelleyAddr)
@@ -107,6 +113,16 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     , SQL.ToField
     , SQL.FromField
     )
+
+-- | Common configuration required to run indexers
+data RunIndexerConfig
+  = RunIndexerConfig
+      (Trace IO Text)
+      RetryConfig
+      SecurityParam
+      C.NetworkId
+      C.ChainPoint
+      FilePath
 
 -- * Database file names
 

@@ -13,7 +13,6 @@ import Cardano.Api.Extended.Streaming (
   ChainSyncEventException (NoIntersectionFound),
   withChainSyncBlockEventStream,
  )
-import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM qualified as STM
@@ -23,13 +22,16 @@ import Control.Monad.Except (ExceptT, void)
 import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance, chainDistance, getEvent)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
-import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
-import Marconi.ChainIndex.Types (BlockEvent (blockInMode), SecurityParam)
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Types (
+  BlockEvent (blockInMode),
+  RunIndexerConfig (RunIndexerConfig),
+  SecurityParam,
+ )
 import Marconi.Core.Experiment qualified as Core
 import Prettyprinter qualified as PP
 import Prettyprinter.Render.Text qualified as PP
@@ -59,15 +61,10 @@ runIndexer
      , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      )
-  => Trace IO Text
-  -> SecurityParam
-  -> RetryConfig
-  -> FilePath
-  -> C.NetworkId
-  -> C.ChainPoint
+  => RunIndexerConfig
   -> indexer (WithDistance BlockEvent)
   -> IO ()
-runIndexer trace securityParam retryConfig socketPath networkId startingPoint indexer = do
+runIndexer (RunIndexerConfig trace retryConfig securityParam networkId startingPoint socketPath) indexer = do
   withNodeConnectRetry trace retryConfig socketPath $ do
     Trace.logInfo trace $
       PP.renderStrict $
