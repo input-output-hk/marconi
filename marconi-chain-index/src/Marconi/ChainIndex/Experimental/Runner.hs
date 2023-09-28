@@ -64,28 +64,37 @@ runIndexer
   => RunIndexerConfig
   -> indexer (WithDistance BlockEvent)
   -> IO ()
-runIndexer (RunIndexerConfig trace retryConfig securityParam networkId startingPoint socketPath) indexer = do
-  withNodeConnectRetry trace retryConfig socketPath $ do
-    Trace.logInfo trace $
-      PP.renderStrict $
-        PP.layoutPretty PP.defaultLayoutOptions $
-          PP.pretty $
-            StartingPointLog startingPoint
-    eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
-    cBox <- Concurrent.newMVar indexer
-    let runChainSyncStream =
-          withChainSyncBlockEventStream
-            socketPath
-            networkId
-            [startingPoint]
-            (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
-        whenNoIntersectionFound NoIntersectionFound =
-          Trace.logError trace $
-            PP.renderStrict $
-              PP.layoutPretty PP.defaultLayoutOptions $
-                PP.pretty NoIntersectionFoundLog
-    void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-    Core.processQueue (stablePointComputation securityParam) Map.empty eventQueue cBox
+runIndexer
+  ( RunIndexerConfig
+      trace
+      retryConfig
+      securityParam
+      networkId
+      startingPoint
+      socketPath
+    )
+  indexer = do
+    withNodeConnectRetry trace retryConfig socketPath $ do
+      Trace.logInfo trace $
+        PP.renderStrict $
+          PP.layoutPretty PP.defaultLayoutOptions $
+            PP.pretty $
+              StartingPointLog startingPoint
+      eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
+      cBox <- Concurrent.newMVar indexer
+      let runChainSyncStream =
+            withChainSyncBlockEventStream
+              socketPath
+              networkId
+              [startingPoint]
+              (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
+          whenNoIntersectionFound NoIntersectionFound =
+            Trace.logError trace $
+              PP.renderStrict $
+                PP.layoutPretty PP.defaultLayoutOptions $
+                  PP.pretty NoIntersectionFoundLog
+      void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
+      Core.processQueue (stablePointComputation securityParam) Map.empty eventQueue cBox
 
 stablePointComputation
   :: SecurityParam
