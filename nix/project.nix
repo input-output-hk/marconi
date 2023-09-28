@@ -227,7 +227,7 @@ let
   haskellDotNixProject = haskellDotNixProject'.appendOverlays [
 >>>>>>> 379d0b5 (Bump IOGX -> V4)
     (_: prev: {
-      hsPkgs = prev.pkgs.pkgsBuildHost.setGitRevForPaths prev.pkgs.gitrev [
+      hsPkgs = prev.pkgs.pkgsBuildBuild.setGitRevForPaths prev.pkgs.gitrev [
         "marconi-chain-index.components.exes.marconi-chain-index"
       ]
         prev.hsPkgs;
@@ -236,7 +236,7 @@ let
 
 
   project = lib.iogx.mkHaskellProject {
-    inherit haskellDotNixProject;
+    haskellDotNixProject = haskellDotNixProject';
     crossCompileMingwW64Supported = true;
     shellArgsForProjectVariant = repoRoot.nix.shell;
     readTheDocs.siteFolder = "doc/read-the-docs-site";
