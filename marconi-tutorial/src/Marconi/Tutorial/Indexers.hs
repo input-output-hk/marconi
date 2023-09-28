@@ -8,6 +8,7 @@ import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment qualified as Core
 import Marconi.Tutorial.CLI qualified as CLI
@@ -36,10 +37,12 @@ runIndexers trace o = do
   indexers <- Core.mkCoordinator indexerWorkers
 
   Runner.runIndexer
-    trace
-    securityParam
-    retryConfig
-    socketPath
-    networkId
-    preferedStartingPoint
+    ( RunIndexerConfig
+        trace
+        retryConfig
+        securityParam
+        networkId
+        preferedStartingPoint
+        socketPath
+    )
     indexers

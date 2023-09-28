@@ -49,6 +49,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Void (Void)
 import Data.Word (Word64)
 import Database.SQLite.Simple (FromRow (fromRow), field, toRow)
 import Database.SQLite.Simple qualified as SQL
@@ -67,14 +68,16 @@ import Marconi.ChainIndex.Indexers.Utxo (
   UtxoIndexer,
   lessThanOrEqual,
  )
-import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig))
+import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig), withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   IndexingDepth (MinIndexingDepth),
+  RunIndexerConfig (RunIndexerConfig),
   ShouldFailIfResync (ShouldFailIfResync),
   UtxoIndexerConfig (UtxoIndexerConfig),
   ucEnableUtxoTxOutRef,
   ucTargetAddresses,
  )
+import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
 import System.FilePath ((</>))
@@ -133,12 +136,21 @@ runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar = do
           , Just $ databaseDir </> utxoDbFileName
           )
         ]
+      networkId = C.Testnet $ C.NetworkMagic 1 -- TODO Needs to be passed a CLI param
+      retryConfig = RetryConfig 30 (Just 900)
+
+  securityParam <- withNodeConnectRetry trace retryConfig nodeSocketPath $ do
+    Utils.toException $ Utils.querySecurityParam @Void networkId nodeSocketPath
+
   runIndexers
-    trace
-    (RetryConfig 30 (Just 900))
-    nodeSocketPath
-    (C.Testnet $ C.NetworkMagic 1) -- TODO Needs to be passed a CLI param
-    C.ChainPointAtGenesis
+    ( RunIndexerConfig
+        trace
+        retryConfig
+        securityParam
+        networkId
+        C.ChainPointAtGenesis
+        nodeSocketPath
+    )
     (MinIndexingDepth 0)
     (ShouldFailIfResync True)
     indexers
