@@ -6,6 +6,7 @@ import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logInfo)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Data.Text qualified as Text
+import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CLI
 import Marconi.ChainIndex.CLI qualified as Cli
@@ -17,36 +18,41 @@ import Marconi.ChainIndex.Types (
  )
 import Marconi.ChainIndex.Utils qualified as Utils
 import System.Directory (createDirectoryIfMissing)
+import Text.Pretty.Simple (pShowDarkBg)
 
 {- | the worker don't have a hook to notify the query part
- (we use a monoid because some hooks return unit while other returns a list of events)
+(we use a monoid because some hooks return unit while other returns a list of events)
 -}
 noHook :: (Monoid m) => a -> IO m
 noHook = const $ pure mempty
 
 run :: IO ()
 run = do
-  o <- Cli.parseOptions
-  createDirectoryIfMissing True (Cli.optionsDbPath o)
-  let utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) =
-        Cli.mkUtxoIndexerConfig o
-      maybeTargetAssets = Cli.optionsTargetAssets o
-      indexers =
-        [ (Indexers.utxoWorker noHook utxoIndexerConfig, Cli.utxoDbPath o)
-        , (Indexers.addressDatumWorker noHook maybeTargetAddresses, Cli.addressDatumDbPath o)
-        , (Indexers.scriptTxWorker noHook, Cli.scriptTxDbPath o)
-        , (Indexers.mintBurnWorker noHook maybeTargetAssets, Cli.mintBurnDbPath o)
-        ]
-          <> case Cli.optionsNodeConfigPath o of
-            Just configPath ->
-              [(Indexers.epochStateWorker configPath noHook, Cli.epochStateDbPath o)]
-            Nothing -> []
-
   traceConfig <- defaultConfigStdout
-  let retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
-
   withTrace traceConfig "marconi-chain-index" $ \trace -> do
     logInfo trace $ Text.pack $ "marconi-chain-index-" <> CLI.getVersion
+
+    o <- Cli.parseOptions
+
+    logInfo trace . Text.toStrict $ pShowDarkBg o
+
+    createDirectoryIfMissing True (Cli.optionsDbPath o)
+
+    let utxoIndexerConfig@(UtxoIndexerConfig maybeTargetAddresses _) =
+          Cli.mkUtxoIndexerConfig o
+        maybeTargetAssets = Cli.optionsTargetAssets o
+        indexers =
+          [ (Indexers.utxoWorker noHook utxoIndexerConfig, Cli.utxoDbPath o)
+          , (Indexers.addressDatumWorker noHook maybeTargetAddresses, Cli.addressDatumDbPath o)
+          , (Indexers.scriptTxWorker noHook, Cli.scriptTxDbPath o)
+          , (Indexers.mintBurnWorker noHook maybeTargetAssets, Cli.mintBurnDbPath o)
+          ]
+            <> case Cli.optionsNodeConfigPath o of
+              Just configPath ->
+                [(Indexers.epochStateWorker configPath noHook, Cli.epochStateDbPath o)]
+              Nothing -> []
+
+    let retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
 
     let socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
         networkId = Cli.optionsNetworkId $ Cli.commonOptions o

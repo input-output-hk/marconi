@@ -7,6 +7,7 @@ import Cardano.BM.Trace (logError, logInfo)
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Experimental.Indexers (buildIndexers)
@@ -21,10 +22,20 @@ import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Experiment qualified as Core
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (exitFailure)
+import Text.Pretty.Simple (pShowDarkBg)
 
 run :: Text -> IO ()
 run appName = do
+  trace <- defaultStdOutLogger appName
+
+  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
+
   o <- Cli.parseOptions
+
+  logInfo trace . Text.toStrict $ pShowDarkBg o
+
+  createDirectoryIfMissing True (Cli.optionsDbPath o)
+
   let batchSize = 5000
       stopCatchupDistance = 100
       volatileEpochStateSnapshotInterval = 100
@@ -35,15 +46,14 @@ run appName = do
       networkId = Cli.optionsNetworkId $ Cli.commonOptions o
       retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
       preferredStartingPoint = Cli.optionsChainPoint $ Cli.commonOptions o
-  createDirectoryIfMissing True (Cli.optionsDbPath o)
+
   nodeConfigPath <- case Cli.optionsNodeConfigPath o of
     Just cfg -> pure cfg
     Nothing -> error "No node config path provided"
-  trace <- defaultStdOutLogger appName
+
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
     Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
 
-  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
   mindexers <-
     runExceptT $
       buildIndexers
