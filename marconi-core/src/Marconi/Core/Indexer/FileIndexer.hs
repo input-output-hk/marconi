@@ -374,8 +374,8 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
 
 -- * File writing
 
--- TODO maybe this section goes into its own file with `writeFile` abstracted so we can use it for
---      DB inserts or whatever
+-- TODO maybe this section goes into its own file with `BS.writeFile` abstracted so we can use it
+--      for DB inserts or whatever
 writeFileWith :: (MonadIO m) => (IO () -> IO ()) -> FilePath -> ByteString -> m ()
 writeFileWith executor filename content =
   liftIO $ executor (BS.writeFile filename content)
