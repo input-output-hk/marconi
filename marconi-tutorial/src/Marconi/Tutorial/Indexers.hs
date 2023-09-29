@@ -12,7 +12,7 @@ import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig), SecurityParam)
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import Marconi.Tutorial.CLI qualified as CLI
 import Marconi.Tutorial.Env (Env, envCliArgs, envStdoutTrace)
 import Marconi.Tutorial.Env qualified as Env

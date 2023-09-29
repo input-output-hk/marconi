@@ -55,8 +55,8 @@ import Marconi.ChainIndex.Experimental.Indexers.Datum (DatumInfo)
 import Marconi.ChainIndex.Experimental.Indexers.Spent (SpentInfo)
 import Marconi.ChainIndex.Experimental.Indexers.Utxo (Utxo)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.Core.Experiment qualified as Core
-import Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery (
+import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteAggregateQuery (
   SQLiteSourceProvider (SQLiteSourceProvider),
  )
 import Text.Read (readMaybe)

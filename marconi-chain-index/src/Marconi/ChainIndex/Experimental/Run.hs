@@ -19,7 +19,7 @@ import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)

@@ -8,7 +8,7 @@ module Marconi.ChainIndex.Experimental.Extract.WithDistance (
 
 import Cardano.Api qualified as C
 import Data.Word (Word64)
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 -- | Attach the distance (in blocks) to the tip to an event
 data WithDistance event = WithDistance Word64 event

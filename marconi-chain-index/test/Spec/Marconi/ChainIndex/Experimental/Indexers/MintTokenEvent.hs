@@ -50,7 +50,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardWorkerConfig (StandardWorkerConfig),
  )
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)

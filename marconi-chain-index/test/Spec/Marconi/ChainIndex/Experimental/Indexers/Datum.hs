@@ -12,7 +12,7 @@ import Control.Lens ((^.), (^..))
 import Data.Maybe (mapMaybe)
 
 import Marconi.ChainIndex.Experimental.Indexers.Datum qualified as Datum
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 import Cardano.Api qualified as C
 import Control.Lens qualified as Lens

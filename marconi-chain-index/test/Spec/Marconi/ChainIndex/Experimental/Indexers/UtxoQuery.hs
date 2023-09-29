@@ -12,7 +12,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Indexers.UtxoQuery (UtxoQueryEvent, UtxoQueryIndexer)
 import Marconi.ChainIndex.Experimental.Indexers.UtxoQuery qualified as UtxoQuery
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 import Cardano.Api qualified as C
 import Control.Concurrent qualified as Concurrent

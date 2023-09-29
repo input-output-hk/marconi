@@ -47,7 +47,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   mkStandardWorker,
  )
 import Marconi.ChainIndex.Orphans ()
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 data BlockInfo = BlockInfo
   { _blockNo :: !C.BlockNo

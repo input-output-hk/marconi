@@ -63,6 +63,9 @@ let
     marconi-tutorial.doHaddock = meta.enableHaddock;
     marconi-tutorial.flags.defer-plugin-errors = meta.enableHaddock;
 
+    marconi-core-legacy.doHaddock = meta.enableHaddock;
+    marconi-core-legacy.flags.defer-plugin-errors = meta.enableHaddock;
+
     # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
     # is necessary to prevent the error
     # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.

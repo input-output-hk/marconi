@@ -1,7 +1,7 @@
 cabal-version: 3.0
 name:          marconi-core
 version:       1.2.0.0
-synopsis:      Indexers that can rewind the state to a previous version.
+synopsis:      Modular indexing for rewindable ledger
 description:
   Please see the README on GitHub at <https://github.com/input-output-hk/marconi-core#README.md>
 
@@ -10,8 +10,8 @@ homepage:
   https://github.com/input-output-hk/marconi/marconi-core/README.md
 
 bug-reports:   https://github.com/input-output-hk/marconi/issues
-author:        Radu Ometita
-maintainer:    radu.ometita@iohk.io
+author:        Nicolas biri
+maintainer:    nicolas.biri@iohk.io
 license:       Apache-2.0
 license-files:
   LICENSE
@@ -56,40 +56,36 @@ common lang
 library
   import:          lang
   exposed-modules:
-    Marconi.Core.Experiment
-    Marconi.Core.Experiment.Class
-    Marconi.Core.Experiment.Coordinator
-    Marconi.Core.Experiment.Indexer.FileIndexer
-    Marconi.Core.Experiment.Indexer.LastPointIndexer
-    Marconi.Core.Experiment.Indexer.ListIndexer
-    Marconi.Core.Experiment.Indexer.MixedIndexer
-    Marconi.Core.Experiment.Indexer.SQLiteAggregateQuery
-    Marconi.Core.Experiment.Indexer.SQLiteIndexer
-    Marconi.Core.Experiment.Preprocessor
-    Marconi.Core.Experiment.Preprocessor.Resume
-    Marconi.Core.Experiment.Query
-    Marconi.Core.Experiment.Transformer.Class
-    Marconi.Core.Experiment.Transformer.IndexTransformer
-    Marconi.Core.Experiment.Transformer.WithCache
-    Marconi.Core.Experiment.Transformer.WithCatchup
-    Marconi.Core.Experiment.Transformer.WithDelay
-    Marconi.Core.Experiment.Transformer.WithFold
-    Marconi.Core.Experiment.Transformer.WithPruning
-    Marconi.Core.Experiment.Transformer.WithTracer
-    Marconi.Core.Experiment.Transformer.WithTransform
-    Marconi.Core.Experiment.Type
-    Marconi.Core.Experiment.Worker
-    Marconi.Core.Storable
-    Marconi.Core.TracedStorable
+    Marconi.Core
+    Marconi.Core.Class
+    Marconi.Core.Coordinator
+    Marconi.Core.Indexer.FileIndexer
+    Marconi.Core.Indexer.LastPointIndexer
+    Marconi.Core.Indexer.ListIndexer
+    Marconi.Core.Indexer.MixedIndexer
+    Marconi.Core.Indexer.SQLiteAggregateQuery
+    Marconi.Core.Indexer.SQLiteIndexer
+    Marconi.Core.Preprocessor
+    Marconi.Core.Preprocessor.Resume
+    Marconi.Core.Query
+    Marconi.Core.Transformer.Class
+    Marconi.Core.Transformer.IndexTransformer
+    Marconi.Core.Transformer.WithCache
+    Marconi.Core.Transformer.WithCatchup
+    Marconi.Core.Transformer.WithDelay
+    Marconi.Core.Transformer.WithFold
+    Marconi.Core.Transformer.WithPruning
+    Marconi.Core.Transformer.WithTracer
+    Marconi.Core.Transformer.WithTransform
+    Marconi.Core.Type
+    Marconi.Core.Worker
 
   hs-source-dirs:  src
 
   ------------------------
   -- IOG dependencies
   ------------------------
-  build-depends:
-    , contra-tracer
-    , iohk-monitoring
+  build-depends:   iohk-monitoring
 
   ------------------------
   -- Other dependencies
@@ -104,18 +100,16 @@ library
     , foldl
     , lens
     , mtl
-    , primitive
     , sqlite-simple
     , stm
     , text
     , transformers
-    , vector
 
 library marconi-core-test-lib
   import:          lang
   visibility:      public
   hs-source-dirs:  test-lib
-  exposed-modules: Test.Marconi.Core.Experiment.ModelBased
+  exposed-modules: Test.Marconi.Core.ModelBased
 
   --------------------
   -- Local components
@@ -135,13 +129,7 @@ test-suite marconi-core-test
   import:         lang
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
-  other-modules:
-    Marconi.Core.Model
-    Marconi.Core.Spec.Experiment
-    Marconi.Core.Spec.Sqlite
-    Marconi.Core.Spec.TracedSqlite
-    Marconi.Core.Trace
-
+  other-modules:  Marconi.CoreSpec
   hs-source-dirs: test
   build-depends:
     , base                   >=4.7    && <5
@@ -153,7 +141,6 @@ test-suite marconi-core-test
     , mtl
     , QuickCheck
     , quickcheck-instances
-    , safe
     , sqlite-simple          >=0.4.18
     , tasty
     , tasty-quickcheck

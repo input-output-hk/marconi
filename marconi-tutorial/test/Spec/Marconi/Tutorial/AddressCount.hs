@@ -17,7 +17,7 @@ import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Gen qualified as H
 import Hedgehog.Range qualified as Range
-import Marconi.Core.Experiment (
+import Marconi.Core (
   HasGenesis,
   IndexerError,
   ListIndexer,

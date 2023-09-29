@@ -1,166 +1,63 @@
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.QuickCheck (testProperty, withMaxSuccess)
 
-import Marconi.Core.Model qualified as Ix
-import Marconi.Core.Spec.Experiment qualified as E
-import Marconi.Core.Spec.Sqlite qualified as S
-import Marconi.Core.Spec.TracedSqlite qualified as TS
-import Marconi.Core.Trace qualified as Ix
+import Marconi.CoreSpec qualified as Core
+
+main :: IO ()
+main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Everything" [experimentTests, indexTests, traceTests]
-
-indexTests :: TestTree
-indexTests = testGroup "Index" [ixProperties, sProperties, tProperties]
-
-traceTests :: TestTree
-traceTests = testGroup "Trace" [traceModelProperties, traceIndexerProperties]
-
-experimentTests :: TestTree
-experimentTests =
+tests =
   testGroup
-    "Experiment"
+    "Marconi.Core"
     [ testGroup
         "Indexing"
-        [ E.indexingTestGroup "ListIndexer" E.listIndexerRunner
-        , E.indexingTestGroup "SQLiteIndexer" E.mkSqliteIndexerRunner
-        , E.indexingTestGroup "MixedIndexer - low memory" E.mixedLowMemoryIndexerRunner
-        , E.indexingTestGroup "MixedIndexer - high memory" E.mixedHighMemoryIndexerRunner
-        , E.indexingTestGroup "WithTracer" $ E.withTracerRunner E.listIndexerRunner
-        , E.indexingTestGroup "Coordinator" $ E.coordinatorIndexerRunner E.listIndexerRunner
+        [ Core.indexingTestGroup "ListIndexer" Core.listIndexerRunner
+        , Core.indexingTestGroup "SQLiteIndexer" Core.mkSqliteIndexerRunner
+        , Core.indexingTestGroup "MixedIndexer - low memory" Core.mixedLowMemoryIndexerRunner
+        , Core.indexingTestGroup "MixedIndexer - high memory" Core.mixedHighMemoryIndexerRunner
+        , Core.indexingTestGroup "WithTracer" $ Core.withTracerRunner Core.listIndexerRunner
+        , Core.indexingTestGroup "Coordinator" $ Core.coordinatorIndexerRunner Core.listIndexerRunner
         ]
-    , E.cacheTestGroup
+    , Core.cacheTestGroup
     , testGroup
         "WithDelay"
-        [ E.delayTestGroup "ListIndexer" E.listIndexerRunner
-        , E.delayTestGroup "SQLiteIndexer" E.mkSqliteIndexerRunner
+        [ Core.delayTestGroup "ListIndexer" Core.listIndexerRunner
+        , Core.delayTestGroup "SQLiteIndexer" Core.mkSqliteIndexerRunner
         ]
     , testGroup
         "WithCatchup"
-        [ E.catchupTestGroup "ListIndexer" E.listIndexerRunner
-        , E.catchupTestGroup "SQLiteIndexer" E.mkSqliteIndexerRunner
+        [ Core.catchupTestGroup "ListIndexer" Core.listIndexerRunner
+        , Core.catchupTestGroup "SQLiteIndexer" Core.mkSqliteIndexerRunner
         ]
     , testGroup
         "WithTransform"
-        [ E.withTransformTest
+        [ Core.withTransformTest
         ]
     , testGroup
         "WithAggregate"
-        [ E.withAggregateTest
+        [ Core.withAggregateTest
         ]
     , testGroup
         "WithResume"
-        [ E.withResumeTest
+        [ Core.withResumeTest
         ]
     , testGroup
         "Performance"
-        [ E.indexingPerformanceTest "ListIndexer" E.listIndexerRunner
-        , E.indexingPerformanceTest "MixedIndexer" E.mixedHighMemoryIndexerRunner
+        [ Core.indexingPerformanceTest "ListIndexer" Core.listIndexerRunner
+        , Core.indexingPerformanceTest "MixedIndexer" Core.mixedHighMemoryIndexerRunner
         ]
     , testGroup
         "Error handling"
-        [ E.stopCoordinatorTest E.listIndexerRunner
-        , E.withRollbackFailureTest
+        [ Core.stopCoordinatorTest Core.listIndexerRunner
+        , Core.withRollbackFailureTest
         ]
     , testGroup
         "Resuming last synced points"
-        [ E.resumeSQLiteLastSyncTest
-        , E.resumeMixedLastSyncTest
+        [ Core.resumeSQLiteLastSyncTest
+        , Core.resumeMixedLastSyncTest
         ]
     , testGroup
         "Configuration"
-        [ E.memorySizeUpdateTest
+        [ Core.memorySizeUpdateTest
         ]
     ]
-
-traceModelProperties :: TestTree
-traceModelProperties =
-  testGroup
-    "Model traces"
-    [ testProperty "Weak bisimilarity (observed builder)" $
-        withMaxSuccess 10000 $
-          Ix.prop_WeakBisimilarity @Int @Int @Int Ix.modelConversion
-    , testProperty "Weak bisimilarity (grammar builder)" $
-        withMaxSuccess 300 $
-          Ix.prop_WeakBisimilarity' @Int @Int @Int Ix.modelConversion
-    ]
-
-traceIndexerProperties :: TestTree
-traceIndexerProperties =
-  testGroup
-    "Implementation traces"
-    [ testProperty "Weak bisimilarity (observed builder)" $
-        withMaxSuccess 10000 $
-          Ix.prop_WeakBisimilarity TS.observeTrace
-    , testProperty "Weak bisimilarity (grammar builder)" $
-        withMaxSuccess 300 $
-          Ix.prop_WeakBisimilarity' TS.observeTrace
-    ]
-
-ixProperties :: TestTree
-ixProperties =
-  testGroup
-    "Basic model"
-    [ testProperty "New: Positive or non-positive depth" $
-        withMaxSuccess 10000 $
-          Ix.prop_observeNew @Int @Int @Int Ix.conversion
-    , testProperty "History length is always smaller than the max depth" $
-        withMaxSuccess 10000 $
-          Ix.prop_sizeLEDepth @Int @Int @Int Ix.conversion
-    , testProperty "Rewind: Connection with `ixDepth`" $
-        withMaxSuccess 10000 $
-          Ix.prop_rewindDepth @Int @Int @Int Ix.conversion
-    , testProperty "Relationship between Insert/Rewind" $
-        withMaxSuccess 10000 $
-          Ix.prop_insertRewindInverse @Int @Int @Int Ix.conversion
-    , testProperty "Insert is folding the structure" $
-        withMaxSuccess 10000 $
-          Ix.prop_observeInsert @Int @Int @Int Ix.conversion
-    ]
-
-sProperties :: TestTree
-sProperties =
-  testGroup
-    "New index properties."
-    [ testProperty "New: Positive or non-positive depth" $
-        withMaxSuccess 10000 $
-          Ix.prop_observeNew @Int @Int S.conversion
-    , testProperty "History length is always smaller than the max depth" $
-        withMaxSuccess 1000 $
-          Ix.prop_sizeLEDepth @Int @Int S.conversion
-    , testProperty "Rewind: Connection with `ixDepth`" $
-        withMaxSuccess 1000 $
-          Ix.prop_rewindDepth @Int @Int S.conversion
-    , testProperty "Relationship between Insert/Rewind" $
-        withMaxSuccess 1000 $
-          Ix.prop_insertRewindInverse @Int @Int S.conversion
-    , testProperty "Insert is folding the structure" $
-        withMaxSuccess 1000 $
-          Ix.prop_observeInsert @Int @Int S.conversion
-    ]
-
-tProperties :: TestTree
-tProperties =
-  testGroup
-    "New traced index properties."
-    [ testProperty "New: Positive or non-positive depth" $
-        withMaxSuccess 10000 $
-          Ix.prop_observeNew @Int @Int TS.conversion
-    , testProperty "History length is always smaller than the max depth" $
-        withMaxSuccess 1000 $
-          Ix.prop_sizeLEDepth @Int @Int TS.conversion
-    , testProperty "Rewind: Connection with `ixDepth`" $
-        withMaxSuccess 1000 $
-          Ix.prop_rewindDepth @Int @Int TS.conversion
-    , testProperty "Relationship between Insert/Rewind" $
-        withMaxSuccess 1000 $
-          Ix.prop_insertRewindInverse @Int @Int TS.conversion
-    , testProperty "Insert is folding the structure" $
-        withMaxSuccess 1000 $
-          Ix.prop_observeInsert @Int @Int TS.conversion
-    ]
-
-main :: IO ()
-main = do
-  -- quickSpec ixSignature
-  defaultMain tests

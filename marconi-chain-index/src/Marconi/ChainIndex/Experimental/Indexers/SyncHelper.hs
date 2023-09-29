@@ -19,7 +19,7 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Orphans ()
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 {- | A simple table to store the last stable point of an indexer.
 
