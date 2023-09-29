@@ -2,7 +2,7 @@
 
 let
 
-  haskellDotNixProject' = pkgs.haskell-nix.cabalProject' ({ config, pkgs, ... }:
+  cabalProject' = pkgs.haskell-nix.cabalProject' ({ config, pkgs, ... }:
     let
       # Only a limited subset of components can be cross-compiled on windows.
       # When `isCross` is `true`, it means that we are cross-compiling the project.
@@ -106,6 +106,7 @@ let
     });
 
 
+<<<<<<< HEAD
 <<<<<<< HEAD
   packages = { config, ... }: {
     # These rely on the plutus-tx-plugin, so they don't cross-compile.
@@ -226,6 +227,9 @@ let
 =======
   haskellDotNixProject = haskellDotNixProject'.appendOverlays [
 >>>>>>> 379d0b5 (Bump IOGX -> V4)
+=======
+  cabalProject = cabalProject'.appendOverlays [
+>>>>>>> 2581928 (wip)
     (_: prev: {
       hsPkgs = prev.pkgs.pkgsBuildHost.setGitRevForPaths prev.pkgs.gitrev [
         "marconi-chain-index.components.exes.marconi-chain-index"
@@ -236,10 +240,13 @@ let
 
 
   project = lib.iogx.mkHaskellProject {
-    haskellDotNixProject = haskellDotNixProject';
-    crossCompileMingwW64Supported = true;
-    shellArgsForProjectVariant = repoRoot.nix.shell;
-    readTheDocs.siteFolder = "doc/read-the-docs-site";
+    inherit cabalProject;
+    enableCrossCompileMingwW64 = true;
+    shellArgs = repoRoot.nix.shell;
+    readTheDocs = {
+      enable = true;
+      siteFolder = "doc/read-the-docs-site";
+    };
   };
 
 in
