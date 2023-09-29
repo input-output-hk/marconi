@@ -12,7 +12,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask)
 import Data.Data (Proxy (Proxy))
 import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import Marconi.Tutorial.CLI (optionsHttpPort)
 import Marconi.Tutorial.Env (
   Env,
