@@ -88,6 +88,7 @@ import Cardano.Ledger.Mary.Value (
  )
 import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
 import Control.Lens qualified as Lens
+import Control.Monad (unless)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Data.ByteString.Short qualified as Short
@@ -466,6 +467,11 @@ instance
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.ListIndexer
   where
   query point (QueryByAssetId policyId assetNameM eventType upperSlotNo lowerTxId) ix = do
+    -- If upperSlotNo is provided, check that point SlotNo is late enough
+    -- to have all information.
+    let pointSufficient C.ChainPointAtGenesis = False
+        pointSufficient (C.ChainPoint (C.SlotNo sn) _) = maybe True (<= sn) upperSlotNo
+
     -- Filter events based on 'QueryByAssetId' query
     let queryByAssetIdPredicate = Core.EventsMatchingQuery $ \(MintTokenBlockEvents events) ->
           let isEventType :: MintTokenEvent -> Bool
@@ -484,6 +490,10 @@ instance
            in fmap MintTokenBlockEvents $
                 NonEmpty.nonEmpty $
                   NonEmpty.filter (\e -> isAssetId e && isEventType e) events
+
+    -- TODO: need to augment the error type with new variant
+    unless (pointSufficient point) $ throwError undefined
+
     timedEventsE <- runExceptT $ Core.query point queryByAssetIdPredicate ix
     timedEvents <-
       either (throwError . convertEventsMatchingErrorToQueryByAssetIdError) pure timedEventsE
