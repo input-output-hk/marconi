@@ -364,8 +364,8 @@ writeStable p indexer = do
   pure indexer
 
 instance (MonadIO m) => Closeable m (FileIndexer meta) where
-  {- If we've got a write token it means a write is occurring asynchronously, and we want to let it
-     finish we need to wait on it before closing. -}
+  {- If we've got a write token it means a write is occurring asynchronously.
+     We need to wait for it to finish before closing. -}
   close :: FileIndexer meta event -> m ()
   close indexer = liftIO $
     case indexer ^. fileIndexerWriteTokens of
@@ -392,7 +392,7 @@ writeIndexer indexer =
    asynchronously.
 
    It carries a semaphore which we wait on during the action. This means that, elsewhere in the
-   program (given a termination command for example) we can determine when the write has
+   program (given a termination command for example), we can determine when the write has
    finished.
 
    Potential TODO: consider a timeout and consider what'd happen if writing the file throws -}
