@@ -20,12 +20,13 @@ import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
+import Marconi.Core.Util.WithGracefulTermination (withGracefulTermination_)
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)
 
 run :: Text -> IO ()
-run appName = do
+run appName = withGracefulTermination_ $ do
   trace <- defaultStdOutLogger appName
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
