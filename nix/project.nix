@@ -231,7 +231,7 @@ let
   cabalProject = cabalProject'.appendOverlays [
 >>>>>>> 2581928 (wip)
     (_: prev: {
-      hsPkgs = prev.pkgs.pkgsBuildHost.setGitRevForPaths prev.pkgs.gitrev [
+      hsPkgs = prev.pkgs.pkgsBuildTarget.setGitRevForPaths prev.pkgs.gitrev [
         "marconi-chain-index.components.exes.marconi-chain-index"
       ]
         prev.hsPkgs;
