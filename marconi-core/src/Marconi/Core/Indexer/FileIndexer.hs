@@ -383,8 +383,8 @@ writeFileWith executor filename content =
 writeFileAsync :: (MonadIO m) => QSemN -> FilePath -> ByteString -> m ()
 writeFileAsync qsem = writeFileWith (flip withAsync $ const (liftIO $ waitQSemN qsem 1))
 
-writeFile :: (MonadIO m) => FilePath -> ByteString -> m ()
-writeFile = writeFileWith id
+writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
+writeFileSync = writeFileWith id
 
 writeIndexer :: (MonadIO m) => FileIndexer meta event -> FilePath -> ByteString -> m ()
 writeIndexer indexer =
@@ -398,4 +398,4 @@ writeIndexer indexer =
    Potential TODO: consider a timeout and consider what'd happen if writing the file throws -}
   case indexer ^. fileIndexerWriteTokens of
     Just qsem -> writeFileAsync qsem
-    Nothing -> Marconi.Core.Indexer.FileIndexer.writeFile
+    Nothing -> writeFileSync
