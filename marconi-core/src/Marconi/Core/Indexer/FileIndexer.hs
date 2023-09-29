@@ -175,7 +175,7 @@ mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
           eventBuilder'
           genesis
           genesis
-          (Just fileWriteTokens) -- TODO bubble this up so it's configurable
+          (Just fileWriteTokens) -- TODO bubble this up so it's configurable as a bool (async or not async)
   lastStablePoint' <- fromMaybe genesis <$> readCurrentStable indexer
   let indexer' =
         indexer
