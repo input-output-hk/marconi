@@ -66,7 +66,8 @@ module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   QueryByAssetId (..),
   EventType (..),
   toTimedMintEvents,
-) where
+)
+where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
@@ -99,6 +100,7 @@ import Data.Maybe (catMaybes, mapMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -373,14 +375,12 @@ toTimedMintEvents
   :: [Core.Timed C.ChainPoint MintTokenEvent]
   -> [Core.Timed C.ChainPoint MintTokenBlockEvents]
 toTimedMintEvents =
-  let
-    groupSamePointEvents
-      :: NonEmpty (Core.Timed point a)
-      -> Core.Timed point (NonEmpty a)
-    groupSamePointEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
-   in
-    mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
-      . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
+  let groupSamePointEvents
+        :: NonEmpty (Core.Timed point a)
+        -> Core.Timed point (NonEmpty a)
+      groupSamePointEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
+   in mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
+        . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
 
 allEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allEvents = MintTokenEventsMatchingQuery Just
@@ -444,7 +444,13 @@ instance
     timedEvents <- either (throwError . convertError) pure timedEventsE
     pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
 
-data QueryByAssetId event = QueryByAssetId !C.PolicyId !(Maybe C.AssetName) !(Maybe EventType)
+data QueryByAssetId event
+  = QueryByAssetId
+      !C.PolicyId
+      !(Maybe C.AssetName)
+      !(Maybe EventType)
+      !(Maybe Word64)
+      !(Maybe C.TxId)
   deriving (Show)
 
 data EventType = MintEventType | BurnEventType
@@ -459,7 +465,7 @@ instance
      )
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.ListIndexer
   where
-  query point (QueryByAssetId policyId assetNameM eventType) ix = do
+  query point (QueryByAssetId policyId assetNameM eventType upperSlotNo lowerTxId) ix = do
     -- Filter events based on 'QueryByAssetId' query
     let queryByAssetIdPredicate = Core.EventsMatchingQuery $ \(MintTokenBlockEvents events) ->
           let isEventType :: MintTokenEvent -> Bool
@@ -523,16 +529,16 @@ instance
   query =
     let mkNamedParams cp =
           \case
-            QueryByAssetId policyId (Just assetName) _ ->
+            QueryByAssetId policyId (Just assetName) _ upperSlotNo lowerTxId ->
               [ ":slotNo" := C.chainPointToSlotNo cp
               , ":policyId" := policyId
               , ":assetName" := assetName
               ]
-            QueryByAssetId policyId Nothing _ ->
+            QueryByAssetId policyId Nothing _ upperSlotNo lowerTxId ->
               [ ":slotNo" := C.chainPointToSlotNo cp
               , ":policyId" := policyId
               ]
-        mkQuery (QueryByAssetId _ assetNameM eventType) =
+        mkQuery (QueryByAssetId _ assetNameM eventType upperSlotNo lowerTxId) =
           let policyIdWhereClause = Just "policyId = :policyId"
               assetNameWhereClause = fmap (const "assetName = :assetName") assetNameM
               eventTypeWhereClause =

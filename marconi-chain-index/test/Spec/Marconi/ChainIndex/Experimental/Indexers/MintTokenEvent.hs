@@ -141,7 +141,8 @@ propActLikeListIndexerOnQueryByAssetId = H.property $ do
   eventType <- H.forAll genEventType
   forM_ assetIds $ \case
     C.AdaAssetId -> do
-      let query = QueryByAssetId "" (Just "") eventType
+      -- TODO: possibly fill the holes when query impl updated
+      let query = QueryByAssetId "" (Just "") eventType Nothing Nothing
       (sqlQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
         H.evalExceptT $ Core.queryLatest query sqlIndexer
       (listQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
@@ -149,7 +150,8 @@ propActLikeListIndexerOnQueryByAssetId = H.property $ do
 
       sqlQueryResult === listQueryResult
     C.AssetId policyId assetName -> do
-      let query = QueryByAssetId policyId (Just assetName) eventType
+      -- TODO: possibly fill the holes when query impl updated
+      let query = QueryByAssetId policyId (Just assetName) eventType Nothing Nothing
       (sqlQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
         H.evalExceptT $ Core.queryLatest query sqlIndexer
       (listQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
@@ -240,11 +242,13 @@ propQueryingAllPossibleAssetIdsShouldBeSameAsQueryingEverything = H.property $ d
   (combinedTimedEvents :: [Core.Timed C.ChainPoint MintTokenEvent]) <-
     fmap concat <$> forM assetIds $ \case
       C.AdaAssetId -> do
-        let query = QueryByAssetId "" (Just "") Nothing
+        -- TODO: possibly fill the holes when query impl updated
+        let query = QueryByAssetId "" (Just "") Nothing Nothing Nothing
         timedEvents <- H.evalExceptT $ Core.queryLatest query indexer
         pure $ getFlattenedTimedEvents timedEvents
       C.AssetId policyId assetName -> do
-        let query = QueryByAssetId policyId (Just assetName) Nothing
+        -- TODO: possibly fill the holes when query impl updated
+        let query = QueryByAssetId policyId (Just assetName) Nothing Nothing Nothing
         timedEvents <- H.evalExceptT $ Core.queryLatest query indexer
         pure $ getFlattenedTimedEvents timedEvents
 
@@ -263,7 +267,8 @@ propQueryingAllPossiblePolicyIdsShouldBeSameAsQueryingEverything = H.property $ 
 
   (combinedTimedEvents :: [Core.Timed C.ChainPoint MintTokenEvent]) <-
     fmap concat <$> forM policyIds $ \policyId -> do
-      let query = QueryByAssetId policyId Nothing Nothing
+      -- TODO: possibly fill the holes when query impl updated
+      let query = QueryByAssetId policyId Nothing Nothing Nothing Nothing
       timedEvents <- H.evalExceptT $ Core.queryLatest query indexer
       pure $ getFlattenedTimedEvents timedEvents
 
@@ -281,16 +286,19 @@ propQueryByAssetIdWithPolicyIdIsSameAsQueryingByPolicyId = H.property $ do
 
   eventType <- H.forAll genEventType
   forM_ assetIdsGroupByPolicyId $ \(policyId, assetIds) -> do
-    let queryByPolicyId = QueryByAssetId policyId Nothing eventType
+    -- TODO: possibly fill the holes when query impl updated
+    let queryByPolicyId = QueryByAssetId policyId Nothing eventType Nothing Nothing
     timedEventsByPolicyId <- H.evalExceptT $ Core.queryLatest queryByPolicyId indexer
 
     (timedEventsByAssetIds :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
       fmap concat <$> forM (NonEmpty.toList assetIds) $ \case
         C.AdaAssetId -> do
-          let queryByAssetId = QueryByAssetId "" (Just "") eventType
+          -- TODO: possibly fill the holes when query impl updated
+          let queryByAssetId = QueryByAssetId "" (Just "") eventType Nothing Nothing
           H.evalExceptT $ Core.queryLatest queryByAssetId indexer
         (C.AssetId pid assetName) -> do
-          let queryByAssetId = QueryByAssetId pid (Just assetName) eventType
+          -- TODO: possibly fill the holes when query impl updated
+          let queryByAssetId = QueryByAssetId pid (Just assetName) eventType Nothing Nothing
           H.evalExceptT $ Core.queryLatest queryByAssetId indexer
 
     List.sort (getFlattenedTimedEvents timedEventsByPolicyId)
@@ -334,15 +342,16 @@ propRunnerDoesntTrackUnselectedAssetId = H.property $ do
 
   forM_ untrackedAssetIds $ \untrackedAssetId -> do
     let query =
+          -- TODO: possibly fill the holes when query impl updated
           case untrackedAssetId of
-            C.AdaAssetId -> QueryByAssetId "" (Just "") Nothing
-            C.AssetId policyId assetName -> QueryByAssetId policyId (Just assetName) Nothing
+            C.AdaAssetId -> QueryByAssetId "" (Just "") Nothing Nothing Nothing
+            C.AssetId policyId assetName -> QueryByAssetId policyId (Just assetName) Nothing Nothing Nothing
     (sqlIndexerEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
       H.evalM $ H.evalExceptT $ Core.queryLatest query sqlIndexer
     sqlIndexerEvents === []
 
 {- | Runs the 'MintTokenEvent' worker while providing 'AssetId's to track and events to index, and
- return the resulting indexer.
+return the resulting indexer.
 -}
 indexWithRunner
   :: [C.AssetId]
