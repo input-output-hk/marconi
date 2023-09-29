@@ -46,7 +46,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   mkStandardWorker,
  )
 import Marconi.ChainIndex.Orphans ()
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 data SpentInfo = SpentInfo
   { _spentTxOutRef :: C.TxIn

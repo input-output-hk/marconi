@@ -98,7 +98,8 @@ library
   --------------------
   build-depends:
     , cardano-api-extended
-    , marconi-core          >=1.2.0
+    , marconi-core
+    , marconi-core-legacy
 
   --------------------------
   -- Other IOG dependencies
@@ -268,8 +269,8 @@ library marconi-chain-index-test-lib
   --------------------
   build-depends:
     , cardano-api-extended
-    , marconi-chain-index   >=1.2.0
-    , marconi-core          >=1.2.0
+    , marconi-chain-index
+    , marconi-core-legacy
 
   --------------------------
   -- Other IOG dependencies
@@ -319,8 +320,8 @@ benchmark marconi-chain-index-bench
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index  >=1.2.0
-    , marconi-core         >=1.2.0
+    , marconi-chain-index
+    , marconi-core-legacy
 
   --------------------------
   -- Other IOG dependencies
@@ -378,9 +379,10 @@ test-suite marconi-chain-index-test
   --------------------
   build-depends:
     , cardano-api-extended
-    , marconi-chain-index                                 >=1.2.0
-    , marconi-chain-index-test-lib                        >=1.2.0
-    , marconi-core:{marconi-core, marconi-core-test-lib}  >=1.2.0
+    , marconi-chain-index
+    , marconi-chain-index-test-lib
+    , marconi-core-legacy
+    , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
   -- Other IOG dependencies
@@ -448,7 +450,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
   build-depends:
     , marconi-chain-index           >=1.2.0
     , marconi-chain-index-test-lib  >=1.2.0
-    , marconi-core                  >=1.2.0
+    , marconi-core-legacy           >=1.2.0
 
   --------------------------
   -- Other IOG dependencies

@@ -55,7 +55,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Indexers.Utxo (getTxOutFromTxBodyContent)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 data DatumInfo = DatumInfo
   { _datumHash :: C.Hash C.ScriptData

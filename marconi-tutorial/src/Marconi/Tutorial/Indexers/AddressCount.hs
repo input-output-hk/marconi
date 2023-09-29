@@ -12,8 +12,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
--- TODO Make explicit internal modules of marconi-core. Everything expect `Marconi.Core.Experiment`
--- should be in `Marconi.Core.Experiment.Internal.*`.
+-- TODO Make explicit internal modules of marconi-core. Everything expect `Marconi.Core`
+-- should be in `Marconi.Core.Internal.*`.
 -- TODO Discenpancy between query of ListIndexer and SqliteIndexer in case where we provide
 -- ChainPointAtGenesis. Check test scenario when we provide the ChainPointAtGenesis in the
 -- generator.
@@ -39,7 +39,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.ChainIndex.Utils qualified as Utils
-import Marconi.Core.Experiment (
+import Marconi.Core (
   IndexerError,
   ListIndexer,
   MixedIndexer,
@@ -57,7 +57,7 @@ import Marconi.Core.Experiment (
   mkMixedIndexer,
   point,
  )
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 type SQLiteStandardIndexer event = Core.StandardIndexer IO Core.SQLiteIndexer event
 type AddressCountIndexer = SQLiteStandardIndexer AddressCountEvent

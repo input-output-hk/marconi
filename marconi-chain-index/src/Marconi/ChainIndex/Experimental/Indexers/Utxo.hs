@@ -75,7 +75,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 -- | Indexer representation of an UTxO
 data Utxo = Utxo

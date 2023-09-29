@@ -31,7 +31,7 @@ import Marconi.ChainIndex.Types (
   TxIndexInBlock,
   blockInMode,
  )
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import System.FilePath ((</>))
 
 data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)

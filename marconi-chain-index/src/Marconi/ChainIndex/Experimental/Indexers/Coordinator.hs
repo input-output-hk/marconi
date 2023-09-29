@@ -12,7 +12,7 @@ import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 
 standardCoordinator
   :: (Ord (Core.Point event))

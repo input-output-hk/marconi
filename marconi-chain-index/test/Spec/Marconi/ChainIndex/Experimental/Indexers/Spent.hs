@@ -20,7 +20,7 @@ import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)

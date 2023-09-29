@@ -22,7 +22,7 @@ import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
 import Marconi.ChainIndex.Experimental.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

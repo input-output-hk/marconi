@@ -32,7 +32,7 @@ import Marconi.ChainIndex.Types (
   RunIndexerConfig (RunIndexerConfig),
   SecurityParam,
  )
-import Marconi.Core.Experiment qualified as Core
+import Marconi.Core qualified as Core
 import Prettyprinter qualified as PP
 import Prettyprinter.Render.Text qualified as PP
 import Streaming qualified as S
