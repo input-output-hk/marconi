@@ -106,7 +106,6 @@ library
     , text
     , transformers
     , unix
-    , unliftio
 
 library marconi-core-test-lib
   import:          lang
