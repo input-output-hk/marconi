@@ -1,7 +1,7 @@
 cabal-version: 3.0
 name:          marconi-core
 version:       1.2.0.0
-synopsis:      Indexers that can rewind the state to a previous version.
+synopsis:      Modular indexing for rewindable ledger
 description:
   Please see the README on GitHub at <https://github.com/input-output-hk/marconi-core#README.md>
 
@@ -10,8 +10,8 @@ homepage:
   https://github.com/input-output-hk/marconi/marconi-core/README.md
 
 bug-reports:   https://github.com/input-output-hk/marconi/issues
-author:        Radu Ometita
-maintainer:    radu.ometita@iohk.io
+author:        Nicolas biri
+maintainer:    nicolas.biri@iohk.io
 license:       Apache-2.0
 license-files:
   LICENSE
