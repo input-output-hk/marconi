@@ -152,6 +152,7 @@ library
     , text
     , time
     , transformers
+    , unix
     , vector-map
 
 library cardano-api-extended

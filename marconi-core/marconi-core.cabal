@@ -78,7 +78,6 @@ library
     Marconi.Core.Transformer.WithTracer
     Marconi.Core.Transformer.WithTransform
     Marconi.Core.Type
-    Marconi.Core.Util.WithGracefulTermination
     Marconi.Core.Worker
 
   hs-source-dirs:  src
@@ -105,7 +104,6 @@ library
     , stm
     , text
     , transformers
-    , unix
 
 library marconi-core-test-lib
   import:          lang

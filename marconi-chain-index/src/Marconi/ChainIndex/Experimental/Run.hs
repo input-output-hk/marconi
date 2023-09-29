@@ -4,7 +4,14 @@ module Marconi.ChainIndex.Experimental.Run where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logError, logInfo)
+import Control.Concurrent.Async (race)
+import Control.Concurrent.MVar (
+  newEmptyMVar,
+  takeMVar,
+  tryPutMVar,
+ )
 import Control.Monad.Except (runExceptT)
+import Data.Functor (void)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
@@ -20,9 +27,13 @@ import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
-import Marconi.Core.Util.WithGracefulTermination (withGracefulTermination_)
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (exitFailure)
+import System.Posix.Signals (
+  Handler (CatchOnce),
+  installHandler,
+  sigTERM,
+ )
 import Text.Pretty.Simple (pShowDarkBg)
 
 run :: Text -> IO ()
@@ -96,3 +107,28 @@ getStartingPoint preferredStartingPoint indexerLastSyncPoint =
   case preferredStartingPoint of
     C.ChainPointAtGenesis -> indexerLastSyncPoint
     nonGenesisPreferedChainPoint -> nonGenesisPreferedChainPoint
+
+{- | Ensure that @SIGTERM@ is handled gracefully, because it's how containers are stopped.
+
+ @action@ will receive an 'AsyncCancelled' exception if @SIGTERM@ is received by the process.
+
+ Typical use:
+
+ > main :: IO ()
+ > main = withGracefulTermination_ $ do
+
+ Note that although the Haskell runtime handles @SIGINT@ it doesn't do anything with @SIGTERM@.
+ Therefore, when running as PID 1 in a container, @SIGTERM@ will be ignored unless a handler is
+ installed for it.
+-}
+withGracefulTermination :: IO a -> IO (Maybe a)
+withGracefulTermination action = do
+  var <- newEmptyMVar
+  let terminate = void $ tryPutMVar var ()
+      waitForTermination = takeMVar var
+  void $ installHandler sigTERM (CatchOnce terminate) Nothing
+  either (const Nothing) Just <$> race waitForTermination action
+
+-- | Like 'withGracefulTermination' but ignoring the return value
+withGracefulTermination_ :: IO a -> IO ()
+withGracefulTermination_ = void . withGracefulTermination

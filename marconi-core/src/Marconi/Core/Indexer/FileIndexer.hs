@@ -29,9 +29,9 @@ module Marconi.Core.Indexer.FileIndexer (
   EventInfo (..),
 ) where
 
-import Control.Concurrent.Async (withAsync)
-import Control.Concurrent.QSemN (QSemN, waitQSemN)
-import Control.Concurrent.QSemN qualified as Con
+import Control.Concurrent.Async (Async, wait, withAsync)
+import Control.Concurrent.QSem (QSem)
+import Control.Concurrent.QSem qualified as Con
 import Control.Exception (Exception (displayException), handle)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
@@ -138,7 +138,7 @@ data FileIndexer meta event = FileIndexer
   -- ^ keep track of the last sync point
   , _fileIndexerLastStablePoint :: Point event
   -- ^ keep track of the last stable point
-  , _fileIndexerWriteTokens :: Maybe QSemN
+  , _fileIndexerWriteTokens :: Maybe QSem
   -- ^ Used to allow file writing to finish in the event of sigterm. Its presence means file writes
   --   should be run asynchronously
   }
@@ -166,7 +166,7 @@ mkFileIndexer
   -> m (FileIndexer meta event)
 mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
   liftIO $ createDirectoryIfMissing True path
-  fileWriteTokens <- liftIO $ Con.newQSemN 1
+  fileWriteTokens <- liftIO $ Con.newQSem 1
   let indexer =
         FileIndexer
           path
@@ -267,16 +267,11 @@ writeTimedEvent
   -> m ()
 writeTimedEvent timedEvent indexer =
   let filename = toFilename (indexer ^. eventDirectory) (indexer ^. fileBuilder) timedEvent
+      write :: (MonadIO m, MonadError IndexerError m) => FilePath -> ByteString -> m ()
+      write filepath = handleIOErrors . writeIndexer indexer filepath
    in case timedEvent ^. event of
         Nothing -> when (indexer ^. storageConfig . keepEmptyEvent) $ write filename ""
         Just evt -> write filename (indexer ^. fileBuilder . serialiseEvent $ evt)
-  where
-    write
-      :: (MonadIO m, MonadError IndexerError m)
-      => FilePath
-      -> ByteString
-      -> m ()
-    write fp = handleIOErrors . writeIndexer indexer fp
 
 cleanEvents
   :: (MonadIO m, MonadError IndexerError m)
@@ -369,7 +364,7 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
   close :: FileIndexer meta event -> m ()
   close indexer = liftIO $
     case indexer ^. fileIndexerWriteTokens of
-      Just sem -> Con.waitQSemN sem 1
+      Just sem -> Con.waitQSem sem
       Nothing -> pure ()
 
 -- * File writing
@@ -380,8 +375,15 @@ writeFileWith :: (MonadIO m) => (IO () -> IO ()) -> FilePath -> ByteString -> m 
 writeFileWith executor filename content =
   liftIO $ executor (BS.writeFile filename content)
 
-writeFileAsync :: (MonadIO m) => QSemN -> FilePath -> ByteString -> m ()
-writeFileAsync qsem = writeFileWith (flip withAsync $ const (liftIO $ waitQSemN qsem 1))
+writeFileAsync :: (MonadIO m) => QSem -> FilePath -> ByteString -> m ()
+writeFileAsync qsem = writeFileWith (flip withAsync coordinateAction)
+  where
+    coordinateAction :: Async () -> IO ()
+    coordinateAction action =
+      liftIO $
+        Con.waitQSem qsem
+          >> wait action
+          >> Con.signalQSem qsem
 
 writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
 writeFileSync = writeFileWith id
