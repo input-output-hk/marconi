@@ -137,7 +137,7 @@ mkSqliteIndexer
      )
   => FilePath
   -> [SQL.Query]
-  -- ^ cration statement
+  -- ^ creation statement
   -> [[SQLInsertPlan event]]
   -- ^ extract @param@ out of a 'Timed'
   -> [SQLRollbackPlan (Point event)]

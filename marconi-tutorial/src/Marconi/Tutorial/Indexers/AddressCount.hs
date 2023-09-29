@@ -3,8 +3,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -15,23 +17,25 @@
 -- TODO Discenpancy between query of ListIndexer and SqliteIndexer in case where we provide
 -- ChainPointAtGenesis. Check test scenario when we provide the ChainPointAtGenesis in the
 -- generator.
--- TODO Hard to tell what to provide as Query for singleInsertSQLiteIndexer (especially the lastSync query). Need to change `lastSyncQuery` to `lastResumablePointQuery`.
 -- TODO Change back Timed to TimedEvent
 module Marconi.Tutorial.Indexers.AddressCount where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Trace (nullTracer)
 import Control.Lens (at, folded, sumOf, to, (^.))
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Aeson (FromJSON)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper (mkSyncedSqliteIndexer)
+import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.ChainIndex.Utils qualified as Utils
@@ -55,35 +59,53 @@ import Marconi.Core.Experiment (
  )
 import Marconi.Core.Experiment qualified as Core
 
+type SQLiteStandardIndexer event = Core.StandardIndexer IO Core.SQLiteIndexer event
+type AddressCountIndexer = SQLiteStandardIndexer AddressCountEvent
+type AddressCountStandardWorker = Core.StandardWorker IO BlockEvent AddressCountEvent SQLiteIndexer
+
 addressCountWorker
   :: FilePath
   -> SecurityParam
   -> IO
-      ( Core.WorkerIndexer
+      ( Core.StandardWorker
           IO
-          (WithDistance BlockEvent)
+          BlockEvent
           AddressCountEvent
-          (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer)
+          Core.SQLiteIndexer
       )
 addressCountWorker dbPath securityParam = do
   let extract = getEventsFromBlock
-  ix <- Utils.toException $ mkAddressCountMixedIndexer dbPath securityParam
-  Core.createWorker "AddressCount" extract ix
+  -- ix <- Utils.toException $ mkAddressCountMixedIndexer dbPath securityParam
+  -- Core.createWorker "AddressCount" extract ix
+  ix <- Utils.toException $ mkAddressCountSqliteIndexer dbPath
+  let config =
+        Core.StandardWorkerConfig
+          "AddressCount"
+          securityParam
+          (Core.CatchupConfig 2_000 10)
+          (pure . extract)
+          nullTracer
+  Core.mkStandardWorker config ix
 
 newtype AddressCountEvent = AddressCountEvent {unAddressCountEvent :: Map C.AddressAny Int}
   deriving (Show)
 
 type instance Point AddressCountEvent = C.ChainPoint
 
+-- TODO Not great that we need to add this
+-- This is needed when using StandardIndexer.
+type instance Point (WithDistance AddressCountEvent) = C.ChainPoint
+
 newtype AddressCountQuery = AddressCountQuery C.AddressAny
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (FromJSON)
 
 type instance Result AddressCountQuery = Int
 
 -- Note that for Marconi, it is more optimal to return `Nothing` instead of
 -- `Just $ AddressCountEvent mempty`.
-getEventsFromBlock :: WithDistance BlockEvent -> Maybe AddressCountEvent
-getEventsFromBlock (WithDistance _ (BlockEvent (C.BlockInMode (C.Block _ txs) _) _ _)) =
+getEventsFromBlock :: BlockEvent -> Maybe AddressCountEvent
+getEventsFromBlock (BlockEvent (C.BlockInMode (C.Block _ txs) _) _ _) =
   let addrCounts = Map.fromListWith (+) $ concatMap getEventsFromTx txs
    in if Map.null addrCounts
         then Nothing
@@ -106,7 +128,7 @@ instance (Monad m) => Queryable m AddressCountEvent AddressCountQuery ListIndexe
     -> ListIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
   query C.ChainPointAtGenesis _ _ = pure 0
-  query (C.ChainPoint _ _) (AddressCountQuery addr) lsIndexer = do
+  query _ (AddressCountQuery addr) lsIndexer = do
     pure $
       sumOf
         ( events
@@ -131,14 +153,13 @@ instance (MonadIO m) => Queryable m AddressCountEvent AddressCountQuery SQLiteIn
     -> SQLiteIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
   query C.ChainPointAtGenesis _ _ = pure 0
-  query (C.ChainPoint _ _) (AddressCountQuery addr) sqliteIndexer = do
+  query _ (AddressCountQuery addr) sqliteIndexer = do
     (results :: [[Int]]) <-
       liftIO $
         SQL.query
           (sqliteIndexer ^. connection)
           [sql|SELECT count FROM address_count
-               WHERE address = ?
-               LIMIT 10|]
+               WHERE address = ?|]
           (SQL.Only addr)
     pure $ sum $ concat results
 
