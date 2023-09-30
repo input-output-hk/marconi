@@ -26,6 +26,7 @@ module Marconi.Core.Indexer.FileIndexer (
   deserialiseTimedEvent,
   fileEventIdentifier,
   fileIndexerLastSyncPoint,
+  fullPath,
   getDirectoryMetadata,
   EventInfo (..),
 ) where
@@ -103,15 +104,16 @@ data EventInfo meta = EventInfo
   , fileMetadata :: meta
   , path :: FilePath
   }
-  deriving (Show)
+
+deriving stock instance (Show meta) => Show (EventInfo meta)
 
 {- | The dataytpe used to configure the way we store files, including:
 
       - control over which events are saved
       - how many events we keep on disk
 
-Be careful in the choice of the function used to remove events
-as you probably don't want to store all the events on disk.
+    Be careful in the choice of the function used to remove events
+    as you probably don't want to store all the events on disk.
 -}
 data FileStorageConfig meta event = FileStorageConfig
   { _keepEmptyEvent :: Bool
@@ -247,10 +249,10 @@ extractEventsInfo expectedPrefix metaExtractor eventDir =
                     "Invalid file in a file indexer: " <> Text.pack filename
               Just x -> pure x
             pure [EventInfo hasContent' meta path]
-          _ -> pure []
+          _other -> pure []
    in do
         files <- liftIO $ listDirectory eventDir
-        fmap join $ traverse extractEventInfo files
+        join <$> traverse extractEventInfo files
 
 getDirectoryMetadata
   :: (MonadIO m, MonadError (QueryError q) m)
@@ -313,8 +315,8 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
   index timedEvent indexer = do
     let currentPoint = timedEvent ^. point
         setLastSync ix = ix & fileIndexerLastSyncPoint .~ currentPoint
-    writeTimedEvent timedEvent indexer
     cleanEvents timedEvent indexer
+    writeTimedEvent timedEvent indexer
     pure $ setLastSync indexer
 
   indexAllDescending timedEvents indexer =
@@ -340,10 +342,10 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
   setLastStablePoint p indexer = do
     let currentStable = indexer ^. fileIndexerLastStablePoint
     if p > currentStable
-      then do
-        indexer' <- writeStable p indexer
-        pure $ indexer' & fileIndexerLastStablePoint .~ p
-      else pure indexer
+    then do
+      indexer' <- writeStable p indexer
+      pure $ indexer' & fileIndexerLastStablePoint .~ p
+    else pure indexer
 
 lastStableFilename :: FileIndexer meta event -> FilePath
 lastStableFilename indexer =

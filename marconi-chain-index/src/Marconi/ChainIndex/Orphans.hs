@@ -48,6 +48,7 @@ instance ToRow C.ChainTip where
   toRow (C.ChainTip sn bh bno) = [toField sn, toField bh, toField bno]
 
 instance Ord C.ChainTip where
+  compare C.ChainTipAtGenesis C.ChainTipAtGenesis = EQ
   compare C.ChainTipAtGenesis _ = LT
   compare _ C.ChainTipAtGenesis = GT
   compare (C.ChainTip snX haX _bnX) (C.ChainTip snY haY _bnY) = compare (snX, haX) (snY, haY)

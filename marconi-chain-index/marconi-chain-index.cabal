@@ -67,6 +67,7 @@ library
     Marconi.ChainIndex.Experimental.Extract.WithDistance
     Marconi.ChainIndex.Experimental.Indexers
     Marconi.ChainIndex.Experimental.Indexers.BlockInfo
+    Marconi.ChainIndex.Experimental.Indexers.ChainTip
     Marconi.ChainIndex.Experimental.Indexers.Coordinator
     Marconi.ChainIndex.Experimental.Indexers.Datum
     Marconi.ChainIndex.Experimental.Indexers.EpochState
@@ -366,6 +367,7 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Coordinator
     Spec.Marconi.ChainIndex.Experimental.Indexers
     Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo
+    Spec.Marconi.ChainIndex.Experimental.Indexers.ChainTip
     Spec.Marconi.ChainIndex.Experimental.Indexers.Datum
     Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent
     Spec.Marconi.ChainIndex.Experimental.Indexers.Spent

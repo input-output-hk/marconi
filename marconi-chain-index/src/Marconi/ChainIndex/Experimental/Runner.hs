@@ -1,12 +1,35 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.ChainIndex.Experimental.Runner (
+  -- * Runner
   runIndexer,
+
+  -- ** Runner Config
+  RunIndexerConfig (RunIndexerConfig),
+  runIndexerPreprocessEvent,
+  runIndexerExtractBlockNo,
+  runIndexerExtractTipDistance,
+  RunIndexerEventPreprocessing (RunIndexerEventPreprocessing),
+  runIndexerConfigTrace,
+  runIndexerConfigEventProcessing,
+  runIndexerConfigRetryConfig,
+  runIndexerConfigSecurityParam,
+  runIndexerConfigNetworkId,
+  runIndexerConfigChainPoint,
+  runIndexerConfigSocketPath,
+
+  -- * Process chainSync events
+  withDistancePreprocessor,
+  withDistanceAndTipPreprocessor,
+
+  -- * Event types
+  TipOrBlock (Tip, Block),
 ) where
 
-import Cardano.Api qualified as C
+import Cardano.Api.Extended qualified as C
 import Cardano.Api.Extended.Streaming (
   BlockEvent (BlockEvent),
   ChainSyncEvent (RollBackward, RollForward),
@@ -17,19 +40,21 @@ import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
+import Control.Lens ((^.))
+import Control.Lens qualified as Lens
 import Control.Monad.Except (ExceptT, void)
-
 import Control.Monad.State.Strict (MonadState (put), State, gets)
+import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance, chainDistance, getEvent)
+import Data.Text (Text)
+import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
-import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   BlockEvent (blockInMode),
-  RunIndexerConfig (RunIndexerConfig),
   SecurityParam,
  )
 import Marconi.Core qualified as Core
@@ -37,6 +62,28 @@ import Prettyprinter qualified as PP
 import Prettyprinter.Render.Text qualified as PP
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
+
+-- | Runner pre-processing
+data RunIndexerEventPreprocessing event = RunIndexerEventPreprocessing
+  { _runIndexerPreprocessEvent :: ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint event]
+  , _runIndexerExtractBlockNo :: event -> Maybe C.BlockNo
+  , _runIndexerExtractTipDistance :: event -> Maybe Word
+  }
+
+Lens.makeLenses ''RunIndexerEventPreprocessing
+
+-- | Common configuration required to run indexers
+data RunIndexerConfig event = RunIndexerConfig
+  { _runIndexerConfigTrace :: Trace.Trace IO Text
+  , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event
+  , _runIndexerConfigRetryConfig :: RetryConfig
+  , _runIndexerConfigSecurityParam :: SecurityParam
+  , _runIndexerConfigNetworkId :: C.NetworkId
+  , _runIndexerConfigChainPoint :: C.ChainPoint
+  , _runIndexerConfigSocketPath :: FilePath
+  }
+
+Lens.makeLenses ''RunIndexerConfig
 
 -- | Wraps as a datatype log message emitted by the 'runIndexer' et al. functions.
 data RunIndexerLog
@@ -57,16 +104,17 @@ given indexer.
 If you want to start several indexers, use @runIndexers@.
 -}
 runIndexer
-  :: ( WithDistance BlockEvent ~ event
-     , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) a indexer
      , Core.Closeable IO indexer
+     , Core.Point a ~ C.ChainPoint
      )
-  => RunIndexerConfig
-  -> indexer (WithDistance BlockEvent)
+  => RunIndexerConfig a
+  -> indexer a
   -> IO ()
 runIndexer
   ( RunIndexerConfig
       trace
+      eventProcessing
       retryConfig
       securityParam
       networkId
@@ -82,38 +130,43 @@ runIndexer
               StartingPointLog startingPoint
       eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
       cBox <- Concurrent.newMVar indexer
-      let runChainSyncStream =
+      let processEvent = eventProcessing ^. runIndexerPreprocessEvent
+          runChainSyncStream =
             withChainSyncBlockEventStream
               socketPath
               networkId
               [startingPoint]
-              (mkEventStream eventQueue . chainSyncEventStreamLogging trace)
+              (mkEventStream processEvent eventQueue . chainSyncEventStreamLogging trace)
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.renderStrict $
                 PP.layoutPretty PP.defaultLayoutOptions $
                   PP.pretty NoIntersectionFoundLog
       void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-      Core.processQueue (stablePointComputation securityParam) Map.empty eventQueue cBox
+      Core.processQueue (stablePointComputation securityParam eventProcessing) Map.empty eventQueue cBox
 
 stablePointComputation
   :: SecurityParam
-  -> Core.Timed C.ChainPoint (Maybe (WithDistance BlockEvent))
+  -> RunIndexerEventPreprocessing event
+  -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
-stablePointComputation _s (Core.Timed _ Nothing) = pure Nothing
-stablePointComputation s (Core.Timed point (Just event)) =
-  if chainDistance event > fromIntegral s
-    then do
-      put mempty
-      pure $ Just point
-    else do
-      let currentBlock = getBlockNo . blockInMode . getEvent $ event
-          lastVolatileBlock = currentBlock + fromIntegral (chainDistance event) - fromIntegral s
-      (immutable, volatile) <- gets (Map.spanAntitone (< lastVolatileBlock))
-      put (Map.insert currentBlock point volatile)
-      pure $ case Map.elems immutable of
-        [] -> Nothing
-        xs -> Just $ last xs
+stablePointComputation securityParam preprocessing (Core.Timed point event) = do
+  let distanceM = preprocessing ^. runIndexerExtractTipDistance =<< event
+      blockNoM = preprocessing ^. runIndexerExtractBlockNo =<< event
+  case (distanceM, blockNoM) of
+    (Just distance, Just blockNo) ->
+      if distance > fromIntegral securityParam
+        then do
+          put mempty
+          pure $ Just point
+        else do
+          let lastVolatileBlock = blockNo + fromIntegral distance - fromIntegral securityParam
+          (immutable, volatile) <- gets (Map.spanAntitone (< lastVolatileBlock))
+          put (Map.insert blockNo point volatile)
+          pure $ case Map.elems immutable of
+            [] -> Nothing
+            xs -> Just $ last xs
+    _otherCases -> pure Nothing
 
 getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
 getBlockNo (C.BlockInMode block _eraInMode) =
@@ -121,21 +174,65 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: STM.TBQueue (Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent))
+  :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint a])
+  -> STM.TBQueue (Core.ProcessedInput C.ChainPoint a)
   -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
   -> IO r
-mkEventStream q =
-  let blockTimed :: BlockEvent -> C.ChainTip -> Core.Timed C.ChainPoint (WithDistance BlockEvent)
-      blockTimed
-        (BlockEvent b@(C.BlockInMode block _) epochNo' bt)
-        tip =
-          let (C.Block (C.BlockHeader slotNo hsh currentBlockNo) _) = block
-              blockWithDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
-           in Core.Timed (C.ChainPoint slotNo hsh) blockWithDistance
+mkEventStream processEvent q =
+  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
 
-      processEvent
+data TipOrBlock = Tip C.ChainTip | Block (WithDistance BlockEvent)
+type instance Core.Point TipOrBlock = C.ChainPoint
+
+withDistanceAndTipPreprocessor
+  :: RunIndexerEventPreprocessing TipOrBlock
+withDistanceAndTipPreprocessor =
+  let extractChainTipAndAddDistance
         :: ChainSyncEvent BlockEvent
-        -> Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)
-      processEvent (RollForward x ct) = Core.Index $ Just <$> blockTimed x ct
-      processEvent (RollBackward x _) = Core.Rollback x
-   in S.mapM_ $ STM.atomically . STM.writeTBQueue q . processEvent
+        -> [Core.ProcessedInput C.ChainPoint TipOrBlock]
+      extractChainTipAndAddDistance (RollForward x tip) =
+        let point = blockEventPoint x
+            blockWithDistance
+              :: BlockEvent
+              -> Core.Timed C.ChainPoint (WithDistance BlockEvent)
+            blockWithDistance (BlockEvent b@(C.BlockInMode block _) epochNo' bt) =
+              let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
+                  withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
+               in Core.Timed point withDistance
+         in [ Core.Index $ Just . Block <$> blockWithDistance x
+            , Core.Index $ Just . Tip <$> Core.Timed point tip
+            ]
+      extractChainTipAndAddDistance (RollBackward x tip) =
+        [ Core.Rollback x
+        , Core.Index $ Just . Tip <$> Core.Timed x tip
+        ]
+      getDistance (Tip _) = Nothing
+      getDistance (Block event) = Just . fromIntegral $ Distance.chainDistance event
+      blockNoFromBlockEvent (Tip _) = Nothing
+      blockNoFromBlockEvent (Block event) = Just . getBlockNo . blockInMode $ getEvent event
+   in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
+
+withDistancePreprocessor :: RunIndexerEventPreprocessing (WithDistance BlockEvent)
+withDistancePreprocessor =
+  let addDistance
+        :: ChainSyncEvent BlockEvent
+        -> [Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)]
+      addDistance (RollForward x tip) =
+        let point = blockEventPoint x
+            blockWithDistance
+              :: BlockEvent
+              -> Core.Timed C.ChainPoint (WithDistance BlockEvent)
+            blockWithDistance (BlockEvent b@(C.BlockInMode block _) epochNo' bt) =
+              let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
+                  withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
+               in Core.Timed point withDistance
+         in [Core.Index $ Just <$> blockWithDistance x]
+      addDistance (RollBackward x _tip) = [Core.Rollback x]
+      getDistance = Just . fromIntegral . Distance.chainDistance
+      blockNoFromBlockEvent = Just . getBlockNo . blockInMode . getEvent
+   in RunIndexerEventPreprocessing addDistance blockNoFromBlockEvent getDistance
+
+blockEventPoint :: BlockEvent -> C.ChainPoint
+blockEventPoint (BlockEvent (C.BlockInMode block _) _epochNo' _bt) =
+  let (C.Block (C.BlockHeader slotNo hsh _currentBlockNo) _) = block
+   in C.ChainPoint slotNo hsh
