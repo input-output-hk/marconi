@@ -8,9 +8,10 @@ events we keep or to use it for sparse events.
 -}
 module Marconi.Core.Indexer.FileIndexer (
   FileIndexer (FileIndexer),
-  FileStorageConfig (FileStorageConfig),
+  FileStorageConfig (..),
   FileBuilder (FileBuilder),
   EventBuilder (EventBuilder),
+  WriteFilesAsync (WriteFilesAsync),
   mkFileIndexer,
   compareMeta,
   eventDirectory,
@@ -102,7 +103,11 @@ data EventInfo meta = EventInfo
   , path :: FilePath
   }
 
-{- | The dataytpe used to control which events are saved and how many we keep on disk.
+{- | The dataytpe used to configure the way we store files, including:
+
+      - control over which events are saved
+      - how many events we keep on disk
+      - whether or not we write events to disk asynchronously
 
 Be careful in the choice of the function used to remove events
 as you probably don't want to store all the events on disk.
@@ -145,6 +150,8 @@ data FileIndexer meta event = FileIndexer
 
 Lens.makeLenses ''FileIndexer
 
+newtype WriteFilesAsync = WriteFilesAsync {unWriteFilesAsync :: Bool}
+
 compareMeta
   :: FileIndexer meta event
   -> meta
@@ -160,13 +167,17 @@ mkFileIndexer
      , HasGenesis (Point event)
      )
   => FilePath
+  -> WriteFilesAsync
   -> FileStorageConfig meta event
   -> FileBuilder meta event
   -> EventBuilder meta event
   -> m (FileIndexer meta event)
-mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
+mkFileIndexer path writeFilesAsync storageCfg filenameBuilder' eventBuilder' = do
   liftIO $ createDirectoryIfMissing True path
-  fileWriteTokens <- liftIO $ Con.newQSem 1
+  fileWriteTokens <-
+    if unWriteFilesAsync writeFilesAsync
+      then liftIO $ Just <$> Con.newQSem 1
+      else pure Nothing
   let indexer =
         FileIndexer
           path
@@ -175,7 +186,7 @@ mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
           eventBuilder'
           genesis
           genesis
-          (Just fileWriteTokens) -- TODO bubble this up so it's configurable as a bool (async or not async)
+          fileWriteTokens
   lastStablePoint' <- fromMaybe genesis <$> readCurrentStable indexer
   let indexer' =
         indexer
