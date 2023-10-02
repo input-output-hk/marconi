@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -94,7 +95,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.FileIndexer (WriteFilesAsync (WriteFilesAsync))
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
@@ -459,7 +459,7 @@ buildEpochStateIndexer codecConfig securityParam' path = do
               _ -> init immutableEvents
   Core.mkFileIndexer
     path
-    (WriteFilesAsync True)
+    (Just 1_800_000) -- Wait 180s for files to finish writing before terminating
     (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState deserialisePoint)
@@ -528,7 +528,7 @@ buildBlockIndexer codecConfig securityParam' path = do
               _ -> init immutableEvents
   Core.mkFileIndexer
     path
-    (WriteFilesAsync True)
+    (Just 1_800_000) -- Wait 180s for files to finish writing before terminating
     (Core.FileStorageConfig True immutableBlocks (comparing metadataBlockNo))
     (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock serialisePoint)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock deserialisePoint)

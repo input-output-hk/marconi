@@ -1,3 +1,4 @@
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -11,7 +12,6 @@ module Marconi.Core.Indexer.FileIndexer (
   FileStorageConfig (..),
   FileBuilder (FileBuilder),
   EventBuilder (EventBuilder),
-  WriteFilesAsync (WriteFilesAsync),
   mkFileIndexer,
   compareMeta,
   eventDirectory,
@@ -30,7 +30,6 @@ module Marconi.Core.Indexer.FileIndexer (
   EventInfo (..),
 ) where
 
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (Async, wait, withAsync)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
@@ -64,6 +63,7 @@ import Marconi.Core.Type (
 import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory, removeFile)
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
+import System.Timeout (timeout)
 
 {- | Configuration datatype for 'FileIndexer' that provides the content needed to create the
 filenames used by the indexer
@@ -124,6 +124,13 @@ data FileStorageConfig meta event = FileStorageConfig
 
 Lens.makeLenses ''FileStorageConfig
 
+data AsyncWriteFileConfig = AsyncFileWriteConfig
+  { _fileWriteEnvSem :: QSem
+  , _fileWriteEnvTimeout :: Int
+  }
+
+Lens.makeLenses ''AsyncWriteFileConfig
+
 {- | An indexer that store events in a directory, one file per event.
 
 It as to type parameters:
@@ -144,14 +151,12 @@ data FileIndexer meta event = FileIndexer
   -- ^ keep track of the last sync point
   , _fileIndexerLastStablePoint :: Point event
   -- ^ keep track of the last stable point
-  , _fileIndexerWriteTokens :: Maybe QSem
+  , _fileIndexerWriteEnv :: Maybe AsyncWriteFileConfig
   -- ^ Used to allow file writing to finish in the event of sigterm. Its presence means file writes
-  --   should be run asynchronously
+  --   should occur asynchronously
   }
 
 Lens.makeLenses ''FileIndexer
-
-newtype WriteFilesAsync = WriteFilesAsync {unWriteFilesAsync :: Bool}
 
 compareMeta
   :: FileIndexer meta event
@@ -168,17 +173,19 @@ mkFileIndexer
      , HasGenesis (Point event)
      )
   => FilePath
-  -> WriteFilesAsync
+  -> Maybe Int
   -> FileStorageConfig meta event
   -> FileBuilder meta event
   -> EventBuilder meta event
   -> m (FileIndexer meta event)
-mkFileIndexer path writeFilesAsync storageCfg filenameBuilder' eventBuilder' = do
+mkFileIndexer path writeFilesAsyncTimeout storageCfg filenameBuilder' eventBuilder' = do
   liftIO $ createDirectoryIfMissing True path
   fileWriteTokens <-
-    if unWriteFilesAsync writeFilesAsync
-      then liftIO $ Just <$> Con.newQSem 1
-      else pure Nothing
+    case writeFilesAsyncTimeout of
+      Just timeoutValue -> liftIO $ do
+        sem <- Con.newQSem 1
+        pure $ Just (AsyncFileWriteConfig sem timeoutValue)
+      Nothing -> pure Nothing
   let indexer =
         FileIndexer
           path
@@ -367,8 +374,8 @@ writeIndexer indexer =
    It carries a semaphore which we wait on during the action. This means that, elsewhere in the
    program (given a termination command for example), we can determine when the write has
    finished. -}
-  case indexer ^. fileIndexerWriteTokens of
-    Just qsem -> writeFileAsync qsem
+  case indexer ^. fileIndexerWriteEnv of
+    Just fileWriteEnv -> writeFileAsync fileWriteEnv
     Nothing -> writeFileSync
 
 writeStable
@@ -387,23 +394,27 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
      We need to wait for it to finish before closing. -}
   close :: FileIndexer meta event -> m ()
   close indexer = liftIO $
-    case indexer ^. fileIndexerWriteTokens of
-      -- Potential TODO: consider a timeout and consider what'd happen if writing the file throws
-      Just sem -> Con.waitQSem sem
+    case indexer ^. fileIndexerWriteEnv of
+      -- TODO: What happens if writing the file throws? (Will to raise a ticket before merging PLT-7725)
+      Just fileWriteEnv -> Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem)
       Nothing -> pure ()
 
 -- * File writing
 writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
 writeFileSync = writeFileWith id
 
-writeFileAsync :: (MonadIO m) => QSem -> FilePath -> ByteString -> m ()
-writeFileAsync qsem = writeFileWith (flip withAsync coordinateAction)
+writeFileAsync :: (MonadIO m) => AsyncWriteFileConfig -> FilePath -> ByteString -> m ()
+writeFileAsync fileWriteEnv = writeFileWith (flip withAsync coordinateAction)
   where
+    qsem :: QSem
+    qsem = fileWriteEnv ^. fileWriteEnvSem
     coordinateAction :: Async () -> IO ()
     coordinateAction action = liftIO $ do
       Con.waitQSem qsem
-      wait action
-      Con.signalQSem qsem
+      result <- timeout (fileWriteEnv ^. fileWriteEnvTimeout) $ wait action
+      case result of
+        Nothing -> Con.signalQSem qsem -- TODO This should log the timeout (Will to raise a ticket before merging PLT-7725)
+        Just _ -> Con.signalQSem qsem
 
 writeFileWith :: (MonadIO m) => (IO () -> IO ()) -> FilePath -> ByteString -> m ()
 writeFileWith executor filename content =

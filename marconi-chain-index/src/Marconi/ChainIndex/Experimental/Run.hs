@@ -28,8 +28,7 @@ import Text.Pretty.Simple (pShowDarkBg)
 
 -- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
 
--- TODO this is back to front, but flipping it breaks compilation
-#ifdef WINDOWS
+#ifndef WINDOWS
 import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (
   newEmptyMVar,
@@ -122,7 +121,7 @@ getStartingPoint preferredStartingPoint indexerLastSyncPoint =
   this code is not necessary on Windows, and the `unix` package (which it depends upon) is not
   supported by Windows. As such, in order to be able to cross-compile, the following `if` is
   unfortunately required. -}
-#ifdef WINDOWS
+#ifndef WINDOWS
 {- | Ensure that @SIGTERM@ is handled gracefully, because it's how containers are stopped.
 
  @action@ will receive an 'AsyncCancelled' exception if @SIGTERM@ is received by the process.

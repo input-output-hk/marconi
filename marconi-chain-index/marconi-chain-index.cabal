@@ -154,6 +154,10 @@ library
     , transformers
     , vector-map
 
+  -- TODO get this to work in the way which Lorenzo recommended
+  if !os(windows)
+    build-depends: unix
+
 library cardano-api-extended
   import:          lang
   visibility:      public
@@ -242,9 +246,6 @@ executable marconi-chain-index-experimental
   -- Local components
   --------------------
   build-depends:  marconi-chain-index >=1.2.0
-
-  if !os(windows)
-    build-depends: unix
 
   ------------------------
   -- Non-IOG dependencies
