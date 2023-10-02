@@ -7,27 +7,41 @@
 
   inputs = {
 
-    iogx.url = "github:input-output-hk/iogx";
-    iogx.inputs.CHaP.follows = "CHaP";
+    iogx = {
+      url = "github:input-output-hk/iogx?ref=v4";
+      inputs.haskell-nix.follows = "haskell-nix";
+      inputs.nixpkgs.follows = "haskell-nix/nixpkgs-2305";
+      inputs.hackage.follows = "hackage";
+      inputs.CHaP.follows = "CHaP";
+    };
+
+    hackage = {
+      url = "github:input-output-hk/hackage.nix";
+      flake = false;
+    };
 
     CHaP = {
       url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
       flake = false;
     };
 
+    haskell-nix = {
+      url = "github:input-output-hk/haskell.nix/445086f35d450af485cd9200b86211355095b2a1";
+      inputs.hackage.follows = "hackage";
+    };
+
     # Used to provide the cardano-node and cardano-cli executables.
-    cardano-node = {
-      url = "github:input-output-hk/cardano-node";
-    };
-    mithril = {
-      url = "github:input-output-hk/mithril";
-    };
+    cardano-node.url = "github:input-output-hk/cardano-node";
+
+    mithril.url = "github:input-output-hk/mithril";
   };
 
 
   outputs = inputs: inputs.iogx.lib.mkFlake {
     inherit inputs;
     repoRoot = ./.;
+    systems = [ "x86_64-linux" "x86_64-darwin" ];
+    outputs = import ./nix/outputs.nix;
   };
 
 

@@ -1,30 +1,42 @@
-# This file is part of the IOGX template and is documented at the link below:
-# https://www.github.com/input-output-hk/iogx#34-nixshellnix
+{ repoRoot, inputs, ... }:
 
-{ nix, inputs, inputs', pkgs, project, ... }:
+_cabalProject:
 
 let
-  cardano-cli = inputs'.cardano-node.legacyPackages.cardano-cli;
-  cardano-node = inputs'.cardano-node.legacyPackages.cardano-node;
+  cardano-cli = inputs.cardano-node.legacyPackages.cardano-cli;
+  cardano-node = inputs.cardano-node.legacyPackages.cardano-node;
 in
+
 {
   name = "marconi";
 
   packages = [
     cardano-cli
     cardano-node
-    inputs'.mithril.packages.mithril-client
+    inputs.mithril.packages.mithril-client
   ];
 
   scripts = {
-    start-benchmark-machine = nix.scripts.start-benchmarking-machine {
-      inherit project;
+    start-benchmark-machine = {
       enable = false;
+      group = "benchmarking";
+      exec = repoRoot.scripts.start-benchmarking-machine;
+      description = ''
+        Start the benchmarking NixOS VM exposing Grafana dashboards and Prometheus metrics for Marconi.
+      '';
     };
   };
 
   env = {
     CARDANO_CLI = "${cardano-cli}/bin/cardano-cli";
     CARDANO_NODE = "${cardano-node}/bin/cardano-node";
+  };
+
+  preCommit = {
+    fourmolu.enable = true;
+    shellcheck.enable = false;
+    cabal-fmt.enable = true;
+    optipng.enable = true;
+    nixpkgs-fmt.enable = true;
   };
 }
