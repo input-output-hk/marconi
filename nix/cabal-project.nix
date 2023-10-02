@@ -48,6 +48,7 @@ let
     # The error is here: https://ci.iog.io/build/265023/nixlog/2
     # ```
     marconi-chain-index.components.sublibs.json-rpc.buildable = l.mkForce (!isCross);
+    marconi-core-json-rpc.package.buildable = !isCross;
     marconi-sidechain.package.buildable = !isCross;
     marconi-tutorial.package.buildable = !isCross;
 

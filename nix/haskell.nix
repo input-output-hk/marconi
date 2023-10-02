@@ -9,6 +9,7 @@
   defaultChangelogPackages = [
     "marconi-chain-index"
     "marconi-core"
+    "marconi-core-json-rpc"
     "marconi-sidechain"
     "marconi-tutorial"
   ];
