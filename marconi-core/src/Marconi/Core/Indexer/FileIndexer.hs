@@ -30,6 +30,7 @@ module Marconi.Core.Indexer.FileIndexer (
   EventInfo (..),
 ) where
 
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (Async, wait, withAsync)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
@@ -406,4 +407,4 @@ writeFileAsync qsem = writeFileWith (flip withAsync coordinateAction)
 
 writeFileWith :: (MonadIO m) => (IO () -> IO ()) -> FilePath -> ByteString -> m ()
 writeFileWith executor filename content =
-  liftIO $ executor (BS.writeFile filename content)
+  liftIO $ executor (threadDelay 10000000 >> BS.writeFile filename content)

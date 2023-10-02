@@ -1,17 +1,12 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Experimental.Run where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logError, logInfo)
-import Control.Concurrent.Async (race)
-import Control.Concurrent.MVar (
-  newEmptyMVar,
-  takeMVar,
-  tryPutMVar,
- )
+
 import Control.Monad.Except (runExceptT)
-import Data.Functor (void)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
@@ -29,12 +24,23 @@ import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (exitFailure)
+import Text.Pretty.Simple (pShowDarkBg)
+
+-- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
+#ifdef WINDOWS
+import Control.Concurrent.Async (race)
+import Control.Concurrent.MVar (
+  newEmptyMVar,
+  takeMVar,
+  tryPutMVar,
+ )
+import Data.Functor (void)
 import System.Posix.Signals (
   Handler (CatchOnce),
   installHandler,
   sigTERM,
  )
-import Text.Pretty.Simple (pShowDarkBg)
+#endif
 
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
@@ -108,6 +114,13 @@ getStartingPoint preferredStartingPoint indexerLastSyncPoint =
     C.ChainPointAtGenesis -> indexerLastSyncPoint
     nonGenesisPreferedChainPoint -> nonGenesisPreferedChainPoint
 
+{- Note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab:
+
+  In order to ensure we can gracefully exit on a SIGTERM, we need the below functions. However,
+  this code is not necessary on Windows, and the `unix` package (which it depends upon) is not
+  supported by Windows. As such, in order to be able to cross-compile, the following `if` is
+  unfortunately required. -}
+#ifdef WINDOWS
 {- | Ensure that @SIGTERM@ is handled gracefully, because it's how containers are stopped.
 
  @action@ will receive an 'AsyncCancelled' exception if @SIGTERM@ is received by the process.
@@ -132,3 +145,7 @@ withGracefulTermination action = do
 -- | Like 'withGracefulTermination' but ignoring the return value
 withGracefulTermination_ :: IO a -> IO ()
 withGracefulTermination_ = void . withGracefulTermination
+#else
+withGracefulTermination_ :: a -> a
+withGracefulTermination_ = id
+#endif

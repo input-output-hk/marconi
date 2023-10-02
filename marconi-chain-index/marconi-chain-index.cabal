@@ -152,7 +152,6 @@ library
     , text
     , time
     , transformers
-    , unix
     , vector-map
 
 library cardano-api-extended
@@ -243,6 +242,9 @@ executable marconi-chain-index-experimental
   -- Local components
   --------------------
   build-depends:  marconi-chain-index >=1.2.0
+
+  if !os(windows)
+    build-depends: unix
 
   ------------------------
   -- Non-IOG dependencies
