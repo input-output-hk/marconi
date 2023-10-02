@@ -122,6 +122,8 @@ data QueryError query
     NotStoredAnymore
   | -- | The indexer query failed
     IndexerQueryError Text
+  | -- | The requested point is too early to answer the query completely.
+    PointTooEarly Text
 
 deriving stock instance (Show (Result query)) => Show (QueryError query)
 deriving instance (Typeable query, Show (Result query)) => Exception (QueryError query)

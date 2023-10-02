@@ -491,8 +491,9 @@ instance
                 NonEmpty.nonEmpty $
                   NonEmpty.filter (\e -> isAssetId e && isEventType e) events
 
-    -- TODO: need to augment the error type with new variant
-    unless (pointSufficient point) $ throwError undefined
+    unless (pointSufficient point) $
+      throwError $
+        Core.PointTooEarly ("Point " <> Text.pack (show point) <> " precedes query upper SlotNo")
 
     timedEventsE <- runExceptT $ Core.query point queryByAssetIdPredicate ix
     timedEvents <-
