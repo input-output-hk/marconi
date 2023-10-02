@@ -390,11 +390,10 @@ writeFileAsync :: (MonadIO m) => QSem -> FilePath -> ByteString -> m ()
 writeFileAsync qsem = writeFileWith (flip withAsync coordinateAction)
   where
     coordinateAction :: Async () -> IO ()
-    coordinateAction action =
-      liftIO $
-        Con.waitQSem qsem
-          >> wait action
-          >> Con.signalQSem qsem
+    coordinateAction action = liftIO $ do
+      Con.waitQSem qsem
+      wait action
+      Con.signalQSem qsem
 
 writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
 writeFileSync = writeFileWith id
