@@ -358,6 +358,18 @@ readCurrentStable indexer = do
         Right r -> pure $ Just r
     else pure Nothing
 
+writeIndexer :: (MonadIO m) => FileIndexer meta event -> FilePath -> ByteString -> m ()
+writeIndexer indexer =
+  {- `isJust (indexer ^. fileIndexerWriteTokens) == True` means that we need to write the file
+   asynchronously.
+
+   It carries a semaphore which we wait on during the action. This means that, elsewhere in the
+   program (given a termination command for example), we can determine when the write has
+   finished. -}
+  case indexer ^. fileIndexerWriteTokens of
+    Just qsem -> writeFileAsync qsem
+    Nothing -> writeFileSync
+
 writeStable
   :: (MonadIO m)
   => Point event
@@ -375,16 +387,13 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
   close :: FileIndexer meta event -> m ()
   close indexer = liftIO $
     case indexer ^. fileIndexerWriteTokens of
+      -- Potential TODO: consider a timeout and consider what'd happen if writing the file throws
       Just sem -> Con.waitQSem sem
       Nothing -> pure ()
 
 -- * File writing
-
--- TODO maybe this section goes into its own file with `BS.writeFile` abstracted so we can use it
---      for DB inserts or whatever
-writeFileWith :: (MonadIO m) => (IO () -> IO ()) -> FilePath -> ByteString -> m ()
-writeFileWith executor filename content =
-  liftIO $ executor (BS.writeFile filename content)
+writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
+writeFileSync = writeFileWith id
 
 writeFileAsync :: (MonadIO m) => QSem -> FilePath -> ByteString -> m ()
 writeFileAsync qsem = writeFileWith (flip withAsync coordinateAction)
@@ -395,19 +404,6 @@ writeFileAsync qsem = writeFileWith (flip withAsync coordinateAction)
       wait action
       Con.signalQSem qsem
 
-writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
-writeFileSync = writeFileWith id
-
-writeIndexer :: (MonadIO m) => FileIndexer meta event -> FilePath -> ByteString -> m ()
-writeIndexer indexer =
-  {- `isJust (indexer ^. fileIndexerWriteTokens) == True` means that we need to write the file
-   asynchronously.
-
-   It carries a semaphore which we wait on during the action. This means that, elsewhere in the
-   program (given a termination command for example), we can determine when the write has
-   finished.
-
-   Potential TODO: consider a timeout and consider what'd happen if writing the file throws -}
-  case indexer ^. fileIndexerWriteTokens of
-    Just qsem -> writeFileAsync qsem
-    Nothing -> writeFileSync
+writeFileWith :: (MonadIO m) => (IO () -> IO ()) -> FilePath -> ByteString -> m ()
+writeFileWith executor filename content =
+  liftIO $ executor (BS.writeFile filename content)
