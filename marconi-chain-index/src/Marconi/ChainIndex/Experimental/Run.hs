@@ -27,6 +27,8 @@ import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)
 
 -- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
+
+-- TODO this is back to front, but flipping it breaks compilation
 #ifdef WINDOWS
 import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (
