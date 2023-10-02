@@ -543,6 +543,7 @@ convertEventsMatchingErrorToQueryByAssetIdError = \case
   Core.NotStoredAnymore -> Core.NotStoredAnymore
   (Core.IndexerQueryError t) -> Core.IndexerQueryError t
   (Core.AheadOfLastSync r) -> Core.AheadOfLastSync r
+  (Core.PointTooEarly r) -> Core.PointTooEarly r
 
 instance
   (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
