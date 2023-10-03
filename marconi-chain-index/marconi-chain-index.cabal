@@ -50,8 +50,15 @@ common lang
     -Wnoncanonical-monad-instances -Wredundant-constraints
     -Wunused-packages
 
+common maybe-unix
+  if !os(windows)
+    build-depends: unix
+
 library
-  import:          lang
+  import:
+    lang
+    , maybe-unix
+
   hs-source-dirs:  src
   c-sources:       cbits/rev.c
   exposed-modules:
@@ -153,10 +160,6 @@ library
     , time
     , transformers
     , vector-map
-
-  -- TODO get this to work in the way which Lorenzo recommended
-  if !os(windows)
-    build-depends: unix
 
 library cardano-api-extended
   import:          lang
