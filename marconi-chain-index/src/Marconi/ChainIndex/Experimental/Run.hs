@@ -1,9 +1,11 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Experimental.Run where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logError, logInfo)
+
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -24,8 +26,25 @@ import System.Directory (createDirectoryIfMissing)
 import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)
 
+-- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
+
+#ifndef mingw32_HOST_OS
+import Control.Concurrent.Async (race)
+import Control.Concurrent.MVar (
+  newEmptyMVar,
+  takeMVar,
+  tryPutMVar,
+ )
+import Data.Functor (void)
+import System.Posix.Signals (
+  Handler (CatchOnce),
+  installHandler,
+  sigTERM,
+ )
+#endif
+
 run :: Text -> IO ()
-run appName = do
+run appName = withGracefulTermination_ $ do
   trace <- defaultStdOutLogger appName
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
@@ -95,3 +114,39 @@ getStartingPoint preferredStartingPoint indexerLastSyncPoint =
   case preferredStartingPoint of
     C.ChainPointAtGenesis -> indexerLastSyncPoint
     nonGenesisPreferedChainPoint -> nonGenesisPreferedChainPoint
+
+{- Note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab:
+
+  In order to ensure we can gracefully exit on a SIGTERM, we need the below functions. However,
+  this code is not necessary on Windows, and the `unix` package (which it depends upon) is not
+  supported by Windows. As such, in order to be able to cross-compile, the following `if` is
+  unfortunately required. -}
+#ifndef mingw32_HOST_OS
+{- | Ensure that @SIGTERM@ is handled gracefully, because it's how containers are stopped.
+
+ @action@ will receive an 'AsyncCancelled' exception if @SIGTERM@ is received by the process.
+
+ Typical use:
+
+ > main :: IO ()
+ > main = withGracefulTermination_ $ do
+
+ Note that although the Haskell runtime handles @SIGINT@ it doesn't do anything with @SIGTERM@.
+ Therefore, when running as PID 1 in a container, @SIGTERM@ will be ignored unless a handler is
+ installed for it.
+-}
+withGracefulTermination :: IO a -> IO (Maybe a)
+withGracefulTermination action = do
+  var <- newEmptyMVar
+  let terminate = void $ tryPutMVar var ()
+      waitForTermination = takeMVar var
+  void $ installHandler sigTERM (CatchOnce terminate) Nothing
+  either (const Nothing) Just <$> race waitForTermination action
+
+-- | Like 'withGracefulTermination' but ignoring the return value
+withGracefulTermination_ :: IO a -> IO ()
+withGracefulTermination_ = void . withGracefulTermination
+#else
+withGracefulTermination_ :: a -> a
+withGracefulTermination_ = id
+#endif

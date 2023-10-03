@@ -1,3 +1,5 @@
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 {- | An indexer that stores its events to files, using the provided serialisation.
@@ -7,7 +9,7 @@ events we keep or to use it for sparse events.
 -}
 module Marconi.Core.Indexer.FileIndexer (
   FileIndexer (FileIndexer),
-  FileStorageConfig (FileStorageConfig),
+  FileStorageConfig (..),
   FileBuilder (FileBuilder),
   EventBuilder (EventBuilder),
   mkFileIndexer,
@@ -28,7 +30,10 @@ module Marconi.Core.Indexer.FileIndexer (
   EventInfo (..),
 ) where
 
-import Control.Exception (Exception (displayException), handle)
+import Control.Concurrent (forkIO)
+import Control.Concurrent.QSem (QSem)
+import Control.Concurrent.QSem qualified as Con
+import Control.Exception (Exception (displayException), bracket_, handle)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
 import Control.Monad (forM_, join, void, when)
@@ -58,6 +63,7 @@ import Marconi.Core.Type (
 import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory, removeFile)
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
+import System.Timeout (timeout)
 
 {- | Configuration datatype for 'FileIndexer' that provides the content needed to create the
 filenames used by the indexer
@@ -98,7 +104,10 @@ data EventInfo meta = EventInfo
   , path :: FilePath
   }
 
-{- | The dataytpe used to control which events are saved and how many we keep on disk.
+{- | The dataytpe used to configure the way we store files, including:
+
+      - control over which events are saved
+      - how many events we keep on disk
 
 Be careful in the choice of the function used to remove events
 as you probably don't want to store all the events on disk.
@@ -113,6 +122,16 @@ data FileStorageConfig meta event = FileStorageConfig
   }
 
 Lens.makeLenses ''FileStorageConfig
+
+-- | A config used for asynchronous file writes
+data AsyncWriteFileConfig = AsyncFileWriteConfig
+  { _fileWriteEnvSem :: QSem
+  -- ^ Semaphore representing file-write acquisition
+  , _fileWriteEnvTimeout :: Int
+  -- ^ The timeout length in microseconds
+  }
+
+Lens.makeLenses ''AsyncWriteFileConfig
 
 {- | An indexer that store events in a directory, one file per event.
 
@@ -134,6 +153,9 @@ data FileIndexer meta event = FileIndexer
   -- ^ keep track of the last sync point
   , _fileIndexerLastStablePoint :: Point event
   -- ^ keep track of the last stable point
+  , _fileIndexerWriteEnv :: Maybe AsyncWriteFileConfig
+  -- ^ Used to allow file writing to finish in the event of sigterm. Its presence means file writes
+  --   should occur asynchronously
   }
 
 Lens.makeLenses ''FileIndexer
@@ -153,12 +175,19 @@ mkFileIndexer
      , HasGenesis (Point event)
      )
   => FilePath
+  -> Maybe Int
   -> FileStorageConfig meta event
   -> FileBuilder meta event
   -> EventBuilder meta event
   -> m (FileIndexer meta event)
-mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
+mkFileIndexer path writeFilesAsyncTimeout storageCfg filenameBuilder' eventBuilder' = do
   liftIO $ createDirectoryIfMissing True path
+  fileWriteTokens <-
+    case writeFilesAsyncTimeout of
+      Just timeoutValue -> liftIO $ do
+        sem <- Con.newQSem 1
+        pure $ Just (AsyncFileWriteConfig sem timeoutValue)
+      Nothing -> pure Nothing
   let indexer =
         FileIndexer
           path
@@ -167,13 +196,13 @@ mkFileIndexer path storageCfg filenameBuilder' eventBuilder' = do
           eventBuilder'
           genesis
           genesis
+          fileWriteTokens
   lastStablePoint' <- fromMaybe genesis <$> readCurrentStable indexer
   let indexer' =
         indexer
           & fileIndexerLastSyncPoint .~ lastStablePoint'
           & fileIndexerLastStablePoint .~ lastStablePoint'
-  indexer'' <- rollback lastStablePoint' indexer'
-  pure indexer''
+  rollback lastStablePoint' indexer'
 
 toFilename :: FilePath -> FileBuilder meta event -> Timed (Point event) (Maybe event) -> FilePath
 toFilename dir indexer evt =
@@ -259,16 +288,11 @@ writeTimedEvent
   -> m ()
 writeTimedEvent timedEvent indexer =
   let filename = toFilename (indexer ^. eventDirectory) (indexer ^. fileBuilder) timedEvent
+      write :: (MonadIO m, MonadError IndexerError m) => FilePath -> ByteString -> m ()
+      write filepath = handleIOErrors . writeIndexer indexer filepath
    in case timedEvent ^. event of
-        Nothing -> when (indexer ^. storageConfig . keepEmptyEvent) $ writeIndexerFile filename ""
-        Just evt -> writeIndexerFile filename (indexer ^. fileBuilder . serialiseEvent $ evt)
-
-writeIndexerFile
-  :: (MonadIO m, MonadError IndexerError m)
-  => FilePath
-  -> ByteString
-  -> m ()
-writeIndexerFile filename content = handleIOErrors $ BS.writeFile filename content
+        Nothing -> when (indexer ^. storageConfig . keepEmptyEvent) $ write filename ""
+        Just evt -> write filename (indexer ^. fileBuilder . serialiseEvent $ evt)
 
 cleanEvents
   :: (MonadIO m, MonadError IndexerError m)
@@ -344,16 +368,53 @@ readCurrentStable indexer = do
         Right r -> pure $ Just r
     else pure Nothing
 
+writeIndexer :: (MonadIO m) => FileIndexer meta event -> FilePath -> ByteString -> m ()
+writeIndexer indexer =
+  {- `isJust (indexer ^. fileIndexerWriteTokens) == True` means that we need to write the file
+   asynchronously.
+
+   It carries a semaphore which we wait on during the action. This means that, elsewhere in the
+   program (given a termination command for example), we can determine when the write has
+   finished. -}
+  case indexer ^. fileIndexerWriteEnv of
+    Just fileWriteEnv -> writeFileAsync fileWriteEnv
+    Nothing -> writeFileSync
+
 writeStable
   :: (MonadIO m)
   => Point event
   -> FileIndexer meta event
   -> m (FileIndexer meta event)
 writeStable p indexer = do
-  let f = lastStableFilename indexer
+  let filename = lastStableFilename indexer
       serialise = indexer ^. fileBuilder . serialisePoint
-  liftIO $ BS.writeFile f $ serialise p
+  writeIndexer indexer filename $ serialise p
   pure indexer
 
-instance (Applicative m) => Closeable m (FileIndexer meta) where
-  close = const $ pure ()
+instance (MonadIO m) => Closeable m (FileIndexer meta) where
+  {- If we've got a write token it means a write is occurring asynchronously.
+     We need to wait for it to finish before closing. -}
+  close :: FileIndexer meta event -> m ()
+  close indexer = liftIO $
+    case indexer ^. fileIndexerWriteEnv of
+      Just fileWriteEnv -> do
+        -- TODO https://input-output.atlassian.net/browse/PLT-7811
+        void $
+          timeout
+            (fileWriteEnv ^. fileWriteEnvTimeout)
+            (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+      Nothing -> pure ()
+
+-- * File writing | TODO https://input-output.atlassian.net/browse/PLT-7809
+writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
+writeFileSync filepath content = liftIO $ BS.writeFile filepath content
+
+writeFileAsync :: (MonadIO m) => AsyncWriteFileConfig -> FilePath -> ByteString -> m ()
+writeFileAsync fileWriteEnv filepath content =
+  let sem = fileWriteEnv ^. fileWriteEnvSem
+   in liftIO . void $
+        forkIO $
+          bracket_
+            (Con.waitQSem sem)
+            (Con.signalQSem sem)
+            (BS.writeFile filepath content)
