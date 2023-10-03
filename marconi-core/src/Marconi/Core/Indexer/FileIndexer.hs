@@ -395,9 +395,9 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
   close :: FileIndexer meta event -> m ()
   close indexer = liftIO $
     case indexer ^. fileIndexerWriteEnv of
-      -- TODO: What happens if writing the file throws? (Will to raise a ticket before merging PLT-7725)
+      -- TODO https://input-output.atlassian.net/browse/PLT-7809
       Just fileWriteEnv -> do
-        -- TODO This should log the timeout (Will to raise a ticket before merging PLT-7725)
+        -- TODO https://input-output.atlassian.net/browse/PLT-7811
         void $
           timeout
             (fileWriteEnv ^. fileWriteEnvTimeout)
