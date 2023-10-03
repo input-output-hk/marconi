@@ -30,10 +30,12 @@ module Marconi.Core.Indexer.FileIndexer (
   EventInfo (..),
 ) where
 
+import Control.Concurrent (ThreadId, forkIO, threadDelay)
 import Control.Concurrent.Async (Async, wait, withAsync)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
 import Control.Exception (Exception (displayException), handle)
+import Control.Lens (dimap)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
 import Control.Monad (forM_, join, void, when)
@@ -396,26 +398,28 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
   close indexer = liftIO $
     case indexer ^. fileIndexerWriteEnv of
       -- TODO: What happens if writing the file throws? (Will to raise a ticket before merging PLT-7725)
-      Just fileWriteEnv -> Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem)
+      Just fileWriteEnv -> do
+        -- TODO This should log the timeout (Will to raise a ticket before merging PLT-7725)
+        void $
+          timeout
+            (fileWriteEnv ^. fileWriteEnvTimeout)
+            (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
       Nothing -> pure ()
 
 -- * File writing
 writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
-writeFileSync = writeFileWith id
+writeFileSync filepath content = liftIO $ BS.writeFile filepath content
 
 writeFileAsync :: (MonadIO m) => AsyncWriteFileConfig -> FilePath -> ByteString -> m ()
-writeFileAsync fileWriteEnv = writeFileWith (flip withAsync coordinateAction)
+writeFileAsync fileWriteEnv filepath content =
+  liftIO . void $
+    forkIO $
+      withLock
+        (fileWriteEnv ^. fileWriteEnvSem)
+        (BS.writeFile filepath content)
   where
-    qsem :: QSem
-    qsem = fileWriteEnv ^. fileWriteEnvSem
-    coordinateAction :: Async () -> IO ()
-    coordinateAction action = liftIO $ do
+    withLock :: QSem -> IO a -> IO ()
+    withLock qsem action = do
       Con.waitQSem qsem
-      result <- timeout (fileWriteEnv ^. fileWriteEnvTimeout) $ wait action
-      case result of
-        Nothing -> Con.signalQSem qsem -- TODO This should log the timeout (Will to raise a ticket before merging PLT-7725)
-        Just _ -> Con.signalQSem qsem
-
-writeFileWith :: (MonadIO m) => (IO () -> IO ()) -> FilePath -> ByteString -> m ()
-writeFileWith executor filename content =
-  liftIO $ executor (BS.writeFile filename content)
+      void action
+      Con.signalQSem qsem
