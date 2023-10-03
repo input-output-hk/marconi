@@ -395,7 +395,6 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
   close :: FileIndexer meta event -> m ()
   close indexer = liftIO $
     case indexer ^. fileIndexerWriteEnv of
-      -- TODO https://input-output.atlassian.net/browse/PLT-7809
       Just fileWriteEnv -> do
         -- TODO https://input-output.atlassian.net/browse/PLT-7811
         void $
@@ -404,7 +403,7 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
             (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
       Nothing -> pure ()
 
--- * File writing
+-- * File writing | TODO https://input-output.atlassian.net/browse/PLT-7809
 writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
 writeFileSync filepath content = liftIO $ BS.writeFile filepath content
 
