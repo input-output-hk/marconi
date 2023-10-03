@@ -33,7 +33,7 @@ module Marconi.Core.Indexer.FileIndexer (
 import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
-import Control.Exception (Exception (displayException), bracket, handle)
+import Control.Exception (Exception (displayException), bracket_, handle)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
 import Control.Monad (forM_, join, void, when)
@@ -414,7 +414,7 @@ writeFileAsync fileWriteEnv filepath content =
   let sem = fileWriteEnv ^. fileWriteEnvSem
    in liftIO . void $
         forkIO $
-          bracket
-            (Con.waitQSem sem >> pure sem)
-            Con.signalQSem
-            (const $ BS.writeFile filepath content)
+          bracket_
+            (Con.waitQSem sem)
+            (Con.signalQSem sem)
+            (BS.writeFile filepath content)
