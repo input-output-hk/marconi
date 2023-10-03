@@ -33,7 +33,7 @@ module Marconi.Core.Indexer.FileIndexer (
 import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
-import Control.Exception (Exception (displayException), handle)
+import Control.Exception (Exception (displayException), bracket, handle)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
 import Control.Monad (forM_, join, void, when)
@@ -46,7 +46,6 @@ import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import GHC.IO (bracket)
 import Marconi.Core.Class (
   Closeable (close),
   HasGenesis (genesis),
