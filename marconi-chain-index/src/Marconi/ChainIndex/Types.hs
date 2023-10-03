@@ -38,6 +38,12 @@ module Marconi.ChainIndex.Types (
 
   -- * Configuration for index runners
   RunIndexerConfig (RunIndexerConfig),
+  runIndexerConfigTrace,
+  runIndexerConfigRetryConfig,
+  runIndexerConfigSecurityParam,
+  runIndexerConfigNetworkId,
+  runIndexerConfigChainPoint,
+  runIndexerConfigSocketPath,
 ) where
 
 import Cardano.Api qualified as C
