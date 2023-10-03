@@ -97,11 +97,10 @@ import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, isJust, mapMaybe)
+import Data.Maybe (catMaybes, isJust, listToMaybe, mapMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -170,7 +169,7 @@ data MintAssetRedeemer = MintAssetRedeemer
 
 data QueryByAssetId event = QueryByAssetId
   { _queryByAssetIdPolicyId :: !C.PolicyId
-  , _queryByAssetIdName :: !(Maybe C.AssetName)
+  , _queryByAssetIdAssetName :: !(Maybe C.AssetName)
   , _queryByAssetIdEventType :: !(Maybe EventType)
   , _queryByAssetIdUpperSlotNo :: !(Maybe C.SlotNo)
   , _queryByAssetIdLowerTxId :: !(Maybe C.TxId)
@@ -453,6 +452,7 @@ instance
           Core.NotStoredAnymore -> Core.NotStoredAnymore
           (Core.IndexerQueryError t) -> Core.IndexerQueryError t
           (Core.AheadOfLastSync r) -> Core.AheadOfLastSync r
+          (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
 
     timedEventsE <- runExceptT $ Core.query p (Core.EventsMatchingQuery predicate) ix
     timedEvents <- either (throwError . convertError) pure timedEventsE
@@ -504,7 +504,7 @@ instance
 
     unless (pointSufficient point upperSlotNo) $
       throwError $
-        Core.PointTooEarly ("Point " <> Text.pack (show point) <> " precedes query upper SlotNo")
+        Core.SlotNoBoundsInvalid ("Point " <> Text.pack (show point) <> " precedes query upper SlotNo")
 
     timedEventsE <- runExceptT $ Core.query point queryByAssetIdPredicate ix
     timedEvents <-
@@ -543,34 +543,70 @@ convertEventsMatchingErrorToQueryByAssetIdError = \case
   Core.NotStoredAnymore -> Core.NotStoredAnymore
   (Core.IndexerQueryError t) -> Core.IndexerQueryError t
   (Core.AheadOfLastSync r) -> Core.AheadOfLastSync r
-  (Core.PointTooEarly r) -> Core.PointTooEarly r
+  (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
 
 instance
   (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.SQLiteIndexer
   where
   query point config ix = do
+    -- Validate the upperSlotNo, then find the SlotNo from the lowerTxId if possible.
     let
       -- Check whether the upperSlotNo is valid. If not, e.g. point is genesis, throw an error
       -- before the query.
       validUpperSlotNo = upperSlotNoIfValid point (config ^. queryByAssetIdUpperSlotNo)
 
-      -- NOTE: Though this is a function of any cp and config, querySyncedOnlySQLiteIndexerWith only
-      -- calls mkNamedParams on 'point' and 'config' provided as arguments here. So upperSlotNo is
-      -- valid below if and only if it is valid when checked in 'validUpperSlotNo', and that value
-      -- is captured.
-      mkNamedParams cp =
+      -- Query events with slotNo <= validUpperSlotNo and txId == lowerTxId.
+      lowerTxIdQuery :: SQL.Query
+      lowerTxIdQuery = mkMintTokenEventQueryBy (Just "txId == :lowerTxId")
+
+      lowerTxIdQueryNamedParams :: [SQL.NamedParam]
+      lowerTxIdQueryNamedParams = [":lowerTxId" := config ^. queryByAssetIdLowerTxId, ":slotNo" := validUpperSlotNo]
+
+      -- Get the first slot number from the query result. Relies on ORDER BY slotNo ASC in
+      -- mkMintTokenEventQueryBy.
+      slotNoOfLowerTxIdQuery rs = listToMaybe rs >>= \r -> C.chainPointToSlotNo (r ^. Core.point)
+
+    -- TODO: can I avoid using toTimedMintEvents?
+    lowerSlotNo <-
+      runExceptT $
+        Core.querySyncedOnlySQLiteIndexerWith
+          (const . const lowerTxIdQueryNamedParams)
+          (const lowerTxIdQuery)
+          (const toTimedMintEvents)
+          point
+          config
+          ix
+
+    lowerSlotNoM <- either throwError (pure . slotNoOfLowerTxIdQuery) lowerSlotNo
+
+    unless (isJust validUpperSlotNo) $
+      throwError $
+        Core.SlotNoBoundsInvalid ("Point " <> Text.pack (show point) <> " precedes query upperSlotNo")
+
+    unless (isJust lowerSlotNoM) $
+      throwError $
+        Core.SlotNoBoundsInvalid "SlotNo associated with query lowerTxId not found within upperSlotNo bound"
+
+    -- Build the main query
+    let
+      -- TODO: mkNamedParams and mkQuery should just be a constant passed to querySyncedOnlySQLiteIndexerWith,
+      -- as they are run only on the arguments to 'query' passed along to querySyncedOnlySQLiteIndexerWith.
+      -- The rewrite should make this less brittle re: Nothing values.
+      -- Note the validUpperSlotNo has been checked non-null. lowerSlotNoM query will be included
+      -- only if not Nothing.
+      mkNamedParamsBase =
+        [ ":slotNo" := validUpperSlotNo
+        , ":policyId" := config ^. queryByAssetIdPolicyId
+        , ":lowerSlotNo" := lowerSlotNoM
+        ]
+      mkNamedParams _ =
         \case
-          QueryByAssetId policyId (Just assetName) _ _ lowerTxId ->
-            [ ":slotNo" := validUpperSlotNo
-            , ":policyId" := policyId
-            , ":assetName" := assetName
-            ]
-          QueryByAssetId policyId Nothing _ _ lowerTxId ->
-            [ ":slotNo" := validUpperSlotNo
-            , ":policyId" := policyId
-            ]
-      mkQuery (QueryByAssetId _ assetNameM eventType upperSlotNo lowerTxId) =
+          QueryByAssetId _ (Just assetName) _ _ _ ->
+            mkNamedParamsBase ++ [":assetName" := assetName]
+          QueryByAssetId _ Nothing _ _ _ ->
+            mkNamedParamsBase
+      mkQuery (QueryByAssetId _ assetNameM eventType _ _) =
         let policyIdWhereClause = Just "policyId = :policyId"
             assetNameWhereClause = fmap (const "assetName = :assetName") assetNameM
             eventTypeWhereClause =
@@ -578,15 +614,12 @@ instance
                 Nothing -> Nothing
                 Just MintEventType -> Just "quantity > 0"
                 Just BurnEventType -> Just "quantity < 0"
+            lowerSlotNoWhereClause = fmap (const "slotNo >= :lowerSlotNo") lowerSlotNoM
             whereClause =
               fmap (\e -> Text.intercalate " AND " $ NonEmpty.toList e) $
                 NonEmpty.nonEmpty $
-                  catMaybes [policyIdWhereClause, assetNameWhereClause, eventTypeWhereClause]
+                  catMaybes [policyIdWhereClause, assetNameWhereClause, eventTypeWhereClause, lowerSlotNoWhereClause]
          in mkMintTokenEventQueryBy whereClause
-
-    unless (isJust validUpperSlotNo) $
-      throwError $
-        Core.PointTooEarly ("Point " <> Text.pack (show point) <> " precedes query upper SlotNo")
 
     Core.querySyncedOnlySQLiteIndexerWith
       mkNamedParams
