@@ -384,9 +384,9 @@ writeStable
   -> FileIndexer meta event
   -> m (FileIndexer meta event)
 writeStable p indexer = do
-  let f = lastStableFilename indexer
+  let filename = lastStableFilename indexer
       serialise = indexer ^. fileBuilder . serialisePoint
-  writeIndexer indexer f $ serialise p
+  writeIndexer indexer filename $ serialise p
   pure indexer
 
 instance (MonadIO m) => Closeable m (FileIndexer meta) where
