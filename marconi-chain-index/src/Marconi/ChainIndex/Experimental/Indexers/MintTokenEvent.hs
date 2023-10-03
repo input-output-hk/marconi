@@ -556,6 +556,11 @@ instance
       -- before the query.
       validUpperSlotNo = upperSlotNoIfValid point (config ^. queryByAssetIdUpperSlotNo)
 
+    unless (isJust validUpperSlotNo) $
+      throwError $
+        Core.SlotNoBoundsInvalid ("Point " <> Text.pack (show point) <> " precedes query upperSlotNo")
+
+    let
       -- Query events with slotNo <= validUpperSlotNo and txId == lowerTxId.
       lowerTxIdQuery :: SQL.Query
       lowerTxIdQuery = mkMintTokenEventQueryBy (Just "txId == :lowerTxId")
@@ -579,10 +584,6 @@ instance
           ix
 
     lowerSlotNoM <- either throwError (pure . slotNoOfLowerTxIdQuery) lowerSlotNo
-
-    unless (isJust validUpperSlotNo) $
-      throwError $
-        Core.SlotNoBoundsInvalid ("Point " <> Text.pack (show point) <> " precedes query upperSlotNo")
 
     unless (isJust lowerSlotNoM) $
       throwError $
