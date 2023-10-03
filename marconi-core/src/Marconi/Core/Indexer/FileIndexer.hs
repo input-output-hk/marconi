@@ -46,6 +46,7 @@ import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import GHC.IO (bracket)
 import Marconi.Core.Class (
   Closeable (close),
   HasGenesis (genesis),
@@ -108,7 +109,6 @@ data EventInfo meta = EventInfo
 
       - control over which events are saved
       - how many events we keep on disk
-      - whether or not we write events to disk asynchronously
 
 Be careful in the choice of the function used to remove events
 as you probably don't want to store all the events on disk.
@@ -124,9 +124,12 @@ data FileStorageConfig meta event = FileStorageConfig
 
 Lens.makeLenses ''FileStorageConfig
 
+-- | A config used for asynchronous file writes
 data AsyncWriteFileConfig = AsyncFileWriteConfig
   { _fileWriteEnvSem :: QSem
+  -- ^ Semaphore representing file-write acquisition
   , _fileWriteEnvTimeout :: Int
+  -- ^ The timeout length in microseconds
   }
 
 Lens.makeLenses ''AsyncWriteFileConfig
@@ -409,14 +412,10 @@ writeFileSync filepath content = liftIO $ BS.writeFile filepath content
 
 writeFileAsync :: (MonadIO m) => AsyncWriteFileConfig -> FilePath -> ByteString -> m ()
 writeFileAsync fileWriteEnv filepath content =
-  liftIO . void $
-    forkIO $
-      withLock
-        (fileWriteEnv ^. fileWriteEnvSem)
-        (BS.writeFile filepath content)
-  where
-    withLock :: QSem -> IO a -> IO ()
-    withLock qsem action = do
-      Con.waitQSem qsem
-      void action
-      Con.signalQSem qsem
+  let sem = fileWriteEnv ^. fileWriteEnvSem
+   in liftIO . void $
+        forkIO $
+          bracket
+            (Con.waitQSem sem >> pure sem)
+            Con.signalQSem
+            (const $ BS.writeFile filepath content)

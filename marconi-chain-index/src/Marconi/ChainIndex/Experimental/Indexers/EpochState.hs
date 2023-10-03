@@ -459,7 +459,7 @@ buildEpochStateIndexer codecConfig securityParam' path = do
               _ -> init immutableEvents
   Core.mkFileIndexer
     path
-    (Just 1_800_000_00) -- Wait 180s for files to finish writing before terminating
+    (Just 180_000_000) -- Wait 180s for files to finish writing before terminating
     (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState deserialisePoint)
@@ -528,7 +528,7 @@ buildBlockIndexer codecConfig securityParam' path = do
               _ -> init immutableEvents
   Core.mkFileIndexer
     path
-    (Just 1_800_000_00) -- Wait 180s for files to finish writing before terminating
+    (Just 60_000_000) -- Wait 60s for files to finish writing before terminating
     (Core.FileStorageConfig True immutableBlocks (comparing metadataBlockNo))
     (Core.FileBuilder "block" "cbor" metadataAsText serialiseBlock serialisePoint)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseBlock deserialisePoint)
