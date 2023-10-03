@@ -20,8 +20,8 @@ foreign import ccall "&_marconi_git_rev" c_gitrev :: CString
 
 gitRev :: Text
 gitRev
-  | T.null fromGit = zeroRev
   | gitRevEmbed /= zeroRev = gitRevEmbed
+  | T.null fromGit = zeroRev
   | otherwise = fromGit
   where
     -- Git revision embedded after compilation using
