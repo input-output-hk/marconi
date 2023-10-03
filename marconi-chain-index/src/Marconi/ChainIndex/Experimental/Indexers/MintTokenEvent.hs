@@ -92,6 +92,7 @@ import Control.Monad (unless)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Data.ByteString.Short qualified as Short
+import Data.Foldable (foldlM)
 import Data.Function (on, (&))
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -461,19 +462,14 @@ instance
 type instance Core.Result (QueryByAssetId event) = [Core.Timed (Core.Point event) event]
 
 {- | Utility for QueryByAssetId queries. Check whether the upper SlotNo bound is
- less than or equal to the provided @C.'ChainPoint'@. If so, return 'Just' that.
- Otherwise, return Nothing. If no upper SlotNo is provided, return the ChainPoint.
+ less than or equal to the provided @C.'ChainPoint'@. If the upperSlotNo is is provided
+ but is after the point, return Nothing. Otherwise, return the valid upper SlotNo.
+ If no upper SlotNo bound is provided, return the @C.'ChainPoint'@.
 -}
 upperSlotNoIfValid :: C.ChainPoint -> Maybe C.SlotNo -> Maybe C.SlotNo
 upperSlotNoIfValid C.ChainPointAtGenesis _ = Nothing
 upperSlotNoIfValid (C.ChainPoint sn _) Nothing = Just sn
 upperSlotNoIfValid (C.ChainPoint sn _) (Just usn) = if usn <= sn then Nothing else Just usn
-
-{- | Utility for QueryByAssetId queries. If upperSlotNo is provided,
- check that the point's SlotNo is late enough to have all information.
--}
-pointSufficient :: C.ChainPoint -> Maybe C.SlotNo -> Bool
-pointSufficient cp = isJust . upperSlotNoIfValid cp
 
 instance
   forall m
@@ -483,6 +479,16 @@ instance
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.ListIndexer
   where
   query point (QueryByAssetId policyId assetNameM eventType upperSlotNo lowerTxId) ix = do
+    -- TODO: refactor to unpack validUpperSlotNo or throw an error
+    let
+      -- Check whether the upperSlotNo is valid, if provided.
+      -- If not, e.g. point is genesis, throw an error before any queries.
+      validUpperSlotNo = upperSlotNoIfValid point upperSlotNo
+
+    unless (isJust validUpperSlotNo) $
+      throwError $
+        Core.SlotNoBoundsInvalid ("Point " <> Text.pack (show point) <> " precedes query upper SlotNo")
+
     -- Filter events based on 'QueryByAssetId' query
     let queryByAssetIdPredicate = Core.EventsMatchingQuery $ \(MintTokenBlockEvents events) ->
           let isEventType :: MintTokenEvent -> Bool
@@ -502,15 +508,51 @@ instance
                 NonEmpty.nonEmpty $
                   NonEmpty.filter (\e -> isAssetId e && isEventType e) events
 
-    unless (pointSufficient point upperSlotNo) $
-      throwError $
-        Core.SlotNoBoundsInvalid ("Point " <> Text.pack (show point) <> " precedes query upper SlotNo")
-
     timedEventsE <- runExceptT $ Core.query point queryByAssetIdPredicate ix
     timedEvents <-
       either (throwError . convertEventsMatchingErrorToQueryByAssetIdError) pure timedEventsE
     let sortedTimedEvents = sortEventsByOrderOfBlockchainAppearance timedEvents
-    pure sortedTimedEvents
+
+    -- TODO: make a note here about resolving the slotNo from lowerTxId on the fly.
+    -- TODO: events are sorted by block and index in block, not slotno. but slotno is a
+    -- strictly increasing function of blockno, so the first blockno we see will also provide the earliest
+    -- slot no.
+
+    -- TODO: make a note here and in the sql indexer that we *require* that the provided
+    -- lowerTxId exists in the data, meaning the transaction is among those with the given assetid
+    -- etc. in the rest of the query. the only thing we check for is that the slotno associated with
+    -- the lower bound is in fact <= the validated upperSlotNo.
+
+    -- Filter by upper/lower slot bounds. Relies on events being sorted ascending by block or slot
+    -- number.
+    let
+      filterBySlotNoBounds
+        :: Maybe C.TxId
+        -> [Core.Timed C.ChainPoint MintTokenBlockEvents]
+        -> Either
+            (Core.QueryError (QueryByAssetId MintTokenBlockEvents))
+            [Core.Timed C.ChainPoint MintTokenBlockEvents]
+      filterBySlotNoBounds Nothing = Right . filter isBeforeUpperSlotNo
+      filterBySlotNoBounds (Just txId) = foldlM (findLowerAndFilter txId) []
+      findLowerAndFilter txId es e
+        | matchingTxIdFromTimedEvent txId e =
+            if isBeforeUpperSlotNo e
+              then pure (e : es)
+              else -- The lowerSlotNo bound was found but it is invalid
+
+                throwError $
+                  Core.SlotNoBoundsInvalid "SlotNo associated with query lowerTxId not found within upperSlotNo bound"
+        | otherwise = pure es
+      matchingTxIdFromTimedEvent txId =
+        Lens.anyOf
+          (Core.event . mintTokenEvents . Lens.folded . mintTokenEventLocation . mintTokenEventTxId)
+          (== txId)
+      -- TODO: not so nice that validUpperSlotNo is still a maybe here
+      isBeforeUpperSlotNo e = C.chainPointToSlotNo (e ^. Core.point) <= validUpperSlotNo
+
+    case filterBySlotNoBounds lowerTxId sortedTimedEvents of
+      Left e -> throwError e
+      Right es -> pure es
 
 {- | Sort the events based on their order of appearance in the blockchain. This means that events
 first sorted by block number (or slot number). Then, for events in the same block number (or slot
@@ -553,7 +595,7 @@ instance
     -- Validate the upperSlotNo, then find the SlotNo from the lowerTxId if possible.
     let
       -- Check whether the upperSlotNo is valid. If not, e.g. point is genesis, throw an error
-      -- before the query.
+      -- before any queries.
       validUpperSlotNo = upperSlotNoIfValid point (config ^. queryByAssetIdUpperSlotNo)
 
     unless (isJust validUpperSlotNo) $
@@ -573,6 +615,8 @@ instance
       slotNoOfLowerTxIdQuery rs = listToMaybe rs >>= \r -> C.chainPointToSlotNo (r ^. Core.point)
 
     -- TODO: can I avoid using toTimedMintEvents?
+    -- TODO: make comment that lowerTxId *must* exist among the events with the given asset/policy
+    -- id. that is assumed and not checked.
     lowerSlotNo <-
       runExceptT $
         Core.querySyncedOnlySQLiteIndexerWith
