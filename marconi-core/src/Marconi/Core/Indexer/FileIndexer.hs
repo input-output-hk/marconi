@@ -30,12 +30,10 @@ module Marconi.Core.Indexer.FileIndexer (
   EventInfo (..),
 ) where
 
-import Control.Concurrent (ThreadId, forkIO, threadDelay)
-import Control.Concurrent.Async (Async, wait, withAsync)
+import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
 import Control.Exception (Exception (displayException), handle)
-import Control.Lens (dimap)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
 import Control.Monad (forM_, join, void, when)
