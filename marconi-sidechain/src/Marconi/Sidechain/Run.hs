@@ -71,10 +71,10 @@ run = do
 
     rpcEnv <- mkSidechainEnvFromCliArgs securityParam cliArgs trace
 
-    mvar <- newEmptyMVar
+    exceptionalExitCodeMvar <- newEmptyMVar
 
     let timeoutExceptionHandler (e :: IndexerException) = do
-          putMVar mvar (syncExceptionToExit e)
+          putMVar exceptionalExitCodeMvar (syncExceptionToExit e)
           throwIO e
         action =
           race_
@@ -88,7 +88,7 @@ run = do
     case res of
       Right _ -> pure ()
       Left cint -> do
-        var' <- tryTakeMVar mvar
+        var' <- tryTakeMVar exceptionalExitCodeMvar
         let exitCode = case var' of
               Just i -> (ExitFailure i)
               Nothing -> (ExitFailure (signalToExit $ fromIntegral cint))
