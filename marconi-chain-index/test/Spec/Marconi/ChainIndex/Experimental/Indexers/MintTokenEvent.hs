@@ -10,7 +10,7 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
 import Cardano.Api qualified as C
 import Control.Concurrent qualified as Concurrent
 import Control.Lens (toListOf, view, (^.))
-import Control.Monad (forM, forM_, void)
+import Control.Monad (forM, forM_, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Tracer (nullTracer)
 import Data.List ((\\))
@@ -111,6 +111,13 @@ tests =
             "Don't find anything at untrack AssetId"
             "propRunnerDoesntTrackUnselectedAssetId"
             propRunnerDoesntTrackUnselectedAssetId
+        ]
+    , testGroup
+        "Generator testing"
+        [ testPropertyNamed
+            "genTimedEvents creates mint/burn events whose TxIds are all the same (PLT-7842)"
+            "propGenTimedEventsHaveConstantTxId"
+            propGenTimedEventsHaveConstantTxId
         ]
     ]
 
@@ -421,6 +428,17 @@ getFlattenedTimedEvent timedEvent =
         Core.Timed (timedEvent ^. Core.point) e
     )
     $ timedEvent ^. Core.event . mintTokenEvents
+
+-- | Property demonstrating the issue in PLT-7842.
+propGenTimedEventsHaveConstantTxId :: H.Property
+propGenTimedEventsHaveConstantTxId = H.property $ do
+  events <- H.forAll genTimedEvents
+  let extractMintEvents = mapMaybe (\te -> te ^. Core.event >>= \es -> pure $ Core.Timed (te ^. Core.point) es) events
+  let txGetter = Core.event . MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventTxId
+  let txIds = map (^. txGetter) $ getFlattenedTimedEvents extractMintEvents
+  let nUnique = length $ List.nub txIds
+  H.cover 30 "More than one mint/burn event" $ length extractMintEvents > 1
+  when (nUnique > 0) $ nUnique === 1
 
 genTimedEvents :: Gen [Core.Timed C.ChainPoint (Maybe MintTokenBlockEvents)]
 genTimedEvents = do
