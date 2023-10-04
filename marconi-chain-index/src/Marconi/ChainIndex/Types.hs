@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | This module provides several type aliases and utility functions to deal with them.
@@ -37,11 +38,18 @@ module Marconi.ChainIndex.Types (
 
   -- * Configuration for index runners
   RunIndexerConfig (RunIndexerConfig),
+  runIndexerConfigTrace,
+  runIndexerConfigRetryConfig,
+  runIndexerConfigSecurityParam,
+  runIndexerConfigNetworkId,
+  runIndexerConfigChainPoint,
+  runIndexerConfigSocketPath,
 ) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
 import Cardano.BM.Data.Trace (Trace)
+import Control.Lens.TH qualified as Lens
 import Data.Aeson qualified as Aeson
 import Data.Set.NonEmpty (NESet)
 import Data.Text (Text)
@@ -115,14 +123,16 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     )
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig
-  = RunIndexerConfig
-      (Trace IO Text)
-      RetryConfig
-      SecurityParam
-      C.NetworkId
-      C.ChainPoint
-      FilePath
+data RunIndexerConfig = RunIndexerConfig
+  { _runIndexerConfigTrace :: Trace IO Text
+  , _runIndexerConfigRetryConfig :: RetryConfig
+  , _runIndexerConfigSecurityParam :: SecurityParam
+  , _runIndexerConfigNetworkId :: C.NetworkId
+  , _runIndexerConfigChainPoint :: C.ChainPoint
+  , _runIndexerConfigSocketPath :: FilePath
+  }
+
+Lens.makeLenses ''RunIndexerConfig
 
 -- * Database file names
 
