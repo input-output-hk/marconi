@@ -43,6 +43,7 @@ import Control.Concurrent (
   newEmptyMVar,
   newMVar,
   readMVar,
+  threadDelay,
   tryPutMVar,
   tryReadMVar,
  )
@@ -60,7 +61,14 @@ import Control.Concurrent.STM.TChan (
   readTChan,
   writeTChan,
  )
-import Control.Exception (catch, finally, onException)
+import Control.Exception (
+  Exception,
+  SomeException (SomeException),
+  catch,
+  finally,
+  onException,
+  throwIO,
+ )
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators (
@@ -81,6 +89,7 @@ import Control.Monad.Trans.Except (
   ExceptT,
   runExceptT,
  )
+import Data.Data (Typeable)
 import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
@@ -91,6 +100,7 @@ import Data.Sequence qualified as Seq
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Data.Word (Word64)
+import GHC.Exception.Type (Exception (fromException), toException)
 import Marconi.ChainIndex.Error (
   IndexerError (CantInsertEvent, CantRollback, CantStartIndexer),
   ignoreQueryError,
@@ -134,6 +144,7 @@ import Prometheus qualified as P
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
 import System.Directory (createDirectoryIfMissing)
+import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.FilePath (
   takeDirectory,
   (</>),
@@ -723,10 +734,17 @@ runIndexers
           "Stopping indexing. Waiting for indexers to finish their work (timeout after "
             <> Text.pack (show secondsBeforeTimeout)
             <> "s) ..."
-        void $
-          timeout (secondsBeforeTimeout * 1_000_000) $
-            waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
-        logInfo stdoutTrace "Done!"
+        res <-
+          timeout 1 $
+            threadDelay 1000000
+              >> waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount) -- (secondsBeforeTimeout * 1_000_000) $
+        case res of
+          Just _ -> logInfo stdoutTrace "Done!"
+          Nothing -> throwIO TimeoutException
+
+data IndexerException = TimeoutException
+  deriving (Show, Typeable)
+instance Exception IndexerException
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r

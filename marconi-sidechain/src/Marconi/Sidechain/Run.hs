@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -7,6 +8,7 @@ import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logInfo)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Control.Concurrent.Async (race_)
+import Control.Exception (catch, throwIO)
 import Control.Monad.Reader (runReaderT)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
@@ -22,7 +24,27 @@ import Marconi.Sidechain.CLI (
  )
 import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 import System.Directory (createDirectoryIfMissing)
+import System.Exit (ExitCode (ExitFailure), exitWith)
 import Text.Pretty.Simple (pShowDarkBg)
+
+-- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
+
+import Control.Concurrent (MVar, putMVar, tryTakeMVar)
+import Control.Concurrent.Async (race)
+import Control.Concurrent.MVar (
+  newEmptyMVar,
+  takeMVar,
+  tryPutMVar,
+ )
+import Data.Foldable (traverse_)
+import Data.Functor (void)
+import Marconi.ChainIndex.Indexers (IndexerException (TimeoutException))
+import System.Posix.Signals (
+  Handler (CatchOnce),
+  installHandler,
+  sigINT,
+  sigTERM,
+ )
 
 {- | Concurrently start:
 
@@ -47,6 +69,64 @@ run = do
       Utils.toException $ Utils.querySecurityParam @Void networkId socketFilePath
 
     rpcEnv <- mkSidechainEnvFromCliArgs securityParam cliArgs trace
-    race_
-      (runReaderT runHttpServer rpcEnv) -- Start HTTP server
-      (runReaderT runSidechainIndexers rpcEnv) -- Start the Sidechain indexers
+
+    let timeoutExceptionHandler mvar (e :: IndexerException) = do
+          putMVar mvar (syncExceptionToExit e)
+          throwIO e
+        action (mvar :: MVar Int) =
+          race_
+            (runReaderT runHttpServer rpcEnv) -- Start HTTP server
+            ( runReaderT
+                runSidechainIndexers
+                rpcEnv
+                `catch` timeoutExceptionHandler mvar
+            ) -- Start the Sidechain indexers
+    withExitHandling action
+
+-- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
+
+{- | Ensure that @SIGTERM@ is handled gracefully, because it's how containers are stopped.
+
+ @action@ will receive an 'AsyncCancelled' exception if @SIGTERM@ is received by the process.
+
+ Typical use:
+
+ > main :: IO ()
+ > main = withGracefulTermination_ $ do
+
+ Note that although the Haskell runtime handles @SIGINT@ it doesn't do anything with @SIGTERM@.
+ Therefore, when running as PID 1 in a container, @SIGTERM@ will be ignored unless a handler is
+ installed for it.
+-}
+withExitHandling :: (MVar Int -> IO ()) -> IO ()
+withExitHandling action = do
+  termVar <- newEmptyMVar
+  exVar <- newEmptyMVar
+  let terminate terminationType = void $ tryPutMVar termVar terminationType
+      waitForTermination = takeMVar termVar
+      signals = [sigINT, sigTERM]
+
+  traverse_ (\signal -> installHandler signal (CatchOnce (terminate signal)) Nothing) signals
+  res <-
+    race
+      waitForTermination
+      (action exVar)
+  case res of
+    Right _ -> pure ()
+    Left cint -> do
+      var' <- tryTakeMVar exVar
+      case var' of
+        Just i -> exitWith (ExitFailure i)
+        Nothing -> exitWith (ExitFailure (signalToExit $ fromIntegral cint))
+
+signalToExit :: Int -> Int
+signalToExit signal =
+  case signal of
+    2 -> 130
+    15 -> 143
+    _ -> 2
+
+syncExceptionToExit :: IndexerException -> Int
+syncExceptionToExit ex =
+  case ex of
+    TimeoutException -> 124
