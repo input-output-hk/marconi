@@ -41,6 +41,7 @@ import Data.Functor (void)
 import Marconi.ChainIndex.Indexers (IndexerException (TimeoutException))
 import System.Posix.Signals (
   Handler (CatchOnce),
+  Signal,
   installHandler,
   sigINT,
   sigTERM,
@@ -70,18 +71,28 @@ run = do
 
     rpcEnv <- mkSidechainEnvFromCliArgs securityParam cliArgs trace
 
-    let timeoutExceptionHandler mvar (e :: IndexerException) = do
+    mvar <- newEmptyMVar
+
+    let timeoutExceptionHandler (e :: IndexerException) = do
           putMVar mvar (syncExceptionToExit e)
           throwIO e
-        action (mvar :: MVar Int) =
+        action =
           race_
             (runReaderT runHttpServer rpcEnv) -- Start HTTP server
             ( runReaderT
                 runSidechainIndexers
                 rpcEnv
-                `catch` timeoutExceptionHandler mvar
+                `catch` timeoutExceptionHandler
             ) -- Start the Sidechain indexers
-    withExitHandling action
+    res <- withExitHandling action
+    case res of
+      Right _ -> pure ()
+      Left cint -> do
+        var' <- tryTakeMVar mvar
+        let exitCode = case var' of
+              Just i -> (ExitFailure i)
+              Nothing -> (ExitFailure (signalToExit $ fromIntegral cint))
+        exitWith exitCode
 
 -- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
 
@@ -98,33 +109,24 @@ run = do
  Therefore, when running as PID 1 in a container, @SIGTERM@ will be ignored unless a handler is
  installed for it.
 -}
-withExitHandling :: (MVar Int -> IO ()) -> IO ()
+withExitHandling :: IO () -> IO (Either Signal ())
 withExitHandling action = do
   termVar <- newEmptyMVar
-  exVar <- newEmptyMVar
   let terminate terminationType = void $ tryPutMVar termVar terminationType
       waitForTermination = takeMVar termVar
       signals = [sigINT, sigTERM]
 
   traverse_ (\signal -> installHandler signal (CatchOnce (terminate signal)) Nothing) signals
-  res <-
-    race
-      waitForTermination
-      (action exVar)
-  case res of
-    Right _ -> pure ()
-    Left cint -> do
-      var' <- tryTakeMVar exVar
-      case var' of
-        Just i -> exitWith (ExitFailure i)
-        Nothing -> exitWith (ExitFailure (signalToExit $ fromIntegral cint))
+  race
+    waitForTermination
+    action
 
 signalToExit :: Int -> Int
 signalToExit signal =
   case signal of
     2 -> 130
     15 -> 143
-    _ -> 2
+    _ -> 4
 
 syncExceptionToExit :: IndexerException -> Int
 syncExceptionToExit ex =

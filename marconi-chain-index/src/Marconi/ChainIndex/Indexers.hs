@@ -735,9 +735,8 @@ runIndexers
             <> Text.pack (show secondsBeforeTimeout)
             <> "s) ..."
         res <-
-          timeout 1 $
-            threadDelay 1000000
-              >> waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount) -- (secondsBeforeTimeout * 1_000_000) $
+          timeout (secondsBeforeTimeout * 1_000_000) $
+            waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
         case res of
           Just _ -> logInfo stdoutTrace "Done!"
           Nothing -> throwIO TimeoutException
