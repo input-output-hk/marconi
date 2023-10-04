@@ -3,9 +3,11 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
-  tests,
-) where
+-- TODO: return this after ad-hoc testing in repl
+-- module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
+--  tests,
+-- ) where
+module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent where
 
 import Cardano.Api qualified as C
 import Control.Concurrent qualified as Concurrent
@@ -42,6 +44,8 @@ import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   mintAssetPolicyId,
   mintAssetQuantity,
   mintTokenEventAsset,
+  mintTokenEventLocation,
+  mintTokenEventTxId,
   mintTokenEvents,
  )
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
@@ -118,6 +122,10 @@ tests =
             "genTimedEvents creates mint/burn events whose TxIds are all the same (PLT-7842)"
             "propGenTimedEventsHaveConstantTxId"
             propGenTimedEventsHaveConstantTxId
+        , testPropertyNamed
+            "genTxId from cardano-api is degenerate"
+            "propTxIdGenIsDegenerate"
+            propTxIdGenIsDegenerate
         ]
     ]
 
@@ -434,11 +442,19 @@ propGenTimedEventsHaveConstantTxId :: H.Property
 propGenTimedEventsHaveConstantTxId = H.property $ do
   events <- H.forAll genTimedEvents
   let extractMintEvents = mapMaybe (\te -> te ^. Core.event >>= \es -> pure $ Core.Timed (te ^. Core.point) es) events
-  let txGetter = Core.event . MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventTxId
+  let txGetter = Core.event . mintTokenEventLocation . mintTokenEventTxId
   let txIds = map (^. txGetter) $ getFlattenedTimedEvents extractMintEvents
   let nUnique = length $ List.nub txIds
   H.cover 30 "More than one mint/burn event" $ length extractMintEvents > 1
   when (nUnique > 0) $ nUnique === 1
+
+{- | Root cause of PLT-7842. No need for a property test though.
+ https://github.com/input-output-hk/cardano-api/blob/dd8e898e1ce331235952799d49f51ac023693344/cardano-api/gen/Test/Gen/Cardano/Api/Typed.hs#L487
+-}
+propTxIdGenIsDegenerate :: H.Property
+propTxIdGenIsDegenerate = H.property $ do
+  txid <- H.forAll CGen.genTxId
+  show txid === "\"01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53\""
 
 genTimedEvents :: Gen [Core.Timed C.ChainPoint (Maybe MintTokenBlockEvents)]
 genTimedEvents = do
