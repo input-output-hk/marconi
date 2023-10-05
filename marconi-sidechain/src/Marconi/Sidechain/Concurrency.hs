@@ -81,7 +81,7 @@ concOpSignalHandled concOp hleft hright = do
     Just code -> exitWith (ExitFailure code)
     Nothing -> case res of
       Right result -> pure result
-      Left cint -> exitWith (ExitFailure (signalToExit $ fromIntegral cint))
+      Left signal -> exitWith (ExitFailure (signalToExit $ fromIntegral signal))
 
 {- | Race two actions, with explicit handling instructions, concurrently.
 
