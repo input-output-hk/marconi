@@ -78,7 +78,6 @@ import Data.VMap (VMap)
 import Data.VMap qualified as VMap
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
-import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (
   WithDistance (WithDistance),
@@ -126,7 +125,7 @@ data EpochNonce = EpochNonce
 instance SQL.ToRow (Core.Timed C.ChainPoint EpochNonce) where
   toRow epochNonce =
     SQL.toRow (epochNonce ^. Core.event)
-      <> [SQL.toField $ epochNonce ^. Core.point . Lens.to C.chainPointToSlotNo]
+      <> SQL.toRow (epochNonce ^. Core.point)
 
 instance SQL.FromRow (Core.Timed C.ChainPoint EpochNonce) where
   fromRow = do
@@ -152,7 +151,7 @@ type instance Core.Point (NonEmpty EpochSDD) = C.ChainPoint
 instance SQL.ToRow (Core.Timed C.ChainPoint EpochSDD) where
   toRow epochSDD =
     SQL.toRow (epochSDD ^. Core.event)
-      <> [SQL.toField $ epochSDD ^. Core.point . Lens.to C.chainPointToSlotNo]
+      <> SQL.toRow (epochSDD ^. Core.point)
 
 instance SQL.FromRow (Core.Timed C.ChainPoint EpochSDD) where
   fromRow = do
@@ -545,6 +544,7 @@ buildEpochSDDIndexer path = do
               , lovelace INT NOT NULL
               , blockNo INT NOT NULL
               , slotNo INT NOT NULL
+              , blockHeaderHash BLOB NOT NULL
               )|]
       sddInsertQuery =
         [sql|INSERT INTO epoch_sdd
@@ -553,7 +553,8 @@ buildEpochSDDIndexer path = do
                 , lovelace
                 , blockNo
                 , slotNo
-                ) VALUES (?, ?, ?, ?, ?)|]
+                , blockHeaderHash
+                ) VALUES (?, ?, ?, ?, ?, ?)|]
       insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) sddInsertQuery]
   Sync.mkSyncedSqliteIndexer
     path
@@ -572,6 +573,7 @@ buildEpochNonceIndexer path = do
               , nonce BLOB NOT NULL
               , blockNo INT NOT NULL
               , slotNo INT NOT NULL
+              , blockHeaderHash BLOB NOT NULL
               )|]
       nonceInsertQuery =
         [sql|INSERT INTO epoch_nonce
@@ -579,7 +581,8 @@ buildEpochNonceIndexer path = do
                 , nonce
                 , blockNo
                 , slotNo
-                ) VALUES (?, ?, ?, ?)|]
+                , blockHeaderHash
+                ) VALUES (?, ?, ?, ?, ?)|]
       insertEvent = [Core.SQLInsertPlan pure nonceInsertQuery]
   Sync.mkSyncedSqliteIndexer
     path
@@ -623,9 +626,13 @@ storeEmptyEpochStateRelatedInfo
   -> EpochStateIndexer event
   -> ExceptT Core.IndexerError IO (EpochStateIndexer event)
 storeEmptyEpochStateRelatedInfo p indexer = do
-  let indexNonce = epochNonceIndexer $ Core.index $ Core.Timed p Nothing
-      indexSDD = epochSDDIndexer $ Core.index $ Core.Timed p Nothing
-  indexNonce <=< indexSDD $ indexer
+  let emptyEvent :: forall a. Core.Timed C.ChainPoint (Maybe a)
+      emptyEvent = Core.Timed p Nothing
+      indexNonce = epochNonceIndexer $ Core.index emptyEvent
+      indexSDD = epochSDDIndexer $ Core.index emptyEvent
+      indexEpochState = epochStateIndexer $ Core.index emptyEvent
+      indexBlock = blockIndexer $ Core.index emptyEvent
+  indexEpochState <=< indexBlock <=< indexNonce <=< indexSDD $ indexer
 
 storeEpochStateRelatedInfo
   :: Core.Timed C.ChainPoint (Maybe (WithDistance EpochState))
@@ -718,7 +725,7 @@ instance
      in maybe pure setStablePointOnIndexers p' indexer'
 
 instance
-  (MonadIO m, MonadError Core.IndexerError m, Core.Point event ~ C.ChainPoint)
+  (MonadIO m, Core.Point event ~ C.ChainPoint)
   => Core.IsSync m event EpochStateIndexer
   where
   lastSyncPoint indexer = do
@@ -741,7 +748,7 @@ type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint Epo
 
 instance
   (MonadIO m, MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m)
-  => Core.Queryable m (NonEmpty EpochSDD) ActiveSDDByEpochNoQuery Core.SQLiteIndexer
+  => Core.Queryable m event ActiveSDDByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
     let epochSDDQuery =
@@ -757,17 +764,20 @@ instance
       (const id)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m)
-  => Core.Queryable m EpochSDD ActiveSDDByEpochNoQuery EpochStateIndexer
+  ( MonadIO m
+  , MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m
+  , Core.Point event ~ C.ChainPoint
+  )
+  => Core.Queryable m event ActiveSDDByEpochNoQuery EpochStateIndexer
   where
   query = Core.queryVia epochSDDIndexer
 
 instance
   ( MonadIO m
   , MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m
-  , Core.Point a ~ C.ChainPoint
+  , Core.Point event ~ C.ChainPoint
   )
-  => Core.Queryable m a (Core.EventAtQuery EpochState) EpochStateIndexer
+  => Core.Queryable m event (Core.EventAtQuery EpochState) EpochStateIndexer
   where
   query cp _ = fmap Just . restoreLedgerState (Just cp)
 
@@ -777,7 +787,7 @@ type instance Core.Result NonceByEpochNoQuery = Maybe (Core.Timed C.ChainPoint E
 
 instance
   (MonadIO m, MonadError (Core.QueryError NonceByEpochNoQuery) m)
-  => Core.Queryable m EpochNonce NonceByEpochNoQuery Core.SQLiteIndexer
+  => Core.Queryable m event NonceByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
     let epochSDDQuery =
@@ -792,8 +802,11 @@ instance
       (const listToMaybe)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError NonceByEpochNoQuery) m)
-  => Core.Queryable m EpochNonce NonceByEpochNoQuery EpochStateIndexer
+  ( MonadIO m
+  , MonadError (Core.QueryError NonceByEpochNoQuery) m
+  , Core.Point event ~ C.ChainPoint
+  )
+  => Core.Queryable m event NonceByEpochNoQuery EpochStateIndexer
   where
   query = Core.queryVia epochNonceIndexer
 
