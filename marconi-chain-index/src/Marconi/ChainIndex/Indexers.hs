@@ -733,7 +733,7 @@ runIndexers
             waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
         case res of
           Just _ -> logInfo stdoutTrace "Done!"
-          Nothing -> throwIO (Timeout @Void "Timed out.")
+          Nothing -> throwIO (Timeout @Void "Timed out.") -- TODO: What useful info can go here?
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
