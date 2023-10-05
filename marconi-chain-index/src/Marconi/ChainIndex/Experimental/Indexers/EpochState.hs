@@ -626,9 +626,13 @@ storeEmptyEpochStateRelatedInfo
   -> EpochStateIndexer event
   -> ExceptT Core.IndexerError IO (EpochStateIndexer event)
 storeEmptyEpochStateRelatedInfo p indexer = do
-  let indexNonce = epochNonceIndexer $ Core.index $ Core.Timed p Nothing
-      indexSDD = epochSDDIndexer $ Core.index $ Core.Timed p Nothing
-  indexNonce <=< indexSDD $ indexer
+  let emptyEvent :: forall a. Core.Timed C.ChainPoint (Maybe a)
+      emptyEvent = Core.Timed p Nothing
+      indexNonce = epochNonceIndexer $ Core.index emptyEvent
+      indexSDD = epochSDDIndexer $ Core.index emptyEvent
+      indexEpochState = epochStateIndexer $ Core.index emptyEvent
+      indexBlock = blockIndexer $ Core.index emptyEvent
+  indexEpochState <=< indexBlock <=< indexNonce <=< indexSDD $ indexer
 
 storeEpochStateRelatedInfo
   :: Core.Timed C.ChainPoint (Maybe (WithDistance EpochState))
