@@ -848,7 +848,7 @@ instance
     let epochSDDQuery =
           [sql|SELECT epochNo, nonce, blockNo, slotNo, blockHeaderHash
                  FROM epoch_nonce
-                 WHERE epochNo = ?
+                 WHERE epochNo = :epochNo
               |]
         getParams _ (NonceByEpochNoQuery epochNo) = [":epochNo" SQL.:= epochNo]
     Core.querySyncedOnlySQLiteIndexerWith
