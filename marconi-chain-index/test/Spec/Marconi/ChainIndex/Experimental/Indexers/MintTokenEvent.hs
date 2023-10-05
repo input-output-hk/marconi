@@ -93,11 +93,11 @@ tests =
             "propQueryByAssetIdWithPolicyIdIsSameAsQueryingByPolicyId"
             propQueryByAssetIdWithPolicyIdIsSameAsQueryingByPolicyId
         , testPropertyNamed
-            "Query by AssetIds with upperSlotNo bound returns events only to that upper bound"
+            "QueryByAssetId with upperSlotNo bound returns events only to that upper bound"
             "propQueryWithUpperSlotNoReturnsEventsUpToThatSlot"
             propQueryWithUpperSlotNoReturnsEventsUpToThatSlot
         , testPropertyNamed
-            "Query by AssetIds with lowerTxId returns events only in range"
+            "QueryByAssetId with lowerTxId returns events only in range"
             "propQueryWithLowerTxIdAndUpperSlotNoReturnsEventsInRange"
             propQueryWithLowerTxIdAndUpperSlotNoReturnsEventsInRange
         ]
@@ -111,6 +111,10 @@ tests =
             "QueryByAssetId query works as a list indexer"
             "propActLikeListIndexerOnQueryByAssetId"
             propActLikeListIndexerOnQueryByAssetId
+        , testPropertyNamed
+            "QueryByAssetId query works as a list indexer when given lowerTxId and upperSlotNo"
+            "propActLikeListIndexerOnQueryByAssetIdWithUpperLowerBounds"
+            propActLikeListIndexerOnQueryByAssetIdWithUpperLowerBounds
         ]
     , testGroup
         "Runner testing"
@@ -125,7 +129,7 @@ tests =
         ]
     ]
 
--- | On EventsMatchingQuery, the 'MintTokenEventIndexer' behaves like a 'ListIndexer'.
+-- | On 'EventsMatchingQuery', the 'MintTokenEventIndexer' behaves like a 'ListIndexer'.
 propActLikeListIndexerOnEventsMatchingQuery :: H.Property
 propActLikeListIndexerOnEventsMatchingQuery = H.property $ do
   events <- H.forAll genTimedEvents
@@ -137,7 +141,7 @@ propActLikeListIndexerOnEventsMatchingQuery = H.property $ do
     H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents listIndexer
   actualResult === expectedResult
 
--- | On EventsMatchingQuery, the 'UtxoIndexer' behaves like a 'ListIndexer'.
+-- | On 'QueryByAssetId', the 'MintTokenEventIndexer' behaves like a 'ListIndexer'.
 propActLikeListIndexerOnQueryByAssetId :: H.Property
 propActLikeListIndexerOnQueryByAssetId = H.property $ do
   events <- H.forAll genTimedEvents
@@ -151,7 +155,6 @@ propActLikeListIndexerOnQueryByAssetId = H.property $ do
   eventType <- H.forAll genEventType
   forM_ assetIds $ \case
     C.AdaAssetId -> do
-      -- TODO: possibly fill the holes when query impl updated
       let query = QueryByAssetId "" (Just "") eventType Nothing Nothing
       (sqlQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
         H.evalExceptT $ Core.queryLatest query sqlIndexer
@@ -160,7 +163,6 @@ propActLikeListIndexerOnQueryByAssetId = H.property $ do
 
       sqlQueryResult === listQueryResult
     C.AssetId policyId assetName -> do
-      -- TODO: possibly fill the holes when query impl updated
       let query = QueryByAssetId policyId (Just assetName) eventType Nothing Nothing
       (sqlQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
         H.evalExceptT $ Core.queryLatest query sqlIndexer
@@ -168,6 +170,58 @@ propActLikeListIndexerOnQueryByAssetId = H.property $ do
         H.evalExceptT $ Core.queryLatest query listIndexer
 
       sqlQueryResult === listQueryResult
+
+{- | On 'QueryByAssetId', the 'MintTokenEventIndexer' behaves like 'ListIndexer'
+ if lowerTxId, upperSlotNo are specified.
+-}
+propActLikeListIndexerOnQueryByAssetIdWithUpperLowerBounds :: H.Property
+propActLikeListIndexerOnQueryByAssetIdWithUpperLowerBounds = H.property $ do
+  -- Generate events with all the same policyId, to simplify the query
+  -- and since only the temporal information is being tested.
+  policy <- H.forAll CGen.genPolicyId
+  events <- setPolicyId policy <$> H.forAll genTimedEvents
+
+  listIndexer <- Core.indexAll events Core.mkListIndexer
+  (allEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
+    H.evalExceptT $ Core.queryLatest Core.allEvents listIndexer
+
+  sqlIndexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:" >>= Core.indexAll events
+
+  H.cover 10 "At least two blocks with mint/burn events" $
+    length allEvents > 1
+
+  when (not $ null allEvents) $ do
+    let (_, maxPoint) =
+          maybe (C.ChainPointAtGenesis, C.ChainPointAtGenesis) id $
+            minMaxChainPoints allEvents
+
+    -- The query requires the lowerTxId to exist among the events.
+    sampleEvent <- H.forAll $ H.Gen.element allEvents
+
+    let txIdGetter =
+          Core.event
+            . mintTokenEvents
+            . Lens.folded
+            . MintTokenEvent.mintTokenEventLocation
+            . MintTokenEvent.mintTokenEventTxId
+
+    let sampleEventTxId = Lens.firstOf txIdGetter sampleEvent
+    let sampleEventPoint = sampleEvent ^. Core.point
+
+    let lowerBound = maybe 0 C.unSlotNo $ C.chainPointToSlotNo sampleEventPoint
+    let upperBound = maybe 0 C.unSlotNo $ C.chainPointToSlotNo maxPoint
+
+    sampleUpperSlotNo <- C.SlotNo <$> H.forAll (H.Gen.word64 $ H.Range.linear lowerBound upperBound)
+
+    let query = QueryByAssetId policy Nothing Nothing (Just sampleUpperSlotNo) sampleEventTxId
+
+    (sqlQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
+      H.evalExceptT $ Core.queryLatest query sqlIndexer
+    (listQueryResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
+      H.evalExceptT $ Core.queryLatest query listIndexer
+
+    List.sort (getFlattenedTimedEvents sqlQueryResult)
+      === List.sort (getFlattenedTimedEvents listQueryResult)
 
 propQueryingMintEventsAndBurnEventsIsTheSameAsQueryingAllEvents :: H.Property
 propQueryingMintEventsAndBurnEventsIsTheSameAsQueryingAllEvents = H.property $ do
@@ -252,12 +306,10 @@ propQueryingAllPossibleAssetIdsShouldBeSameAsQueryingEverything = H.property $ d
   (combinedTimedEvents :: [Core.Timed C.ChainPoint MintTokenEvent]) <-
     fmap concat <$> forM assetIds $ \case
       C.AdaAssetId -> do
-        -- TODO: possibly fill the holes when query impl updated
         let query = QueryByAssetId "" (Just "") Nothing Nothing Nothing
         timedEvents <- H.evalExceptT $ Core.queryLatest query indexer
         pure $ getFlattenedTimedEvents timedEvents
       C.AssetId policyId assetName -> do
-        -- TODO: possibly fill the holes when query impl updated
         let query = QueryByAssetId policyId (Just assetName) Nothing Nothing Nothing
         timedEvents <- H.evalExceptT $ Core.queryLatest query indexer
         pure $ getFlattenedTimedEvents timedEvents
@@ -277,7 +329,6 @@ propQueryingAllPossiblePolicyIdsShouldBeSameAsQueryingEverything = H.property $ 
 
   (combinedTimedEvents :: [Core.Timed C.ChainPoint MintTokenEvent]) <-
     fmap concat <$> forM policyIds $ \policyId -> do
-      -- TODO: possibly fill the holes when query impl updated
       let query = QueryByAssetId policyId Nothing Nothing Nothing Nothing
       timedEvents <- H.evalExceptT $ Core.queryLatest query indexer
       pure $ getFlattenedTimedEvents timedEvents
@@ -302,11 +353,9 @@ propQueryByAssetIdWithPolicyIdIsSameAsQueryingByPolicyId = H.property $ do
     (timedEventsByAssetIds :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
       fmap concat <$> forM (NonEmpty.toList assetIds) $ \case
         C.AdaAssetId -> do
-          -- TODO: possibly fill the holes when query impl updated
           let queryByAssetId = QueryByAssetId "" (Just "") eventType Nothing Nothing
           H.evalExceptT $ Core.queryLatest queryByAssetId indexer
         (C.AssetId pid assetName) -> do
-          -- TODO: possibly fill the holes when query impl updated
           let queryByAssetId = QueryByAssetId pid (Just assetName) eventType Nothing Nothing
           H.evalExceptT $ Core.queryLatest queryByAssetId indexer
 
@@ -365,9 +414,6 @@ propQueryWithUpperSlotNoReturnsEventsUpToThatSlot = H.property $ do
   (allEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
     H.evalExceptT $ Core.queryLatest Core.allEvents indexer
 
-  -- Reference point for all queries
-  syncPoint <- Core.lastSyncPoint indexer
-
   -- Condition to ensure enough meaningful cases. Cases with no mint/burn events
   -- cannot be tested properly here, since there is no meaningful upper bound.
   -- Cases where the bounds mean the query returns 0 events are tested.
@@ -379,13 +425,12 @@ propQueryWithUpperSlotNoReturnsEventsUpToThatSlot = H.property $ do
           maybe (C.ChainPointAtGenesis, C.ChainPointAtGenesis) id $
             minMaxChainPoints allEvents
 
-    -- TODO: generate a random point between min and max, instead of sampling one from existing.
     sampleEventPoint <- (^. Core.point) <$> H.forAll (H.Gen.element allEvents)
 
     -- Query should return all elements if upper bound is maxPoint, with no lower bound.
     let queryAll = QueryByAssetId policy Nothing Nothing (C.chainPointToSlotNo maxPoint) Nothing
     (queryAllEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-      H.evalExceptT $ Core.query syncPoint queryAll indexer
+      H.evalExceptT $ Core.queryLatest queryAll indexer
 
     List.sort (getFlattenedTimedEvents queryAllEvents)
       === List.sort (getFlattenedTimedEvents allEvents)
@@ -397,7 +442,7 @@ propQueryWithUpperSlotNoReturnsEventsUpToThatSlot = H.property $ do
     when (lowerThanMinSlotNo > Just (C.SlotNo 0)) $ do
       let queryNone = QueryByAssetId policy Nothing Nothing lowerThanMinSlotNo Nothing
       (queryNoneEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-        H.evalExceptT $ Core.query syncPoint queryNone indexer
+        H.evalExceptT $ Core.queryLatest queryNone indexer
 
       queryNoneEvents === []
 
@@ -406,7 +451,7 @@ propQueryWithUpperSlotNoReturnsEventsUpToThatSlot = H.property $ do
     -- expect from a simple filter on the events by ChainPoint.
     let queryTillPoint = QueryByAssetId policy Nothing Nothing (C.chainPointToSlotNo sampleEventPoint) Nothing
     (queryTillPointEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-      H.evalExceptT $ Core.query syncPoint queryTillPoint indexer
+      H.evalExceptT $ Core.queryLatest queryTillPoint indexer
     let filteredTillPointEvents = List.filter (\e -> e ^. Core.point <= sampleEventPoint) allEvents
 
     List.sort (getFlattenedTimedEvents queryTillPointEvents)
@@ -427,9 +472,6 @@ propQueryWithLowerTxIdAndUpperSlotNoReturnsEventsInRange = H.property $ do
   indexer <- Core.indexAll events Core.mkListIndexer
   (allEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
     H.evalExceptT $ Core.queryLatest Core.allEvents indexer
-
-  -- Reference point for all queries
-  syncPoint <- Core.lastSyncPoint indexer
 
   -- Condition to ensure enough meaningful cases. Cases with no mint/burn events
   -- cannot be tested properly here, since there is no meaningful upper bound.
@@ -459,7 +501,7 @@ propQueryWithLowerTxIdAndUpperSlotNoReturnsEventsInRange = H.property $ do
     -- as compared with a simple filter statement.
     let queryInRange = QueryByAssetId policy Nothing Nothing (C.chainPointToSlotNo maxPoint) sampleEventTxId
     (queryInRangeEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-      H.evalExceptT $ Core.query syncPoint queryInRange indexer
+      H.evalExceptT $ Core.queryLatest queryInRange indexer
     let
       inRange e = e ^. Core.point >= sampleEventPoint && e ^. Core.point <= maxPoint
       filteredInRangeEvents = List.filter inRange allEvents
