@@ -8,10 +8,10 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Extended.Gen as CEGen
+import Cardano.Api.Extended.Gen qualified as CEGen
 import Control.Concurrent qualified as Concurrent
 import Control.Lens (toListOf, view, (^.))
-import Control.Monad (forM, forM_, void, when)
+import Control.Monad (forM, forM_, void)
 import Control.Monad.IO.Class (liftIO)
 import Control.Tracer (nullTracer)
 import Data.List ((\\))
@@ -43,8 +43,6 @@ import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   mintAssetPolicyId,
   mintAssetQuantity,
   mintTokenEventAsset,
-  mintTokenEventLocation,
-  mintTokenEventTxId,
   mintTokenEvents,
  )
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
@@ -114,17 +112,6 @@ tests =
             "Don't find anything at untrack AssetId"
             "propRunnerDoesntTrackUnselectedAssetId"
             propRunnerDoesntTrackUnselectedAssetId
-        ]
-    , testGroup
-        "Generator testing"
-        [ testPropertyNamed
-            "genTimedEvents creates mint/burn events whose TxIds are all the same (PLT-7842)"
-            "propGenTimedEventsHaveConstantTxId"
-            propGenTimedEventsHaveConstantTxId
-        , testPropertyNamed
-            "genTxId from cardano-api is degenerate"
-            "propTxIdGenIsDegenerate"
-            propTxIdGenIsDegenerate
         ]
     ]
 
