@@ -43,7 +43,6 @@ import Control.Concurrent (
   newEmptyMVar,
   newMVar,
   readMVar,
-  threadDelay,
   tryPutMVar,
   tryReadMVar,
  )
@@ -62,8 +61,6 @@ import Control.Concurrent.STM.TChan (
   writeTChan,
  )
 import Control.Exception (
-  Exception,
-  SomeException (SomeException),
   catch,
   finally,
   onException,
@@ -89,7 +86,6 @@ import Control.Monad.Trans.Except (
   ExceptT,
   runExceptT,
  )
-import Data.Data (Typeable)
 import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
@@ -100,9 +96,8 @@ import Data.Sequence qualified as Seq
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Data.Word (Word64)
-import GHC.Exception.Type (Exception (fromException), toException)
 import Marconi.ChainIndex.Error (
-  IndexerError (CantInsertEvent, CantRollback, CantStartIndexer),
+  IndexerError (CantInsertEvent, CantRollback, CantStartIndexer, Timeout),
   ignoreQueryError,
  )
 import Marconi.ChainIndex.Indexers.AddressDatum (
@@ -144,7 +139,6 @@ import Prometheus qualified as P
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
 import System.Directory (createDirectoryIfMissing)
-import System.Exit (ExitCode (ExitFailure), exitWith)
 import System.FilePath (
   takeDirectory,
   (</>),
@@ -739,11 +733,7 @@ runIndexers
             waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
         case res of
           Just _ -> logInfo stdoutTrace "Done!"
-          Nothing -> throwIO TimeoutException
-
-data IndexerException = TimeoutException
-  deriving (Show, Typeable)
-instance Exception IndexerException
+          Nothing -> throwIO (Timeout @Void "Timed out.")
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
