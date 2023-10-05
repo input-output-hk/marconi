@@ -555,8 +555,8 @@ filterBySlotNoBounds txIdM validUpperSlotNo =
       -- This tx is the one setting the lower bound. Check for validity, then accumulate if <=
       -- the upper bound.
       | matchingTxIdFromTimedEvent txId e =
-          if getSlotNo e <= Just validUpperSlotNo
-            then Right (accumulateIfWithinUpper validUpperSlotNo es e, True)
+          if isBeforeUpperSlotNo validUpperSlotNo e
+            then Right (e : es, True)
             else
               Left $
                 Core.SlotNoBoundsInvalid "SlotNo associated with query lowerTxId not found within upperSlotNo bound"
