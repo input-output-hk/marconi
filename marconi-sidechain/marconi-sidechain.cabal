@@ -40,15 +40,8 @@ common lang
     -Wnoncanonical-monad-instances -Wredundant-constraints
     -Wunused-packages
 
-common maybe-unix
-  if !os(windows)
-    build-depends: unix
-
 library
-  import:
-    lang
-    , maybe-unix
-
+  import:          lang
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Sidechain.Api.HttpServer
@@ -103,6 +96,7 @@ library
     , stm                   >=2.5
     , text
     , time
+    , unix
     , wai-extra
     , warp
 
