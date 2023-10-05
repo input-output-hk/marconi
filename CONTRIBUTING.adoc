@@ -137,7 +137,7 @@ We don't have a `hie.yaml`, the implicit cradle support in HLS seems to work fin
 
 Haskell components are provisioned by Nix through link:https://github.com/input-output-hk/iogx[IOGX] via link:https://github.com/input-output-hk/haskell.nix[Haskell.nix]
 
-Once inside the `nix develop` shell, you can run the `list-flake-outputs` script to list all buildable Nix derivations. 
+Once inside the `nix develop` shell, you can run the `list-flake-outputs` script to list all buildable Nix derivations.
 
 [[develop-without-nix]]
 === How to develop without Nix
@@ -189,7 +189,7 @@ Note that `cabal` itself keeps track of what index states it knows about, so whe
 The Nix code which builds our packages also cares about the index state.
 This is represented by some pinned inputs in our flake (see xref:update-nix-pins[here] for more details)
 You can update these by running:
-- `nix flake lock --update-input hackage-nix` for Hackage
+- `nix flake lock --update-input hackage` for Hackage
 - `nix flake lock --update-input CHaP` for CHaP
 
 After updating these, you should also consider updating `haskell.nix` with `nix flake lock --update-input haskell-nix` (although that is not mandatory).
@@ -227,7 +227,7 @@ You will get the latest revision for *all* your flake inputs (similar to what `n
 === How to upgrade GHC
 
 Refer to the `haskellCompilers
-<https://github.com/input-output-hk/iogx#323-haskellcompilers>` field in IOGX to learn how to use a different compiler. 
+<https://github.com/input-output-hk/iogx#323-haskellcompilers>` field in IOGX to learn how to use a different compiler.
 
 Afterwards, you need to restart your Nix shell.
 
@@ -269,8 +269,8 @@ There are various tools for visualizing the resulting profile, e.g. https://hack
 [[update-index-state]]
 === Updating dependencies
 
-Dependencies are managed through Nix via the IOGX flake. To update 
-IOGX means to update `hackage.nix` and `CHaP`. 
+Dependencies are managed through Nix via the IOGX flake. To update
+IOGX means to update `hackage.nix` and `CHaP`.
 ==== ... from Hackage
 
 Updating package dependencies from Hackage should work like normal in a
@@ -288,10 +288,10 @@ correctly also without ``index-state``.
 Because of how we use Nix to manage our Haskell build, whenever you do this
 you will also need to pull in the Nix equivalent of the newer
 ``index-state``. Refer to `this link
-<https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation 
+<https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation
 to learn how to update ``hackage.nix``.
 
-You can do this by running ``nix flake lock --update-input hackage-nix``.
+You can do this by running ``nix flake lock --update-input hackage``.
 
 ==== ... from the Cardano package repository
 
@@ -301,9 +301,9 @@ package repository
 README for (lots) more information.
 
 Getting new packages from there works much like getting them from Hackage.
-The differences are that it can have an independent ``index-state``. 
+The differences are that it can have an independent ``index-state``.
 Refer to `this link
-<https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation 
+<https://github.com/input-output-hk/iogx#312-inputs>`in IOGX's documentation
 to learn how to update ``CHaP``.
 
 You can do this by running ``nix flake lock --update-input CHaP``.
