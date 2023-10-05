@@ -531,16 +531,14 @@ instance
     -- order by slot number.
     either throwError pure $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
 
--- TODO: reference comment about requirement for user-provided valid lower bound in docs.
-
 {- | Helper for ListIndexer query.
  Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
  lowerTxId slot number is found and is not <= the upper bound. This function assumes the
  events are sorted in ascending order by ChainPoint SlotNo. It's purpose is to avoid a double
  pass in first finding the slot number associated with the lower bound.
 
- It assumes there is a matching transaction for lowerTxId and will not distinguish between cases
- where there are no such transactions and ones where no events are below the upper bound.
+ It requires there to be a matching transaction for 'lowerTxId' and will not distinguish between
+ cases where there are no such transactions and ones where no events are below the upper bound.
 -}
 filterBySlotNoBounds
   :: Maybe C.TxId
@@ -654,7 +652,11 @@ instance
       config
       ix
 
--- TODO: docstring and further cleanup
+{- | Helper for MintTokenEventIndexer in the case where a 'lowerTxId' is provided.
+Query to look up the earliest SlotNo matching a TxId. This is implemented as a separate query so
+as to be able to check that the 'lowerSlotNo' found is <= 'upperSlotNo'. If not, it will
+throw an error.
+-}
 queryLowerSlotNoByTxId
   :: (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
   => C.SlotNo
