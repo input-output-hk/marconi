@@ -76,8 +76,8 @@ concOpSignalHandled concOp hleft hright = do
       concOp
         (withHandler hleft)
         (withHandler hright)
-  var' <- tryTakeMVar mvar
-  case var' of
+  mExitCode <- tryTakeMVar mvar
+  case mExitCode of
     Just code -> exitWith (ExitFailure code)
     Nothing -> case res of
       Right result -> pure result
