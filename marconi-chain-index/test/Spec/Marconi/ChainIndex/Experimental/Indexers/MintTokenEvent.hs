@@ -3,11 +3,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- TODO: return this after ad-hoc testing in repl
--- module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
---  tests,
--- ) where
-module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent where
+module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
+  tests,
+) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen as CEGen
