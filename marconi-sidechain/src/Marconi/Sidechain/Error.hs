@@ -36,11 +36,11 @@ class HasExitCode e where
   toExitCode :: e -> Int
 
 instance HasExitCode (IndexerError Void) where
-  toExitCode = indexerExceptionToExit
+  toExitCode = indexerErrorToExit
 
-indexerExceptionToExit :: IndexerError Void -> Int
-indexerExceptionToExit ex =
-  case ex of
+indexerErrorToExit :: IndexerError Void -> Int
+indexerErrorToExit err =
+  case err of
     Timeout _ -> 124
     _ -> 1
 
