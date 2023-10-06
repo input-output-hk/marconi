@@ -6,11 +6,11 @@ module Marconi.Sidechain.Run where
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Trace (logInfo)
 import Cardano.BM.Tracing (defaultConfigStdout)
-import Control.Concurrent.Async (race_)
 import Control.Monad.Reader (runReaderT)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
+import Marconi.ChainIndex.Error (IndexerError)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Sidechain.Api.HttpServer (runHttpServer)
@@ -20,6 +20,7 @@ import Marconi.Sidechain.CLI (
   getVersion,
   parseCli,
  )
+import Marconi.Sidechain.Concurrency (HandledAction (Handled, Unhandled), raceSignalHandled_)
 import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 import System.Directory (createDirectoryIfMissing)
 import Text.Pretty.Simple (pShowDarkBg)
@@ -30,6 +31,9 @@ import Text.Pretty.Simple (pShowDarkBg)
 * marconi indexer workers
 
 Exceptions in either thread will end the program
+
+If the program is terminated with SIGINT or SIGTERM, exceptions in the marconi indexer workers
+thread will be mapped to exit codes by 'Marconi.Sidechain.Error.toExit'
 -}
 run :: IO ()
 run = do
@@ -47,6 +51,10 @@ run = do
       Utils.toException $ Utils.querySecurityParam @Void networkId socketFilePath
 
     rpcEnv <- mkSidechainEnvFromCliArgs securityParam cliArgs trace
-    race_
-      (runReaderT runHttpServer rpcEnv) -- Start HTTP server
-      (runReaderT runSidechainIndexers rpcEnv) -- Start the Sidechain indexers
+
+    {- In an ideal world, we'd map both threads' errors to exit codes, but we'd need some machinery
+    to determine which one takes priority, or something similar. Currently, we only care about
+    timeouts in the sidechain, so this is fine for now. -}
+    raceSignalHandled_
+      (Unhandled (runReaderT runHttpServer rpcEnv))
+      (Handled @(IndexerError Void) (runReaderT runSidechainIndexers rpcEnv))

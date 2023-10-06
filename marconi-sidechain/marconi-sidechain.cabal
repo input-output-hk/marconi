@@ -40,8 +40,15 @@ common lang
     -Wnoncanonical-monad-instances -Wredundant-constraints
     -Wunused-packages
 
+common maybe-unix
+  if !os(windows)
+    build-depends: unix
+
 library
-  import:          lang
+  import:
+    lang
+    , maybe-unix
+
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Sidechain.Api.HttpServer
@@ -51,6 +58,7 @@ library
     Marconi.Sidechain.Api.Routes
     Marconi.Sidechain.Bootstrap
     Marconi.Sidechain.CLI
+    Marconi.Sidechain.Concurrency
     Marconi.Sidechain.Env
     Marconi.Sidechain.Error
     Marconi.Sidechain.Run

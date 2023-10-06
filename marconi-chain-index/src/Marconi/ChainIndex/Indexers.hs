@@ -60,7 +60,12 @@ import Control.Concurrent.STM.TChan (
   readTChan,
   writeTChan,
  )
-import Control.Exception (catch, finally, onException)
+import Control.Exception (
+  catch,
+  finally,
+  onException,
+  throwIO,
+ )
 import Control.Exception.Base (throw)
 import Control.Lens (makeLenses, view)
 import Control.Lens.Operators (
@@ -92,7 +97,7 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Data.Word (Word64)
 import Marconi.ChainIndex.Error (
-  IndexerError (CantInsertEvent, CantRollback, CantStartIndexer),
+  IndexerError (CantInsertEvent, CantRollback, CantStartIndexer, Timeout),
   ignoreQueryError,
  )
 import Marconi.ChainIndex.Indexers.AddressDatum (
@@ -723,10 +728,13 @@ runIndexers
           "Stopping indexing. Waiting for indexers to finish their work (timeout after "
             <> Text.pack (show secondsBeforeTimeout)
             <> "s) ..."
-        void $
+        res <-
           timeout (secondsBeforeTimeout * 1_000_000) $
             waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
-        logInfo stdoutTrace "Done!"
+        case res of
+          Just _ -> logInfo stdoutTrace "Done!"
+          -- TODO: When it's possible, let's put some useful information in this exception
+          Nothing -> throwIO (Timeout @Void "Timed out.")
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r

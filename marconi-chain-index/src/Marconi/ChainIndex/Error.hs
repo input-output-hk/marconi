@@ -18,6 +18,7 @@ data IndexerError a
   | CantInsertEvent !Text
   | CantRollback !Text
   | InvalidIndexer !Text
+  | Timeout !Text
   deriving stock (Show)
 
 instance (Exception a) => Exception (IndexerError a)
@@ -58,4 +59,5 @@ ignoreQueryError x = ExceptT $ do
     Left (CantInsertEvent msg) -> Left (CantInsertEvent msg)
     Left (CantRollback msg) -> Left (CantRollback msg)
     Left (InvalidIndexer msg) -> Left (InvalidIndexer msg)
+    Left (Timeout msg) -> Left (Timeout msg)
     Right result -> Right result
