@@ -1,6 +1,3 @@
-# This file is part of the IOGX template and is documented at the link below:
-# https://www.github.com/input-output-hk/iogx#31-flakenix
-
 {
   description = "Marconi Chain Indexer";
 
@@ -26,12 +23,12 @@
     };
 
     haskell-nix = {
-      url = "github:input-output-hk/haskell.nix/445086f35d450af485cd9200b86211355095b2a1";
+      url = "github:input-output-hk/haskell.nix";
       inputs.hackage.follows = "hackage";
     };
 
     # Used to provide the cardano-node and cardano-cli executables.
-    cardano-node.url = "github:input-output-hk/cardano-node";
+    cardano-node.url = "github:input-output-hk/cardano-node?ref=8.4.0-pre";
 
     mithril.url = "github:input-output-hk/mithril";
   };
