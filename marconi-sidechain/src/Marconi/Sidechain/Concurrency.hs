@@ -11,6 +11,7 @@ import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, tryTakeMVar)
 import Control.Exception (Exception, catch, throwIO)
 import Control.Monad (void)
+import Data.Void (Void)
 import Marconi.Sidechain.Error (HasExit, toExitCode, withSignalHandling)
 import System.Exit (ExitCode (ExitFailure), exitWith)
 
@@ -43,7 +44,7 @@ import System.Exit (ExitCode (ExitFailure), exitWith)
 -}
 data HandledAction e a where
   Handled :: (Exception e, HasExit e) => IO a -> HandledAction e a
-  Unhandled :: IO a -> HandledAction e a
+  Unhandled :: IO a -> HandledAction Void a
 
 {- | Perform two actions, with explicit handling instructions, concurrently (with the chosen scheme)
 
