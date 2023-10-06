@@ -8,6 +8,7 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.Gen qualified as CEGen
 import Control.Concurrent qualified as Concurrent
 import Control.Lens (toListOf, view, (^.))
 import Control.Monad (forM, forM_, void)
@@ -445,7 +446,7 @@ genMintTokenEvent = do
   mintLocation <-
     MintTokenEventLocation
       <$> Gen.genBlockNo
-      <*> CGen.genTxId
+      <*> CEGen.genTxId
       <*> (fmap TxIndexInBlock $ H.Gen.word64 (H.Range.linear 0 100))
   scriptData <- Gen.genSimpleHashableScriptData
   let genMintAssetRedeemer =

@@ -169,6 +169,7 @@ library cardano-api-extended
     Cardano.Api.Extended
     Cardano.Api.Extended.Block
     Cardano.Api.Extended.ExtLedgerState
+    Cardano.Api.Extended.Gen
     Cardano.Api.Extended.IPC
     Cardano.Api.Extended.Streaming
     Cardano.Api.Extended.Streaming.Callback
@@ -183,9 +184,11 @@ library cardano-api-extended
     , base16-bytestring
     , bytestring
     , cardano-api                    ^>=8.8
+    , cardano-crypto-class
     , cardano-crypto-wrapper
     , cardano-ledger-byron
     , cardano-slotting
+    , hedgehog
     , memory
     , ouroboros-consensus
     , ouroboros-consensus-cardano
