@@ -11,15 +11,14 @@ import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, tryTakeMVar)
 import Control.Exception (Exception, catch, throwIO)
 import Control.Monad (void)
-import Data.Void (Void)
-import Marconi.Sidechain.Error (HasExitCode (toExitCode), signalToExit, withSignalHandling)
+import Marconi.Sidechain.Error (HasExit, toExitCode, withSignalHandling)
 import System.Exit (ExitCode (ExitFailure), exitWith)
 
 -- * Graceful exception handling after SIGINT or SIGTERM
 
 {- These purpose of these functions is as follows:
 
-  If we try to naiively exit with a different exit code than that of the received signal, our new
+  If we try to naively exit with a different exit code than that of the received signal, our new
 	exit code will be ignored, We can work around this by using `installHandler`; catching the
 	signal and setting our own exit code.
 
@@ -38,21 +37,15 @@ import System.Exit (ExitCode (ExitFailure), exitWith)
 
 		It has two type parameters:
 
-		* 'e' the exception type, 'Void' in the unhandled case
+		* @e@ the exception type, 'Void' in the unhandled case
 
-    * 'a' the type returned by the action
+    * @a@ the type returned by the action
 -}
 data HandledAction e a where
-  Handled :: (Exception e, HasExitCode e) => IO a -> HandledAction e a
-  Unhandled :: IO a -> HandledAction Void a
+  Handled :: (Exception e, HasExit e) => IO a -> HandledAction e a
+  Unhandled :: IO a -> HandledAction e a
 
 {- | Perform two actions, with explicit handling instructions, concurrently (with the chosen scheme)
-
-		Takes:
-
-		* 'concOp' - A concurrent operation (`race` or `concurrent`)
-		* 'left' - The "left" `HandledAction` for the concurrent operation to run
-		* 'right - The "right" `HandledAction` for the concurrent operation to run
 
 		Returns whatever the concurrent operation would, if called plainly.
 
@@ -62,8 +55,11 @@ data HandledAction e a where
 concOpSignalHandled
   :: forall e1 e2 a b f
    . (IO a -> IO b -> IO (f a b))
+  -- ^ A concurrent operation (`race` or `concurrent`)
   -> HandledAction e1 a
+  -- ^ The "left" `HandledAction` for the concurrent operation to run
   -> HandledAction e2 b
+  -- ^ The "right" `HandledAction` for the concurrent operation to run
   -> IO (f a b)
 concOpSignalHandled concOp hleft hright = do
   mvar <- newEmptyMVar
@@ -81,7 +77,7 @@ concOpSignalHandled concOp hleft hright = do
     Just code -> exitWith (ExitFailure code)
     Nothing -> case res of
       Right result -> pure result
-      Left signal -> exitWith (ExitFailure (signalToExit $ fromIntegral signal))
+      Left signal -> exitWith (ExitFailure (toExitCode signal))
 
 {- | Race two actions, with explicit handling instructions, concurrently.
 
@@ -94,7 +90,9 @@ concOpSignalHandled concOp hleft hright = do
 raceSignalHandled
   :: forall e1 e2 a b
    . HandledAction e1 a
+  -- ^ The "left" `HandledAction` for the concurrent operation to run
   -> HandledAction e2 b
+  -- ^ The "right" `HandledAction` for the concurrent operation to run
   -> IO (Either a b)
 raceSignalHandled = concOpSignalHandled race
 
@@ -102,6 +100,8 @@ raceSignalHandled = concOpSignalHandled race
 raceSignalHandled_
   :: forall e1 e2 a b
    . HandledAction e1 a
+  -- ^ The "left" `HandledAction` for the concurrent operation to run
   -> HandledAction e2 b
+  -- ^ The "right" `HandledAction` for the concurrent operation to run
   -> IO ()
 raceSignalHandled_ hleft hright = void $ raceSignalHandled hleft hright

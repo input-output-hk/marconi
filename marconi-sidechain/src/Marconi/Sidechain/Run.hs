@@ -33,7 +33,7 @@ import Text.Pretty.Simple (pShowDarkBg)
 Exceptions in either thread will end the program
 
 If the program is terminated with SIGINT or SIGTERM, exceptions in the marconi indexer workers
-thread will be mapped to exit codes
+thread will be mapped to exit codes by 'Marconi.Sidechain.Error.toExit'
 -}
 run :: IO ()
 run = do

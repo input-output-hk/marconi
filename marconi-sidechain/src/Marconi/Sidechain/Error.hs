@@ -4,9 +4,10 @@
 
 module Marconi.Sidechain.Error (
   QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult, UntrackedPolicy),
-  HasExitCode (toExitCode),
+  HasExit (toExit),
+  Exit (TimedOut, Errored, Killed, Terminated, Interrupted),
   withSignalHandling,
-  signalToExit,
+  toExitCode,
 ) where
 
 import Cardano.Api qualified as C
@@ -16,7 +17,6 @@ import Control.Exception (Exception)
 import Control.Monad (void)
 import Data.Foldable (traverse_)
 import Data.Text (Text)
-import Data.Void (Void)
 import Marconi.ChainIndex.Error (IndexerError (Timeout))
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
 import Marconi.Core.Storable (StorableQuery)
@@ -32,17 +32,46 @@ data QueryExceptions
 
 -- * Mapping of exceptions to exit codes
 
-class HasExitCode e where
-  toExitCode :: e -> Int
+-- | Represents a subset of exit codes
+data Exit
+  = -- | 124
+    TimedOut
+  | -- | 1
+    Errored
+  | -- | 137
+    Killed
+  | -- | 143
+    Terminated
+  | -- | 130
+    Interrupted
 
-instance HasExitCode (IndexerError Void) where
-  toExitCode = indexerErrorToExit
+-- | Maps a domain concept to a subset of exit codes
+class HasExit e where
+  toExit :: e -> Exit
 
-indexerErrorToExit :: IndexerError Void -> Int
-indexerErrorToExit err =
-  case err of
-    Timeout _ -> 124
-    _ -> 1
+instance HasExit (IndexerError a) where
+  toExit err =
+    case err of
+      Timeout _ -> TimedOut
+      _ -> Errored
+
+instance HasExit Signal where
+  toExit signal
+    | signal == sigINT = Interrupted
+    | signal == sigTERM = Terminated
+    | otherwise = Killed
+
+-- | Maps anything that satisfies 'HasExit' to an 'Int', to be used as an exit code
+toExitCode :: (HasExit a) => a -> Int
+toExitCode = exitToInt . toExit
+  where
+    exitToInt :: Exit -> Int
+    exitToInt ex = case ex of
+      TimedOut -> 124
+      Errored -> 1
+      Killed -> 137
+      Terminated -> 143
+      Interrupted -> 130
 
 -- * Signal handling
 
@@ -56,21 +85,7 @@ withSignalHandling action = do
   let terminate terminationType = void $ tryPutMVar termVar terminationType
       waitForTermination = takeMVar termVar
       signals = [sigINT, sigTERM]
-
   traverse_ (\signal -> installHandler signal (CatchOnce (terminate signal)) Nothing) signals
   race
     waitForTermination
     action
-
-{- | Maps a signal to an exit code.
-
-		Maps SIGINT (2) to 130
-		Maps SIGTERM (15) to 143
-		Maps all other signals to 137 (SIGKILL)
--}
-signalToExit :: Int -> Int
-signalToExit signal =
-  case signal of
-    2 -> 130
-    15 -> 143
-    _ -> 137
