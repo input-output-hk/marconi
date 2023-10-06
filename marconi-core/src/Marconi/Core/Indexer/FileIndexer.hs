@@ -37,7 +37,7 @@ import Control.Exception (Exception (displayException), bracket_, handle)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
 import Control.Monad (forM_, join, void, when)
-import Control.Monad.Except (ExceptT (ExceptT), MonadError (catchError, throwError), runExceptT)
+import Control.Monad.Except (ExceptT (ExceptT), MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -103,6 +103,7 @@ data EventInfo meta = EventInfo
   , fileMetadata :: meta
   , path :: FilePath
   }
+  deriving (Show)
 
 {- | The dataytpe used to configure the way we store files, including:
 
@@ -334,15 +335,15 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
         when (pt > p) $ do
           let filename = fullPath indexer eventFile
           liftIO $ removeFile filename
-    pure indexer
+    pure $ indexer & fileIndexerLastSyncPoint .~ p
 
   setLastStablePoint p indexer = do
-    currentStable <- readCurrentStable indexer `catchError` const (pure Nothing)
-    case currentStable of
-      Nothing -> writeStable p indexer
-      Just p' -> do
-        when (p > p') $ void $ writeStable p indexer
-        pure indexer
+    let currentStable = indexer ^. fileIndexerLastStablePoint
+    if p > currentStable
+      then do
+        indexer' <- writeStable p indexer
+        pure $ indexer' & fileIndexerLastStablePoint .~ p
+      else pure indexer
 
 lastStableFilename :: FileIndexer meta event -> FilePath
 lastStableFilename indexer =

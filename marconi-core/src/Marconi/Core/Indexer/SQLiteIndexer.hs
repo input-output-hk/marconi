@@ -269,9 +269,9 @@ indexEvents
   -> m (SQLiteIndexer event)
 indexEvents [] indexer = pure indexer
 indexEvents evts@(e : _) indexer = do
-  let setDbLastSync p = pure $ indexer & dbLastSync .~ p
+  let setDbLastSync p = pure . (dbLastSync .~ p)
   runIndexQueries (indexer ^. connection) evts (indexer ^. insertPlan)
-  setDbLastSync (e ^. point)
+  setDbLastSync (e ^. point) indexer
 
 runLastStablePointQuery
   :: (MonadError IndexerError m, MonadIO m, SQL.FromRow r)

@@ -16,6 +16,7 @@ import Cardano.Api qualified as C
 import Cardano.BM.Tracing (Trace)
 import Control.Arrow ((<<<))
 import Control.Concurrent (MVar)
+import Control.Monad ((<=<))
 import Control.Monad.Cont (MonadIO, MonadTrans (lift))
 import Control.Monad.Except (ExceptT)
 import Data.Text (Text)
@@ -31,7 +32,7 @@ type StandardIndexer m indexer event =
   Core.WithTrace
     m
     (Core.WithCatchup (Core.WithTransform indexer event))
-    (WithDistance event)
+    (WithDistance (Maybe event))
 
 -- | An alias for an SQLiteWorker with catchup and transformation to perform filtering
 type StandardSQLiteIndexer m event = StandardIndexer m Core.SQLiteIndexer event
@@ -63,7 +64,7 @@ mkStandardIndexer config indexer =
       chainPointDistance _ = Distance.chainDistance
    in Core.withTrace (logger config) $
         Core.withCatchup chainPointDistance (catchupConfig config) $
-          Core.withTransform id (Just . Distance.getEvent) indexer
+          Core.withTransform id Distance.getEvent indexer
 
 -- | Create a worker for the given indexer with some standard catchup values
 mkStandardWorker
@@ -92,7 +93,7 @@ mkStandardIndexerWithFilter config eventFilter indexer =
       chainPointDistance _ = Distance.chainDistance
    in Core.withTrace (logger config) $
         Core.withCatchup chainPointDistance (catchupConfig config) $
-          Core.withTransform id (eventFilter . Distance.getEvent) indexer
+          Core.withTransform id (eventFilter <=< Distance.getEvent) indexer
 
 -- | Create a worker for the given indexer with some standard catchup values with extra filtering.
 mkStandardWorkerWithFilter
@@ -109,7 +110,7 @@ mkStandardWorkerWithFilter
   -> n (StandardWorker m input event indexer)
 mkStandardWorkerWithFilter config eventFilter indexer = do
   let mapEventUnderDistance =
-        Core.traverseMaybeEvent $ fmap sequence . traverse (lift . eventExtractor config)
+        Core.traverseMaybeEvent $ fmap Just . traverse (lift . eventExtractor config)
       transformedIndexer = mkStandardIndexerWithFilter config eventFilter indexer
   lastStable <- Core.lastStablePoint indexer
   let eventPreprocessing = Core.withResume lastStable <<< mapEventUnderDistance
