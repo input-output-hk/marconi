@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -6,6 +7,7 @@ module Marconi.ChainIndex.Experimental.Run where
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logError, logInfo)
 
+import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -22,7 +24,7 @@ import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)
 
@@ -67,7 +69,10 @@ run appName = withGracefulTermination_ $ do
       preferredStartingPoint = Cli.optionsChainPoint $ Cli.commonOptions o
 
   nodeConfigPath <- case Cli.optionsNodeConfigPath o of
-    Just cfg -> pure cfg
+    Just cfg -> do
+      exists <- doesFileExist cfg
+      unless exists $ error ("Config file does not exist at the provided path: " <> cfg)
+      pure cfg
     Nothing -> error "No node config path provided"
 
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
@@ -89,7 +94,8 @@ run appName = withGracefulTermination_ $ do
   (indexerLastStablePoint, _utxoQueryIndexer, indexers) <-
     ( case mindexers of
         Left err -> do
-          logError trace $ Text.pack $ show err
+          let !x = Text.pack $ show err
+           in logError trace x
           exitFailure
         Right result -> pure result
       )
