@@ -122,6 +122,9 @@ data QueryError query
     NotStoredAnymore
   | -- | The indexer query failed
     IndexerQueryError Text
+  | -- | Upper or lower SlotNo bounds provided in the query are not consistent. For example,
+    -- the requested point is too early to answer the query completely.
+    SlotNoBoundsInvalid Text
 
 deriving stock instance (Show (Result query)) => Show (QueryError query)
 deriving instance (Typeable query, Show (Result query)) => Exception (QueryError query)
