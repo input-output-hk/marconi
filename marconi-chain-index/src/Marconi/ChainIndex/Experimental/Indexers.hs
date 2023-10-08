@@ -7,8 +7,10 @@ module Marconi.ChainIndex.Experimental.Indexers where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
+import Control.Lens ((?~))
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
+import Data.Function ((&))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -58,15 +60,14 @@ buildIndexers
       , -- Indexing part
         Core.WithTrace IO Core.Coordinator (WithDistance BlockEvent)
       )
-buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateConfig logger path = do
-  let mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) logger
-      txBodyCoordinatorLogger = BM.appendName "txBody" mainLogger
+buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateConfig textLogger path = do
+  let txBodyCoordinatorLogger = BM.appendName "txBody" textLogger
 
   StandardWorker blockInfoMVar blockInfoWorker <-
-    blockInfoBuilder securityParam catchupConfig mainLogger path
+    blockInfoBuilder securityParam catchupConfig textLogger path
 
   Core.WorkerIndexer _epochStateMVar epochStateWorker <-
-    epochStateBuilder securityParam catchupConfig epochStateConfig mainLogger path
+    epochStateBuilder securityParam catchupConfig epochStateConfig textLogger path
 
   StandardWorker utxoMVar utxoWorker <-
     utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
@@ -94,10 +95,11 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
       UtxoQuery.mkUtxoSQLiteQuery $
         UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
 
+  let indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
   mainCoordinator <-
     lift $
       standardCoordinator
-        mainLogger
+        indexerEventLogger
         [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
   resumePoint <- Core.lastStablePoint mainCoordinator
@@ -108,115 +110,139 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildTxBodyCoordinator
-  :: (MonadIO m, Ord (Core.Point event))
-  => BM.Trace IO (Core.IndexerEvent (Core.Point event))
+  :: (MonadIO m, Ord (Core.Point event), Show (Core.Point event))
+  => BM.Trace IO Text
   -> (WithDistance input -> IO (Maybe event))
   -> [Core.Worker event (Core.Point event)]
   -> m (Core.Worker (WithDistance input) (Core.Point event))
-buildTxBodyCoordinator logger extract workers =
-  Core.worker <$> coordinatorWorker "TxBody coordinator" logger extract workers
+buildTxBodyCoordinator textLogger extract workers = do
+  let indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+  Core.worker <$> coordinatorWorker "TxBody coordinator" indexerEventLogger extract workers
 
 -- | Configure and start the @BlockInfo@ indexer
 blockInfoBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
-  -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> BM.Trace m Text
   -> FilePath
   -> n (StandardWorker m BlockEvent Block.BlockInfo Core.SQLiteIndexer)
-blockInfoBuilder securityParam catchupConfig logger path =
-  let extractBlockInfo :: BlockEvent -> Block.BlockInfo
+blockInfoBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "BlockInfo"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      extractBlockInfo :: BlockEvent -> Block.BlockInfo
       extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = Block.fromBlockEratoBlockInfo b eno t
       blockInfoWorkerConfig =
         StandardWorkerConfig
-          "BlockInfo"
+          indexerName
           securityParam
           catchupConfig
           (pure . Just . extractBlockInfo)
-          (BM.appendName "blockInfo" logger)
+          (BM.appendName indexerName indexerEventLogger)
    in Block.blockInfoWorker blockInfoWorkerConfig (path </> "blockInfo.db")
 
 -- | Configure and start the @Utxo@ indexer
 utxoBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
-  -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> BM.Trace IO Text
   -> FilePath
-  -> n (StandardWorker m [AnyTxBody] Utxo.UtxoEvent Core.SQLiteIndexer)
-utxoBuilder securityParam catchupConfig utxoConfig logger path =
-  let extractUtxos :: AnyTxBody -> [Utxo.Utxo]
+  -> n (StandardWorker IO [AnyTxBody] Utxo.UtxoEvent Core.SQLiteIndexer)
+utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
+  let indexerName = "Utxo"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      utxoDbPath = path </> "utxo.db"
+      extractUtxos :: AnyTxBody -> [Utxo.Utxo]
       extractUtxos (AnyTxBody _ indexInBlock txb) = Utxo.getUtxosFromTxBody indexInBlock txb
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook ?~ Utxo.catchupConfigEventHook textLogger utxoDbPath
       utxoWorkerConfig =
         StandardWorkerConfig
-          "Utxo"
+          indexerName
           securityParam
-          catchupConfig
+          catchupConfigWithTracer
           (pure . NonEmpty.nonEmpty . (>>= extractUtxos))
-          (BM.appendName "utxo" logger)
-   in Utxo.utxoWorker utxoWorkerConfig utxoConfig (path </> "utxo.db")
+          (BM.appendName indexerName indexerEventLogger)
+   in Utxo.utxoWorker utxoWorkerConfig utxoConfig utxoDbPath
 
 -- | Configure and start the @SpentInfo@ indexer
 spentBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
   -> Core.CatchupConfig
-  -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> BM.Trace IO Text
   -> FilePath
-  -> n (StandardWorker m [AnyTxBody] Spent.SpentInfoEvent Core.SQLiteIndexer)
-spentBuilder securityParam catchupConfig logger path =
-  let extractSpent :: AnyTxBody -> [Spent.SpentInfo]
+  -> n (StandardWorker IO [AnyTxBody] Spent.SpentInfoEvent Core.SQLiteIndexer)
+spentBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "Spent"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      spentDbPath = path </> "spent.db"
+      extractSpent :: AnyTxBody -> [Spent.SpentInfo]
       extractSpent (AnyTxBody _ _ txb) = Spent.getInputs txb
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook ?~ Spent.catchupConfigEventHook textLogger spentDbPath
       spentWorkerConfig =
         StandardWorkerConfig
-          "spent"
+          indexerName
           securityParam
-          catchupConfig
+          catchupConfigWithTracer
           (pure . NonEmpty.nonEmpty . (>>= extractSpent))
-          (BM.appendName "spent" logger)
-   in Spent.spentWorker spentWorkerConfig (path </> "spent.db")
+          (BM.appendName indexerName indexerEventLogger)
+   in Spent.spentWorker spentWorkerConfig spentDbPath
 
 -- | Configure and start the @Datum@ indexer
 datumBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
-  -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> BM.Trace m Text
   -> FilePath
   -> n (StandardWorker m [AnyTxBody] Datum.DatumEvent Core.SQLiteIndexer)
-datumBuilder securityParam catchupConfig logger path =
-  let extractDatum :: AnyTxBody -> [Datum.DatumInfo]
+datumBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "Datum"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      extractDatum :: AnyTxBody -> [Datum.DatumInfo]
       extractDatum (AnyTxBody _ _ txb) = Datum.getDataFromTxBody txb
       datumWorkerConfig =
         StandardWorkerConfig
-          "datum"
+          indexerName
           securityParam
           catchupConfig
           (pure . NonEmpty.nonEmpty . (>>= extractDatum))
-          (BM.appendName "datum" logger)
+          (BM.appendName indexerName indexerEventLogger)
    in Datum.datumWorker datumWorkerConfig (path </> "datum.db")
 
 -- | Configure and start the @MintToken@ indexer
 mintBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
   -> Core.CatchupConfig
   -> MintTokenEvent.MintTokenEventConfig
-  -> BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> BM.Trace IO Text
   -> FilePath
-  -> n (StandardWorker m [AnyTxBody] MintTokenEvent.MintTokenBlockEvents Core.SQLiteIndexer)
-mintBuilder securityParam catchupConfig mintEventConfig logger path =
-  let extractMint :: AnyTxBody -> [MintTokenEvent.MintTokenEvent]
+  -> n (StandardWorker IO [AnyTxBody] MintTokenEvent.MintTokenBlockEvents Core.SQLiteIndexer)
+mintBuilder securityParam catchupConfig mintEventConfig textLogger path =
+  let indexerName = "MintTokenEvent"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      mintDbPath = path </> "mint.db"
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook
+            ?~ MintTokenEvent.catchupConfigEventHook indexerName textLogger mintDbPath
+      extractMint :: AnyTxBody -> [MintTokenEvent.MintTokenEvent]
       extractMint (AnyTxBody bn ix txb) = MintTokenEvent.extractEventsFromTx bn ix txb
       mintTokenWorkerConfig =
         StandardWorkerConfig
-          "mintToken"
+          indexerName
           securityParam
-          catchupConfig
+          catchupConfigWithTracer
           (pure . fmap MintTokenEvent.MintTokenBlockEvents . NonEmpty.nonEmpty . (>>= extractMint))
-          (BM.appendName "mintToken" logger)
-   in MintTokenEvent.mkMintTokenEventWorker mintTokenWorkerConfig mintEventConfig (path </> "mint.db")
+          (BM.appendName indexerName indexerEventLogger)
+   in MintTokenEvent.mkMintTokenEventWorker mintTokenWorkerConfig mintEventConfig mintDbPath
 
 -- | Configure and start the @EpochState@ indexer
 epochStateBuilder
@@ -224,7 +250,7 @@ epochStateBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> EpochState.EpochStateWorkerConfig
-  -> BM.Trace IO (Core.IndexerEvent C.ChainPoint)
+  -> BM.Trace IO Text
   -> FilePath
   -> n
       ( Core.WorkerIndexer
@@ -233,12 +259,14 @@ epochStateBuilder
           (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
           EpochState.EpochStateIndexer
       )
-epochStateBuilder securityParam catchupConfig epochStateConfig logger path =
-  let epochStateWorkerConfig =
+epochStateBuilder securityParam catchupConfig epochStateConfig textLogger path =
+  let indexerName = "EpochState"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      epochStateWorkerConfig =
         StandardWorkerConfig
-          "epochState"
+          indexerName
           securityParam
           catchupConfig
           (pure . Just . blockInMode)
-          (BM.appendName "epochState" logger)
+          (BM.appendName indexerName indexerEventLogger)
    in EpochState.mkEpochStateWorker epochStateWorkerConfig epochStateConfig (path </> "epochState")

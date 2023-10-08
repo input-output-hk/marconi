@@ -17,12 +17,14 @@ module Marconi.ChainIndex.Experimental.Indexers.Spent (
   mkSpentIndexer,
   spentWorker,
   StandardSpentIndexer,
+  catchupConfigEventHook,
 
   -- * Extractor
   getInputs,
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Trace (Trace)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
@@ -32,6 +34,8 @@ import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
+import Data.String (fromString)
+import Data.Text (Text)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -107,12 +111,6 @@ mkSpentIndexer path = do
                , slotNo INT NOT NULL
                , blockHeaderHash BLOB NOT NULL
                )|]
-      createSlotNoIndex =
-        [sql|CREATE INDEX IF NOT EXISTS spent_slotNo ON spent (slotNo)|]
-      createTxInIndex =
-        [sql|CREATE INDEX IF NOT EXISTS spent_txIn ON spent (txId, txIx)|]
-      createSpentAtIndex =
-        [sql|CREATE INDEX IF NOT EXISTS spent_spentAtTxId ON spent (spentAtTxId)|]
       spentInsertQuery :: SQL.Query
       spentInsertQuery =
         [sql|INSERT OR IGNORE INTO spent
@@ -123,8 +121,7 @@ mkSpentIndexer path = do
                , blockHeaderHash
                )
                VALUES (?, ?, ?, ?, ?)|]
-      createSpentTables =
-        [createSpent, createSlotNoIndex, createTxInIndex, createSpentAtIndex]
+      createSpentTables = [createSpent]
       spentInsert =
         [Core.SQLInsertPlan (traverse NonEmpty.toList) spentInsertQuery]
   Sync.mkSyncedSqliteIndexer
@@ -132,6 +129,30 @@ mkSpentIndexer path = do
     createSpentTables
     [spentInsert]
     [Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo]
+
+catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
+catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
+  SQL.withConnection dbPath $ \c -> do
+    let slotNoIndexName = "spent_slotNo"
+        createSlotNoIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString slotNoIndexName
+            <> " ON spent (slotNo)"
+    Core.createIndexTable "Spent" stdoutTrace c slotNoIndexName createSlotNoIndexStatement
+
+    let txInIndexName = "spent_txIn"
+        createTxInIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString txInIndexName
+            <> " ON spent (txId, txIx)"
+    Core.createIndexTable "Spent" stdoutTrace c txInIndexName createTxInIndexStatement
+
+    let spentAtTxIdIndexName = "spent_spentAtTxId"
+        createSpentAtIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString spentAtTxIdIndexName
+            <> " ON spent (spentAtTxId)"
+    Core.createIndexTable "Spent" stdoutTrace c spentAtTxIdIndexName createSpentAtIndexStatement
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker

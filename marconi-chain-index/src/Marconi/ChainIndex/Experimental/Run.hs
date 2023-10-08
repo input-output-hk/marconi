@@ -77,7 +77,7 @@ run appName = withGracefulTermination_ $ do
     runExceptT $
       buildIndexers
         securityParam
-        (Core.CatchupConfig batchSize stopCatchupDistance)
+        (Core.mkCatchupConfig batchSize stopCatchupDistance)
         (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
         (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
         ( EpochState.EpochStateWorkerConfig
@@ -95,8 +95,6 @@ run appName = withGracefulTermination_ $ do
       )
 
   let startingPoint = getStartingPoint preferredStartingPoint indexerLastStablePoint
-
-  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
   Runner.runIndexer
     ( RunIndexerConfig

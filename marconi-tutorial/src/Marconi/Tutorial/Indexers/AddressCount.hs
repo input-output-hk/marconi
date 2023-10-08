@@ -82,7 +82,7 @@ addressCountWorker dbPath securityParam = do
         Core.StandardWorkerConfig
           "AddressCount"
           securityParam
-          (Core.CatchupConfig 2_000 10)
+          (Core.mkCatchupConfig 2_000 10)
           (pure . extract)
           nullTracer
   Core.mkStandardWorker config ix

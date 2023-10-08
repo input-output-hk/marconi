@@ -15,11 +15,15 @@ module Marconi.Core.Transformer.WithCatchup (
   WithCatchup,
   withCatchup,
   CatchupConfig (CatchupConfig),
+  mkCatchupConfig,
+  configCatchupEventHook,
   HasCatchupConfig (..),
+  CatchupEvent (Synced),
 ) where
 
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((%~), (+~), (.~), (?~), (^.))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Function ((&))
 import Data.Word (Word64)
 import Marconi.Core.Class (
@@ -53,8 +57,15 @@ data CatchupConfig = CatchupConfig
   { _configCatchupBatchSize :: Word64
   -- ^ Maximal number of events in one batch
   , _configCatchupBypassDistance :: Word64
-  -- ^ How far from the block should we be to bypass the catchup mechanism (in number of blocks)
+  -- ^ How far from the block should we be to bypass the catchup mechanism (in number of blocks).
+  , _configCatchupEventHook :: Maybe (CatchupEvent -> IO ())
+  -- ^ Hook to execute when specific events are triggered.
   }
+
+data CatchupEvent = Synced
+
+mkCatchupConfig :: Word64 -> Word64 -> CatchupConfig
+mkCatchupConfig batchSize bypassDistance = CatchupConfig batchSize bypassDistance Nothing
 
 Lens.makeLenses ''CatchupConfig
 
@@ -78,6 +89,9 @@ contextCatchupBypassDistance = contextCatchupConfig . configCatchupBypassDistanc
 
 contextCatchupBatchSize :: Lens.Lens' (CatchupContext event) Word64
 contextCatchupBatchSize = contextCatchupConfig . configCatchupBatchSize
+
+contextCatchupEventHook :: Lens.Lens' (CatchupContext event) (Maybe (CatchupEvent -> IO ()))
+contextCatchupEventHook = contextCatchupConfig . configCatchupEventHook
 
 {-- | WithCatchup is used to speed up the synchronisation of indexers by preparing batches of events
  - that will be submitted via `indexAll` to the underlying indexer.
@@ -133,10 +147,12 @@ instance IndexerTrans WithCatchup where
 class HasCatchupConfig indexer where
   catchupBypassDistance :: Lens.Lens' (indexer event) Word64
   catchupBatchSize :: Lens.Lens' (indexer event) Word64
+  catchupEventHook :: Lens.Lens' (indexer event) (Maybe (CatchupEvent -> IO ()))
 
 instance {-# OVERLAPPING #-} HasCatchupConfig (WithCatchup indexer) where
   catchupBypassDistance = catchupWrapper . wrapperConfig . contextCatchupBypassDistance
   catchupBatchSize = catchupWrapper . wrapperConfig . contextCatchupBatchSize
+  catchupEventHook = catchupWrapper . wrapperConfig . contextCatchupEventHook
 
 instance
   {-# OVERLAPPABLE #-}
@@ -145,6 +161,7 @@ instance
   where
   catchupBypassDistance = unwrap . catchupBypassDistance
   catchupBatchSize = unwrap . catchupBatchSize
+  catchupEventHook = unwrap . catchupEventHook
 
 instance
   {-# OVERLAPPABLE #-}
@@ -153,6 +170,7 @@ instance
   where
   catchupBypassDistance = unwrapMap . catchupBypassDistance
   catchupBatchSize = unwrapMap . catchupBatchSize
+  catchupEventHook = unwrapMap . catchupEventHook
 
 catchupDistance :: Lens.Lens' (WithCatchup indexer event) (Point event -> event -> Word64)
 catchupDistance = catchupWrapper . wrapperConfig . contextDistanceComputation
@@ -170,7 +188,7 @@ resetBuffer :: WithCatchup indexer event -> WithCatchup indexer event
 resetBuffer = (catchupBufferLength .~ 0) . (catchupBuffer .~ [])
 
 instance
-  (IsIndex m event indexer, IsSync m event indexer, Ord (Point event))
+  (MonadIO m, IsIndex m event indexer, Ord (Point event))
   => IsIndex m event (WithCatchup indexer)
   where
   index timedEvent indexer =
@@ -189,6 +207,7 @@ instance
           pure $ resetBuffer ix''
      in if hasCaughtUp timedEvent
           then do
+            maybe (pure ()) (\f -> liftIO $ f Synced) $ indexer ^. catchupEventHook
             indexer' <-
               if null (indexer ^. catchupBuffer)
                 then pure indexer

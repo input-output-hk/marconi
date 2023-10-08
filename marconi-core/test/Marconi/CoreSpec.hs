@@ -1088,13 +1088,14 @@ withCatchupRunner batchSize bypassDistance wRunner =
         (wRunner ^. Model.indexerRunner)
         ( Core.withCatchup
             computeDistance
-            (Core.CatchupConfig batchSize bypassDistance)
+            (Core.mkCatchupConfig batchSize bypassDistance)
             <$> wRunner
               ^. Model.indexerGenerator
         )
 
 catchupProperty
-  :: (Core.IsIndex m TestEvent indexer)
+  :: (MonadIO m)
+  => (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
@@ -1132,7 +1133,8 @@ catchupProperty batchSize bypassDistance gen runner =
 
 -- | A test tree for the core functionalities of a delayed indexer
 catchupTestGroup
-  :: (Core.IsIndex m TestEvent indexer)
+  :: (MonadIO m)
+  => (Core.IsIndex m TestEvent indexer)
   => (Core.IsSync m TestEvent indexer)
   => ( Core.Queryable
         (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) m)
