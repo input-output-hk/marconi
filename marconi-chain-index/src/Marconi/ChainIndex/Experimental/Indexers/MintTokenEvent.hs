@@ -129,7 +129,13 @@ type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenBlockEvents
 -- | A SQLite 'MintTokenBlockEvents' indexer with Catchup
 type StandardMintTokenEventIndexer m = StandardSQLiteIndexer m MintTokenBlockEvents
 
-newtype MintTokenEventConfig = MintTokenEventConfig {_configTrackedAssetIds :: [C.AssetId]}
+{- | 'MintTokenEventConfig' allows for specifying a list of @C.'PolicyId'@s and
+possibly @C.'AssetName'@s by which to filter a query. 'Nothing' represents the case
+in which no filtering should occur.
+-}
+newtype MintTokenEventConfig = MintTokenEventConfig
+  { _configTrackedAssetIds :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  }
 
 -- | Minting events given for each block.
 newtype MintTokenBlockEvents = MintTokenBlockEvents
