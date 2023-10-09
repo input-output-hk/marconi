@@ -5,12 +5,13 @@ Marconi
    :caption: User guide
    :maxdepth: 2
 
-   doc/overview
-   doc/tutorials/index
+   doc/marconi-as-a-library/index
+   doc/marconi-predefined-indexers/index
 
 .. toctree::
-   :caption: Architecture
-   :maxdepth: 1
+   :caption: Design and Architecture
+   :maxdepth: 2
 
-   adr/index
-
+   architecture/index
+   architecture/comparison-other-chain-indexing-projects
+   architecture/appendix

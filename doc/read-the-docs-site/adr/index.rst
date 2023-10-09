@@ -26,7 +26,7 @@ The general process for creating an ADR is:
 4. committing and pushing to the repository
 
 .. toctree::
-   :maxdepth: 1
+   :maxdepth: 2
    :titlesonly:
 
    0001-record-architecture-decisions
