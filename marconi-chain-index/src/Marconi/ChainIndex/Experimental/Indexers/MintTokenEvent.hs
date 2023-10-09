@@ -115,6 +115,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
   StandardWorkerConfig,
+  mkStandardWorker,
   mkStandardWorkerWithFilter,
  )
 import Marconi.ChainIndex.Orphans ()
@@ -277,17 +278,26 @@ mkMintTokenEventWorker
   -- asset ids)
   -> FilePath
   -> n (StandardWorker m input MintTokenBlockEvents Core.SQLiteIndexer)
-mkMintTokenEventWorker workerConfig (MintTokenEventConfig trackedAssetIds) dbPath = do
+mkMintTokenEventWorker workerConfig (MintTokenEventConfig mTrackedAssetIds) dbPath = do
   sqliteIndexer <- mkMintTokenIndexer dbPath
-  mkStandardWorkerWithFilter workerConfig (filterByTargetAssetIds trackedAssetIds) sqliteIndexer
+  case mTrackedAssetIds of
+    Nothing -> mkStandardWorker workerConfig sqliteIndexer
+    Just trackedAssetIds -> mkStandardWorkerWithFilter workerConfig (filterByTargetAssetIds trackedAssetIds) sqliteIndexer
 
 -- | Only keep the MintTokenEvents at a block if they mint a target 'AssetId'.
-filterByTargetAssetIds :: [C.AssetId] -> MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+filterByTargetAssetIds
+  :: NonEmpty (C.PolicyId, Maybe C.AssetName) -> MintTokenBlockEvents -> Maybe MintTokenBlockEvents
 filterByTargetAssetIds assetIds =
   fmap MintTokenBlockEvents
     . NonEmpty.nonEmpty
-    . NonEmpty.filter ((`elem` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
+    . NonEmpty.filter ((`hasPolicyAndMaybeName` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
     . view mintTokenEvents
+  where
+    hasPolicyAndMaybeName :: C.AssetId -> NonEmpty (C.PolicyId, Maybe C.AssetName) -> Bool
+    hasPolicyAndMaybeName C.AdaAssetId _ = False
+    hasPolicyAndMaybeName (C.AssetId pid name) pidLookup = any (isPolicyAndMaybeName pid name) pidLookup
+    isPolicyAndMaybeName pid _ (pid', Nothing) = pid == pid'
+    isPolicyAndMaybeName pid name (pid', Just name') = pid == pid' && name == name'
 
 -- Events extraction
 
