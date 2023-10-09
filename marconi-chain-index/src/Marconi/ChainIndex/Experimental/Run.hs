@@ -5,8 +5,8 @@
 module Marconi.ChainIndex.Experimental.Run where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
-
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
@@ -47,7 +47,7 @@ import System.Posix.Signals (
 
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
-  trace <- defaultStdOutLogger appName
+  (trace, sb) <- defaultStdOutLogger appName
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
@@ -68,12 +68,32 @@ run appName = withGracefulTermination_ $ do
       retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
       preferredStartingPoint = Cli.optionsChainPoint $ Cli.commonOptions o
 
+  {-
+      Logging in 'Cardano.BM' works by putting items on a switchboard queue and processing them
+      asynchronously.
+
+      In order to ensure that we always get errors written to the console, we need to wait for the
+      queue to complete before exiting. We can use the 'shutdown' function to guarantee this.
+
+      'shutdown' puts a kill-pill on the switchboard's queue, then waits for the switchboard's
+      dispatcher to exit, which requires the queue to be drained, ensuring all messages are
+      processed.
+  -}
+  let informativeFailure :: Text -> IO a
+      informativeFailure msg = do
+        logError trace msg
+        BM.shutdown sb
+        exitFailure
+
   nodeConfigPath <- case Cli.optionsNodeConfigPath o of
     Just cfg -> do
       exists <- doesFileExist cfg
-      unless exists $ error ("Config file does not exist at the provided path: " <> cfg)
+      unless exists $
+        informativeFailure $
+          Text.pack $
+            "Config file does not exist at the provided path: " <> cfg
       pure cfg
-    Nothing -> error "No node config path provided"
+    Nothing -> informativeFailure "No node config path provided"
 
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
     Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
@@ -93,10 +113,7 @@ run appName = withGracefulTermination_ $ do
         (Cli.optionsDbPath o)
   (indexerLastStablePoint, _utxoQueryIndexer, indexers) <-
     ( case mindexers of
-        Left err -> do
-          let !x = Text.pack $ show err
-           in logError trace x
-          exitFailure
+        Left err -> informativeFailure $ Text.pack $ show err
         Right result -> pure result
       )
 
