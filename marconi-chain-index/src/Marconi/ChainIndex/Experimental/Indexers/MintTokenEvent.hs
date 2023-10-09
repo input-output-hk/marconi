@@ -137,6 +137,7 @@ in which no filtering should occur.
 newtype MintTokenEventConfig = MintTokenEventConfig
   { _configTrackedAssetIds :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   }
+  deriving (Show)
 
 -- | Minting events given for each block.
 newtype MintTokenBlockEvents = MintTokenBlockEvents
