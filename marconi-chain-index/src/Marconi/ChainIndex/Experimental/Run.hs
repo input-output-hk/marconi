@@ -59,7 +59,8 @@ run appName = withGracefulTermination_ $ do
       stopCatchupDistance = 100
       volatileEpochStateSnapshotInterval = 100
       filteredAddresses = []
-      filteredAssetIds = []
+      -- TODO: PLT-7885 This was an existing bug to be fixed shortly in PLT-7793.
+      filteredAssetIds = Nothing
       includeScript = True
       socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
       networkId = Cli.optionsNetworkId $ Cli.commonOptions o
