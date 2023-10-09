@@ -537,6 +537,7 @@ propRunnerDoesntTrackUnselectedAssetId = H.property $ do
   events <- H.forAll genTimedEvents
   let allAssetIds = getAssetIdsFromTimedEvents $ mapMaybe sequence events
 
+  -- TODO: PLT-7885 update this block with new generator
   -- We take a subset of the AssetIds to track them. If the subset is empty, we track all the
   -- assetIds.
   let notAllAddressesPredicate xs = all ($ xs) [not . null, (/= allAssetIds)]
@@ -558,7 +559,7 @@ propRunnerDoesntTrackUnselectedAssetId = H.property $ do
 return the resulting indexer.
 -}
 indexWithRunner
-  :: [C.AssetId]
+  :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> [Core.Timed C.ChainPoint (Maybe MintTokenBlockEvents)]
   -> PropertyT IO (StandardMintTokenEventIndexer IO)
 indexWithRunner trackedAssetIds events = do
@@ -577,7 +578,7 @@ indexWithRunner trackedAssetIds events = do
 
 -- | Query the events of the 'ListIndexer' and only keep the events that contain tracked AssetId.
 queryListIndexerEventsMatchingTargetAssetIds
-  :: [C.AssetId]
+  :: NonEmpty (C.PolicyId, Maybe C.AssetName)
   -> Core.ListIndexer MintTokenBlockEvents
   -> PropertyT IO [Core.Timed C.ChainPoint MintTokenBlockEvents]
 queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
@@ -587,6 +588,10 @@ queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
 getPolicyIdFromAssetId :: C.AssetId -> C.PolicyId
 getPolicyIdFromAssetId C.AdaAssetId = ""
 getPolicyIdFromAssetId (C.AssetId pid _) = pid
+
+getAssetNameFromAssetId :: C.AssetId -> C.AssetName
+getAssetNameFromAssetId C.AdaAssetId = ""
+getAssetNameFromAssetId (C.AssetId _ name) = name
 
 getPolicyIdsFromTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] -> [C.PolicyId]
 getPolicyIdsFromTimedEvents =
@@ -677,3 +682,25 @@ genMintTokenEvent = do
 genEventType :: Gen (Maybe EventType)
 genEventType = do
   H.Gen.maybe $ H.Gen.element [MintEventType, BurnEventType]
+
+{- | Generator for 'MintTokenEventConfig' along with a list of @C.'PolicyId'@ s not selected for
+tracking.
+-}
+genTrackedAssetIds :: [C.AssetId] -> Gen (MintTokenEventConfig, [C.PolicyId])
+genTrackedAssetIds allAssetIds = do
+  -- Here we let the empty list mark the 'Nothing' case in the config,
+  -- for convenience.
+  trackedAssetIds <- H.Gen.filter (not . (C.AdaAssetId `elem`)) $ H.Gen.subsequence allAssetIds
+  let untrackedPolicyIds = map getPolicyIdFromAssetId $ allAssetIds \\ trackedAssetIds
+
+  -- Generate a list of bools to decide randomly whether the name is used or not.
+  keepNameIndicator <- H.Gen.list (H.Range.singleton (length trackedAssetIds)) H.Gen.bool
+
+  let toConfigElem assetid isIncluded =
+        if isIncluded
+          then (getPolicyIdFromAssetId assetid, Just $ getAssetNameFromAssetId assetid)
+          else (getPolicyIdFromAssetId assetid, Nothing)
+
+  let config = NonEmpty.nonEmpty $ zipWith toConfigElem trackedAssetIds keepNameIndicator
+
+  pure (MintTokenEventConfig config, untrackedPolicyIds)
