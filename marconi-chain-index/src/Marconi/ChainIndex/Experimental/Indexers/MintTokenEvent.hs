@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
@@ -70,6 +71,7 @@ module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
 )
 where
 
+import Cardano.Api (ChainPoint)
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Trace (Trace)
@@ -121,6 +123,7 @@ import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   TxIndexInBlock,
  )
+import Marconi.Core (IsSync, Point, Timed, lastStablePoint)
 import Marconi.Core qualified as Core
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
@@ -131,11 +134,15 @@ type StandardMintTokenEventIndexer m = StandardSQLiteIndexer m MintTokenBlockEve
 
 newtype MintTokenEventConfig = MintTokenEventConfig {_configTrackedAssetIds :: [C.AssetId]}
 
--- | Minting events given for each block.
+{- | Minting events given for each block.
+ | Minting events given for each block.
+-}
 newtype MintTokenBlockEvents = MintTokenBlockEvents
   { _mintTokenEvents :: NonEmpty MintTokenEvent
   }
   deriving (Show, Eq, Ord)
+
+data Stability x = Stable x | Volatile x deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
 {- | Single minting event. This is the datatype was will be used to store the events in the database
 (not 'MintTokenBlockEvents'). More specifically, we will store 'Core.Timed (Core.Point
@@ -280,7 +287,10 @@ filterByTargetAssetIds :: [C.AssetId] -> MintTokenBlockEvents -> Maybe MintToken
 filterByTargetAssetIds assetIds =
   fmap MintTokenBlockEvents
     . NonEmpty.nonEmpty
-    . NonEmpty.filter ((`elem` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
+    . NonEmpty.filter
+      ( (`elem` assetIds)
+          . view (mintTokenEventAsset . mintAssetAssetId)
+      )
     . view mintTokenEvents
 
 -- Events extraction
@@ -413,7 +423,6 @@ toTimedMintEvents =
       groupSamePointEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
    in mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
         . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
-
 allEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allEvents = MintTokenEventsMatchingQuery Just
 
@@ -421,19 +430,23 @@ allMintEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allMintEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
-      NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity > 0) events
+      NonEmpty.filter
+        (\e -> e ^. mintTokenEventAsset . mintAssetQuantity > 0)
+        events
 
 allBurnEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allBurnEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
-      NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0) events
+      NonEmpty.filter
+        (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0)
+        events
 
 newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event -> Maybe event)
 
 type instance
   Core.Result (MintTokenEventsMatchingQuery event) =
-    [Core.Timed (Core.Point event) event]
+    [Stability (Core.Timed (Core.Point event) event)]
 
 instance
   (MonadIO m, MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
@@ -443,17 +456,20 @@ instance
       (MintTokenEventsMatchingQuery MintTokenBlockEvents)
       Core.SQLiteIndexer
   where
-  query =
+  query point query indexer =
     let parseResult
           :: (MintTokenBlockEvents -> Maybe MintTokenBlockEvents)
           -> [Core.Timed C.ChainPoint MintTokenEvent]
           -> [Core.Timed C.ChainPoint MintTokenBlockEvents]
         parseResult eventsFilterFunc es =
           mapMaybe (sequence . over Core.event eventsFilterFunc) $ toTimedMintEvents es
-     in Core.querySyncedOnlySQLiteIndexerWith
+     in Core.querySyncedOnlySQLiteIndexerWithM
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const $ mkMintTokenEventQueryBy Nothing)
-          (\(MintTokenEventsMatchingQuery p) r -> parseResult p r)
+          (\(MintTokenEventsMatchingQuery p) r -> traverse (isEventStable indexer) $ parseResult p r)
+          point
+          query
+          indexer
 
 instance
   (MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
@@ -470,14 +486,14 @@ instance
         convertError = \case
           Core.NotStoredAnymore -> Core.NotStoredAnymore
           (Core.IndexerQueryError t) -> Core.IndexerQueryError t
-          (Core.AheadOfLastSync r) -> Core.AheadOfLastSync r
+          (Core.AheadOfLastSync r) -> Core.AheadOfLastSync (fmap Volatile <$> r)
           (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
 
     timedEventsE <- runExceptT $ Core.query p (Core.EventsMatchingQuery predicate) ix
     timedEvents <- either (throwError . convertError) pure timedEventsE
-    pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
+    traverse (isEventStable ix) $ sortEventsByOrderOfBlockchainAppearance timedEvents
 
-type instance Core.Result (QueryByAssetId event) = [Core.Timed (Core.Point event) event]
+type instance Core.Result (QueryByAssetId event) = [Stability (Core.Timed (Core.Point event) event)]
 
 {- | Utility for QueryByAssetId queries. Check whether the upper SlotNo bound is
  less than or equal to the provided @C.'ChainPoint'@. If the upperSlotNo is is provided
@@ -507,12 +523,27 @@ validatedUpperBound cp sn =
             <> Text.pack (show sn)
    in maybe (throwError err) pure $ upperSlotNoIfValid cp sn
 
+isEventStable
+  :: forall m event indexer a
+   . (Monad m, IsSync m event indexer, Point event ~ ChainPoint)
+  => indexer event
+  -> Timed ChainPoint a
+  -> m (Stability (Timed ChainPoint a))
+isEventStable indexer event = do
+  -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'
+  lsp <- lastStablePoint indexer
+  pure (if view Core.point event <= lsp then Stable event else Volatile event)
+
 instance
   forall m
    . ( MonadIO m
      , MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m
      )
-  => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.ListIndexer
+  => Core.Queryable
+      m
+      MintTokenBlockEvents
+      (QueryByAssetId MintTokenBlockEvents)
+      Core.ListIndexer
   where
   query point (QueryByAssetId policyId assetNameM eventType upperSlotNo lowerTxId) ix = do
     -- Check whether the upperSlotNo is valid, if provided.
@@ -548,7 +579,13 @@ instance
     -- lowerTxId slotNo is found and is not less than or equal to the upper bound. Note sorting
     -- ascending by block number in sortEventsByOrderOfBlockchainAppearance guarantees ascending
     -- order by slot number.
-    either throwError pure $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
+    res <-
+      either
+        throwError
+        pure
+        $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
+
+    traverse (isEventStable ix) res
 
 {- | Helper for ListIndexer query.
  Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
@@ -585,7 +622,12 @@ filterBySlotNoBounds txIdM validUpperSlotNo =
     accumulateIfWithinUpper upper es e = if isBeforeUpperSlotNo upper e then e : es else es
     matchingTxIdFromTimedEvent txId =
       Lens.anyOf
-        (Core.event . mintTokenEvents . Lens.folded . mintTokenEventLocation . mintTokenEventTxId)
+        ( Core.event
+            . mintTokenEvents
+            . Lens.folded
+            . mintTokenEventLocation
+            . mintTokenEventTxId
+        )
         (== txId)
    in
     case txIdM of
@@ -608,8 +650,12 @@ sortEventsByOrderOfBlockchainAppearance =
             %~ NonEmpty.sortBy
               ( comparing
                   ( \e ->
-                      ( e ^. mintTokenEventLocation . mintTokenEventBlockNo
-                      , e ^. mintTokenEventLocation . mintTokenEventIndexInBlock
+                      ( e
+                          ^. mintTokenEventLocation
+                            . mintTokenEventBlockNo
+                      , e
+                          ^. mintTokenEventLocation
+                            . mintTokenEventIndexInBlock
                       )
                   )
               )
@@ -622,7 +668,7 @@ convertEventsMatchingErrorToQueryByAssetIdError
 convertEventsMatchingErrorToQueryByAssetIdError = \case
   Core.NotStoredAnymore -> Core.NotStoredAnymore
   (Core.IndexerQueryError t) -> Core.IndexerQueryError t
-  (Core.AheadOfLastSync r) -> Core.AheadOfLastSync r
+  (Core.AheadOfLastSync r) -> Core.AheadOfLastSync (fmap Volatile <$> r)
   (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
 
 instance
@@ -663,10 +709,10 @@ instance
          in
           mkMintTokenEventQueryBy whereClause
 
-    Core.querySyncedOnlySQLiteIndexerWith
+    Core.querySyncedOnlySQLiteIndexerWithM
       (const . const namedParams)
       (const queryByAssetId)
-      (const toTimedMintEvents)
+      (\_ r -> traverse (isEventStable ix) $ toTimedMintEvents r)
       point
       config
       ix
@@ -691,7 +737,11 @@ queryLowerSlotNoByTxId upperSlotNo point config ix =
     lowerTxIdQueryNamedParams :: C.TxId -> [SQL.NamedParam]
     lowerTxIdQueryNamedParams lowerTxId = [":lowerTxId" := lowerTxId, ":slotNo" := upperSlotNo]
 
-    slotNoOfLowerTxIdQuery rs = listToMaybe rs >>= \r -> C.chainPointToSlotNo (r ^. Core.point)
+    slotNoOfLowerTxIdQuery rs =
+      let unwrap timed = case timed of
+            Stable x -> x
+            Volatile x -> x
+       in listToMaybe rs >>= \r -> C.chainPointToSlotNo (unwrap r ^. Core.point)
 
     handleSlotNoLowerTxIdQuery Nothing =
       Left $
@@ -701,12 +751,13 @@ queryLowerSlotNoByTxId upperSlotNo point config ix =
     case config ^. queryByAssetIdLowerTxId of
       Nothing -> pure Nothing
       Just lower -> do
-        lowerSlotNoE <-
+        lowerSlotNoE
+          :: Either (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) [Stability (Timed ChainPoint a)] <-
           runExceptT $
-            Core.querySyncedOnlySQLiteIndexerWith
+            Core.querySyncedOnlySQLiteIndexerWithM
               (const . const (lowerTxIdQueryNamedParams lower))
               (const lowerTxIdQuery)
-              (const toTimedMintEvents)
+              (\_ r -> traverse (isEventStable ix) $ toTimedMintEvents r)
               point
               config
               ix

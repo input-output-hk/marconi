@@ -283,6 +283,7 @@ module Marconi.Core (
   dbLastSync,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+  querySyncedOnlySQLiteIndexerWithM,
   handleSQLErrors,
   SQLiteAggregateQuery (SQLiteAggregateQuery),
   aggregateConnection,
@@ -582,6 +583,7 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   mkSqliteIndexer,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+  querySyncedOnlySQLiteIndexerWithM,
  )
 import Marconi.Core.Preprocessor (
   Preprocessor,
