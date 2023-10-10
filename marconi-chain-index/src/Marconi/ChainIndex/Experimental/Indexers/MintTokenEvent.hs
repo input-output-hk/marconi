@@ -2,11 +2,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 {- |
 
@@ -468,9 +466,7 @@ instance
           indexer
 
 instance
-  ( Monad m
-  , MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m
-  )
+  (MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
   => Core.Queryable
       m
       MintTokenBlockEvents
@@ -480,8 +476,7 @@ instance
   query p (MintTokenEventsMatchingQuery predicate) ix =
     Core.withStability (view Core.point) ix $ do
       let convertError
-            :: (Monad m)
-            => Core.ListIndexer MintTokenBlockEvents
+            :: Core.ListIndexer MintTokenBlockEvents
             -> Core.QueryError (Core.EventsMatchingQuery MintTokenBlockEvents)
             -> m (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents))
           convertError indexer = \case
