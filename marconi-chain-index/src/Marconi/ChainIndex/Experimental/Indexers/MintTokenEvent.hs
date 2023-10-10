@@ -134,9 +134,7 @@ type StandardMintTokenEventIndexer m = StandardSQLiteIndexer m MintTokenBlockEve
 
 newtype MintTokenEventConfig = MintTokenEventConfig {_configTrackedAssetIds :: [C.AssetId]}
 
-{- | Minting events given for each block.
- | Minting events given for each block.
--}
+-- | Minting events given for each block.
 newtype MintTokenBlockEvents = MintTokenBlockEvents
   { _mintTokenEvents :: NonEmpty MintTokenEvent
   }
