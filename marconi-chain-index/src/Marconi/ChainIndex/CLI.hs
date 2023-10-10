@@ -147,9 +147,9 @@ data Options = Options
   , optionsDisableMintBurn :: !Bool
   -- ^ disable MintBurn indexer
   , optionsTargetAddresses :: !(Maybe TargetAddresses)
-  -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
+  -- ^ white-space separated list of Bech32 Cardano Shelley addresses
   , optionsTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
-  -- ^ white-space sepparated list of target asset policy id and optionally asset name,
+  -- ^ white-space separated list of target asset policy id and optionally asset name,
   -- separated by @.@.
   , optionsNodeConfigPath :: !(Maybe FilePath)
   -- ^ Path to the node config
