@@ -115,6 +115,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
   StandardWorkerConfig,
+  mkStandardWorker,
   mkStandardWorkerWithFilter,
  )
 import Marconi.ChainIndex.Orphans ()
@@ -129,7 +130,14 @@ type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenBlockEvents
 -- | A SQLite 'MintTokenBlockEvents' indexer with Catchup
 type StandardMintTokenEventIndexer m = StandardSQLiteIndexer m MintTokenBlockEvents
 
-newtype MintTokenEventConfig = MintTokenEventConfig {_configTrackedAssetIds :: [C.AssetId]}
+{- | 'MintTokenEventConfig' allows for specifying a list of @C.'PolicyId'@s and
+possibly @C.'AssetName'@s by which to filter a query. 'Nothing' represents the case
+in which no filtering should occur.
+-}
+newtype MintTokenEventConfig = MintTokenEventConfig
+  { _configTrackedAssetIds :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  }
+  deriving (Show)
 
 -- | Minting events given for each block.
 newtype MintTokenBlockEvents = MintTokenBlockEvents
@@ -271,17 +279,27 @@ mkMintTokenEventWorker
   -- asset ids)
   -> FilePath
   -> n (StandardWorker m input MintTokenBlockEvents Core.SQLiteIndexer)
-mkMintTokenEventWorker workerConfig (MintTokenEventConfig trackedAssetIds) dbPath = do
+mkMintTokenEventWorker workerConfig (MintTokenEventConfig mTrackedAssetIds) dbPath = do
   sqliteIndexer <- mkMintTokenIndexer dbPath
-  mkStandardWorkerWithFilter workerConfig (filterByTargetAssetIds trackedAssetIds) sqliteIndexer
+  case mTrackedAssetIds of
+    Nothing -> mkStandardWorker workerConfig sqliteIndexer
+    Just trackedAssetIds -> mkStandardWorkerWithFilter workerConfig (filterByTargetAssetIds trackedAssetIds) sqliteIndexer
 
 -- | Only keep the MintTokenEvents at a block if they mint a target 'AssetId'.
-filterByTargetAssetIds :: [C.AssetId] -> MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+filterByTargetAssetIds
+  :: NonEmpty (C.PolicyId, Maybe C.AssetName) -> MintTokenBlockEvents -> Maybe MintTokenBlockEvents
 filterByTargetAssetIds assetIds =
   fmap MintTokenBlockEvents
     . NonEmpty.nonEmpty
-    . NonEmpty.filter ((`elem` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
+    . NonEmpty.filter ((`hasPolicyAndMaybeName` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
     . view mintTokenEvents
+  where
+    hasPolicyAndMaybeName :: C.AssetId -> NonEmpty (C.PolicyId, Maybe C.AssetName) -> Bool
+    hasPolicyAndMaybeName C.AdaAssetId _ = False
+    hasPolicyAndMaybeName (C.AssetId pid name) pidLookup = any (isPolicyAndMaybeName pid name) pidLookup
+    isPolicyAndMaybeName :: C.PolicyId -> C.AssetName -> (C.PolicyId, Maybe C.AssetName) -> Bool
+    isPolicyAndMaybeName pid _ (pid', Nothing) = pid == pid'
+    isPolicyAndMaybeName pid name (pid', Just name') = pid == pid' && name == name'
 
 -- Events extraction
 

@@ -515,13 +515,7 @@ propRunnerTracksSelectedAssetId = H.property $ do
   events <- H.forAll genTimedEvents
   let allAssetIds = getAssetIdsFromTimedEvents $ mapMaybe sequence events
 
-  -- We take a subset of the AssetIds to track them. If the subset is empty, we track all the
-  -- assetIds.
-  assetIdSubset <-
-    H.forAll $
-      H.Gen.filter (not . null) $
-        H.Gen.subsequence allAssetIds
-  let trackedAssetIds = if null assetIdSubset then allAssetIds else assetIdSubset
+  (MintTokenEventConfig trackedAssetIds, _) <- H.forAll $ genTrackedAssetIds allAssetIds
 
   listIndexer <- Core.indexAll events Core.mkListIndexer
   listIndexerEvents <- queryListIndexerEventsMatchingTargetAssetIds trackedAssetIds listIndexer
@@ -537,19 +531,16 @@ propRunnerDoesntTrackUnselectedAssetId = H.property $ do
   events <- H.forAll genTimedEvents
   let allAssetIds = getAssetIdsFromTimedEvents $ mapMaybe sequence events
 
-  -- We take a subset of the AssetIds to track them. If the subset is empty, we track all the
-  -- assetIds.
-  let notAllAddressesPredicate xs = all ($ xs) [not . null, (/= allAssetIds)]
-  trackedAssetIds <- H.forAll $ H.Gen.filter notAllAddressesPredicate $ H.Gen.subsequence allAssetIds
-  let untrackedAssetIds = allAssetIds \\ trackedAssetIds
+  (MintTokenEventConfig trackedAssetIds, untrackedPolicyIds) <-
+    H.forAll $ genTrackedAssetIds allAssetIds
 
   sqlIndexer <- indexWithRunner trackedAssetIds events
 
-  forM_ untrackedAssetIds $ \untrackedAssetId -> do
-    let query =
-          case untrackedAssetId of
-            C.AdaAssetId -> QueryByAssetId "" (Just "") Nothing Nothing Nothing
-            C.AssetId policyId assetName -> QueryByAssetId policyId (Just assetName) Nothing Nothing Nothing
+  -- If untracked assets is empty, the test does nothing.
+  H.cover 50 "Non-empty untracked assets" $ not (null untrackedPolicyIds)
+
+  forM_ untrackedPolicyIds $ \policyid -> do
+    let query = QueryByAssetId policyid Nothing Nothing Nothing Nothing
     (sqlIndexerEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
       H.evalM $ H.evalExceptT $ Core.queryLatest query sqlIndexer
     sqlIndexerEvents === []
@@ -558,7 +549,7 @@ propRunnerDoesntTrackUnselectedAssetId = H.property $ do
 return the resulting indexer.
 -}
 indexWithRunner
-  :: [C.AssetId]
+  :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> [Core.Timed C.ChainPoint (Maybe MintTokenBlockEvents)]
   -> PropertyT IO (StandardMintTokenEventIndexer IO)
 indexWithRunner trackedAssetIds events = do
@@ -577,16 +568,21 @@ indexWithRunner trackedAssetIds events = do
 
 -- | Query the events of the 'ListIndexer' and only keep the events that contain tracked AssetId.
 queryListIndexerEventsMatchingTargetAssetIds
-  :: [C.AssetId]
+  :: Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> Core.ListIndexer MintTokenBlockEvents
   -> PropertyT IO [Core.Timed C.ChainPoint MintTokenBlockEvents]
 queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
-  let query = MintTokenEventsMatchingQuery (filterByTargetAssetIds assetIds)
+  -- If assetIds is Nothing, query does no filtering (looks for all ids).
+  let query = MintTokenEventsMatchingQuery $ maybe Just filterByTargetAssetIds assetIds
   H.evalExceptT $ Core.queryLatest query indexer
 
 getPolicyIdFromAssetId :: C.AssetId -> C.PolicyId
 getPolicyIdFromAssetId C.AdaAssetId = ""
 getPolicyIdFromAssetId (C.AssetId pid _) = pid
+
+getAssetNameFromAssetId :: C.AssetId -> C.AssetName
+getAssetNameFromAssetId C.AdaAssetId = ""
+getAssetNameFromAssetId (C.AssetId _ name) = name
 
 getPolicyIdsFromTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] -> [C.PolicyId]
 getPolicyIdsFromTimedEvents =
@@ -677,3 +673,31 @@ genMintTokenEvent = do
 genEventType :: Gen (Maybe EventType)
 genEventType = do
   H.Gen.maybe $ H.Gen.element [MintEventType, BurnEventType]
+
+{- | Generator for 'MintTokenEventConfig' along with a list of @C.'PolicyId'@ s not selected for
+tracking. It is enough to mark untracked assets by policy id, since those must be unique to an asset.
+https://developers.cardano.org/docs/native-tokens/minting-nfts/
+-}
+genTrackedAssetIds :: [C.AssetId] -> Gen (MintTokenEventConfig, [C.PolicyId])
+genTrackedAssetIds assetIds = do
+  -- Here we let the empty list mark the 'Nothing' case in the config,
+  -- for convenience. Therefore, the untrackedPolicyIds must be [] in that case.
+  -- nubBy policy id since the input assetIds might have assets with different names
+  -- but the same policy id.
+  let allAssetIds = List.nubBy (\a1 a2 -> getPolicyIdFromAssetId a1 == getPolicyIdFromAssetId a2) assetIds
+  trackedAssetIds <- H.Gen.filter (not . (C.AdaAssetId `elem`)) (H.Gen.subsequence allAssetIds)
+  let untrackedPolicyIds = case trackedAssetIds of
+        [] -> []
+        xs -> map getPolicyIdFromAssetId $ allAssetIds \\ xs
+
+  -- Generate a list of bools to decide randomly whether the name is used or not.
+  keepNameIndicator <- H.Gen.list (H.Range.singleton (length trackedAssetIds)) H.Gen.bool
+
+  let toConfigElem assetid isIncluded =
+        if isIncluded
+          then (getPolicyIdFromAssetId assetid, Just $ getAssetNameFromAssetId assetid)
+          else (getPolicyIdFromAssetId assetid, Nothing)
+
+  let config = NonEmpty.nonEmpty $ zipWith toConfigElem trackedAssetIds keepNameIndicator
+
+  pure (MintTokenEventConfig config, untrackedPolicyIds)
