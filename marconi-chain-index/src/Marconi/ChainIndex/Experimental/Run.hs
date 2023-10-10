@@ -79,21 +79,21 @@ run appName = withGracefulTermination_ $ do
       dispatcher to exit, which requires the queue to be drained, ensuring all messages are
       processed.
   -}
-  let informativeFailure :: Text -> IO a
-      informativeFailure msg = do
+  let withLogFullError :: IO a -> Text -> IO a
+      withLogFullError action msg = do
         logError trace msg
         BM.shutdown sb
-        exitFailure
+        action
 
   nodeConfigPath <- case Cli.optionsNodeConfigPath o of
     Just cfg -> do
       exists <- doesFileExist cfg
       unless exists $
-        informativeFailure $
+        withLogFullError exitFailure $
           Text.pack $
             "Config file does not exist at the provided path: " <> cfg
       pure cfg
-    Nothing -> informativeFailure "No node config path provided"
+    Nothing -> withLogFullError exitFailure "No node config path provided"
 
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
     Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
@@ -113,7 +113,7 @@ run appName = withGracefulTermination_ $ do
         (Cli.optionsDbPath o)
   (indexerLastStablePoint, _utxoQueryIndexer, indexers) <-
     ( case mindexers of
-        Left err -> informativeFailure $ Text.pack $ show err
+        Left err -> withLogFullError exitFailure $ Text.pack $ show err
         Right result -> pure result
       )
 
