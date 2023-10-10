@@ -1,11 +1,13 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Experimental.Run where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
-
+import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -22,7 +24,7 @@ import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)
 
@@ -45,7 +47,7 @@ import System.Posix.Signals (
 
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
-  trace <- defaultStdOutLogger appName
+  (trace, sb) <- defaultStdOutLogger appName
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
@@ -66,9 +68,32 @@ run appName = withGracefulTermination_ $ do
       retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
       preferredStartingPoint = Cli.optionsChainPoint $ Cli.commonOptions o
 
+  {-
+      Logging in 'Cardano.BM' works by putting items on a switchboard queue and processing them
+      asynchronously.
+
+      In order to ensure that we always get errors written to the console, we need to wait for the
+      queue to complete before exiting. We can use the 'shutdown' function to guarantee this.
+
+      'shutdown' puts a kill-pill on the switchboard's queue, then waits for the switchboard's
+      dispatcher to exit, which requires the queue to be drained, ensuring all messages are
+      processed.
+  -}
+  let withLogFullError :: IO a -> Text -> IO a
+      withLogFullError action msg = do
+        logError trace msg
+        BM.shutdown sb
+        action
+
   nodeConfigPath <- case Cli.optionsNodeConfigPath o of
-    Just cfg -> pure cfg
-    Nothing -> error "No node config path provided"
+    Just cfg -> do
+      exists <- doesFileExist cfg
+      unless exists $
+        withLogFullError exitFailure $
+          Text.pack $
+            "Config file does not exist at the provided path: " <> cfg
+      pure cfg
+    Nothing -> withLogFullError exitFailure "No node config path provided"
 
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
     Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
@@ -88,9 +113,7 @@ run appName = withGracefulTermination_ $ do
         (Cli.optionsDbPath o)
   (indexerLastStablePoint, _utxoQueryIndexer, indexers) <-
     ( case mindexers of
-        Left err -> do
-          logError trace $ Text.pack $ show err
-          exitFailure
+        Left err -> withLogFullError exitFailure $ Text.pack $ show err
         Right result -> pure result
       )
 
