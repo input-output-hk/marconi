@@ -407,6 +407,8 @@ module Marconi.Core (
   allEvents,
   LatestEventsQuery (LatestEventsQuery),
   latestEvent,
+  Stability (Stable, Volatile),
+  withStability,
 
   -- * Indexer Transformers
   IndexerTrans (..),
@@ -606,8 +608,10 @@ import Marconi.Core.Query (
   EventsFromQuery (..),
   EventsMatchingQuery (..),
   LatestEventsQuery (..),
+  Stability (Stable, Volatile),
   allEvents,
   latestEvent,
+  withStability,
  )
 import Marconi.Core.Transformer.Class (IndexerMapTrans (..), IndexerTrans (..))
 import Marconi.Core.Transformer.IndexTransformer (

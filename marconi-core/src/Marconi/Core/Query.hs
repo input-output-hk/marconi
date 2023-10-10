@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE LambdaCase #-}
 
 {- |
@@ -12,6 +13,8 @@ module Marconi.Core.Query (
   LatestEventsQuery (LatestEventsQuery),
   latestEvent,
   EventsFromQuery (EventsFromQuery),
+  Stability (Stable, Volatile),
+  withStability,
 ) where
 
 import Control.Lens qualified as Lens
@@ -22,7 +25,12 @@ import Data.ByteString qualified as BS
 import Data.Function (on)
 import Data.List (find, sortBy)
 import Data.Maybe (catMaybes, mapMaybe)
-import Marconi.Core.Class (AppendResult (appendResult), Queryable (query), isAheadOfSync)
+import Marconi.Core.Class (
+  AppendResult (appendResult),
+  IsSync (lastStablePoint),
+  Queryable (query),
+  isAheadOfSync,
+ )
 import Marconi.Core.Indexer.FileIndexer (
   FileIndexer,
   compareMeta,
@@ -45,6 +53,33 @@ import Marconi.Core.Type (
 -- | Get the event stored by the indexer at a given point in time
 data EventAtQuery event = EventAtQuery
   deriving (Eq, Ord, Show)
+
+-- TODO comments
+data Stability a = Stable a | Volatile a deriving (Show, Eq, Ord)
+
+-- TODO comments
+withStability
+  :: forall m event indexer f g
+   . ( Monad m
+     , Ord (Point event)
+     , IsSync m event indexer
+     , Traversable f
+     )
+  => (g event -> Point event)
+  -> indexer event
+  -> m (f (g event))
+  -> m (f (Stability (g event)))
+withStability getPoint idx mRes = do
+  a <- mRes
+  traverse (\a' -> calcStability (getPoint a') idx a') a
+  where
+    calcStability p indexer e = do
+      -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'
+      lsp <- lastStablePoint indexer
+      pure $
+        if p <= lsp
+          then Stable e
+          else Volatile e
 
 {- | The result of EventAtQuery is always an event.
  The error cases are handled by the query interface.
