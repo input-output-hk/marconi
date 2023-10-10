@@ -191,21 +191,22 @@ instance
   (MonadIO m, IsIndex m event indexer, Ord (Point event))
   => IsIndex m event (WithCatchup indexer)
   where
-  index timedEvent indexer =
+  index timedEvent@(Timed p e) indexer =
     let bufferIsFull ix = (ix ^. catchupBufferLength) >= (ix ^. catchupBatchSize)
         pushEvent ix =
           ix
             & catchupBuffer %~ (timedEvent :)
             & catchupBufferLength +~ 1
-        hasCaughtUp (Timed p e) =
-          maybe False ((< indexer ^. catchupBypassDistance) . (indexer ^. catchupDistance) p) e
+        hasCaughtUp = case e of
+          Nothing -> False
+          Just e' -> (indexer ^. catchupDistance) p e' < indexer ^. catchupBypassDistance
         sendBatch ix = do
           ix' <- indexAllDescendingVia caughtUpIndexer (ix ^. catchupBuffer) ix
           ix'' <- case ix' ^. catchupLastStable of
             Nothing -> pure ix'
             Just lastStable -> setLastStablePointVia caughtUpIndexer lastStable ix'
           pure $ resetBuffer ix''
-     in if hasCaughtUp timedEvent
+     in if hasCaughtUp
           then do
             maybe (pure ()) (\f -> liftIO $ f Synced) $ indexer ^. catchupEventHook
             indexer' <-
