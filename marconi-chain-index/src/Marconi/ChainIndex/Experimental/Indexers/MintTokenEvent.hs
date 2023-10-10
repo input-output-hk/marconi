@@ -297,6 +297,7 @@ filterByTargetAssetIds assetIds =
     hasPolicyAndMaybeName :: C.AssetId -> NonEmpty (C.PolicyId, Maybe C.AssetName) -> Bool
     hasPolicyAndMaybeName C.AdaAssetId _ = False
     hasPolicyAndMaybeName (C.AssetId pid name) pidLookup = any (isPolicyAndMaybeName pid name) pidLookup
+    isPolicyAndMaybeName :: C.PolicyId -> C.AssetName -> (C.PolicyId, Maybe C.AssetName) -> Bool
     isPolicyAndMaybeName pid _ (pid', Nothing) = pid == pid'
     isPolicyAndMaybeName pid name (pid', Just name') = pid == pid' && name == name'
 
