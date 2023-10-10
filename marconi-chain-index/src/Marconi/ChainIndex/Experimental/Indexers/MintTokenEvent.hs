@@ -286,9 +286,7 @@ filterByTargetAssetIds assetIds =
   fmap MintTokenBlockEvents
     . NonEmpty.nonEmpty
     . NonEmpty.filter
-      ( (`elem` assetIds)
-          . view (mintTokenEventAsset . mintAssetAssetId)
-      )
+      ((`elem` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
     . view mintTokenEvents
 
 -- Events extraction
@@ -421,6 +419,7 @@ toTimedMintEvents =
       groupSamePointEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
    in mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
         . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
+
 allEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allEvents = MintTokenEventsMatchingQuery Just
 
@@ -428,17 +427,13 @@ allMintEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allMintEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
-      NonEmpty.filter
-        (\e -> e ^. mintTokenEventAsset . mintAssetQuantity > 0)
-        events
+      NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity > 0) events
 
 allBurnEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allBurnEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
-      NonEmpty.filter
-        (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0)
-        events
+      NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0) events
 
 newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event -> Maybe event)
 
@@ -620,12 +615,7 @@ filterBySlotNoBounds txIdM validUpperSlotNo =
     accumulateIfWithinUpper upper es e = if isBeforeUpperSlotNo upper e then e : es else es
     matchingTxIdFromTimedEvent txId =
       Lens.anyOf
-        ( Core.event
-            . mintTokenEvents
-            . Lens.folded
-            . mintTokenEventLocation
-            . mintTokenEventTxId
-        )
+        (Core.event . mintTokenEvents . Lens.folded . mintTokenEventLocation . mintTokenEventTxId)
         (== txId)
    in
     case txIdM of
@@ -648,12 +638,8 @@ sortEventsByOrderOfBlockchainAppearance =
             %~ NonEmpty.sortBy
               ( comparing
                   ( \e ->
-                      ( e
-                          ^. mintTokenEventLocation
-                            . mintTokenEventBlockNo
-                      , e
-                          ^. mintTokenEventLocation
-                            . mintTokenEventIndexInBlock
+                      ( e ^. mintTokenEventLocation . mintTokenEventBlockNo
+                      , e ^. mintTokenEventLocation . mintTokenEventIndexInBlock
                       )
                   )
               )
