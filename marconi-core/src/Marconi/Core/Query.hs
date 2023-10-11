@@ -67,15 +67,14 @@ withStability
      )
   => (g event -> Point event)
   -> indexer event
-  -> m (f (g event))
+  -> f (g event)
   -> m (f (Stability (g event)))
-withStability getPoint idx mRes = do
-  a <- mRes
-  traverse (\a' -> calcStability (getPoint a') idx a') a
+withStability getPoint idx res = do
+  -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'
+  lsp <- lastStablePoint idx
+  traverse (\a' -> calcStability (getPoint a') lsp a') res
   where
-    calcStability p indexer e = do
-      -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'
-      lsp <- lastStablePoint indexer
+    calcStability p lsp e = do
       pure $
         if p <= lsp
           then Stable e
