@@ -282,8 +282,7 @@ filterByTargetAssetIds :: [C.AssetId] -> MintTokenBlockEvents -> Maybe MintToken
 filterByTargetAssetIds assetIds =
   fmap MintTokenBlockEvents
     . NonEmpty.nonEmpty
-    . NonEmpty.filter
-      ((`elem` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
+    . NonEmpty.filter ((`elem` assetIds) . view (mintTokenEventAsset . mintAssetAssetId))
     . view mintTokenEvents
 
 -- Events extraction
