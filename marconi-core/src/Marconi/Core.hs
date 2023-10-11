@@ -192,6 +192,7 @@ module Marconi.Core (
   --     2. @indexer@ that stores relevant (for it) pieces of information
   --     from the @event@s;
   --     3. @query@ that defines what can be asked to an @indexer@.
+  HasPoint (getPoint),
   Point,
   Result,
   Timed (Timed),
@@ -689,6 +690,7 @@ import Marconi.Core.Transformer.WithTransform (
   withTransform,
  )
 import Marconi.Core.Type (
+  HasPoint (getPoint),
   IndexerError (..),
   Point,
   ProcessedInput (..),

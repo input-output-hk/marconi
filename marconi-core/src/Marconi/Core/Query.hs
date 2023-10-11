@@ -42,8 +42,8 @@ import Marconi.Core.Indexer.FileIndexer (
  )
 import Marconi.Core.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Indexer.ListIndexer (ListIndexer, events)
-import Marconi.Core.TracedStorable (HasPoint (getPoint))
 import Marconi.Core.Type (
+  HasPoint (getPoint),
   Point,
   QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore),
   Result,
@@ -72,7 +72,9 @@ withStability
      , HasPoint (g event) (Point event)
      )
   => indexer event
+  -- ^ An indexer
   -> f (g event)
+  -- ^ A traversable of query results
   -> m (f (Stability (g event)))
 withStability idx res = do
   -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'

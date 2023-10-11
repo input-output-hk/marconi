@@ -12,6 +12,7 @@ module Marconi.Core.Type (
   Point,
   ProcessedInput (..),
   Result,
+  HasPoint (getPoint),
   Timed (Timed),
   point,
   event,
@@ -27,13 +28,19 @@ import Data.Data (Typeable)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Marconi.Core.TracedStorable (HasPoint (getPoint))
 
 {- | A point in time, the concrete type of a point is now derived from an indexer event,
  instead of an event.
  The reason is that you may not want to always carry around a point when you manipulate an event.
 -}
 type family Point event
+
+{-
+   This class witnesses the fact that events contain enough information to retrieve the point when
+   they were produced.
+-}
+class HasPoint e p where
+  getPoint :: e -> p
 
 {- | A 'Result' is a data family for query descriptor.
 
