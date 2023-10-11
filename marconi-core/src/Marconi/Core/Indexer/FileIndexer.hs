@@ -342,10 +342,10 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
   setLastStablePoint p indexer = do
     let currentStable = indexer ^. fileIndexerLastStablePoint
     if p > currentStable
-    then do
-      indexer' <- writeStable p indexer
-      pure $ indexer' & fileIndexerLastStablePoint .~ p
-    else pure indexer
+      then do
+        indexer' <- writeStable p indexer
+        pure $ indexer' & fileIndexerLastStablePoint .~ p
+      else pure indexer
 
 lastStableFilename :: FileIndexer meta event -> FilePath
 lastStableFilename indexer =
