@@ -21,7 +21,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Logger (defaultStdOutLogger)
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -120,8 +119,9 @@ run appName = withGracefulTermination_ $ do
   let startingPoint = getStartingPoint preferredStartingPoint indexerLastStablePoint
 
   Runner.runIndexer
-    ( RunIndexerConfig
+    ( Runner.RunIndexerConfig
         trace
+        Runner.withDistanceAndTipPreprocessor
         retryConfig
         securityParam
         networkId

@@ -300,6 +300,10 @@ module Marconi.Core (
   EventBuilder (EventBuilder),
   EventInfo (fileMetadata),
   mkFileIndexer,
+  LastEventIndexer (LastEventIndexer),
+  mkLastEventIndexer,
+  LastEventConfig (LastEventConfig),
+  GetLastQuery (GetLastQuery),
 
   -- ** Mixed indexer
 
@@ -547,6 +551,12 @@ import Marconi.Core.Indexer.FileIndexer (
   FileIndexer (FileIndexer),
   FileStorageConfig (FileStorageConfig),
   mkFileIndexer,
+ )
+import Marconi.Core.Indexer.LastEventIndexer (
+  GetLastQuery (GetLastQuery),
+  LastEventConfig (LastEventConfig),
+  LastEventIndexer (LastEventIndexer),
+  mkLastEventIndexer,
  )
 import Marconi.Core.Indexer.LastPointIndexer (LastPointIndexer, lastPointIndexer)
 import Marconi.Core.Indexer.ListIndexer (ListIndexer, events, latestPoint, mkListIndexer)

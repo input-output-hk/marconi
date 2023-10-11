@@ -77,9 +77,8 @@ instance
     case resultContent of
       Nothing -> pure Nothing
       Just eventFile -> do
-        let resultFile = FileIndexer.path eventFile
-            deserialise = ix ^. eventBuilder . deserialiseEvent $ FileIndexer.fileMetadata eventFile
-        result <- liftIO $ BS.readFile resultFile
+        let deserialise = ix ^. eventBuilder . deserialiseEvent $ FileIndexer.fileMetadata eventFile
+        result <- liftIO $ BS.readFile (FileIndexer.fullPath ix eventFile)
         case deserialise result of
           Left err -> throwError $ IndexerQueryError err
           Right res -> pure res

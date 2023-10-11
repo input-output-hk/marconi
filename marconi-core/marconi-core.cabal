@@ -60,6 +60,7 @@ library
     Marconi.Core.Class
     Marconi.Core.Coordinator
     Marconi.Core.Indexer.FileIndexer
+    Marconi.Core.Indexer.LastEventIndexer
     Marconi.Core.Indexer.LastPointIndexer
     Marconi.Core.Indexer.ListIndexer
     Marconi.Core.Indexer.MixedIndexer

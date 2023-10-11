@@ -10,8 +10,12 @@ import Control.Monad.Reader (MonadReader (ask), ReaderT)
 import Data.Text qualified as Text
 import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
+import Marconi.ChainIndex.Experimental.Runner (
+  RunIndexerConfig (RunIndexerConfig),
+  withDistancePreprocessor,
+ )
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
-import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig), SecurityParam)
+import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
 import Marconi.Tutorial.CLI qualified as CLI
 import Marconi.Tutorial.Env (Env, envCliArgs, envStdoutTrace)
@@ -49,6 +53,7 @@ runIndexers = do
     Runner.runIndexer
       ( RunIndexerConfig
           stdoutTrace
+          withDistancePreprocessor
           retryConfig
           securityParam
           networkId
