@@ -27,6 +27,7 @@ import Data.Data (Typeable)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import GHC.Generics (Generic)
+import Marconi.Core.TracedStorable (HasPoint (getPoint))
 
 {- | A point in time, the concrete type of a point is now derived from an indexer event,
  instead of an event.
@@ -50,6 +51,10 @@ data Timed point event = Timed
   { _point :: point
   , _event :: event
   }
+
+instance HasPoint (Timed point event) point where
+  getPoint :: Timed point event -> point
+  getPoint = _point
 
 deriving stock instance (Show event, Show point) => Show (Timed point event)
 deriving stock instance (Eq event, Eq point) => Eq (Timed point event)

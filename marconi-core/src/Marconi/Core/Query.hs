@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
 
 {- |
@@ -41,6 +42,7 @@ import Marconi.Core.Indexer.FileIndexer (
  )
 import Marconi.Core.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Indexer.ListIndexer (ListIndexer, events)
+import Marconi.Core.TracedStorable (HasPoint (getPoint))
 import Marconi.Core.Type (
   Point,
   QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore),
@@ -54,31 +56,33 @@ import Marconi.Core.Type (
 data EventAtQuery event = EventAtQuery
   deriving (Eq, Ord, Show)
 
--- TODO comments
-data Stability a = Stable a | Volatile a deriving (Show, Eq, Ord)
+-- | Represents whether an event is considered to stable or not.
+data Stability a = Stable a | Volatile a
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
--- TODO comments
+{- | Given an indexer and some traversable of query results, and given the fact that there is a path
+    from a query result to a `Point`, calculate the stability of all the query results.
+-}
 withStability
   :: forall m event indexer f g
    . ( Monad m
      , Ord (Point event)
      , IsSync m event indexer
      , Traversable f
+     , HasPoint (g event) (Point event)
      )
-  => (g event -> Point event)
-  -> indexer event
+  => indexer event
   -> f (g event)
   -> m (f (Stability (g event)))
-withStability getPoint idx res = do
+withStability idx res = do
   -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'
   lsp <- lastStablePoint idx
-  traverse (\a' -> calcStability (getPoint a') lsp a') res
+  pure $ calcStability lsp <$> res
   where
-    calcStability p lsp e = do
-      pure $
-        if p <= lsp
-          then Stable e
-          else Volatile e
+    calcStability lsp e = do
+      if getPoint e <= lsp
+        then Stable e
+        else Volatile e
 
 {- | The result of EventAtQuery is always an event.
  The error cases are handled by the query interface.

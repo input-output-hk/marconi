@@ -458,7 +458,7 @@ instance
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const $ mkMintTokenEventQueryBy Nothing)
           ( \(MintTokenEventsMatchingQuery p) r ->
-              Core.withStability (view Core.point) indexer $ parseResult p r
+              Core.withStability indexer $ parseResult p r
           )
           point
           query
@@ -473,7 +473,7 @@ instance
       Core.ListIndexer
   where
   query p (MintTokenEventsMatchingQuery predicate) ix =
-    Core.withStability (view Core.point) ix =<< do
+    Core.withStability ix =<< do
       let convertError
             :: Core.ListIndexer MintTokenBlockEvents
             -> Core.QueryError (Core.EventsMatchingQuery MintTokenBlockEvents)
@@ -482,7 +482,7 @@ instance
             Core.NotStoredAnymore -> pure Core.NotStoredAnymore
             (Core.IndexerQueryError t) -> pure $ Core.IndexerQueryError t
             (Core.AheadOfLastSync r) ->
-              Core.AheadOfLastSync <$> traverse (Core.withStability (view Core.point) indexer) r
+              Core.AheadOfLastSync <$> traverse (Core.withStability indexer) r
             (Core.SlotNoBoundsInvalid r) -> pure $ Core.SlotNoBoundsInvalid r
 
       timedEventsE <- runExceptT $ Core.query p (Core.EventsMatchingQuery predicate) ix
@@ -536,7 +536,7 @@ instance
       Core.ListIndexer
   where
   query point (QueryByAssetId policyId assetNameM eventType upperSlotNo lowerTxId) ix =
-    Core.withStability (view Core.point) ix =<< do
+    Core.withStability ix =<< do
       -- Check whether the upperSlotNo is valid, if provided.
       -- If not, e.g. point is genesis, throw an error before any queries.
       -- If upperSlotNo is Nothing, return slot number of point.
@@ -654,7 +654,7 @@ convertEventsMatchingErrorToQueryByAssetIdError indexer = \case
   Core.NotStoredAnymore -> pure Core.NotStoredAnymore
   (Core.IndexerQueryError t) -> pure $ Core.IndexerQueryError t
   (Core.AheadOfLastSync r) ->
-    Core.AheadOfLastSync <$> traverse (Core.withStability (view Core.point) indexer) r
+    Core.AheadOfLastSync <$> traverse (Core.withStability indexer) r
   (Core.SlotNoBoundsInvalid r) -> pure $ Core.SlotNoBoundsInvalid r
 
 instance
@@ -700,7 +700,7 @@ instance
     Core.querySyncedOnlySQLiteIndexerWithM
       (const . const namedParams)
       (const queryByAssetId)
-      (const $ Core.withStability (view Core.point) ix . toTimedMintEvents)
+      (const $ Core.withStability ix . toTimedMintEvents)
       point
       config
       ix
@@ -748,7 +748,7 @@ queryLowerSlotNoByTxId upperSlotNo point config ix =
             Core.querySyncedOnlySQLiteIndexerWithM
               (const . const (lowerTxIdQueryNamedParams lower))
               (const lowerTxIdQuery)
-              (const $ Core.withStability (view Core.point) ix . toTimedMintEvents)
+              (const $ Core.withStability ix . toTimedMintEvents)
               point
               config
               ix
