@@ -75,7 +75,6 @@ withStability
   -- ^ A traversable of query results
   -> m (f (Stability (Timed (Point event) event)))
 withStability idx res = do
-  -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'
   lsp <- lastStablePoint idx
   pure $ calcStability lsp <$> res
   where
