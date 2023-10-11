@@ -12,7 +12,6 @@ module Marconi.Core.Type (
   Point,
   ProcessedInput (..),
   Result,
-  HasPoint (getPoint),
   Timed (Timed),
   point,
   event,
@@ -35,13 +34,6 @@ import GHC.Generics (Generic)
 -}
 type family Point event
 
-{-
-   This class witnesses the fact that events contain enough information to retrieve the point when
-   they were produced.
--}
-class HasPoint e p where
-  getPoint :: e -> p
-
 {- | A 'Result' is a data family for query descriptor.
 
  A query is tied to an indexer by a typeclass, this design choice has two main reasons:
@@ -58,10 +50,6 @@ data Timed point event = Timed
   { _point :: point
   , _event :: event
   }
-
-instance HasPoint (Timed point event) point where
-  getPoint :: Timed point event -> point
-  getPoint = _point
 
 deriving stock instance (Show event, Show point) => Show (Timed point event)
 deriving stock instance (Eq event, Eq point) => Eq (Timed point event)

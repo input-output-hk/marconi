@@ -43,7 +43,6 @@ import Marconi.Core.Indexer.FileIndexer (
 import Marconi.Core.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Indexer.ListIndexer (ListIndexer, events)
 import Marconi.Core.Type (
-  HasPoint (getPoint),
   Point,
   QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore),
   Result,
@@ -64,25 +63,24 @@ data Stability a = Stable a | Volatile a
     from a query result to a `Point`, calculate the stability of all the query results.
 -}
 withStability
-  :: forall m event indexer f g
+  :: forall m event indexer f
    . ( Monad m
      , Ord (Point event)
      , IsSync m event indexer
      , Traversable f
-     , HasPoint (g event) (Point event)
      )
   => indexer event
   -- ^ An indexer
-  -> f (g event)
+  -> f (Timed (Point event) event)
   -- ^ A traversable of query results
-  -> m (f (Stability (g event)))
+  -> m (f (Stability (Timed (Point event) event)))
 withStability idx res = do
   -- TODO Will to raise a ticket regarding defensiveness of 'lastStablePoint'
   lsp <- lastStablePoint idx
   pure $ calcStability lsp <$> res
   where
     calcStability lsp e = do
-      if getPoint e <= lsp
+      if e ^. point <= lsp
         then Stable e
         else Volatile e
 
