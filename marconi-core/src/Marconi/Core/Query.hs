@@ -68,34 +68,27 @@ instance Control.Comonad.Comonad Stability where
   duplicate (Stable x) = Stable (Stable x)
   duplicate (Volatile x) = Volatile (Volatile x)
 
-class HasPoint e p where
-  getPoint :: e -> p
-
-instance HasPoint (Timed point event) point where
-  getPoint = view point
-
 {- | Given an indexer and some traversable of query results, and given the fact that there is a path
     from a query result to a `Point`, calculate the stability of all the query results.
 -}
 withStability
-  :: forall m event indexer f g
+  :: forall m event indexer f
    . ( Monad m
      , Ord (Point event)
      , IsSync m event indexer
      , Traversable f
-     , HasPoint (g event) (Point event)
      )
   => indexer event
   -- ^ An indexer
-  -> f (g event)
+  -> f (Timed (Point event) event)
   -- ^ A traversable of query results
-  -> m (f (Stability (g event)))
+  -> m (f (Stability (Timed (Point event) event)))
 withStability idx res = do
   lsp <- lastStablePoint idx
   pure $ calcStability lsp <$> res
   where
     calcStability lsp e = do
-      if getPoint e <= lsp
+      if view point e <= lsp
         then Stable e
         else Volatile e
 

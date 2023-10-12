@@ -35,7 +35,6 @@ module Marconi.ChainIndex.Experimental.Indexers.EpochState (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api qualified as Core
 import Cardano.Api.Extended.ExtLedgerState qualified as CE
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Trace qualified as BM
@@ -745,14 +744,11 @@ instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
 
 newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
 
-type instance
-  Core.Result ActiveSDDByEpochNoQuery =
-    [Core.Timed C.ChainPoint EpochSDD]
+type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
 
 instance
   ( MonadIO m
   , MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m
-  , Core.Point event ~ Core.ChainPoint
   )
   => Core.Queryable m event ActiveSDDByEpochNoQuery Core.SQLiteIndexer
   where

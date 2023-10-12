@@ -385,13 +385,8 @@ querySyncedOnlySQLiteIndexerWith
   -> query
   -> SQLiteIndexer event
   -> m (Result query)
-querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
-  do
-    let c = indexer ^. connection
-    when (p > indexer ^. dbLastSync) $
-      throwError (AheadOfLastSync Nothing)
-    res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
-    pure $ fromRows q res
+querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows =
+  querySyncedOnlySQLiteIndexerWithM toNamedParam sqlQuery (\x -> pure . fromRows x)
 
 querySyncedOnlySQLiteIndexerWithM
   :: (MonadIO m)
