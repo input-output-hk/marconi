@@ -153,7 +153,7 @@ instance
       (Core.EventsMatchingQuery DatumEvent)
       Core.SQLiteIndexer
   where
-  query =
+  query p q idx =
     let datumQuery :: SQL.Query
         datumQuery =
           [sql|
@@ -170,13 +170,18 @@ instance
           :: (NonEmpty a -> Maybe (NonEmpty a))
           -> [Core.Timed C.ChainPoint a]
           -> [Core.Timed C.ChainPoint (NonEmpty a)]
-        parseResult p =
-          mapMaybe (traverse p . groupEvents)
+        parseResult eventData =
+          mapMaybe (traverse eventData . groupEvents)
             . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
-     in Core.querySyncedOnlySQLiteIndexerWith
+     in Core.querySyncedOnlySQLiteIndexerWithM
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const datumQuery)
-          (\(Core.EventsMatchingQuery p) -> parseResult p)
+          ( \(Core.EventsMatchingQuery eventData) ->
+              Core.withStability idx <$> parseResult eventData
+          )
+          p
+          q
+          idx
 
 -- | Entry type for datum hash resolution query
 newtype ResolveDatumQuery = ResolveDatumQuery (C.Hash C.ScriptData)

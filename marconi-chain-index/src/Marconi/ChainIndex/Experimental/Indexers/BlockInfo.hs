@@ -150,7 +150,7 @@ instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery BlockInfo)) m)
   => Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
   where
-  query =
+  query p q idx =
     let blockInfoBeforeOrAtSlotNoQuery :: SQL.Query
         blockInfoBeforeOrAtSlotNoQuery =
           [sql|
@@ -165,10 +165,15 @@ instance
           -> [Core.Timed C.ChainPoint a]
           -> [Core.Timed C.ChainPoint a]
         parseResult = mapMaybe . traverse
-     in Core.querySyncedOnlySQLiteIndexerWith
+     in Core.querySyncedOnlySQLiteIndexerWithM
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const blockInfoBeforeOrAtSlotNoQuery)
-          (\(Core.EventsMatchingQuery p) -> parseResult p)
+          ( \(Core.EventsMatchingQuery eventData) ->
+              Core.withStability idx <$> parseResult eventData
+          )
+          p
+          q
+          idx
 
 fromBlockEratoBlockInfo
   :: C.Block era -> C.EpochNo -> POSIXTime -> BlockInfo

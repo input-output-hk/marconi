@@ -5,6 +5,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 
@@ -35,6 +36,7 @@ module Marconi.ChainIndex.Experimental.Indexers.EpochState (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api qualified as Core
 import Cardano.Api.Extended.ExtLedgerState qualified as CE
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Trace qualified as BM
@@ -744,10 +746,15 @@ instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
 
 newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
 
-type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
+type instance
+  Core.Result ActiveSDDByEpochNoQuery =
+    [Core.Timed C.ChainPoint EpochSDD]
 
 instance
-  (MonadIO m, MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m)
+  ( MonadIO m
+  , MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m
+  , Core.Point event ~ Core.ChainPoint
+  )
   => Core.Queryable m event ActiveSDDByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
@@ -783,23 +790,30 @@ instance
 
 newtype NonceByEpochNoQuery = NonceByEpochNoQuery C.EpochNo
 
-type instance Core.Result NonceByEpochNoQuery = Maybe (Core.Timed C.ChainPoint EpochNonce)
+type instance
+  Core.Result NonceByEpochNoQuery =
+    Maybe (Core.Stability (Core.Timed C.ChainPoint EpochNonce))
 
 instance
-  (MonadIO m, MonadError (Core.QueryError NonceByEpochNoQuery) m)
-  => Core.Queryable m event NonceByEpochNoQuery Core.SQLiteIndexer
+  ( MonadIO m
+  , MonadError (Core.QueryError NonceByEpochNoQuery) m
+  )
+  => Core.Queryable m EpochNonce NonceByEpochNoQuery Core.SQLiteIndexer
   where
-  query = do
+  query p q idx = do
     let epochSDDQuery =
           [sql|SELECT epochNo, nonce, blockNo, slotNo, blockHeaderHash
                  FROM epoch_nonce
                  WHERE epochNo = ?
               |]
         getParams _ (NonceByEpochNoQuery epochNo) = [":epochNo" SQL.:= epochNo]
-    Core.querySyncedOnlySQLiteIndexerWith
+    Core.querySyncedOnlySQLiteIndexerWithM
       getParams
       (const epochSDDQuery)
-      (const listToMaybe)
+      (const $ Core.withStability idx . listToMaybe)
+      p
+      q
+      idx
 
 instance
   ( MonadIO m

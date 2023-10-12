@@ -139,6 +139,7 @@ library
     , base16-bytestring
     , bytestring
     , cborg
+    , comonad
     , containers
     , directory
     , filepath

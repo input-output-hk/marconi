@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 {- |
     A set of queries that can be implemented by any indexer
@@ -18,6 +19,8 @@ module Marconi.Core.Query (
   withStability,
 ) where
 
+import Control.Comonad (Comonad (duplicate, extract))
+import Control.Lens (view)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
@@ -59,27 +62,40 @@ data EventAtQuery event = EventAtQuery
 data Stability a = Stable a | Volatile a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
+instance Control.Comonad.Comonad Stability where
+  extract (Stable x) = x
+  extract (Volatile x) = x
+  duplicate (Stable x) = Stable (Stable x)
+  duplicate (Volatile x) = Volatile (Volatile x)
+
+class HasPoint e p where
+  getPoint :: e -> p
+
+instance HasPoint (Timed point event) point where
+  getPoint = view point
+
 {- | Given an indexer and some traversable of query results, and given the fact that there is a path
     from a query result to a `Point`, calculate the stability of all the query results.
 -}
 withStability
-  :: forall m event indexer f
+  :: forall m event indexer f g
    . ( Monad m
      , Ord (Point event)
      , IsSync m event indexer
      , Traversable f
+     , HasPoint (g event) (Point event)
      )
   => indexer event
   -- ^ An indexer
-  -> f (Timed (Point event) event)
+  -> f (g event)
   -- ^ A traversable of query results
-  -> m (f (Stability (Timed (Point event) event)))
+  -> m (f (Stability (g event)))
 withStability idx res = do
   lsp <- lastStablePoint idx
   pure $ calcStability lsp <$> res
   where
     calcStability lsp e = do
-      if e ^. point <= lsp
+      if getPoint e <= lsp
         then Stable e
         else Volatile e
 
@@ -149,21 +165,22 @@ allEvents :: EventsMatchingQuery event
 allEvents = EventsMatchingQuery Just
 
 -- | The result of an @EventMatchingQuery@
-type instance Result (EventsMatchingQuery event) = [Timed (Point event) event]
+type instance Result (EventsMatchingQuery event) = [Stability (Timed (Point event) event)]
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)
   => Queryable m event (EventsMatchingQuery event) ListIndexer
   where
-  query p q ix = do
-    let isBefore p' e = p' >= e ^. point
-    let result =
-          mapMaybe (traverse $ predicate q) $
-            ix ^.. events . Lens.folded . Lens.filtered (isBefore p)
-
-    aheadOfSync <- isAheadOfSync p ix
-    when aheadOfSync $ throwError . AheadOfLastSync $ Just result
-    pure result
+  query p q ix =
+    withStability ix =<< do
+      let isBefore p' e = p' >= e ^. point
+      let result =
+            mapMaybe (traverse $ predicate q) $
+              ix ^.. events . Lens.folded . Lens.filtered (isBefore p)
+      res <- withStability ix result
+      aheadOfSync <- isAheadOfSync p ix
+      when aheadOfSync $ throwError . AheadOfLastSync $ Just res
+      pure result
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)
