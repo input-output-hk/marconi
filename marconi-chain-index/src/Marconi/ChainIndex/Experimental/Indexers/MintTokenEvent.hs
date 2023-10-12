@@ -436,7 +436,7 @@ newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event
 
 type instance
   Core.Result (MintTokenEventsMatchingQuery event) =
-    [Core.Stability (Core.Timed C.ChainPoint event)]
+    [Core.Stability (Core.Timed (Core.Point event) event)]
 
 instance
   ( MonadIO m
