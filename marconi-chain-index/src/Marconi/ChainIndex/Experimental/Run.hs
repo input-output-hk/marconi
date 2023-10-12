@@ -9,6 +9,8 @@ import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
+import Data.List.NonEmpty qualified as NEList
+import Data.Set.NonEmpty qualified as NESet
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
@@ -21,6 +23,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Logger (defaultStdOutLogger)
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -59,7 +62,7 @@ run appName = withGracefulTermination_ $ do
   let batchSize = 5000
       stopCatchupDistance = 100
       volatileEpochStateSnapshotInterval = 100
-      filteredAddresses = []
+      filteredAddresses = processAddresses $ Cli.optionsTargetAddresses o
       filteredAssetIds = Cli.optionsTargetAssets o
       includeScript = True
       socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
@@ -129,6 +132,11 @@ run appName = withGracefulTermination_ $ do
         socketPath
     )
     indexers
+
+processAddresses :: Maybe TargetAddresses -> [C.AddressAny]
+processAddresses Nothing = []
+processAddresses (Just targetAddresses) =
+  fmap C.AddressShelley $ NEList.toList $ NESet.toList targetAddresses
 
 getStartingPoint :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint
 getStartingPoint preferredStartingPoint indexerLastSyncPoint =
