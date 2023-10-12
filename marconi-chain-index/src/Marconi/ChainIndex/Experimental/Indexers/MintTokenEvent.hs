@@ -489,7 +489,9 @@ instance
         Right x -> pure x
     pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
 
-type instance Core.Result (QueryByAssetId event) = [Core.Stability (Core.Timed C.ChainPoint event)]
+type instance
+  Core.Result (QueryByAssetId event) =
+    [Core.Stability (Core.Timed (Core.Point event) event)]
 
 {- | Utility for QueryByAssetId queries. Check whether the upper SlotNo bound is
  less than or equal to the provided @C.'ChainPoint'@. If the upperSlotNo is is provided
