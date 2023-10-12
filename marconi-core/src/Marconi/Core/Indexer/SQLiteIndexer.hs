@@ -388,6 +388,7 @@ querySyncedOnlySQLiteIndexerWith
 querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows =
   querySyncedOnlySQLiteIndexerWithM toNamedParam sqlQuery (\x -> pure . fromRows x)
 
+-- | Monadic version of 'querySyncedOnlySQLiteIndexerWith'
 querySyncedOnlySQLiteIndexerWithM
   :: (MonadIO m)
   => (MonadError (QueryError query) m)
@@ -398,7 +399,7 @@ querySyncedOnlySQLiteIndexerWithM
   -> (query -> SQL.Query)
   -- ^ The sqlite query statement
   -> (query -> [r] -> m (Result query))
-  -- ^ Post processing of the result, to obtain the final result
+  -- ^ Monadic post processing of the result, to obtain the final result
   -> Point event
   -> query
   -> SQLiteIndexer event
