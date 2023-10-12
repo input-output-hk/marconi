@@ -483,10 +483,7 @@ instance
           (Core.AheadOfLastSync r) -> Core.AheadOfLastSync r
           (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
     timedEventsE <- runExceptT $ Core.query p (Core.EventsMatchingQuery predicate) ix
-    timedEvents :: [Core.Stability (Timed ChainPoint MintTokenBlockEvents)] <-
-      case timedEventsE of
-        Left e -> throwError $ convertError e
-        Right x -> pure x
+    timedEvents <- either (throwError . convertError) pure timedEventsE
     pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
 
 type instance
@@ -559,9 +556,10 @@ instance
 
     timedEventsE <- runExceptT $ Core.query point queryByAssetIdPredicate ix
     timedEvents <-
-      case timedEventsE of
-        Left e -> throwError $ convertEventsMatchingErrorToQueryByAssetIdError e
-        Right x -> pure x
+      either
+        (throwError . convertEventsMatchingErrorToQueryByAssetIdError)
+        pure
+        timedEventsE
     let sortedTimedEvents = sortEventsByOrderOfBlockchainAppearance timedEvents
 
     -- Filter timedEvents to within the upper/lower slot bounds. Throws an error only if
