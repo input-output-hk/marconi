@@ -7,8 +7,11 @@ module Marconi.ChainIndex.Experimental.Run where
 import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
+import Control.Concurrent.Async (race_)
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
+import Control.Monad.Reader (runReaderT)
+import Data.Aeson (toJSON)
 import Data.List.NonEmpty qualified as NEList
 import Data.Set.NonEmpty qualified as NESet
 import Data.Text (Text)
@@ -16,6 +19,10 @@ import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as Cli
+import Marconi.ChainIndex.Experimental.Api.HttpServer (
+  HttpServerConfig (HttpServerConfig),
+  runHttpServer,
+ )
 import Marconi.ChainIndex.Experimental.Indexers (buildIndexers)
 import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
@@ -113,7 +120,7 @@ run appName = withGracefulTermination_ $ do
         )
         trace
         (Cli.optionsDbPath o)
-  (indexerLastStablePoint, _utxoQueryIndexer, indexers) <-
+  (indexerLastStablePoint, queryables, coordinator) <-
     ( case mindexers of
         Left err -> withLogFullError exitFailure $ Text.pack $ show err
         Right result -> pure result
@@ -121,17 +128,33 @@ run appName = withGracefulTermination_ $ do
 
   let startingPoint = getStartingPoint preferredStartingPoint indexerLastStablePoint
 
-  Runner.runIndexer
-    ( Runner.RunIndexerConfig
-        trace
-        Runner.withDistanceAndTipPreprocessor
-        retryConfig
-        securityParam
-        networkId
-        startingPoint
-        socketPath
-    )
-    indexers
+  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
+
+  let runIndexer' =
+        Runner.runIndexer
+          ( Runner.RunIndexerConfig
+              trace
+              Runner.withDistanceAndTipPreprocessor
+              retryConfig
+              securityParam
+              networkId
+              startingPoint
+              socketPath
+          )
+          coordinator
+      runHttpServer' =
+        runReaderT runHttpServer $
+          HttpServerConfig
+            trace
+            (Cli.optionsRpcPort o)
+            securityParam
+            filteredAddresses
+            (toJSON o)
+            queryables
+
+  race_
+    runIndexer'
+    runHttpServer'
 
 processAddresses :: Maybe TargetAddresses -> [C.AddressAny]
 processAddresses Nothing = []

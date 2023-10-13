@@ -6,7 +6,7 @@
 
 module Marconi.Tutorial.HttpServer where
 
-import Control.Lens (to, view)
+import Control.Lens (to, view, (^.))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask)
 import Data.Data (Proxy (Proxy))
@@ -49,7 +49,7 @@ runHttpServer :: ReaderT Env IO ()
 runHttpServer = do
   env <- ask
   let cliOptions = view envCliArgs env
-  let httpSettings = maybe id setPort (optionsHttpPort cliOptions) defaultSettings
+  let httpSettings = setPort (optionsHttpPort cliOptions) defaultSettings
   liftIO $ runSettings httpSettings (httpApp env)
 
 httpApp
@@ -60,4 +60,6 @@ httpApp env = serve (Proxy @API) (httpServer env)
 httpServer
   :: Env
   -> Server API
-httpServer = Core.queryHttpHandler (addressCountIndexerWorker . to Core.standardWorkerIndexerVar)
+httpServer env =
+  Core.queryIndexerVarHttpHandler $
+    env ^. addressCountIndexerWorker . to Core.standardWorkerIndexerVar

@@ -93,6 +93,7 @@ library
   -- Other dependencies
   ------------------------
   build-depends:
+    , aeson
     , async
     , base           >=4.7 && <5
     , bytestring

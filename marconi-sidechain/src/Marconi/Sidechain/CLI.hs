@@ -30,8 +30,8 @@ data CliArgs = CliArgs
   -- ^ Path to the node config
   , dbDir :: !FilePath
   -- ^ Directory path containing the SQLite database files
-  , httpPort :: !(Maybe Int)
-  -- ^ optional tcp/ip port number for JSON-RPC http server
+  , httpPort :: !Int
+  -- ^ TCP/IP port number for JSON-RPC http server
   , networkId :: !C.NetworkId
   -- ^ cardano network id
   , minIndexingDepth :: !IndexingDepth
@@ -66,7 +66,7 @@ parserCliArgs =
     <$> Cli.commonSocketPathParser
     <*> Cli.commonNodeConfigPathParser
     <*> Cli.commonDbDirParser
-    <*> Cli.commonMaybePortParser
+    <*> Cli.commonPortParser
     <*> Cli.commonNetworkIdParser
     <*> Cli.commonMinIndexingDepthParser
     <*> Cli.commonMaybeTargetAddressParser

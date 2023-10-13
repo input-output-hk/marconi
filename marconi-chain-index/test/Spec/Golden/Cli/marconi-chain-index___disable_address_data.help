@@ -14,6 +14,7 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
                            [--disable-utxo] [--disable-address-datum] 
                            [--disable-script-tx] 
                            [--disable-epoch-stakepool-size] [--disable-mintburn]
+                           [--http-port INT] 
                            [(-a|--addresses-to-index BECH32-ADDRESS)] 
                            [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
                            [--node-config-path ARG] 

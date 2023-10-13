@@ -34,7 +34,7 @@ data QueryExceptions
 
 -- | Represents a subset of exit codes
 data Exit
-  = -- | 124
+  = -- | 142
     TimedOut
   | -- | 1
     Errored
@@ -67,7 +67,7 @@ toExitCode = exitToInt . toExit
   where
     exitToInt :: Exit -> Int
     exitToInt ex = case ex of
-      TimedOut -> 124
+      TimedOut -> 142 -- 128 + SIGALRM (14) = 142
       Errored -> 1
       Killed -> 137
       Terminated -> 143

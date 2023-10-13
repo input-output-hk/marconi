@@ -57,21 +57,36 @@ common lang
 
 library
   import:          lang
-  exposed-modules: Marconi.Core.JsonRpc
+  exposed-modules:
+    Marconi.Core.JsonRpc
+    Network.JsonRpc.Client.Types
+    Network.JsonRpc.Server.Types
+    Network.JsonRpc.Types
+
   hs-source-dirs:  src
 
   ------------------------
   -- Local dependencies
   ------------------------
-  build-depends:
-    , marconi-chain-index:json-rpc
-    , marconi-core
+  build-depends:   marconi-core
 
   ------------------------
   -- Other dependencies
   ------------------------
   build-depends:
-    , base            >=4.7 && <5
+    , aeson
+    , base                 >=4.7 && <5
+    , containers
+    , data-default
+    , fast-logger
+    , http-media
+    , http-types
+    , iohk-monitoring
     , lens
     , mtl
+    , servant
+    , servant-client-core
     , servant-server
+    , text
+    , wai
+    , wai-extra
