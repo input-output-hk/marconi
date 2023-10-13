@@ -69,7 +69,7 @@ run appName = withGracefulTermination_ $ do
   let batchSize = 5000
       stopCatchupDistance = 100
       volatileEpochStateSnapshotInterval = 100
-      filteredAddresses = processAddresses $ Cli.optionsTargetAddresses o
+      filteredAddresses = shelleyAddressesToAddressAny $ Cli.optionsTargetAddresses o
       filteredAssetIds = Cli.optionsTargetAssets o
       includeScript = not $ Cli.optionsDisableScript o
       socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
@@ -156,9 +156,9 @@ run appName = withGracefulTermination_ $ do
     runIndexer'
     runHttpServer'
 
-processAddresses :: Maybe TargetAddresses -> [C.AddressAny]
-processAddresses Nothing = []
-processAddresses (Just targetAddresses) =
+shelleyAddressesToAddressAny :: Maybe TargetAddresses -> [C.AddressAny]
+shelleyAddressesToAddressAny Nothing = []
+shelleyAddressesToAddressAny (Just targetAddresses) =
   fmap C.AddressShelley $ NEList.toList $ NESet.toList targetAddresses
 
 getStartingPoint :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint
