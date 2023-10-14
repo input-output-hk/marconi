@@ -5,8 +5,9 @@ Marconi
    :caption: User guide
    :maxdepth: 2
 
+   doc/introduction.rst
    doc/marconi-as-a-library/index
-   doc/marconi-predefined-indexers/index
+   doc/marconi-chain-index/index
 
 .. toctree::
    :caption: Design and Architecture
