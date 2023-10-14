@@ -13,7 +13,6 @@ module Marconi.Sidechain.Api.Query.Indexers.Utxo (
 import Cardano.Api qualified as C
 import Control.Concurrent.STM (atomically)
 import Control.Concurrent.STM.TMVar (readTMVar)
-import Control.Exception (throwIO)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM)
@@ -80,16 +79,22 @@ queryCurrentNodeBlockNo env = do
       )
       currentSyncedBlock
 
-queryBlockNoAtSlotNo :: AddressUtxoIndexerEnv -> C.SlotNo -> IO C.BlockNo
+queryBlockNoAtSlotNo :: AddressUtxoIndexerEnv -> C.SlotNo -> IO (Either QueryExceptions C.BlockNo)
 queryBlockNoAtSlotNo env slotNo = do
   indexer <- atomically $ readTMVar $ env ^. addressUtxoIndexerEnvIndexer
   let q = Utxo.BlockNoFromSlotNoQuery slotNo
   res <- runExceptT $ Storable.query indexer q
-  case res of
+  pure $ case res of
     Right (Utxo.BlockNoFromSlotNoResult (Just blockNo)) ->
-      pure blockNo
-    Left (CI.InvalidIndexer err) -> throwIO $ IndexerInternalError err
-    _other -> throwIO $ UnexpectedQueryResult q
+      Right blockNo
+    Right (Utxo.BlockNoFromSlotNoResult Nothing) ->
+      Left $ QueryError "Slot number doesn't exist yet"
+    Right _ ->
+      Left $ UnexpectedQueryResult q
+    Left (CI.QueryError err) ->
+      Left $ QueryError (pack $ show err)
+    Left err ->
+      Left $ IndexerInternalError (pack $ show err)
 
 {- | Retrieve Utxos associated with the given address
  We return an empty list if no address is not found

@@ -57,11 +57,11 @@ import Marconi.Sidechain.Error (
 import Network.HTTP.Types (hContentType)
 import Network.JsonRpc.Server.Types ()
 import Network.JsonRpc.Types (
-  JsonRpcErr (JsonRpcErr),
+  JsonRpcErr,
   JsonRpcResponse (Errors),
   UnusedRequestParams,
   mkJsonRpcInternalErr,
-  mkJsonRpcParseErr,
+  mkJsonRpcInvalidParamsErr,
  )
 import Network.Wai.Handler.Warp (runSettings)
 import Network.Wai.Middleware.RequestLogger (
@@ -252,15 +252,13 @@ getEpochNonceHandler epochNo = do
 toRpcErr
   :: QueryExceptions
   -> JsonRpcErr String
-toRpcErr (QueryError e) =
-  -- TODO Change to specific code and message
-  mkJsonRpcParseErr $ Just $ unpack e
-toRpcErr (UnexpectedQueryResult e) =
-  -- TODO Change to specific code and message
-  mkJsonRpcParseErr $ Just $ show e
-toRpcErr (UntrackedPolicy _ _) =
-  mkJsonRpcParseErr $
-    Just
-      "The 'policyId' and 'assetName' param values must belong to the provided target 'AssetIds'."
+toRpcErr (QueryError err) =
+  mkJsonRpcInvalidParamsErr $ Just $ unpack err
 toRpcErr (IndexerInternalError err) =
-  JsonRpcErr (-32001) (Text.unpack err) Nothing
+  mkJsonRpcInternalErr $ Just $ unpack err
+toRpcErr (UnexpectedQueryResult q) =
+  mkJsonRpcInternalErr $ Just $ "Unexpected result obtained for query '" <> show q <> "'"
+toRpcErr (UntrackedPolicy _ _) =
+  mkJsonRpcInvalidParamsErr $
+    Just
+      "The 'policyId' and 'assetName' param values must belong to the provided target 'AssetIds'"
