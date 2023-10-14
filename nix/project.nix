@@ -74,6 +74,8 @@ let
     (_: prev: {
       hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
         "marconi-chain-index.components.exes.marconi-chain-index"
+        "marconi-chain-index.components.exes.marconi-chain-index-experimental"
+        "marconi-sidechain.components.exes.marconi-sidechain"
       ]
         prev.hsPkgs;
     })
