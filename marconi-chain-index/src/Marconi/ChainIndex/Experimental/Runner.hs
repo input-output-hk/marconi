@@ -22,6 +22,7 @@ module Marconi.ChainIndex.Experimental.Runner (
   runIndexerConfigSocketPath,
 
   -- * Process chainSync events
+  withNoPreprocessor,
   withDistancePreprocessor,
   withDistanceAndTipPreprocessor,
 
@@ -211,6 +212,19 @@ withDistanceAndTipPreprocessor =
       blockNoFromBlockEvent (Tip _) = Nothing
       blockNoFromBlockEvent (Block event) = Just . getBlockNo . blockInMode $ getEvent event
    in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
+
+withNoPreprocessor :: RunIndexerEventPreprocessing BlockEvent
+withNoPreprocessor =
+  let eventToProcessedInput
+        :: ChainSyncEvent BlockEvent
+        -> [Core.ProcessedInput C.ChainPoint BlockEvent]
+      eventToProcessedInput (RollForward event _) =
+        let point = blockEventPoint event
+            timedEvent = Core.Timed point event
+         in [Core.Index $ Just <$> timedEvent]
+      eventToProcessedInput (RollBackward point _tip) = [Core.Rollback point]
+      blockNoFromBlockEvent = Just . getBlockNo . blockInMode
+   in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
 
 withDistancePreprocessor :: RunIndexerEventPreprocessing (WithDistance BlockEvent)
 withDistancePreprocessor =
