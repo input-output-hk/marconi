@@ -414,8 +414,7 @@ toTimedMintEvents =
    in mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
         . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
 
-allEvents
-  :: MintTokenEventsMatchingQuery MintTokenBlockEvents
+allEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allEvents = MintTokenEventsMatchingQuery Just
 
 allMintEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
@@ -549,6 +548,14 @@ instance
     -- order by slot number.
     either throwError pure $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
 
+{- | Helper for ListIndexer query.
+ Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
+ lowerTxId slot number is found and is not <= the upper bound. This function assumes the
+ events are sorted in ascending order by ChainPoint SlotNo. It's purpose is to avoid a double
+ pass in first finding the slot number associated with the lower bound.
+ It requires there to be a matching transaction for 'lowerTxId' and will not distinguish between
+ cases where there are no such transactions and ones where no events are below the upper bound.
+-}
 filterBySlotNoBounds
   :: Maybe C.TxId
   -> C.SlotNo
@@ -622,6 +629,7 @@ instance
   query point config ix = do
     validUpperSlotNo <- validatedUpperBound point (config ^. queryByAssetIdUpperSlotNo)
     lowerSlotNo <- queryLowerSlotNoByTxId validUpperSlotNo point config ix
+
     -- Build the main query
     let
       -- These parameter values and clauses can never be null.
@@ -630,6 +638,7 @@ instance
         , ":policyId" := config ^. queryByAssetIdPolicyId
         ]
       policyIdWhereClause = Just "policyId = :policyId"
+
       -- These cases handle nulls
       lowerSlotNoParam = maybe [] (\x -> [":lowerSlotNo" := x]) lowerSlotNo
       lowerSlotNoWhereClause = fmap (const "slotNo >= :lowerSlotNo") lowerSlotNo
@@ -640,6 +649,7 @@ instance
           Nothing -> Nothing
           Just MintEventType -> Just "quantity > 0"
           Just BurnEventType -> Just "quantity < 0"
+
       namedParams = concat [namedParamsBase, assetNameParam, lowerSlotNoParam]
       queryByAssetId =
         let
@@ -674,6 +684,7 @@ queryLowerSlotNoByTxId upperSlotNo point config ix =
   let
     lowerTxIdQuery :: SQL.Query
     lowerTxIdQuery = mkMintTokenEventQueryBy (Just "txId = :lowerTxId")
+
     lowerTxIdQueryNamedParams :: C.TxId -> [SQL.NamedParam]
     lowerTxIdQueryNamedParams lowerTxId = [":lowerTxId" := lowerTxId, ":slotNo" := upperSlotNo]
 

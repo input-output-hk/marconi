@@ -145,6 +145,7 @@ instance
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const blockInfoBySlotNoQuery)
           (const listToMaybe)
+
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery BlockInfo)) m)
   => Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
@@ -158,6 +159,7 @@ instance
           FROM blockInfo
           WHERE slotNo <= :slotNo
           |]
+
         parseResult
           :: (a -> Maybe a)
           -> [Core.Timed C.ChainPoint a]

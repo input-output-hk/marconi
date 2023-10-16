@@ -747,9 +747,7 @@ newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
 type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
 
 instance
-  ( MonadIO m
-  , MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m
-  )
+  (MonadIO m, MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m)
   => Core.Queryable m event ActiveSDDByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
@@ -785,9 +783,7 @@ instance
 
 newtype NonceByEpochNoQuery = NonceByEpochNoQuery C.EpochNo
 
-type instance
-  Core.Result NonceByEpochNoQuery =
-    Maybe (Core.Timed C.ChainPoint EpochNonce)
+type instance Core.Result NonceByEpochNoQuery = Maybe (Core.Timed C.ChainPoint EpochNonce)
 
 instance
   (MonadIO m, MonadError (Core.QueryError NonceByEpochNoQuery) m)

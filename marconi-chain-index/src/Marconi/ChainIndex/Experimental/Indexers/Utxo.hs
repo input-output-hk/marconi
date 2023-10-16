@@ -269,6 +269,7 @@ instance
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const utxoQuery)
           (const NonEmpty.nonEmpty)
+
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery UtxoEvent)) m)
   => Core.Queryable m UtxoEvent (Core.EventsMatchingQuery UtxoEvent) Core.SQLiteIndexer
@@ -287,6 +288,7 @@ instance
           :: NonEmpty (Core.Timed point a)
           -> Core.Timed point (NonEmpty a)
         groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
+
         parseResult
           :: (NonEmpty a -> Maybe (NonEmpty a))
           -> [Core.Timed C.ChainPoint a]
