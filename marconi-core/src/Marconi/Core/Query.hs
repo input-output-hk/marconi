@@ -59,16 +59,6 @@ import Marconi.Core.Type (
 data EventAtQuery event = EventAtQuery
   deriving (Eq, Ord, Show)
 
--- | Represents whether an event is considered to stable or not.
-data Stability a = Stable a | Volatile a
-  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
-
-instance Control.Comonad.Comonad Stability where
-  extract (Stable x) = x
-  extract (Volatile x) = x
-  duplicate (Stable x) = Stable (Stable x)
-  duplicate (Volatile x) = Volatile (Volatile x)
-
 {- | The result of EventAtQuery is always an event.
  The error cases are handled by the query interface.
  in time
@@ -279,30 +269,10 @@ instance
           pure $ memoryResult <> dbResult
 
 -- * Stability
-instance
-  ( MonadIO m
-  , MonadError (QueryError query) m
-  , IsSync m event indexer
-  , Traversable wrapper
-  , Queryable m event query indexer
-  , wrapper result ~ Result query
-  , result ~ Timed (Point event) event
-  )
-  => Queryable m event (WithStability indexer result query wrapper) indexer
-  where
-  query p (WithStability q) idx = withStability idx =<< query p q idx
 
-instance
-  ( MonadIO m
-  , MonadError (QueryError query) m
-  , IsSync m event indexer
-  , Applicative wrapper
-  , Queryable m event query indexer
-  , wrapper result ~ Result query
-  )
-  => Queryable m event (WithStabilityAt indexer result query wrapper) indexer
-  where
-  query p (WithStabilityAt q) idx = withStabilityAt idx p =<< query p q idx
+-- | Represents whether an event is considered to stable or not.
+data Stability a = Stable a | Volatile a
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
 {- | A wrapper that allows us write a type instance which states that @Stability@ should be
     calculated for the result of a given query.
@@ -338,6 +308,37 @@ type instance Result (WithStability indexer result query wrapper) = (wrapper (St
 
 -- | The result of any query modified by @WithStabilityByPoint@. Wraps the result in a @Stability@
 type instance Result (WithStabilityAt indexer result query wrapper) = (wrapper (Stability result))
+
+instance Comonad Stability where
+  extract (Stable x) = x
+  extract (Volatile x) = x
+  duplicate (Stable x) = Stable (Stable x)
+  duplicate (Volatile x) = Volatile (Volatile x)
+
+instance
+  ( MonadIO m
+  , MonadError (QueryError query) m
+  , IsSync m event indexer
+  , Traversable wrapper
+  , Queryable m event query indexer
+  , wrapper result ~ Result query
+  , result ~ Timed (Point event) event
+  )
+  => Queryable m event (WithStability indexer result query wrapper) indexer
+  where
+  query p (WithStability q) idx = withStability idx =<< query p q idx
+
+instance
+  ( MonadIO m
+  , MonadError (QueryError query) m
+  , IsSync m event indexer
+  , Applicative wrapper
+  , Queryable m event query indexer
+  , wrapper result ~ Result query
+  )
+  => Queryable m event (WithStabilityAt indexer result query wrapper) indexer
+  where
+  query p (WithStabilityAt q) idx = withStabilityAt idx p =<< query p q idx
 
 {- | Given an indexer and some traversable of timed query results,
     calculate the stability of all the query results.
