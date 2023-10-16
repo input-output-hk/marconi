@@ -236,8 +236,7 @@ chainSyncStreamingClient points nextChainEventVar =
   where
     onIntersect =
       ClientStIntersect
-        { -- TODO: are the two args necessary in the type?
-          recvMsgIntersectFound = \_ _ ->
+        { recvMsgIntersectFound = \_ _ ->
             C.ChainSyncClient sendRequestNext
         , recvMsgIntersectNotFound =
             -- There is nothing we can do here
