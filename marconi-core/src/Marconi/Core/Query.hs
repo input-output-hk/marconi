@@ -121,9 +121,7 @@ newtype EventsMatchingQuery event = EventsMatchingQuery {predicate :: event -> M
 allEvents :: EventsMatchingQuery event
 allEvents = EventsMatchingQuery Just
 
-{- | The result of an @EventMatchingQuery@. Wraps the result in a @Stability@, calculated using a
-    provided point.
--}
+-- | The result of an @EventMatchingQuery@
 type instance Result (EventsMatchingQuery event) = [Timed (Point event) event]
 
 instance
