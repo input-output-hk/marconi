@@ -1,8 +1,5 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE ViewPatterns #-}
 
 {- |
     A set of queries that can be implemented by any indexer
@@ -293,7 +290,7 @@ instance
   )
   => Queryable m event (WithStability indexer result query wrapper) indexer
   where
-  query p (unWithStability -> q) idx = withStability idx =<< query p q idx
+  query p (WithStability q) idx = withStability idx =<< query p q idx
 
 instance
   ( MonadIO m
@@ -305,7 +302,7 @@ instance
   )
   => Queryable m event (WithStabilityAt indexer result query wrapper) indexer
   where
-  query p (unWithStabilityAt -> q) idx = withStabilityAt idx p =<< query p q idx
+  query p (WithStabilityAt q) idx = withStabilityAt idx p =<< query p q idx
 
 {- | A wrapper that allows us write a type instance which states that @Stability@ should be
     calculated for the result of a given query.
