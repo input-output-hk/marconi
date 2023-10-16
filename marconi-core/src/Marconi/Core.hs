@@ -407,8 +407,6 @@ module Marconi.Core (
   LatestEventsQuery (LatestEventsQuery),
   latestEvent,
   Stability (..),
-  WithStabilityAt (..),
-  WithStability (..),
   withStabilityAt,
   withStability,
 
@@ -610,8 +608,6 @@ import Marconi.Core.Query (
   EventsMatchingQuery (..),
   LatestEventsQuery (..),
   Stability (..),
-  WithStability (..),
-  WithStabilityAt (..),
   allEvents,
   latestEvent,
   withStability,

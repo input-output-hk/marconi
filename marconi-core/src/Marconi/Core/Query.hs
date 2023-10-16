@@ -14,8 +14,6 @@ module Marconi.Core.Query (
   latestEvent,
   EventsFromQuery (EventsFromQuery),
   Stability (Stable, Volatile),
-  WithStability (WithStability, unWithStability),
-  WithStabilityAt (WithStabilityAt, unWithStabilityAt),
   withStability,
   withStabilityAt,
 ) where
@@ -27,7 +25,6 @@ import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError), MonadIO (liftIO), runExceptT)
 import Data.ByteString qualified as BS
 import Data.Function (on)
-import Data.Kind (Type)
 import Data.List (find, sortBy)
 import Data.Maybe (catMaybes, mapMaybe)
 import Marconi.Core.Class (
@@ -274,71 +271,11 @@ instance
 data Stability a = Stable a | Volatile a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
-{- | A wrapper that allows us write a type instance which states that @Stability@ should be
-    calculated for the result of a given query.
-
-    It has four type parameters:
-    * @indexer@ is a type parameter simply to avoid overlapping instances, specifically the instance
-      that uses 'WithCache'
-    * @result@ is the type of the event returned
-    * @query@ is the type which determines how we obtain the result
-    * @wrapper@ is the type of collection in which we return the @result@
--}
-newtype WithStability (indexer :: Type -> Type) result query (wrapper :: Type -> Type) = WithStability
-  { unWithStability :: query
-  }
-
-{- | A convenience wrapper, so the caller doesn't have to specify @event@ multiple times
-
-    It has four type parameters:
-    * @indexer@ is a type parameter simply to avoid overlapping instances, specifically the instance
-      that uses 'WithCache'
-    * @result@ is the type of the event returned
-    * @query@ is the type which determines how we obtain the result
-    * @wrapper@ is the type of collection in which we return the @result@
--}
-newtype WithStabilityAt (indexer :: Type -> Type) result query (wrapper :: Type -> Type) = WithStabilityAt
-  { unWithStabilityAt :: query
-  }
-
-{- | The result of any query modified by @WithStability@. Wraps the result in a @Stability@, using
-    'Point's obtained from the blocks returned by the query.
--}
-type instance Result (WithStability indexer result query wrapper) = (wrapper (Stability result))
-
--- | The result of any query modified by @WithStabilityByPoint@. Wraps the result in a @Stability@
-type instance Result (WithStabilityAt indexer result query wrapper) = (wrapper (Stability result))
-
 instance Comonad Stability where
   extract (Stable x) = x
   extract (Volatile x) = x
   duplicate (Stable x) = Stable (Stable x)
   duplicate (Volatile x) = Volatile (Volatile x)
-
-instance
-  ( MonadIO m
-  , MonadError (QueryError query) m
-  , IsSync m event indexer
-  , Traversable wrapper
-  , Queryable m event query indexer
-  , wrapper result ~ Result query
-  , result ~ Timed (Point event) event
-  )
-  => Queryable m event (WithStability indexer result query wrapper) indexer
-  where
-  query p (WithStability q) idx = withStability idx =<< query p q idx
-
-instance
-  ( MonadIO m
-  , MonadError (QueryError query) m
-  , IsSync m event indexer
-  , Applicative wrapper
-  , Queryable m event query indexer
-  , wrapper result ~ Result query
-  )
-  => Queryable m event (WithStabilityAt indexer result query wrapper) indexer
-  where
-  query p (WithStabilityAt q) idx = withStabilityAt idx p =<< query p q idx
 
 {- | Given an indexer and some traversable of timed query results,
     calculate the stability of all the query results.
