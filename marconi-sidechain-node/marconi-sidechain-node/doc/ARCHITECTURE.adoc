@@ -1,0 +1,82 @@
+= marconi-sidechain architecture documentation
+
+== Introduction and Goals
+
+`marconi-sidechain` is a lightweight chain follower application for the Sidechain project to index and query specific information from the Cardano blockchain.
+
+=== Requirements overview
+
+[NOTE]
+====
+Put here a short description of the functional requirements. Abstract of requirements.
+====
+
+=== Quality Goals
+
+[NOTE]
+====
+In here, we will document the top 3 or 5 quality goals for the acrchitecture of highest importance to the major stakeholders.
+====
+
+== System Scope and Context
+
+```
+             Running on a single machine                    Internet
++----------------------------------------------------+
+|                                                    |                  +-------------+
+|   +----------------+                +-----------+  |                  |             |
+|   |                | node-to-client |           |  |     JSON-RPC     |  sidechain  |
+|   |  cardano-node  +----------------+  marconi  +--+------------------+ application |
+|   |                |      IPC       | sidechain |  |       HTTP       |             |
+|   +----------------+                +----+------+  |                  +------------ +
+|                                          |         |
+|                                          |         |
+|                                      +---+----+    |
+|                                      | SQLite |    |
+|                                      +--------+    |
+|                                                    |
++----------------------------------------------------+
+```
+
+== Solution strategy
+
+[NOTE]
+====
+Put here a short summary and explanation of the fundamental decisions and solution strategies, that shape system architecture.
+It includes technology decisions, decisions about the top-level decomposition of the system, e.g. usage of an architectural pattern or design pattern, decisions on how to achieve key quality goals.
+====
+
+== Building block view
+
+[NOTE]
+====
+Put here the building block view shows the static decomposition of the system into high-level building blocks.
+====
+
+== Runtime view
+
+[NOTE]
+====
+Describe concrete behavior and interactions of the system's building blocks in form of scenarios. Choice of scenarios is made by their architectural relevance.
+====
+
+== Deployment view
+
+[NOTE]
+====
+Put here intended deployment environment => on the same machine as a Cardano node.
+Also document hardware resource requirements.
+====
+
+== Design decisions
+
+[NOTE]
+====
+Put here major decision decisions. We will reference ADRs as well.
+====
+
+== Quality scenarios
+
+== Appendix A: JSON-RPC API
+
+See link:./API.adoc[API] documentation.
