@@ -472,6 +472,7 @@ instance
           (Core.IndexerQueryError t) -> Core.IndexerQueryError t
           (Core.AheadOfLastSync r) -> Core.AheadOfLastSync r
           (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
+
     timedEventsE <- runExceptT $ Core.query p (Core.EventsMatchingQuery predicate) ix
     timedEvents <- either (throwError . convertError) pure timedEventsE
     pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
@@ -518,6 +519,7 @@ instance
     -- If not, e.g. point is genesis, throw an error before any queries.
     -- If upperSlotNo is Nothing, return slot number of point.
     validUpperSlotNo <- validatedUpperBound point upperSlotNo
+
     -- Filter events based on 'QueryByAssetId' query
     let queryByAssetIdPredicate = Core.EventsMatchingQuery $ \(MintTokenBlockEvents events) ->
           let isEventType :: MintTokenEvent -> Bool
@@ -553,6 +555,7 @@ instance
  lowerTxId slot number is found and is not <= the upper bound. This function assumes the
  events are sorted in ascending order by ChainPoint SlotNo. It's purpose is to avoid a double
  pass in first finding the slot number associated with the lower bound.
+
  It requires there to be a matching transaction for 'lowerTxId' and will not distinguish between
  cases where there are no such transactions and ones where no events are below the upper bound.
 -}
