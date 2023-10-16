@@ -380,7 +380,13 @@ withStabilityAt idx p e = do
   lsp <- lastStablePoint idx
   pure $ calcStability lsp p <$> e
 
-calcStability :: (Ord a) => a -> a -> event -> Stability event
+{- | Helper function to wrap an event in 'Stability' based on the last stable point and a given
+ point.
+
+ Asks: Is the provided point less than (from a time before) or equal to (from the time of) the last
+       stable point?
+-}
+calcStability :: (Ord point) => point -> point -> event -> Stability event
 calcStability lsp p e = do
   if p <= lsp
     then Stable e
