@@ -139,7 +139,6 @@ library
     , base16-bytestring
     , bytestring
     , cborg
-    , comonad
     , containers
     , directory
     , filepath
@@ -426,7 +425,6 @@ test-suite marconi-chain-index-test
     , base16-bytestring
     , bytestring
     , cborg
-    , comonad
     , containers
     , contra-tracer
     , directory
