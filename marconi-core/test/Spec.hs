@@ -19,6 +19,7 @@ tests =
         , Core.indexingTestGroup "Coordinator" $ Core.coordinatorIndexerRunner Core.listIndexerRunner
         ]
     , Core.cacheTestGroup
+    , testGroup "Query modification" [Core.withStabilityTestGroup]
     , testGroup
         "WithDelay"
         [ Core.delayTestGroup "ListIndexer" Core.listIndexerRunner

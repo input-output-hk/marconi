@@ -106,10 +106,12 @@ module Marconi.CoreSpec (
 
   -- ** Instances internal
   sqliteModelIndexer,
+  withStabilityTestGroup,
 ) where
 
 import Control.Applicative (Const (Const))
 import Control.Category qualified as Category
+import Control.Comonad (Comonad (extract))
 import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Con
 import Control.Lens (
@@ -1633,3 +1635,106 @@ withRollbackFailureTest =
   Tasty.testProperty "Rollback failure in a worker exit nicely" $
     Test.withMaxSuccess 10_000 $
       checkOutOfRollback (Lens.view defaultChain <$> Test.arbitrary)
+
+-- * Query modification - Stability
+withStabilityTestGroup :: Tasty.TestTree
+withStabilityTestGroup =
+  Tasty.testGroup
+    "StabilityTests"
+    [ Tasty.testGroup
+        "Stability"
+        [ Tasty.testGroup
+            "stability tests"
+            [ Tasty.testProperty "all results are stable" allStable
+            , Tasty.testProperty "not all results are stable" notAllStable
+            , Tasty.testProperty "not all results are stable" withStabilityUnchanged
+            , Tasty.testProperty "no results are stable at a specific point" notStableAt
+            , Tasty.testProperty "all results are stable at a specific point" stableAt
+            , Tasty.testProperty "" withStabilityAtUnchanged
+            ]
+        ]
+    ]
+
+-- | Helper for common chain generation logic
+genCommonChain :: (Int -> TestPoint) -> Gen ([Item TestEvent], Int, Word, Int)
+genCommonChain testPoint' = Test.sized $ \n -> do
+  k <- Test.chooseInt (1, 10)
+  (chain :: [Item TestEvent]) <-
+    genChain $
+      GenChainConfig
+        (pure (if n < 0 then n else 1))
+        (fromIntegral k)
+        5
+        50
+        uniformRollBack
+        (LastStable (testPoint' n))
+        Seq.Empty
+  chainSubsetSize <- Test.chooseInt (1, length chain)
+  pure (chain, chainSubsetSize, fromIntegral k, n)
+
+genChainWithInstability :: Gen ([Item TestEvent], Int, Word, Int)
+genChainWithInstability = genCommonChain (flip TestPoint UUID.nil)
+
+genStableChain :: Gen ([Item TestEvent], Int, Word, Int)
+genStableChain = genCommonChain (const Core.genesis)
+
+-- | Helper to generate the indexer and query events
+processCommonParts
+  :: ([Item TestEvent], Int, Word, Int)
+  -> PropertyM
+      (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) IO)
+      (Core.ListIndexer TestEvent, [Core.Timed (Core.Point TestEvent) TestEvent])
+processCommonParts (chain, chainSubsetSize, _, _) = do
+  let chainSubset = take chainSubsetSize chain
+  indexer <- GenM.run $ foldM (flip process) Core.mkListIndexer chainSubset
+  events <-
+    GenM.run $
+      Core.query
+        (TestPoint 0 UUID.nil)
+        (Core.EventsMatchingQuery Just)
+        indexer
+  return (indexer, events)
+
+stableAt :: Property
+stableAt = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args@(_, _, _, n) -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <- Core.withStabilityAt indexer (TestPoint n UUID.nil) events
+  GenM.stop $ all isStable eventsWithStab
+
+notStableAt :: Property
+notStableAt = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args@(_, _, _, n) -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <- Core.withStabilityAt indexer (TestPoint (n + 1) UUID.nil) events
+  GenM.stop $ not (any isStable eventsWithStab)
+
+withStabilityAtUnchanged :: Property
+withStabilityAtUnchanged = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args@(_, _, _, n) -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <- Core.withStabilityAt indexer (TestPoint (n + 1) UUID.nil) events
+  GenM.stop $ events === fmap extract eventsWithStab
+
+notAllStable :: Property
+notAllStable = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args@(_, _, _, n) -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <-
+    Core.withStability
+      indexer
+      (Core.Timed (TestPoint (n + 1) UUID.nil) (TestEvent (n + 1)) : events)
+  GenM.stop $ not (all isStable eventsWithStab)
+
+allStable :: Property
+allStable = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args@(_, _, _, _) -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <- Core.withStability indexer events
+  GenM.stop $ all isStable eventsWithStab
+
+withStabilityUnchanged :: Property
+withStabilityUnchanged = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args@(_, _, _, _) -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <-
+    Core.withStability indexer events
+  GenM.stop $ events === fmap extract eventsWithStab
+
+isStable :: Core.Stability a -> Bool
+isStable (Core.Stable _) = True
+isStable _ = False
