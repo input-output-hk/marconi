@@ -1,5 +1,5 @@
-Running predefined Marconi indexers
-===================================
+Running `marconi-chain-index`
+=============================
 
 .. toctree::
    :maxdepth: 2

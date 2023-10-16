@@ -1,7 +1,7 @@
 .. _marconi_as_a_library:
 
-Marconi as a library
-====================
+Building your own chain-indexer
+===============================
 
 .. toctree::
    :maxdepth: 2
