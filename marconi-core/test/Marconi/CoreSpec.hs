@@ -1647,10 +1647,10 @@ withStabilityTestGroup =
             "stability tests"
             [ Tasty.testProperty "all results are stable" allStable
             , Tasty.testProperty "not all results are stable" notAllStable
-            , Tasty.testProperty "not all results are stable" withStabilityUnchanged
+            , Tasty.testProperty "withStability will not alter the events" withStabilityUnchanged
             , Tasty.testProperty "no results are stable at a specific point" notStableAt
             , Tasty.testProperty "all results are stable at a specific point" stableAt
-            , Tasty.testProperty "" withStabilityAtUnchanged
+            , Tasty.testProperty "withStabilityAt will not alter the events" withStabilityAtUnchanged
             ]
         ]
     ]
