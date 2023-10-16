@@ -15,6 +15,11 @@ let
 
       compiler-nix-name = "ghc928";
 
+      flake.variants.profiled.modules = [{
+        enableProfiling = true;
+        enableLibraryProfiling = true;
+      }];
+
       shell.withHoogle = false;
 
       inputMap = {
