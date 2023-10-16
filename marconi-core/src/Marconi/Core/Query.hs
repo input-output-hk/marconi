@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {- |
     A set of queries that can be implemented by any indexer
@@ -16,17 +17,20 @@ module Marconi.Core.Query (
   latestEvent,
   EventsFromQuery (EventsFromQuery),
   Stability (Stable, Volatile),
+  WithStability (WithStability, unWithStability),
+  WithStabilityAt (WithStabilityAt, unWithStabilityAt),
   withStability,
+  withStabilityAt,
 ) where
 
 import Control.Comonad (Comonad (duplicate, extract))
-import Control.Lens (view)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (catchError, throwError), MonadIO (liftIO), runExceptT)
 import Data.ByteString qualified as BS
 import Data.Function (on)
+import Data.Kind (Type)
 import Data.List (find, sortBy)
 import Data.Maybe (catMaybes, mapMaybe)
 import Marconi.Core.Class (
@@ -67,30 +71,6 @@ instance Control.Comonad.Comonad Stability where
   extract (Volatile x) = x
   duplicate (Stable x) = Stable (Stable x)
   duplicate (Volatile x) = Volatile (Volatile x)
-
-{- | Given an indexer and some traversable of query results, and given the fact that there is a path
-    from a query result to a `Point`, calculate the stability of all the query results.
--}
-withStability
-  :: forall m event indexer f
-   . ( Monad m
-     , Ord (Point event)
-     , IsSync m event indexer
-     , Traversable f
-     )
-  => indexer event
-  -- ^ An indexer
-  -> f (Timed (Point event) event)
-  -- ^ A traversable of query results
-  -> m (f (Stability (Timed (Point event) event)))
-withStability idx res = do
-  lsp <- lastStablePoint idx
-  pure $ calcStability lsp <$> res
-  where
-    calcStability lsp e = do
-      if view point e <= lsp
-        then Stable e
-        else Volatile e
 
 {- | The result of EventAtQuery is always an event.
  The error cases are handled by the query interface.
@@ -157,23 +137,24 @@ newtype EventsMatchingQuery event = EventsMatchingQuery {predicate :: event -> M
 allEvents :: EventsMatchingQuery event
 allEvents = EventsMatchingQuery Just
 
--- | The result of an @EventMatchingQuery@
-type instance Result (EventsMatchingQuery event) = [Stability (Timed (Point event) event)]
+{- | The result of an @EventMatchingQuery@. Wraps the result in a @Stability@, calculated using a
+    provided point.
+-}
+type instance Result (EventsMatchingQuery event) = [Timed (Point event) event]
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)
   => Queryable m event (EventsMatchingQuery event) ListIndexer
   where
-  query p q ix =
-    withStability ix =<< do
-      let isBefore p' e = p' >= e ^. point
-      let result =
-            mapMaybe (traverse $ predicate q) $
-              ix ^.. events . Lens.folded . Lens.filtered (isBefore p)
-      res <- withStability ix result
-      aheadOfSync <- isAheadOfSync p ix
-      when aheadOfSync $ throwError . AheadOfLastSync $ Just res
-      pure result
+  query p q ix = do
+    let isBefore p' e = p' >= e ^. point
+    let result =
+          mapMaybe (traverse $ predicate q) $
+            ix ^.. events . Lens.folded . Lens.filtered (isBefore p)
+
+    aheadOfSync <- isAheadOfSync p ix
+    when aheadOfSync $ throwError . AheadOfLastSync $ Just result
+    pure result
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)
@@ -299,3 +280,110 @@ instance
           dbResult <- extractDbResult
           memoryResult <- extractMemoryResult
           pure $ memoryResult <> dbResult
+
+-- * Stability
+instance
+  ( MonadIO m
+  , MonadError (QueryError query) m
+  , IsSync m event indexer
+  , Traversable wrapper
+  , Queryable m event query indexer
+  , wrapper result ~ Result query
+  , result ~ Timed (Point event) event
+  )
+  => Queryable m event (WithStability indexer result query wrapper) indexer
+  where
+  query p (unWithStability -> q) idx = withStability idx =<< query p q idx
+
+instance
+  ( MonadIO m
+  , MonadError (QueryError query) m
+  , IsSync m event indexer
+  , Applicative wrapper
+  , Queryable m event query indexer
+  , wrapper result ~ Result query
+  )
+  => Queryable m event (WithStabilityAt indexer result query wrapper) indexer
+  where
+  query p (unWithStabilityAt -> q) idx = withStabilityAt idx p =<< query p q idx
+
+{- | A wrapper that allows us write a type instance which states that @Stability@ should be
+    calculated for the result of a given query.
+
+    It has four type parameters:
+    * @indexer@ is a type parameter simply to avoid overlapping instances, specifically the instance
+      that uses 'WithCache'
+    * @result@ is the type of the event returned
+    * @query@ is the type which determines how we obtain the result
+    * @wrapper@ is the type of collection in which we return the @result@
+-}
+newtype WithStability (indexer :: Type -> Type) result query (wrapper :: Type -> Type) = WithStability
+  { unWithStability :: query
+  }
+
+{- | A convenience wrapper, so the caller doesn't have to specify @event@ multiple times
+
+    It has four type parameters:
+    * @indexer@ is a type parameter simply to avoid overlapping instances, specifically the instance
+      that uses 'WithCache'
+    * @result@ is the type of the event returned
+    * @query@ is the type which determines how we obtain the result
+    * @wrapper@ is the type of collection in which we return the @result@
+-}
+newtype WithStabilityAt (indexer :: Type -> Type) result query (wrapper :: Type -> Type) = WithStabilityAt
+  { unWithStabilityAt :: query
+  }
+
+{- | The result of any query modified by @WithStability@. Wraps the result in a @Stability@, using
+    'Point's obtained from the blocks returned by the query.
+-}
+type instance Result (WithStability indexer result query wrapper) = (wrapper (Stability result))
+
+-- | The result of any query modified by @WithStabilityByPoint@. Wraps the result in a @Stability@
+type instance Result (WithStabilityAt indexer result query wrapper) = (wrapper (Stability result))
+
+{- | Given an indexer and some traversable of timed query results,
+    calculate the stability of all the query results.
+-}
+withStability
+  :: forall event m indexer f
+   . ( Monad m
+     , Ord (Point event)
+     , IsSync m event indexer
+     , Traversable f
+     )
+  => indexer event
+  -- ^ An indexer
+  -> f (Timed (Point event) event)
+  -- ^ A traversable of query results
+  -> m (f (Stability (Timed (Point event) event)))
+withStability idx res = do
+  lsp <- lastStablePoint idx
+  pure $ (calcStability lsp =<< Lens.view point) <$> res
+
+{- | Given an indexer, a 'Point' and some traversable of query results,
+    calculate the stability of all the query results.
+-}
+withStabilityAt
+  :: forall result m event indexer f
+   . ( Monad m
+     , Ord (Point event)
+     , IsSync m event indexer
+     , Applicative f
+     )
+  => indexer event
+  -- ^ An indexer
+  -> Point event
+  -- ^ A specific point to compare against the last stable point
+  -> f result
+  -- ^ A traversable of query results
+  -> m (f (Stability result))
+withStabilityAt idx p e = do
+  lsp <- lastStablePoint idx
+  pure $ calcStability lsp p <$> e
+
+calcStability :: (Ord a) => a -> a -> event -> Stability event
+calcStability lsp p e = do
+  if p <= lsp
+    then Stable e
+    else Volatile e

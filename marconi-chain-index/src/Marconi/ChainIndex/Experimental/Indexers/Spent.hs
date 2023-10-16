@@ -191,7 +191,7 @@ instance
       (Core.EventsMatchingQuery SpentInfoEvent)
       Core.SQLiteIndexer
   where
-  query p q idx =
+  query =
     let spentQuery :: SQL.Query
         spentQuery =
           [sql|
@@ -208,18 +208,13 @@ instance
           :: (NonEmpty a -> Maybe (NonEmpty a))
           -> [Core.Timed C.ChainPoint a]
           -> [Core.Timed C.ChainPoint (NonEmpty a)]
-        parseResult eventData =
-          mapMaybe (traverse eventData . groupEvents)
+        parseResult p =
+          mapMaybe (traverse p . groupEvents)
             . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
-     in Core.querySyncedOnlySQLiteIndexerWithM
+     in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const spentQuery)
-          ( \(Core.EventsMatchingQuery eventData) ->
-              Core.withStability idx <$> parseResult eventData
-          )
-          p
-          q
-          idx
+          (\(Core.EventsMatchingQuery p) -> parseResult p)
 
 getInputs :: C.TxBody era -> [SpentInfo]
 getInputs

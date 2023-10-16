@@ -282,6 +282,7 @@ module Marconi.Core (
   ToRow (..),
   dbLastSync,
   querySQLiteIndexerWith,
+  querySQLiteIndexerWithM,
   querySyncedOnlySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWithM,
   handleSQLErrors,
@@ -407,7 +408,10 @@ module Marconi.Core (
   allEvents,
   LatestEventsQuery (LatestEventsQuery),
   latestEvent,
-  Stability (Stable, Volatile),
+  Stability (..),
+  WithStabilityAt (..),
+  WithStability (..),
+  withStabilityAt,
   withStability,
 
   -- * Indexer Transformers
@@ -584,6 +588,7 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
   querySQLiteIndexerWith,
+  querySQLiteIndexerWithM,
   querySyncedOnlySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWithM,
  )
@@ -608,10 +613,13 @@ import Marconi.Core.Query (
   EventsFromQuery (..),
   EventsMatchingQuery (..),
   LatestEventsQuery (..),
-  Stability (Stable, Volatile),
+  Stability (..),
+  WithStability (..),
+  WithStabilityAt (..),
   allEvents,
   latestEvent,
   withStability,
+  withStabilityAt,
  )
 import Marconi.Core.Transformer.Class (IndexerMapTrans (..), IndexerTrans (..))
 import Marconi.Core.Transformer.IndexTransformer (

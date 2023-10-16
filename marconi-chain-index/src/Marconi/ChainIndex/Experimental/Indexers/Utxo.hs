@@ -269,12 +269,11 @@ instance
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const utxoQuery)
           (const NonEmpty.nonEmpty)
-
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery UtxoEvent)) m)
   => Core.Queryable m UtxoEvent (Core.EventsMatchingQuery UtxoEvent) Core.SQLiteIndexer
   where
-  query p q idx =
+  query =
     let utxoQuery :: SQL.Query
         utxoQuery =
           [sql|
@@ -288,23 +287,17 @@ instance
           :: NonEmpty (Core.Timed point a)
           -> Core.Timed point (NonEmpty a)
         groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
-
         parseResult
           :: (NonEmpty a -> Maybe (NonEmpty a))
           -> [Core.Timed C.ChainPoint a]
           -> [Core.Timed C.ChainPoint (NonEmpty a)]
-        parseResult eventData =
-          mapMaybe (traverse eventData . groupEvents)
+        parseResult p =
+          mapMaybe (traverse p . groupEvents)
             . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
-     in Core.querySyncedOnlySQLiteIndexerWithM
+     in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const utxoQuery)
-          ( \(Core.EventsMatchingQuery eventData) ->
-              Core.withStability idx <$> parseResult eventData
-          )
-          p
-          q
-          idx
+          (\(Core.EventsMatchingQuery p) -> parseResult p)
 
 {- | Extract UtxoEvents from Cardano Block
 

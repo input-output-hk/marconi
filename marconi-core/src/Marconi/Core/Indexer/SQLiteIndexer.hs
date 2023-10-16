@@ -25,6 +25,7 @@ module Marconi.Core.Indexer.SQLiteIndexer (
   mkSqliteIndexer,
   mkSingleInsertSqliteIndexer,
   querySQLiteIndexerWith,
+  querySQLiteIndexerWithM,
   querySyncedOnlySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWithM,
   handleSQLErrors,
@@ -352,13 +353,32 @@ querySQLiteIndexerWith
   -> query
   -> SQLiteIndexer event
   -> m (Result query)
-querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
+querySQLiteIndexerWith toNamedParam sqlQuery fromRows =
+  querySQLiteIndexerWithM toNamedParam sqlQuery (\x -> pure . fromRows x)
+
+querySQLiteIndexerWithM
+  :: (MonadIO m)
+  => (MonadError (QueryError query) m)
+  => (Ord (Point event))
+  => (SQL.FromRow r)
+  => (Point event -> query -> [SQL.NamedParam])
+  -- ^ A preprocessing of the query, to obtain SQL parameters
+  -> (query -> SQL.Query)
+  -- ^ The sqlite query statement
+  -> (query -> [r] -> m (Result query))
+  -- ^ Post processing of the result, to obtain the final result
+  -> Point event
+  -> query
+  -> SQLiteIndexer event
+  -> m (Result query)
+querySQLiteIndexerWithM toNamedParam sqlQuery fromRows p q indexer =
   do
     let c = indexer ^. connection
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
-    when (p > indexer ^. dbLastSync) $
-      throwError (AheadOfLastSync $ Just $ fromRows q res)
-    pure $ fromRows q res
+    when (p > indexer ^. dbLastSync) $ do
+      res' <- fromRows q res
+      throwError (AheadOfLastSync (Just res'))
+    fromRows q res
 
 {- | A helper for the definition of the 'Queryable' typeclass for 'SQLiteIndexer'.
 

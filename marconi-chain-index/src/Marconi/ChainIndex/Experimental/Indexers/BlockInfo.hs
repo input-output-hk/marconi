@@ -145,12 +145,11 @@ instance
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const blockInfoBySlotNoQuery)
           (const listToMaybe)
-
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery BlockInfo)) m)
   => Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
   where
-  query p q idx =
+  query =
     let blockInfoBeforeOrAtSlotNoQuery :: SQL.Query
         blockInfoBeforeOrAtSlotNoQuery =
           [sql|
@@ -159,21 +158,15 @@ instance
           FROM blockInfo
           WHERE slotNo <= :slotNo
           |]
-
         parseResult
           :: (a -> Maybe a)
           -> [Core.Timed C.ChainPoint a]
           -> [Core.Timed C.ChainPoint a]
         parseResult = mapMaybe . traverse
-     in Core.querySyncedOnlySQLiteIndexerWithM
+     in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const blockInfoBeforeOrAtSlotNoQuery)
-          ( \(Core.EventsMatchingQuery eventData) ->
-              Core.withStability idx <$> parseResult eventData
-          )
-          p
-          q
-          idx
+          (\(Core.EventsMatchingQuery p) -> parseResult p)
 
 fromBlockEratoBlockInfo
   :: C.Block era -> C.EpochNo -> POSIXTime -> BlockInfo

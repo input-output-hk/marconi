@@ -787,28 +787,23 @@ newtype NonceByEpochNoQuery = NonceByEpochNoQuery C.EpochNo
 
 type instance
   Core.Result NonceByEpochNoQuery =
-    Maybe (Core.Stability (Core.Timed C.ChainPoint EpochNonce))
+    Maybe (Core.Timed C.ChainPoint EpochNonce)
 
 instance
-  ( MonadIO m
-  , MonadError (Core.QueryError NonceByEpochNoQuery) m
-  )
-  => Core.Queryable m EpochNonce NonceByEpochNoQuery Core.SQLiteIndexer
+  (MonadIO m, MonadError (Core.QueryError NonceByEpochNoQuery) m)
+  => Core.Queryable m event NonceByEpochNoQuery Core.SQLiteIndexer
   where
-  query p q idx = do
+  query = do
     let epochSDDQuery =
           [sql|SELECT epochNo, nonce, blockNo, slotNo, blockHeaderHash
                  FROM epoch_nonce
                  WHERE epochNo = ?
               |]
         getParams _ (NonceByEpochNoQuery epochNo) = [":epochNo" SQL.:= epochNo]
-    Core.querySyncedOnlySQLiteIndexerWithM
+    Core.querySyncedOnlySQLiteIndexerWith
       getParams
       (const epochSDDQuery)
-      (const $ Core.withStability idx . listToMaybe)
-      p
-      q
-      idx
+      (const listToMaybe)
 
 instance
   ( MonadIO m

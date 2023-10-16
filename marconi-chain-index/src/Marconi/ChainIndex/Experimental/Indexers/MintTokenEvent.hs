@@ -70,7 +70,6 @@ module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
 )
 where
 
-import Cardano.Api (ChainPoint)
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Trace (Trace)
@@ -89,7 +88,6 @@ import Cardano.Ledger.Mary.Value (
   PolicyID (PolicyID),
   flattenMultiAsset,
  )
-import Control.Comonad (Comonad (extract), liftW)
 import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
@@ -123,7 +121,6 @@ import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   TxIndexInBlock,
  )
-import Marconi.Core (Timed)
 import Marconi.Core qualified as Core
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
@@ -417,7 +414,8 @@ toTimedMintEvents =
    in mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
         . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
 
-allEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
+allEvents
+  :: MintTokenEventsMatchingQuery MintTokenBlockEvents
 allEvents = MintTokenEventsMatchingQuery Just
 
 allMintEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
@@ -436,34 +434,27 @@ newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event
 
 type instance
   Core.Result (MintTokenEventsMatchingQuery event) =
-    [Core.Stability (Core.Timed (Core.Point event) event)]
+    [Core.Timed (Core.Point event) event]
 
 instance
-  ( MonadIO m
-  , MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m
-  )
+  (MonadIO m, MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
   => Core.Queryable
       m
       MintTokenBlockEvents
       (MintTokenEventsMatchingQuery MintTokenBlockEvents)
       Core.SQLiteIndexer
   where
-  query point query indexer =
+  query =
     let parseResult
           :: (MintTokenBlockEvents -> Maybe MintTokenBlockEvents)
           -> [Core.Timed C.ChainPoint MintTokenEvent]
           -> [Core.Timed C.ChainPoint MintTokenBlockEvents]
         parseResult eventsFilterFunc es =
           mapMaybe (sequence . over Core.event eventsFilterFunc) $ toTimedMintEvents es
-     in Core.querySyncedOnlySQLiteIndexerWithM
+     in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const $ mkMintTokenEventQueryBy Nothing)
-          ( \(MintTokenEventsMatchingQuery p) r ->
-              Core.withStability indexer $ parseResult p r
-          )
-          point
-          query
-          indexer
+          (\(MintTokenEventsMatchingQuery p) r -> parseResult p r)
 
 instance
   (MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
@@ -486,9 +477,7 @@ instance
     timedEvents <- either (throwError . convertError) pure timedEventsE
     pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
 
-type instance
-  Core.Result (QueryByAssetId event) =
-    [Core.Stability (Core.Timed (Core.Point event) event)]
+type instance Core.Result (QueryByAssetId event) = [Core.Timed (Core.Point event) event]
 
 {- | Utility for QueryByAssetId queries. Check whether the upper SlotNo bound is
  less than or equal to the provided @C.'ChainPoint'@. If the upperSlotNo is is provided
@@ -523,18 +512,13 @@ instance
    . ( MonadIO m
      , MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m
      )
-  => Core.Queryable
-      m
-      MintTokenBlockEvents
-      (QueryByAssetId MintTokenBlockEvents)
-      Core.ListIndexer
+  => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.ListIndexer
   where
   query point (QueryByAssetId policyId assetNameM eventType upperSlotNo lowerTxId) ix = do
     -- Check whether the upperSlotNo is valid, if provided.
     -- If not, e.g. point is genesis, throw an error before any queries.
     -- If upperSlotNo is Nothing, return slot number of point.
     validUpperSlotNo <- validatedUpperBound point upperSlotNo
-
     -- Filter events based on 'QueryByAssetId' query
     let queryByAssetIdPredicate = Core.EventsMatchingQuery $ \(MintTokenBlockEvents events) ->
           let isEventType :: MintTokenEvent -> Bool
@@ -556,53 +540,31 @@ instance
 
     timedEventsE <- runExceptT $ Core.query point queryByAssetIdPredicate ix
     timedEvents <-
-      either
-        (throwError . convertEventsMatchingErrorToQueryByAssetIdError)
-        pure
-        timedEventsE
+      either (throwError . convertEventsMatchingErrorToQueryByAssetIdError) pure timedEventsE
     let sortedTimedEvents = sortEventsByOrderOfBlockchainAppearance timedEvents
 
     -- Filter timedEvents to within the upper/lower slot bounds. Throws an error only if
     -- lowerTxId slotNo is found and is not less than or equal to the upper bound. Note sorting
     -- ascending by block number in sortEventsByOrderOfBlockchainAppearance guarantees ascending
     -- order by slot number.
-    either
-      throwError
-      pure
-      $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
+    either throwError pure $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
 
-{- | Helper for ListIndexer query.
- Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
- lowerTxId slot number is found and is not <= the upper bound. This function assumes the
- events are sorted in ascending order by ChainPoint SlotNo. It's purpose is to avoid a double
- pass in first finding the slot number associated with the lower bound.
-
- It requires there to be a matching transaction for 'lowerTxId' and will not distinguish between
- cases where there are no such transactions and ones where no events are below the upper bound.
--}
 filterBySlotNoBounds
   :: Maybe C.TxId
   -> C.SlotNo
-  -> [Core.Stability (Core.Timed C.ChainPoint MintTokenBlockEvents)]
+  -> [Core.Timed C.ChainPoint MintTokenBlockEvents]
   -> Either
       (Core.QueryError (QueryByAssetId MintTokenBlockEvents))
-      [Core.Stability (Core.Timed C.ChainPoint MintTokenBlockEvents)]
+      [Core.Timed C.ChainPoint MintTokenBlockEvents]
 filterBySlotNoBounds txIdM validUpperSlotNo =
   let
     getSlotNo e = C.chainPointToSlotNo (e ^. Core.point)
     isBeforeUpperSlotNo sn e = getSlotNo e <= Just sn
-    findLowerAndFilter
-      :: C.TxId
-      -> ([Core.Stability (Timed ChainPoint MintTokenBlockEvents)], Bool)
-      -> Core.Stability (Timed ChainPoint MintTokenBlockEvents)
-      -> Either
-          (Core.QueryError (QueryByAssetId MintTokenBlockEvents))
-          ([Core.Stability (Timed ChainPoint MintTokenBlockEvents)], Bool)
     findLowerAndFilter txId (es, False) e
       -- This tx is the one setting the lower bound. Check for validity, then accumulate if <=
       -- the upper bound.
-      | matchingTxIdFromTimedEvent txId (extract e) =
-          if isBeforeUpperSlotNo validUpperSlotNo (extract e)
+      | matchingTxIdFromTimedEvent txId e =
+          if isBeforeUpperSlotNo validUpperSlotNo e
             then Right (e : es, True)
             else
               Left $
@@ -610,17 +572,14 @@ filterBySlotNoBounds txIdM validUpperSlotNo =
       | otherwise = Right (es, False)
     -- The lower bound has already been found and validated. Accumulate according to upper bound.
     findLowerAndFilter _ (es, True) e = Right (accumulateIfWithinUpper validUpperSlotNo es e, True)
-    accumulateIfWithinUpper upper es e =
-      if isBeforeUpperSlotNo upper (extract e)
-        then e : es
-        else es
+    accumulateIfWithinUpper upper es e = if isBeforeUpperSlotNo upper e then e : es else es
     matchingTxIdFromTimedEvent txId =
       Lens.anyOf
         (Core.event . mintTokenEvents . Lens.folded . mintTokenEventLocation . mintTokenEventTxId)
         (== txId)
    in
     case txIdM of
-      Nothing -> Right . filter (isBeforeUpperSlotNo validUpperSlotNo . extract)
+      Nothing -> Right . filter (isBeforeUpperSlotNo validUpperSlotNo)
       Just txId -> fmap fst . foldlM (findLowerAndFilter txId) ([], False)
 
 {- | Sort the events based on their order of appearance in the blockchain. This means that events
@@ -629,24 +588,23 @@ number), we sort by their position in a block. As each event is associated with 
 use the index of a transaction in a block.
 -}
 sortEventsByOrderOfBlockchainAppearance
-  :: [Core.Stability (Core.Timed C.ChainPoint MintTokenBlockEvents)]
-  -> [Core.Stability (Core.Timed C.ChainPoint MintTokenBlockEvents)]
+  :: [Core.Timed C.ChainPoint MintTokenBlockEvents]
+  -> [Core.Timed C.ChainPoint MintTokenBlockEvents]
 sortEventsByOrderOfBlockchainAppearance =
   fmap
-    (liftW inner)
+    ( \te ->
+        te
+          & Core.event . mintTokenEvents
+            %~ NonEmpty.sortBy
+              ( comparing
+                  ( \e ->
+                      ( e ^. mintTokenEventLocation . mintTokenEventBlockNo
+                      , e ^. mintTokenEventLocation . mintTokenEventIndexInBlock
+                      )
+                  )
+              )
+    )
     . List.sort
-  where
-    inner te =
-      te
-        & Core.event . mintTokenEvents
-          %~ NonEmpty.sortBy
-            ( comparing
-                ( \e ->
-                    ( e ^. mintTokenEventLocation . mintTokenEventBlockNo
-                    , e ^. mintTokenEventLocation . mintTokenEventIndexInBlock
-                    )
-                )
-            )
 
 convertEventsMatchingErrorToQueryByAssetIdError
   :: Core.QueryError (Core.EventsMatchingQuery MintTokenBlockEvents)
@@ -658,15 +616,12 @@ convertEventsMatchingErrorToQueryByAssetIdError = \case
   (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
 
 instance
-  ( MonadIO m
-  , MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m
-  )
+  (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.SQLiteIndexer
   where
   query point config ix = do
     validUpperSlotNo <- validatedUpperBound point (config ^. queryByAssetIdUpperSlotNo)
     lowerSlotNo <- queryLowerSlotNoByTxId validUpperSlotNo point config ix
-
     -- Build the main query
     let
       -- These parameter values and clauses can never be null.
@@ -675,7 +630,6 @@ instance
         , ":policyId" := config ^. queryByAssetIdPolicyId
         ]
       policyIdWhereClause = Just "policyId = :policyId"
-
       -- These cases handle nulls
       lowerSlotNoParam = maybe [] (\x -> [":lowerSlotNo" := x]) lowerSlotNo
       lowerSlotNoWhereClause = fmap (const "slotNo >= :lowerSlotNo") lowerSlotNo
@@ -686,7 +640,6 @@ instance
           Nothing -> Nothing
           Just MintEventType -> Just "quantity > 0"
           Just BurnEventType -> Just "quantity < 0"
-
       namedParams = concat [namedParamsBase, assetNameParam, lowerSlotNoParam]
       queryByAssetId =
         let
@@ -697,10 +650,10 @@ instance
          in
           mkMintTokenEventQueryBy whereClause
 
-    Core.querySyncedOnlySQLiteIndexerWithM
+    Core.querySyncedOnlySQLiteIndexerWith
       (const . const namedParams)
       (const queryByAssetId)
-      (const $ Core.withStability ix . toTimedMintEvents)
+      (const toTimedMintEvents)
       point
       config
       ix
@@ -721,16 +674,10 @@ queryLowerSlotNoByTxId upperSlotNo point config ix =
   let
     lowerTxIdQuery :: SQL.Query
     lowerTxIdQuery = mkMintTokenEventQueryBy (Just "txId = :lowerTxId")
-
     lowerTxIdQueryNamedParams :: C.TxId -> [SQL.NamedParam]
     lowerTxIdQueryNamedParams lowerTxId = [":lowerTxId" := lowerTxId, ":slotNo" := upperSlotNo]
 
-    slotNoOfLowerTxIdQuery srs =
-      let rs = case listToMaybe srs of
-            Just (Core.Stable x) -> Just x
-            Just (Core.Volatile x) -> Just x
-            Nothing -> Nothing
-       in rs >>= \r -> C.chainPointToSlotNo (r ^. Core.point)
+    slotNoOfLowerTxIdQuery rs = listToMaybe rs >>= \r -> C.chainPointToSlotNo (r ^. Core.point)
 
     handleSlotNoLowerTxIdQuery Nothing =
       Left $
@@ -740,15 +687,12 @@ queryLowerSlotNoByTxId upperSlotNo point config ix =
     case config ^. queryByAssetIdLowerTxId of
       Nothing -> pure Nothing
       Just lower -> do
-        lowerSlotNoE
-          :: Either
-              (Core.QueryError (QueryByAssetId MintTokenBlockEvents))
-              [Core.Stability (Timed ChainPoint event)] <-
+        lowerSlotNoE <-
           runExceptT $
-            Core.querySyncedOnlySQLiteIndexerWithM
+            Core.querySyncedOnlySQLiteIndexerWith
               (const . const (lowerTxIdQueryNamedParams lower))
               (const lowerTxIdQuery)
-              (const $ Core.withStability ix . toTimedMintEvents)
+              (const toTimedMintEvents)
               point
               config
               ix
