@@ -12,6 +12,7 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
                            [--disable-utxo] [--disable-address-datum] 
                            [--disable-script-tx] 
                            [--disable-epoch-stakepool-size] [--disable-mintburn]
+                           [--http-port INT] 
                            [(-a|--addresses-to-index BECH32-ADDRESS)] 
                            [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
                            [--node-config-path ARG] 
@@ -55,6 +56,7 @@ Available options:
   --disable-epoch-stakepool-size
                            disable epoch stakepool size indexers.
   --disable-mintburn       disable mint/burn indexers.
+  --http-port INT          JSON-RPC http port number (default: 3000)
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
                            "--address-to-index address-1 --address-to-index

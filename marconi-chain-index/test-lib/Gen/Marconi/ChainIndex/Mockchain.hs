@@ -58,6 +58,7 @@ data MockBlockWithInfo era = MockBlockWithInfo
   { mockBlockWithInfoChainPoint :: !C.BlockHeader
   , mockBlockithInfoEpochNo :: !C.EpochNo
   , mockBlocWithInfoTime :: !POSIXTime
+  , mockBlockInfoChainTip :: !C.ChainTip
   , mockBlockWithInfoTxs :: ![C.Tx era]
   }
   deriving (Show)
@@ -73,7 +74,11 @@ mockBlockWithInfoAsMockBlock block =
 genMockchain :: Gen (Mockchain C.BabbageEra)
 genMockchain = genMockchainWithTxBodyGen genTxBodyContentFromTxIns
 
-data MockChainInfo = MockChainInfo {_epochNo :: C.EpochNo, _timestamp :: POSIXTime}
+data MockChainInfo = MockChainInfo
+  { _epochNo :: C.EpochNo
+  , _timestamp :: POSIXTime
+  , _chainTip :: C.ChainTip
+  }
 
 -- | Generate a MockchainWithInfo
 genMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
@@ -82,23 +87,42 @@ genMockchainWithInfo =
 
       attachInfoToBlock :: MockBlock era -> StateT MockChainInfo Gen (MockBlockWithInfo era)
       attachInfoToBlock (MockBlock blockHeader txs) = do
-        MockChainInfo epochNo timestamp <- get
+        MockChainInfo epochNo timestamp chainTip <- get
         newEpoch <- lift $ Hedgehog.Gen.frequency [(80, pure epochNo), (20, pure $ epochNo + 1)]
         newTimestamp :: POSIXTime <-
           lift $
             (timestamp +) . fromIntegral
               <$> Hedgehog.Gen.word
                 (Hedgehog.Range.linear 10000 100000)
-        put $ MockChainInfo newEpoch newTimestamp
-        pure $ MockBlockWithInfo blockHeader epochNo timestamp txs
+        newChainTip <- bumpChainTip chainTip
+        put $ MockChainInfo newEpoch newTimestamp newChainTip
+        pure $ MockBlockWithInfo blockHeader epochNo timestamp newChainTip txs
 
       attachInfoToChain :: Mockchain era -> Gen (MockchainWithInfo era)
       attachInfoToChain chain = do
         startTime :: POSIXTime <-
           fromIntegral <$> Hedgehog.Gen.word (Hedgehog.Range.constant 10000 10000000)
-        let startInfo = MockChainInfo startEpochNo startTime
+        let startInfo = MockChainInfo startEpochNo startTime C.ChainTipAtGenesis
         traverse attachInfoToBlock chain `evalStateT` startInfo
    in genMockchain >>= attachInfoToChain
+
+bumpChainTip :: C.ChainTip -> StateT MockChainInfo Gen C.ChainTip
+bumpChainTip tip = do
+  let (currentBlockNo, currentSlotNo) = case tip of
+        C.ChainTipAtGenesis -> (0, 0)
+        C.ChainTip (C.SlotNo slotNo) _ (C.BlockNo blockNo) -> (blockNo, slotNo)
+  blockNoBump <-
+    lift $
+      C.BlockNo
+        <$> Hedgehog.Gen.integral
+          (Hedgehog.Range.linear currentBlockNo (currentBlockNo + 100))
+  newHash <- genHashBlockHeader
+  slotNoBump <-
+    lift $
+      C.SlotNo
+        <$> Hedgehog.Gen.integral
+          (Hedgehog.Range.linear (currentSlotNo + 2000) (currentSlotNo + 100000))
+  pure $ C.ChainTip slotNoBump newHash blockNoBump
 
 -- | Generate a Mockchain
 genMockchainWithTxBodyGen

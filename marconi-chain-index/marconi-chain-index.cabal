@@ -64,9 +64,12 @@ library
   exposed-modules:
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Experimental.Api.HttpServer
+    Marconi.ChainIndex.Experimental.Api.Routes
     Marconi.ChainIndex.Experimental.Extract.WithDistance
     Marconi.ChainIndex.Experimental.Indexers
     Marconi.ChainIndex.Experimental.Indexers.BlockInfo
+    Marconi.ChainIndex.Experimental.Indexers.ChainTip
     Marconi.ChainIndex.Experimental.Indexers.Coordinator
     Marconi.ChainIndex.Experimental.Indexers.Datum
     Marconi.ChainIndex.Experimental.Indexers.EpochState
@@ -106,6 +109,7 @@ library
   build-depends:
     , cardano-api-extended
     , marconi-core
+    , marconi-core-json-rpc
     , marconi-core-legacy
 
   --------------------------
@@ -152,6 +156,8 @@ library
     , process
     , prometheus-client
     , serialise
+    , servant
+    , servant-server
     , sqlite-simple
     , stm
     , streaming
@@ -160,6 +166,7 @@ library
     , time
     , transformers
     , vector-map
+    , warp
 
 library cardano-api-extended
   import:          lang
@@ -200,31 +207,6 @@ library cardano-api-extended
     , time
     , transformers
     , typed-protocols
-
-------------------------
--- Non-IOG dependencies
-------------------------
-library json-rpc
-  import:          lang
-  visibility:      public
-  hs-source-dirs:  json-rpc/src
-  exposed-modules:
-    Network.JsonRpc.Client.Types
-    Network.JsonRpc.Server.Types
-    Network.JsonRpc.Types
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , aeson
-    , base                 >=4.9 && <5
-    , containers
-    , http-media
-    , servant
-    , servant-client-core
-    , servant-server
-    , text
 
 executable marconi-chain-index
   import:         lang
@@ -366,6 +348,7 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Coordinator
     Spec.Marconi.ChainIndex.Experimental.Indexers
     Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo
+    Spec.Marconi.ChainIndex.Experimental.Indexers.ChainTip
     Spec.Marconi.ChainIndex.Experimental.Indexers.Datum
     Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent
     Spec.Marconi.ChainIndex.Experimental.Indexers.Spent

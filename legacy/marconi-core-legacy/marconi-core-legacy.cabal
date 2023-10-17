@@ -70,10 +70,9 @@ library
   -- Other dependencies
   ------------------------
   build-depends:
-    , base           >=4.7 && <5
+    , base       >=4.7 && <5
     , lens
     , primitive
-    , sqlite-simple
     , vector
 
 test-suite marconi-core-test

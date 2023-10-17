@@ -3,6 +3,7 @@ module Spec.Marconi.ChainIndex.Experimental.Indexers (tests) where
 import Test.Tasty (TestTree, localOption, testGroup)
 
 import Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo qualified as BlockInfo
+import Spec.Marconi.ChainIndex.Experimental.Indexers.ChainTip qualified as ChainTip
 import Spec.Marconi.ChainIndex.Experimental.Indexers.Datum qualified as Datum
 import Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Spec.Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
@@ -19,6 +20,7 @@ tests =
       , Spent.tests
       , Datum.tests
       , BlockInfo.tests
+      , ChainTip.tests
       , UtxoQuery.tests
       , MintTokenEvent.tests
       ]

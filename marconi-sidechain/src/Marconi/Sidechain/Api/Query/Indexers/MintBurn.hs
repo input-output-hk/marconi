@@ -78,16 +78,17 @@ queryByPolicyAndAssetId securityParam env policyId assetId slotNo txId = do
             Nothing -> do
               -- The user didn't provide an upper bound slot number. Therefore, we query the latest
               -- block number of the local node.
-              blockNoE <- Utxo.queryCurrentNodeBlockNo $ env ^. sidechainAddressUtxoIndexer
+              blockNoE <- Utxo.queryCurrentNodeBlockNo (env ^. sidechainAddressUtxoIndexer)
               pure $ do
                 blockNo <- blockNoE
                 pure $ toAssetIdTxResult blockNo <$> mintBurnRows
             Just s -> do
               -- The user provided an upper bound slot number. Therefore, we convert the provided
               -- slot number to a block number by using the indexer which indexes that information.
-              let addressUtxoIndexerEnv = env ^. sidechainAddressUtxoIndexer
-              blockNo <- Utxo.queryBlockNoAtSlotNo addressUtxoIndexerEnv s
-              pure $ Right $ toAssetIdTxResult blockNo <$> mintBurnRows
+              blockNoE <- Utxo.queryBlockNoAtSlotNo (env ^. sidechainAddressUtxoIndexer) s
+              pure $ do
+                blockNo <- blockNoE
+                pure $ toAssetIdTxResult blockNo <$> mintBurnRows
         Left (CI.QueryError MintBurn.InvalidInterval{}) ->
           pure $
             Left $

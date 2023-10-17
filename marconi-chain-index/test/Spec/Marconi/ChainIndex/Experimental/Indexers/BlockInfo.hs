@@ -99,7 +99,7 @@ getBlockInfoEvents =
         C.ChainPoint slotNo blockHeaderHash
 
       getBlockInfo :: C.BlockNo -> Gen.MockBlockWithInfo era -> BlockInfo.BlockInfo
-      getBlockInfo bno (Gen.MockBlockWithInfo _bh epochNo timestamp _txs) =
+      getBlockInfo bno (Gen.MockBlockWithInfo _bh epochNo timestamp _tip _txs) =
         let timestampAsWord = fst $ properFraction $ Time.nominalDiffTimeToSeconds timestamp
          in BlockInfo.BlockInfo bno timestampAsWord epochNo
 

@@ -87,9 +87,8 @@ instance
     case resultContent of
       Nothing -> pure Nothing
       Just eventFile -> do
-        let resultFile = FileIndexer.path eventFile
-            deserialise = ix ^. eventBuilder . deserialiseEvent $ FileIndexer.fileMetadata eventFile
-        result <- liftIO $ BS.readFile resultFile
+        let deserialise = ix ^. eventBuilder . deserialiseEvent $ FileIndexer.fileMetadata eventFile
+        result <- liftIO $ BS.readFile (FileIndexer.fullPath ix eventFile)
         case deserialise result of
           Left err -> throwError $ IndexerQueryError err
           Right res -> pure res
@@ -175,12 +174,13 @@ instance
   => Queryable m event (LatestEventsQuery event) ListIndexer
   where
   query p q ix = do
+    let lastEvents =
+          take (fromIntegral $ nbOfEvents q) $
+            filter (\x -> x ^. point <= p) $
+              ix ^. events
     aHeadOfSync <- isAheadOfSync p ix
-    when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
-    pure $
-      take (fromIntegral $ nbOfEvents q) $
-        filter (\x -> x ^. point <= p) $
-          ix ^. events
+    when aHeadOfSync $ throwError $ AheadOfLastSync $ Just lastEvents
+    pure lastEvents
 
 instance
   (MonadIO m, MonadError (QueryError (LatestEventsQuery event)) m)
@@ -188,7 +188,6 @@ instance
   where
   query p q ix = do
     aHeadOfSync <- isAheadOfSync p ix
-    when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
     content <- getDirectoryMetadata ix
     let validCandidate eventFile =
           (ix ^. eventBuilder . extractPoint) (FileIndexer.fileMetadata eventFile) <= p
@@ -202,7 +201,10 @@ instance
     result <- traverse (runExceptT . FileIndexer.deserialiseTimedEvent ix) resultFile
     case extractEvents result of
       Left err -> throwError $ IndexerQueryError err
-      Right res -> pure $ take (fromIntegral $ nbOfEvents q) $ catMaybes res
+      Right res -> do
+        let res' = take (fromIntegral $ nbOfEvents q) $ catMaybes res
+        when aHeadOfSync $ throwError $ AheadOfLastSync $ Just res'
+        pure res'
 
 -- | Get the non empty events from the given point (excluded) to the one of the query (included)
 newtype EventsFromQuery event = EventsFromQuery {startingPoint :: Point event}
@@ -224,7 +226,6 @@ instance
   where
   query p q ix = do
     aHeadOfSync <- isAheadOfSync p ix
-    when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
     content <- getDirectoryMetadata ix
     let validCandidate eventFile =
           let eventPoint = (ix ^. eventBuilder . extractPoint) (FileIndexer.fileMetadata eventFile)
@@ -238,7 +239,10 @@ instance
     result <- traverse (runExceptT . FileIndexer.deserialiseTimedEvent ix) resultFiles
     case extractEvents result of
       Left err -> throwError $ IndexerQueryError err
-      Right res -> pure (catMaybes res)
+      Right res -> do
+        let res' = catMaybes res
+        when aHeadOfSync $ throwError $ AheadOfLastSync (Just res')
+        pure res'
 
 instance
   (MonadError (QueryError (EventsFromQuery event)) m)

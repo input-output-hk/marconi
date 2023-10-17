@@ -1,17 +1,28 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Experimental.Run where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
-
+import Control.Concurrent.Async (race_)
+import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
+import Control.Monad.Reader (runReaderT)
+import Data.Aeson (toJSON)
+import Data.List.NonEmpty qualified as NEList
+import Data.Set.NonEmpty qualified as NESet
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as Cli
+import Marconi.ChainIndex.Experimental.Api.HttpServer (
+  HttpServerConfig (HttpServerConfig),
+  runHttpServer,
+ )
 import Marconi.ChainIndex.Experimental.Indexers (buildIndexers)
 import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
@@ -19,10 +30,10 @@ import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Logger (defaultStdOutLogger)
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Types (RunIndexerConfig (RunIndexerConfig))
+import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)
 
@@ -45,7 +56,7 @@ import System.Posix.Signals (
 
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
-  trace <- defaultStdOutLogger appName
+  (trace, sb) <- defaultStdOutLogger appName
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
@@ -58,17 +69,40 @@ run appName = withGracefulTermination_ $ do
   let batchSize = 5000
       stopCatchupDistance = 100
       volatileEpochStateSnapshotInterval = 100
-      filteredAddresses = []
-      filteredAssetIds = []
-      includeScript = True
+      filteredAddresses = shelleyAddressesToAddressAny $ Cli.optionsTargetAddresses o
+      filteredAssetIds = Cli.optionsTargetAssets o
+      includeScript = not $ Cli.optionsDisableScript o
       socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
       networkId = Cli.optionsNetworkId $ Cli.commonOptions o
       retryConfig = Cli.optionsRetryConfig $ Cli.commonOptions o
       preferredStartingPoint = Cli.optionsChainPoint $ Cli.commonOptions o
 
+  {-
+      Logging in 'Cardano.BM' works by putting items on a switchboard queue and processing them
+      asynchronously.
+
+      In order to ensure that we always get errors written to the console, we need to wait for the
+      queue to complete before exiting. We can use the 'shutdown' function to guarantee this.
+
+      'shutdown' puts a kill-pill on the switchboard's queue, then waits for the switchboard's
+      dispatcher to exit, which requires the queue to be drained, ensuring all messages are
+      processed.
+  -}
+  let withLogFullError :: IO a -> Text -> IO a
+      withLogFullError action msg = do
+        logError trace msg
+        BM.shutdown sb
+        action
+
   nodeConfigPath <- case Cli.optionsNodeConfigPath o of
-    Just cfg -> pure cfg
-    Nothing -> error "No node config path provided"
+    Just cfg -> do
+      exists <- doesFileExist cfg
+      unless exists $
+        withLogFullError exitFailure $
+          Text.pack $
+            "Config file does not exist at the provided path: " <> cfg
+      pure cfg
+    Nothing -> withLogFullError exitFailure "No node config path provided"
 
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
     Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
@@ -86,26 +120,46 @@ run appName = withGracefulTermination_ $ do
         )
         trace
         (Cli.optionsDbPath o)
-  (indexerLastStablePoint, _utxoQueryIndexer, indexers) <-
+  (indexerLastStablePoint, queryables, coordinator) <-
     ( case mindexers of
-        Left err -> do
-          logError trace $ Text.pack $ show err
-          exitFailure
+        Left err -> withLogFullError exitFailure $ Text.pack $ show err
         Right result -> pure result
       )
 
   let startingPoint = getStartingPoint preferredStartingPoint indexerLastStablePoint
 
-  Runner.runIndexer
-    ( RunIndexerConfig
-        trace
-        retryConfig
-        securityParam
-        networkId
-        startingPoint
-        socketPath
-    )
-    indexers
+  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
+
+  let runIndexer' =
+        Runner.runIndexer
+          ( Runner.RunIndexerConfig
+              trace
+              Runner.withDistanceAndTipPreprocessor
+              retryConfig
+              securityParam
+              networkId
+              startingPoint
+              socketPath
+          )
+          coordinator
+      runHttpServer' =
+        runReaderT runHttpServer $
+          HttpServerConfig
+            trace
+            (Cli.optionsRpcPort o)
+            securityParam
+            filteredAddresses
+            (toJSON o)
+            queryables
+
+  race_
+    runIndexer'
+    runHttpServer'
+
+shelleyAddressesToAddressAny :: Maybe TargetAddresses -> [C.AddressAny]
+shelleyAddressesToAddressAny Nothing = []
+shelleyAddressesToAddressAny (Just targetAddresses) =
+  fmap C.AddressShelley $ NEList.toList $ NESet.toList targetAddresses
 
 getStartingPoint :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint
 getStartingPoint preferredStartingPoint indexerLastSyncPoint =

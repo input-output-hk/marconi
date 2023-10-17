@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -7,6 +8,7 @@
 module Marconi.ChainIndex.CLI where
 
 import Control.Applicative (optional, some)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString.Char8 qualified as C8
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty)
@@ -23,8 +25,10 @@ import Cardano.Api qualified as C
 import Data.List.NonEmpty qualified as NEList
 import Data.Set.NonEmpty qualified as NESet
 import Data.Word (Word64)
+import GHC.Generics (Generic)
 import Marconi.ChainIndex.Git.Rev (gitRev)
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig))
+import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   ShouldFailIfResync (ShouldFailIfResync),
@@ -128,7 +132,8 @@ data CommonOptions = CommonOptions
   -- ^ Required depth of a block before it is indexed
   , optionsRetryConfig :: !RetryConfig
   }
-  deriving (Show)
+  deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 data Options = Options
   { commonOptions :: !CommonOptions
@@ -146,16 +151,21 @@ data Options = Options
   -- ^ disable EpochState indexer
   , optionsDisableMintBurn :: !Bool
   -- ^ disable MintBurn indexer
+  , optionsRpcPort :: !Int
+  -- ^ port the RPC server should listen on
   , optionsTargetAddresses :: !(Maybe TargetAddresses)
-  -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
+  -- ^ white-space separated list of Bech32 Cardano Shelley addresses
   , optionsTargetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
+  -- ^ white-space separated list of target asset policy id and optionally asset name,
+  -- separated by @.@.
   , optionsNodeConfigPath :: !(Maybe FilePath)
   -- ^ Path to the node config
   , optionsFailsIfResync :: !ShouldFailIfResync
   -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
   -- synced point.
   }
-  deriving (Show)
+  deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 parseOptions :: IO Options
 parseOptions = Opt.execParser programParser
@@ -207,6 +217,7 @@ optionsParser =
       ( Opt.long "disable-mintburn"
           <> Opt.help "disable mint/burn indexers."
       )
+    <*> commonPortParser
     <*> commonMaybeTargetAddressParser
     <*> commonMaybeTargetAssetParser
     <*> optional commonNodeConfigPathParser
@@ -275,13 +286,14 @@ marconiDescr programName =
           <> " - a lightweight customizable solution for indexing and querying the Cardano blockchain"
       )
 
-commonMaybePortParser :: Opt.Parser (Maybe Int)
-commonMaybePortParser =
-  Opt.optional $
-    Opt.option Opt.auto $
-      Opt.long "http-port"
-        <> Opt.metavar "HTTP-PORT"
-        <> Opt.help "JSON-RPC http port number. Defaults to 3000."
+commonPortParser :: Opt.Parser Int
+commonPortParser =
+  Opt.option Opt.auto $
+    Opt.long "http-port"
+      <> Opt.metavar "INT"
+      <> Opt.value 3000
+      <> Opt.help "JSON-RPC http port number"
+      <> Opt.showDefault
 
 {- | Parse the addresses to index. Addresses should be given in Bech32 format
  Several addresses can be given in a single string, if they are separated by a space

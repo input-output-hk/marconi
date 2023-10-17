@@ -75,8 +75,6 @@ addressCountWorker
       )
 addressCountWorker dbPath securityParam = do
   let extract = getEventsFromBlock
-  -- ix <- Utils.toException $ mkAddressCountMixedIndexer dbPath securityParam
-  -- Core.createWorker "AddressCount" extract ix
   ix <- Utils.toException $ mkAddressCountSqliteIndexer dbPath
   let config =
         Core.StandardWorkerConfig

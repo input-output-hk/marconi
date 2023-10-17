@@ -60,6 +60,7 @@ library
     Marconi.Core.Class
     Marconi.Core.Coordinator
     Marconi.Core.Indexer.FileIndexer
+    Marconi.Core.Indexer.LastEventIndexer
     Marconi.Core.Indexer.LastPointIndexer
     Marconi.Core.Indexer.ListIndexer
     Marconi.Core.Indexer.MixedIndexer
@@ -92,6 +93,7 @@ library
   -- Other dependencies
   ------------------------
   build-depends:
+    , aeson
     , async
     , base           >=4.7 && <5
     , bytestring
