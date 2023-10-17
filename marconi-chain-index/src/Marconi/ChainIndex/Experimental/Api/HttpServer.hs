@@ -29,10 +29,11 @@ import Marconi.ChainIndex.Experimental.Api.Routes (
 import Marconi.ChainIndex.Experimental.Indexers (
   MarconiChainIndexQueryables,
   queryableEpochState,
-  -- queryableMintToken,
+  queryableMintToken,
   -- queryableUtxo,
  )
 import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (
@@ -95,6 +96,7 @@ jsonRpcServer =
     :<|> getTargetAddressesQueryHandler
     :<|> getEpochStakePoolDelegationHandler
     :<|> getEpochNonceHandler
+    :<|> getMintTokensByAssetIdHandler
 
 -- | Echo a message back as a JSON-RPC response. Used for testing the server.
 echo
@@ -126,6 +128,23 @@ getEpochNonceHandler
       HttpServerConfig
       (Either (JsonRpcErr String) (Core.Result EpochState.NonceByEpochNoQuery))
 getEpochNonceHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
+
+getMintTokensByAssetIdHandler
+  :: MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
+  -> ReaderHandler
+      HttpServerConfig
+      ( Either
+          (JsonRpcErr String)
+          ( Core.Result
+              ( Core.WithStability
+                  (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents)
+              )
+          )
+      )
+getMintTokensByAssetIdHandler =
+  queryHttpReaderHandler
+    (configQueryables . queryableMintToken)
+    . Core.WithStability
 
 --------------
 -- REST API --

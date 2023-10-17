@@ -1,10 +1,13 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {- |
 
@@ -60,10 +63,9 @@ module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   extractEventsFromTx,
 
   -- * Queries
-  MintTokenEventsMatchingQuery (MintTokenEventsMatchingQuery),
-  allEvents,
-  allMintEvents,
-  allBurnEvents,
+  MintTokenEventsMatchingQuery (AllEvents, AllMintEvents, AllBurnEvents, ByTargetAssetIds),
+  ByTargetAssetIdsArgs (ByTargetAssetIdsArgs),
+  evalMintTokenEventsMatchingQuery,
   QueryByAssetId (..),
   EventType (..),
   toTimedMintEvents,
@@ -92,6 +94,15 @@ import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.)
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
+import Data.Aeson.Types (
+  FromJSON (parseJSON),
+  KeyValue ((.=)),
+  ToJSON (toJSON),
+  object,
+  (.:),
+  (.:?),
+ )
+import Data.Aeson.Types qualified as Aeson
 import Data.ByteString.Short qualified as Short
 import Data.Foldable (foldlM)
 import Data.Function (on, (&))
@@ -143,7 +154,10 @@ newtype MintTokenEventConfig = MintTokenEventConfig
 newtype MintTokenBlockEvents = MintTokenBlockEvents
   { _mintTokenEvents :: NonEmpty MintTokenEvent
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+deriving anyclass instance FromJSON MintTokenBlockEvents
+deriving anyclass instance ToJSON MintTokenBlockEvents
 
 {- | Single minting event. This is the datatype was will be used to store the events in the database
 (not 'MintTokenBlockEvents'). More specifically, we will store 'Core.Timed (Core.Point
@@ -153,14 +167,14 @@ data MintTokenEvent = MintTokenEvent
   { _mintTokenEventLocation :: !MintTokenEventLocation
   , _mintTokenEventAsset :: !MintAsset
   }
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
 
 data MintTokenEventLocation = MintTokenEventLocation
   { _mintTokenEventBlockNo :: !C.BlockNo
   , _mintTokenEventTxId :: !C.TxId
   , _mintTokenEventIndexInBlock :: !TxIndexInBlock
   }
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
 
 data MintAsset = MintAsset
   { _mintAssetPolicyId :: !C.PolicyId
@@ -169,14 +183,14 @@ data MintAsset = MintAsset
   , _mintAssetRedeemer :: !(Maybe MintAssetRedeemer)
   -- ^ Nothing if the 'PolicyId' is a simple script, so no redeemers are provided
   }
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
 
 -- The redeemer of a Plutus minting script along with it's hash.
 data MintAssetRedeemer = MintAssetRedeemer
   { _mintAssetRedeemerData :: !C.ScriptData
   , _mintAssetRedeemerHash :: !(C.Hash C.ScriptData)
   }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
 
 data QueryByAssetId event = QueryByAssetId
   { _queryByAssetIdPolicyId :: !C.PolicyId
@@ -185,10 +199,31 @@ data QueryByAssetId event = QueryByAssetId
   , _queryByAssetIdUpperSlotNo :: !(Maybe C.SlotNo)
   , _queryByAssetIdLowerTxId :: !(Maybe C.TxId)
   }
-  deriving (Show)
+  deriving (Show, Generic)
+
+instance FromJSON (QueryByAssetId event) where
+  parseJSON =
+    let parseFields v = do
+          policyId <- v .: "policyId"
+          mAssetName <- v .:? "assetName"
+          mEventType <- v .:? "eventType"
+          mqUpperSlotNo <- v .:? "createdBeforeSlotNo"
+          mLowerTxId <- v .:? "afterTx"
+          pure $ QueryByAssetId policyId mAssetName mEventType mqUpperSlotNo mLowerTxId
+     in Aeson.withObject "QueryByAssetId" parseFields
+
+instance ToJSON (QueryByAssetId event) where
+  toJSON (QueryByAssetId policyId assetName eventType createdBeforeSlotNo afterTx) =
+    object
+      [ "policyId" .= policyId
+      , "assetName" .= assetName
+      , "eventType" .= eventType
+      , "createdBeforeSlotNo" .= createdBeforeSlotNo
+      , "afterTx" .= afterTx
+      ]
 
 data EventType = MintEventType | BurnEventType
-  deriving (Show)
+  deriving (Show, Generic, FromJSON, ToJSON)
 
 Lens.makeLenses ''MintTokenBlockEvents
 Lens.makeLenses ''MintTokenEvent
@@ -432,22 +467,45 @@ toTimedMintEvents =
    in mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
         . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
 
-allEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
-allEvents = MintTokenEventsMatchingQuery Just
+allEvents :: MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+allEvents = Just
 
-allMintEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
-allMintEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
+allMintEvents :: MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+allMintEvents (MintTokenBlockEvents events) =
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
       NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity > 0) events
 
-allBurnEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
-allBurnEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
+allBurnEvents :: MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+allBurnEvents (MintTokenBlockEvents events) =
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
       NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0) events
 
-newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event -> Maybe event)
+newtype ByTargetAssetIdsArgs = ByTargetAssetIdsArgs (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  deriving (Show, Eq, Ord, Generic)
+
+deriving anyclass instance FromJSON ByTargetAssetIdsArgs
+deriving anyclass instance ToJSON ByTargetAssetIdsArgs
+
+-- | Defunctionalisation of queries
+data MintTokenEventsMatchingQuery event
+  = AllEvents
+  | AllMintEvents
+  | AllBurnEvents
+  | ByTargetAssetIds ByTargetAssetIdsArgs
+  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
+
+-- | Evaluator for 'MintTokenEventsMatchingQuery'
+evalMintTokenEventsMatchingQuery
+  :: MintTokenEventsMatchingQuery MintTokenBlockEvents
+  -> MintTokenBlockEvents
+  -> Maybe MintTokenBlockEvents
+evalMintTokenEventsMatchingQuery AllEvents = allEvents
+evalMintTokenEventsMatchingQuery AllMintEvents = allMintEvents
+evalMintTokenEventsMatchingQuery AllBurnEvents = allBurnEvents
+evalMintTokenEventsMatchingQuery (ByTargetAssetIds (ByTargetAssetIdsArgs assetIds)) =
+  filterByTargetAssetIds assetIds
 
 type instance
   Core.Result (MintTokenEventsMatchingQuery event) =
@@ -471,7 +529,7 @@ instance
      in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const $ mkMintTokenEventQueryBy Nothing)
-          (\(MintTokenEventsMatchingQuery p) r -> parseResult p r)
+          (\p r -> parseResult (evalMintTokenEventsMatchingQuery p) r)
 
 instance
   (MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
@@ -481,7 +539,7 @@ instance
       (MintTokenEventsMatchingQuery MintTokenBlockEvents)
       Core.ListIndexer
   where
-  query p (MintTokenEventsMatchingQuery predicate) ix = do
+  query p (evalMintTokenEventsMatchingQuery -> predicate) ix = do
     let convertError
           :: Core.QueryError (Core.EventsMatchingQuery MintTokenBlockEvents)
           -> Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)
@@ -496,6 +554,9 @@ instance
     pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
 
 type instance Core.Result (QueryByAssetId event) = [Core.Timed (Core.Point event) event]
+type instance
+  Core.Result (Core.WithStability (QueryByAssetId event)) =
+    [Core.Stability (Core.Timed (Core.Point event) event)]
 
 {- | Utility for QueryByAssetId queries. Check whether the upper SlotNo bound is
  less than or equal to the provided @C.'ChainPoint'@. If the upperSlotNo is is provided
@@ -567,6 +628,18 @@ instance
     -- ascending by block number in sortEventsByOrderOfBlockchainAppearance guarantees ascending
     -- order by slot number.
     either throwError pure $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
+
+instance
+  ( MonadIO m
+  , MonadError (Core.QueryError (Core.WithStability (QueryByAssetId MintTokenBlockEvents))) m
+  )
+  => Core.Queryable
+      m
+      MintTokenBlockEvents
+      (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
+      Core.ListIndexer
+  where
+  query = Core.queryWithStability
 
 {- | Helper for ListIndexer query.
  Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
@@ -688,6 +761,18 @@ instance
       point
       config
       ix
+
+instance
+  ( MonadIO m
+  , MonadError (Core.QueryError (Core.WithStability (QueryByAssetId MintTokenBlockEvents))) m
+  )
+  => Core.Queryable
+      m
+      MintTokenBlockEvents
+      (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
+      Core.SQLiteIndexer
+  where
+  query = Core.queryWithStability
 
 {- | Helper for MintTokenEventIndexer in the case where a 'lowerTxId' is provided.
 Query to look up the earliest SlotNo matching a TxId. This is implemented as a separate query so

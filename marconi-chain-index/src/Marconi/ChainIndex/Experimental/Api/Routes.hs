@@ -10,6 +10,7 @@ module Marconi.ChainIndex.Experimental.Api.Routes (
 import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc, UnusedRequestParams)
@@ -32,6 +33,7 @@ type RpcAPI =
     :<|> RpcTargetAddressesMethod
     :<|> RpcEpochActiveStakePoolDelegationMethod
     :<|> RpcEpochNonceMethod
+    :<|> RpcGetBurnTokensMethod
 
 type RpcEchoMethod = JsonRpc "echo" String String String
 
@@ -55,6 +57,15 @@ type RpcEpochNonceMethod =
     EpochState.NonceByEpochNoQuery
     String
     (Core.Result EpochState.NonceByEpochNoQuery)
+
+type RpcGetBurnTokensMethod =
+  JsonRpc
+    "getBurnTokenEvents"
+    (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents)
+    String
+    ( Core.Result
+        (Core.WithStability (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents))
+    )
 
 ------------------------
 -- REST API endpoints --
