@@ -97,6 +97,7 @@ library
     , async
     , base           >=4.7 && <5
     , bytestring
+    , comonad
     , containers
     , directory
     , filepath
@@ -136,6 +137,7 @@ test-suite marconi-core-test
   hs-source-dirs: test
   build-depends:
     , base                   >=4.7    && <5
+    , comonad
     , containers
     , contra-tracer
     , lens
