@@ -1644,78 +1644,25 @@ withStabilityTestGroup =
     [ Tasty.testGroup
         "Stability"
         [ Tasty.testGroup
-            "stability tests"
+            "withStability"
             [ Tasty.testProperty "all results are stable" allStable
             , Tasty.testProperty "not all results are stable" notAllStable
             , Tasty.testProperty "withStability will not alter the events" withStabilityUnchanged
-            , Tasty.testProperty "no results are stable at a specific point" notStableAt
+            ]
+        , Tasty.testGroup
+            "withStabilityAt"
+            [ Tasty.testProperty "no results are stable at a specific point" notStableAt
             , Tasty.testProperty "all results are stable at a specific point" stableAt
             , Tasty.testProperty "withStabilityAt will not alter the events" withStabilityAtUnchanged
             ]
         ]
     ]
 
--- | Helper for common chain generation logic
-genCommonChain :: (Int -> TestPoint) -> Gen ([Item TestEvent], Int, Word, Int)
-genCommonChain testPoint' = Test.sized $ \n -> do
-  k <- Test.chooseInt (1, 10)
-  (chain :: [Item TestEvent]) <-
-    genChain $
-      GenChainConfig
-        (pure (if n < 0 then n else 1))
-        (fromIntegral k)
-        5
-        50
-        uniformRollBack
-        (LastStable (testPoint' n))
-        Seq.Empty
-  chainSubsetSize <- Test.chooseInt (1, length chain)
-  pure (chain, chainSubsetSize, fromIntegral k, n)
-
-genChainWithInstability :: Gen ([Item TestEvent], Int, Word, Int)
-genChainWithInstability = genCommonChain (flip TestPoint UUID.nil)
-
-genStableChain :: Gen ([Item TestEvent], Int, Word, Int)
-genStableChain = genCommonChain (const Core.genesis)
-
--- | Helper to generate the indexer and query events
-processCommonParts
-  :: ([Item TestEvent], Int, Word, Int)
-  -> PropertyM
-      (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) IO)
-      (Core.ListIndexer TestEvent, [Core.Timed (Core.Point TestEvent) TestEvent])
-processCommonParts (chain, chainSubsetSize, _, _) = do
-  let chainSubset = take chainSubsetSize chain
-  indexer <- GenM.run $ foldM (flip process) Core.mkListIndexer chainSubset
-  events <-
-    GenM.run $
-      Core.query
-        (TestPoint 0 UUID.nil)
-        (Core.EventsMatchingQuery Just)
-        indexer
-  return (indexer, events)
-
-stableAt :: Property
-stableAt = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args@(_, _, _, n) -> do
-  (indexer, events) <- processCommonParts args
-  eventsWithStab <- Core.withStabilityAt indexer (TestPoint n UUID.nil) events
-  GenM.stop $ all isStable eventsWithStab
-
-notStableAt :: Property
-notStableAt = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args@(_, _, _, n) -> do
-  (indexer, events) <- processCommonParts args
-  eventsWithStab <- Core.withStabilityAt indexer (TestPoint (n + 1) UUID.nil) events
-  GenM.stop $ not (any isStable eventsWithStab)
-
-withStabilityAtUnchanged :: Property
-withStabilityAtUnchanged = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args@(_, _, _, n) -> do
-  (indexer, events) <- processCommonParts args
-  eventsWithStab <- Core.withStabilityAt indexer (TestPoint (n + 1) UUID.nil) events
-  GenM.stop $ events === fmap extract eventsWithStab
-
+-- * withStability
 notAllStable :: Property
-notAllStable = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args@(_, _, _, n) -> do
+notAllStable = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   (indexer, events) <- processCommonParts args
+  let n = sizedN args
   eventsWithStab <-
     Core.withStability
       indexer
@@ -1723,17 +1670,86 @@ notAllStable = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \ar
   GenM.stop $ not (all isStable eventsWithStab)
 
 allStable :: Property
-allStable = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args@(_, _, _, _) -> do
+allStable = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args -> do
   (indexer, events) <- processCommonParts args
   eventsWithStab <- Core.withStability indexer events
   GenM.stop $ all isStable eventsWithStab
 
 withStabilityUnchanged :: Property
-withStabilityUnchanged = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args@(_, _, _, _) -> do
+withStabilityUnchanged = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args -> do
   (indexer, events) <- processCommonParts args
   eventsWithStab <-
     Core.withStability indexer events
   GenM.stop $ events === fmap extract eventsWithStab
+
+-- * withStabilityAt
+stableAt :: Property
+stableAt = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <- Core.withStabilityAt indexer (TestPoint (sizedN args) UUID.nil) events
+  GenM.stop $ all isStable eventsWithStab
+
+notStableAt :: Property
+notStableAt = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <- Core.withStabilityAt indexer (TestPoint (sizedN args + 1) UUID.nil) events
+  GenM.stop $ not (any isStable eventsWithStab)
+
+withStabilityAtUnchanged :: Property
+withStabilityAtUnchanged = monadicExceptTIO @() $ GenM.forAllM genStableChain $ \args -> do
+  (indexer, events) <- processCommonParts args
+  eventsWithStab <- Core.withStabilityAt indexer (TestPoint (sizedN args + 1) UUID.nil) events
+  GenM.stop $ events === fmap extract eventsWithStab
+
+-- * Stability helpers
+
+data CommonStabilityParts = CommonStabilityParts
+  { eventGenerator :: [Item TestEvent]
+  , chainSizeSubset :: Int
+  , sizedN :: Int
+  }
+  deriving (Show)
+
+-- | Helper for common chain generation logic
+genCommonChain :: (Int -> TestPoint) -> Gen CommonStabilityParts
+genCommonChain testPoint' = Test.sized $ \n -> do
+  k <- Test.chooseInt (1, 10)
+  (chain :: [Item TestEvent]) <-
+    genChain $
+      GenChainConfig
+        (pure n)
+        (fromIntegral k)
+        5
+        50
+        uniformRollBack
+        (LastStable (testPoint' n))
+        Seq.Empty
+  chainSubsetSize <- Test.chooseInt (1, length chain)
+  pure $ CommonStabilityParts chain chainSubsetSize n
+
+genChainWithInstability :: Gen CommonStabilityParts
+genChainWithInstability = genCommonChain (flip TestPoint UUID.nil)
+
+genStableChain :: Gen CommonStabilityParts
+genStableChain = genCommonChain (const Core.genesis)
+
+-- | Helper to generate the indexer and query events
+processCommonParts
+  :: CommonStabilityParts
+  -> PropertyM
+      (ExceptT (Core.QueryError (Core.EventsMatchingQuery TestEvent)) IO)
+      (Core.ListIndexer TestEvent, [Core.Timed (Core.Point TestEvent) TestEvent])
+processCommonParts args = do
+  let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+  indexer <- GenM.run $ foldM (flip process) Core.mkListIndexer chainSubset
+  indexerWithSetPoint <- Core.setLastStablePoint (TestPoint (sizedN args) UUID.nil) indexer
+  events <-
+    GenM.run $
+      Core.query
+        (TestPoint 0 UUID.nil)
+        (Core.EventsMatchingQuery Just)
+        indexerWithSetPoint
+  return (indexerWithSetPoint, events)
 
 isStable :: Core.Stability a -> Bool
 isStable (Core.Stable _) = True
