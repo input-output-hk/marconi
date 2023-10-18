@@ -148,6 +148,7 @@ getEpochNonceHandler
       (Either (JsonRpcErr String) (Core.Result EpochState.NonceByEpochNoQuery))
 getEpochNonceHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
 
+-- | Return 'MintTokenBlockEvents' based on 'QueryByAssetId'
 getMintingPolicyHashTxHandler
   :: MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
   -> ReaderHandler
@@ -165,6 +166,7 @@ getMintingPolicyHashTxHandler =
     (configQueryables . queryableMintToken)
     . Core.WithStability
 
+-- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
 getBurnTokenEventsHandler
   :: GetBurnTokenEventsParams
   -> ReaderHandler HttpServerConfig (Either (JsonRpcErr String) GetBurnTokenEventsResult)
