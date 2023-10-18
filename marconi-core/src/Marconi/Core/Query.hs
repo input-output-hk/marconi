@@ -31,7 +31,6 @@ import Control.Monad.Except (
   runExceptT,
   (<=<),
  )
-import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString qualified as BS
 import Data.Function (on)
 import Data.List (find, sortBy)
@@ -287,9 +286,6 @@ instance
 -- | Represents whether an event is considered to stable or not.
 data Stability a = Stable a | Volatile a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
-
-deriving anyclass instance (FromJSON a) => FromJSON (Stability a)
-deriving anyclass instance (ToJSON a) => ToJSON (Stability a)
 
 instance Comonad Stability where
   extract (Stable x) = x

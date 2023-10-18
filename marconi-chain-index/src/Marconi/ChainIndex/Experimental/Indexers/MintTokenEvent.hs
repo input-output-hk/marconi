@@ -94,15 +94,6 @@ import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.)
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
-import Data.Aeson.Types (
-  FromJSON (parseJSON),
-  KeyValue ((.=)),
-  ToJSON (toJSON),
-  object,
-  (.:),
-  (.:?),
- )
-import Data.Aeson.Types qualified as Aeson
 import Data.ByteString.Short qualified as Short
 import Data.Foldable (foldlM)
 import Data.Function (on, (&))
@@ -156,9 +147,6 @@ newtype MintTokenBlockEvents = MintTokenBlockEvents
   }
   deriving (Show, Eq, Ord, Generic)
 
-deriving anyclass instance FromJSON MintTokenBlockEvents
-deriving anyclass instance ToJSON MintTokenBlockEvents
-
 {- | Single minting event. This is the datatype was will be used to store the events in the database
 (not 'MintTokenBlockEvents'). More specifically, we will store 'Core.Timed (Core.Point
 MintTokenEvent) MintTokenEvent)'.
@@ -167,14 +155,14 @@ data MintTokenEvent = MintTokenEvent
   { _mintTokenEventLocation :: !MintTokenEventLocation
   , _mintTokenEventAsset :: !MintAsset
   }
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
+  deriving (Show, Eq, Ord)
 
 data MintTokenEventLocation = MintTokenEventLocation
   { _mintTokenEventBlockNo :: !C.BlockNo
   , _mintTokenEventTxId :: !C.TxId
   , _mintTokenEventIndexInBlock :: !TxIndexInBlock
   }
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
+  deriving (Show, Eq, Ord)
 
 data MintAsset = MintAsset
   { _mintAssetPolicyId :: !C.PolicyId
@@ -183,14 +171,14 @@ data MintAsset = MintAsset
   , _mintAssetRedeemer :: !(Maybe MintAssetRedeemer)
   -- ^ Nothing if the 'PolicyId' is a simple script, so no redeemers are provided
   }
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
+  deriving (Show, Eq, Ord)
 
 -- The redeemer of a Plutus minting script along with it's hash.
 data MintAssetRedeemer = MintAssetRedeemer
   { _mintAssetRedeemerData :: !C.ScriptData
   , _mintAssetRedeemerHash :: !(C.Hash C.ScriptData)
   }
-  deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
+  deriving (Eq, Ord, Show)
 
 data QueryByAssetId event = QueryByAssetId
   { _queryByAssetIdPolicyId :: !C.PolicyId
@@ -201,29 +189,8 @@ data QueryByAssetId event = QueryByAssetId
   }
   deriving (Show, Generic)
 
-instance FromJSON (QueryByAssetId event) where
-  parseJSON =
-    let parseFields v = do
-          policyId <- v .: "policyId"
-          mAssetName <- v .:? "assetName"
-          mEventType <- v .:? "eventType"
-          mqUpperSlotNo <- v .:? "createdBeforeSlotNo"
-          mLowerTxId <- v .:? "afterTx"
-          pure $ QueryByAssetId policyId mAssetName mEventType mqUpperSlotNo mLowerTxId
-     in Aeson.withObject "QueryByAssetId" parseFields
-
-instance ToJSON (QueryByAssetId event) where
-  toJSON (QueryByAssetId policyId assetName eventType createdBeforeSlotNo afterTx) =
-    object
-      [ "policyId" .= policyId
-      , "assetName" .= assetName
-      , "eventType" .= eventType
-      , "createdBeforeSlotNo" .= createdBeforeSlotNo
-      , "afterTx" .= afterTx
-      ]
-
 data EventType = MintEventType | BurnEventType
-  deriving (Show, Generic, FromJSON, ToJSON)
+  deriving (Show, Generic)
 
 Lens.makeLenses ''MintTokenBlockEvents
 Lens.makeLenses ''MintTokenEvent
@@ -483,10 +450,7 @@ allBurnEvents (MintTokenBlockEvents events) =
       NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0) events
 
 newtype ByTargetAssetIdsArgs = ByTargetAssetIdsArgs (NonEmpty (C.PolicyId, Maybe C.AssetName))
-  deriving (Show, Eq, Ord, Generic)
-
-deriving anyclass instance FromJSON ByTargetAssetIdsArgs
-deriving anyclass instance ToJSON ByTargetAssetIdsArgs
+  deriving (Show, Eq, Ord)
 
 -- | Defunctionalisation of queries
 data MintTokenEventsMatchingQuery event
@@ -494,7 +458,7 @@ data MintTokenEventsMatchingQuery event
   | AllMintEvents
   | AllBurnEvents
   | ByTargetAssetIds ByTargetAssetIdsArgs
-  deriving (Show, Eq, Ord, Generic, FromJSON, ToJSON)
+  deriving (Show, Eq, Ord)
 
 -- | Evaluator for 'MintTokenEventsMatchingQuery'
 evalMintTokenEventsMatchingQuery

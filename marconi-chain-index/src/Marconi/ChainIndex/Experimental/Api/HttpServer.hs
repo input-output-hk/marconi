@@ -11,18 +11,23 @@
 module Marconi.ChainIndex.Experimental.Api.HttpServer where
 
 import Cardano.Api (AddressAny, serialiseAddress)
+import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
-import Control.Lens (makeLenses, view, (^.))
+import Control.Lens (makeLenses, view, (^.), (^?))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask, lift)
 import Data.Aeson qualified as Aeson
 import Data.ByteString qualified as BS
+import Data.List.NonEmpty qualified as NonEmpty
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text)
 import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Marconi.ChainIndex.Experimental.Api.Routes (
   API,
+  BurnTokenEventResult (BurnTokenEventResult),
+  GetBurnTokenEventsParams (GetBurnTokenEventsParams),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
   JsonRpcAPI,
   RestAPI,
  )
@@ -33,6 +38,17 @@ import Marconi.ChainIndex.Experimental.Indexers (
   -- queryableUtxo,
  )
 import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
+  mintAssetAssetName,
+  mintAssetQuantity,
+  mintAssetRedeemer,
+  mintAssetRedeemerData,
+  mintAssetRedeemerHash,
+  mintTokenEventAsset,
+  mintTokenEventBlockNo,
+  mintTokenEventLocation,
+  mintTokenEventTxId,
+ )
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
@@ -40,6 +56,7 @@ import Marconi.Core.JsonRpc (
   ReaderHandler,
   ReaderServer,
   catchHttpHandlerExceptions,
+  dimapHandler,
   hoistReaderHandler,
   mkHttpRequestTracer,
   queryHttpReaderHandler,
@@ -96,7 +113,7 @@ jsonRpcServer =
     :<|> getTargetAddressesQueryHandler
     :<|> getEpochStakePoolDelegationHandler
     :<|> getEpochNonceHandler
-    :<|> getMintTokensByAssetIdHandler
+    :<|> getBurnTokenEventsHandler
 
 -- | Echo a message back as a JSON-RPC response. Used for testing the server.
 echo
@@ -129,7 +146,7 @@ getEpochNonceHandler
       (Either (JsonRpcErr String) (Core.Result EpochState.NonceByEpochNoQuery))
 getEpochNonceHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
 
-getMintTokensByAssetIdHandler
+getMintingPolicyHashTxHandler
   :: MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
   -> ReaderHandler
       HttpServerConfig
@@ -141,10 +158,66 @@ getMintTokensByAssetIdHandler
               )
           )
       )
-getMintTokensByAssetIdHandler =
+getMintingPolicyHashTxHandler =
   queryHttpReaderHandler
     (configQueryables . queryableMintToken)
     . Core.WithStability
+
+getBurnTokenEventsHandler
+  :: GetBurnTokenEventsParams
+  -> ReaderHandler HttpServerConfig (Either (JsonRpcErr String) GetBurnTokenEventsResult)
+getBurnTokenEventsHandler = dimapHandler mapQuery mapResults getMintingPolicyHashTxHandler
+  where
+    mapQuery
+      :: GetBurnTokenEventsParams
+      -> MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
+    mapQuery (GetBurnTokenEventsParams policyId assetName beforeSlotNo afterTx) =
+      MintTokenEvent.QueryByAssetId
+        policyId
+        assetName
+        (Just MintTokenEvent.BurnEventType)
+        beforeSlotNo
+        afterTx
+    mapResults
+      :: [ Core.Stability
+            ( Core.Timed
+                (Core.Point MintTokenEvent.MintTokenBlockEvents)
+                MintTokenEvent.MintTokenBlockEvents
+            )
+         ]
+      -> GetBurnTokenEventsResult
+    mapResults events = GetBurnTokenEventsResult $ mapResult =<< events
+    mapResult
+      :: Core.Stability
+          ( Core.Timed
+              C.ChainPoint
+              MintTokenEvent.MintTokenBlockEvents
+          )
+      -> [BurnTokenEventResult]
+    mapResult res = case res of
+      Core.Stable x -> mapTimed True x
+      Core.Volatile x -> mapTimed False x
+    mapTimed
+      :: Bool
+      -> Core.Timed (Core.Point MintTokenEvent.MintTokenBlockEvents) MintTokenEvent.MintTokenBlockEvents
+      -> [BurnTokenEventResult]
+    mapTimed isStable (Core.Timed point (MintTokenEvent.MintTokenBlockEvents events)) =
+      mapEvent point isStable <$> NonEmpty.toList events
+    mapEvent :: C.ChainPoint -> Bool -> MintTokenEvent.MintTokenEvent -> BurnTokenEventResult
+    mapEvent chainPoint isStable event =
+      let (slotNo, headerHash) = case chainPoint of
+            (C.ChainPoint sn hh) -> (sn, hh)
+            C.ChainPointAtGenesis -> (0, "genesis")
+       in BurnTokenEventResult
+            slotNo
+            headerHash
+            (event ^. mintTokenEventLocation . mintTokenEventBlockNo)
+            (event ^. mintTokenEventLocation . mintTokenEventTxId)
+            (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerHash)
+            (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerData)
+            (event ^. mintTokenEventAsset . mintAssetAssetName)
+            (abs $ event ^. mintTokenEventAsset . mintAssetQuantity)
+            isStable
 
 --------------
 -- REST API --
