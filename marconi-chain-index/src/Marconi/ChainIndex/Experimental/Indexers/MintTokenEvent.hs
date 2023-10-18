@@ -1,7 +1,5 @@
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -145,7 +143,7 @@ newtype MintTokenEventConfig = MintTokenEventConfig
 newtype MintTokenBlockEvents = MintTokenBlockEvents
   { _mintTokenEvents :: NonEmpty MintTokenEvent
   }
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord)
 
 {- | Single minting event. This is the datatype was will be used to store the events in the database
 (not 'MintTokenBlockEvents'). More specifically, we will store 'Core.Timed (Core.Point
@@ -155,14 +153,14 @@ data MintTokenEvent = MintTokenEvent
   { _mintTokenEventLocation :: !MintTokenEventLocation
   , _mintTokenEventAsset :: !MintAsset
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 data MintTokenEventLocation = MintTokenEventLocation
   { _mintTokenEventBlockNo :: !C.BlockNo
   , _mintTokenEventTxId :: !C.TxId
   , _mintTokenEventIndexInBlock :: !TxIndexInBlock
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 data MintAsset = MintAsset
   { _mintAssetPolicyId :: !C.PolicyId
@@ -171,7 +169,7 @@ data MintAsset = MintAsset
   , _mintAssetRedeemer :: !(Maybe MintAssetRedeemer)
   -- ^ Nothing if the 'PolicyId' is a simple script, so no redeemers are provided
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 -- The redeemer of a Plutus minting script along with it's hash.
 data MintAssetRedeemer = MintAssetRedeemer
@@ -187,10 +185,10 @@ data QueryByAssetId event = QueryByAssetId
   , _queryByAssetIdUpperSlotNo :: !(Maybe C.SlotNo)
   , _queryByAssetIdLowerTxId :: !(Maybe C.TxId)
   }
-  deriving (Show, Generic)
+  deriving (Show)
 
 data EventType = MintEventType | BurnEventType
-  deriving (Show, Generic)
+  deriving (Show)
 
 Lens.makeLenses ''MintTokenBlockEvents
 Lens.makeLenses ''MintTokenEvent
