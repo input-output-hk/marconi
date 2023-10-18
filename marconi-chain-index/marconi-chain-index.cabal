@@ -346,6 +346,7 @@ test-suite marconi-chain-index-test
   other-modules:
     Spec.Marconi.ChainIndex.CLI
     Spec.Marconi.ChainIndex.Coordinator
+    Spec.Marconi.ChainIndex.Experimental.Api.Routes
     Spec.Marconi.ChainIndex.Experimental.Indexers
     Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo
     Spec.Marconi.ChainIndex.Experimental.Indexers.ChainTip

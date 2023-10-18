@@ -35,7 +35,6 @@ import Data.ByteString qualified as BS
 import Data.Function (on)
 import Data.List (find, sortBy)
 import Data.Maybe (catMaybes, mapMaybe)
-import GHC.Generics (Generic)
 import Marconi.Core.Class (
   AppendResult (appendResult),
   IsSync (lastStablePoint),
@@ -285,7 +284,7 @@ instance
 
 -- | Represents whether an event is considered to stable or not.
 data Stability a = Stable a | Volatile a
-  deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Generic)
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
 instance Comonad Stability where
   extract (Stable x) = x

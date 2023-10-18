@@ -2,38 +2,26 @@
 
 module Spec.Marconi.ChainIndex.Experimental.Api.Routes (tests) where
 
-import Cardano.Api (
-  PolicyId (PolicyId),
-  getScriptData,
-  hashScriptDataBytes,
- )
-import Data.Aeson (eitherDecode, encode)
+import Cardano.Api qualified as C
+import Data.Aeson qualified as Aeson
 import Data.String (fromString)
-import Gen.Marconi.ChainIndex.Types (
-  genBlockNo,
-  genHashBlockHeader,
-  genQuantity,
-  genSlotNo,
- )
+import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (
   Property,
   forAll,
   property,
   tripping,
  )
-import Hedgehog.Gen (alphaNum, integral, list, maybe, string)
-import Hedgehog.Range (linear)
-import Marconi.Sidechain.Api.Routes (
-  BurnTokenEventResult (BurnTokenEventResult),
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
+import Marconi.ChainIndex.Experimental.Api.Routes (
+  BurnTokenEventResult (
+    BurnTokenEventResult
+  ),
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-import Test.Gen.Cardano.Api.Typed (
-  genAssetName,
-  genHashableScriptData,
-  genScriptHash,
-  genTxId,
- )
+import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -59,24 +47,24 @@ propJSONRountripGetBurnTokenEventsParams = property $ do
   r <-
     forAll $
       GetBurnTokenEventsParams
-        <$> (PolicyId <$> genScriptHash)
-        <*> (fmap fromString <$> Hedgehog.Gen.maybe (string (linear 1 10) alphaNum))
-        <*> (Hedgehog.Gen.maybe $ integral (linear 1 10))
-        <*> Hedgehog.Gen.maybe genTxId
-  tripping r encode eitherDecode
+        <$> (C.PolicyId <$> CGen.genScriptHash)
+        <*> (fmap fromString <$> Gen.maybe (Gen.string (Range.linear 1 10) Gen.alphaNum))
+        <*> (Gen.maybe $ C.SlotNo . fromInteger <$> Gen.integral (Range.linear 1 10))
+        <*> Gen.maybe CGen.genTxId
+  tripping r Aeson.encode Aeson.eitherDecode
 
 propJSONRountripGetBurnTokenEventsResult :: Property
 propJSONRountripGetBurnTokenEventsResult = property $ do
-  r <- fmap GetBurnTokenEventsResult $ forAll $ list (linear 0 10) $ do
-    hsd <- Hedgehog.Gen.maybe genHashableScriptData
+  r <- fmap GetBurnTokenEventsResult $ forAll $ Gen.list (Range.linear 0 10) $ do
+    hsd <- Gen.maybe CGen.genHashableScriptData
     BurnTokenEventResult
-      <$> genSlotNo
-      <*> genHashBlockHeader
-      <*> genBlockNo
-      <*> genTxId
-      <*> pure (fmap hashScriptDataBytes hsd)
-      <*> pure (fmap getScriptData hsd)
-      <*> genAssetName
-      <*> genQuantity (linear 0 10)
+      <$> Gen.genSlotNo
+      <*> Gen.genHashBlockHeader
+      <*> Gen.genBlockNo
+      <*> CGen.genTxId
+      <*> pure (fmap C.hashScriptDataBytes hsd)
+      <*> pure (fmap C.getScriptData hsd)
+      <*> CGen.genAssetName
+      <*> Gen.genQuantity (Range.linear 0 10)
       <*> pure True
-  tripping r encode eitherDecode
+  tripping r Aeson.encode Aeson.eitherDecode
