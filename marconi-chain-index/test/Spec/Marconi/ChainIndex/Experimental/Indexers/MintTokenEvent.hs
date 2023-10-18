@@ -571,7 +571,7 @@ queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
   -- If assetIds is Nothing, query does no filtering (looks for all ids).
   let query = case assetIds of
         Just x -> MintTokenEvent.ByTargetAssetIds (MintTokenEvent.ByTargetAssetIdsArgs x)
-        Nothing -> MintTokenEvent.AllBurnEvents
+        Nothing -> MintTokenEvent.AllEvents
   H.evalExceptT $ Core.queryLatest query indexer
 
 getPolicyIdFromAssetId :: C.AssetId -> C.PolicyId
