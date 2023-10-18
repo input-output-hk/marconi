@@ -218,6 +218,9 @@ instance
 -- | Get the non empty events from the given point (excluded) to the one of the query (included)
 newtype EventsFromQuery event = EventsFromQuery {startingPoint :: Point event}
 
+{- | A wrapper representing the demand that the result of a @query@ should come with 'Stability'
+    data
+-}
 newtype WithStability query = WithStability {unWithStability :: query}
 
 type instance Result (EventsFromQuery event) = [Timed (Point event) event]
