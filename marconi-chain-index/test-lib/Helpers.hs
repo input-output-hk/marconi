@@ -94,7 +94,7 @@ cardano-testnet related code should change anyway.
 emptyTxBodyContent
   :: (C.IsShelleyBasedEra era)
   => (C.TxValidityLowerBound era, C.TxValidityUpperBound era)
-  -> C.ProtocolParameters
+  -> C.LedgerProtocolParameters era
   -> C.TxBodyContent C.BuildTx era
 emptyTxBodyContent validityRange pparams =
   C.TxBodyContent
@@ -115,20 +115,20 @@ emptyTxBodyContent validityRange pparams =
     , C.txUpdateProposal = C.TxUpdateProposalNone
     , C.txMintValue = C.TxMintNone
     , C.txScriptValidity = C.TxScriptValidityNone
-    , C.txGovernanceActions = C.TxGovernanceActionsNone
-    , C.txVotes = C.TxVotesNone
+    , C.txProposalProcedures = Nothing
+    , C.txVotingProcedures = Nothing
     }
 
-getProtocolParams
+getLedgerProtocolParams
   :: forall era m
    . (C.IsShelleyBasedEra era, MonadIO m, MonadTest m)
   => C.LocalNodeConnectInfo C.CardanoMode
-  -> m C.ProtocolParameters
-getProtocolParams localNodeConnectInfo = do
+  -> m (C.LedgerProtocolParameters era)
+getLedgerProtocolParams localNodeConnectInfo = do
   eraInMode <-
     H.nothingFail $
       C.toEraInMode (C.shelleyBasedToCardanoEra (C.shelleyBasedEra @era)) C.CardanoMode
-  H.leftFailM . H.leftFailM . liftIO $
+  fmap C.LedgerProtocolParameters . H.leftFailM . H.leftFailM . liftIO $
     C.queryNodeLocalState localNodeConnectInfo Nothing $
       C.QueryInEra eraInMode $
         C.QueryInShelleyBasedEra C.shelleyBasedEra C.QueryProtocolParameters
@@ -219,17 +219,18 @@ mkTransferTx
   -> C.Lovelace
   -> m (C.Tx era, C.TxBody era)
 mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
-  pparams <- getProtocolParams @era con
+  ledgerPP <- getLedgerProtocolParams @era con
+  let apiPP = C.fromLedgerPParams C.shelleyBasedEra $ C.unLedgerProtocolParameters ledgerPP
   (txIns, totalLovelace) <- getAddressTxInsValue @era con from
   let tx0 =
-        (emptyTxBodyContent validityRange pparams)
+        (emptyTxBodyContent validityRange ledgerPP)
           { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
           , C.txOuts = [mkAddressAdaTxOut to totalLovelace]
           }
   txBody0 :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx0
   let fee =
         calculateFee
-          pparams
+          apiPP
           (length $ C.txIns tx0)
           (length $ C.txOuts tx0)
           0

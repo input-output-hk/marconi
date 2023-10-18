@@ -120,7 +120,7 @@ querySecurityParamEra shelleyBasedEra networkId socketPath = do
     localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
     localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
 
-    queryInMode :: C.QueryInMode C.CardanoMode (Either EraMismatch C.GenesisParameters)
+    queryInMode :: C.QueryInMode C.CardanoMode (Either EraMismatch (C.GenesisParameters C.ShelleyEra))
     queryInMode =
       C.QueryInEra (toShelleyEraInCardanoMode shelleyBasedEra) $
         C.QueryInShelleyBasedEra shelleyBasedEra C.QueryGenesisParameters

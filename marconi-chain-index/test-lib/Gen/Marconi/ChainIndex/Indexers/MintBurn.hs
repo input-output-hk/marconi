@@ -93,26 +93,27 @@ genTxWithMint
 genTxWithMint txMintValue = do
   txbc <- CGen.genTxBodyContent C.BabbageEra
   txIn <- CGen.genTxIn
-  pparams' :: C.ProtocolParameters <- CGen.genProtocolParameters C.BabbageEra
-  let pparams =
-        C.BuildTxWith $
-          Just
-            pparams'
-              { C.protocolParamUTxOCostPerByte = Just 1
-              , C.protocolParamPrices = Just $ C.ExecutionUnitPrices 1 1
-              , C.protocolParamMaxTxExUnits = Just $ C.ExecutionUnits 1 1
-              , C.protocolParamMaxBlockExUnits = Just $ C.ExecutionUnits 1 1
-              , C.protocolParamMaxValueSize = Just 1
-              , C.protocolParamCollateralPercent = Just 1
-              , C.protocolParamMaxCollateralInputs = Just 1
-              }
-      txbc' =
-        txbc
-          { C.txMintValue = txMintValue
-          , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra [txIn]
-          , C.txProtocolParams = pparams
+  initialPP <- CGen.genProtocolParameters C.BabbageEra
+  let updatedPP =
+        initialPP
+          { C.protocolParamUTxOCostPerByte = Just 1
+          , C.protocolParamPrices = Just $ C.ExecutionUnitPrices 1 1
+          , C.protocolParamMaxTxExUnits = Just $ C.ExecutionUnits 1 1
+          , C.protocolParamMaxBlockExUnits = Just $ C.ExecutionUnits 1 1
+          , C.protocolParamMaxValueSize = Just 1
+          , C.protocolParamCollateralPercent = Just 1
+          , C.protocolParamMaxCollateralInputs = Just 1
           }
   pure $ do
+    ledgerPP <-
+      first C.TxBodyProtocolParamsConversionError $
+        C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage updatedPP
+    let txbc' =
+          txbc
+            { C.txMintValue = txMintValue
+            , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra [txIn]
+            , C.txProtocolParams = C.BuildTxWith $ Just ledgerPP
+            }
     txb <- C.createAndValidateTransactionBody txbc'
     pure $ C.signShelleyTransaction txb []
 

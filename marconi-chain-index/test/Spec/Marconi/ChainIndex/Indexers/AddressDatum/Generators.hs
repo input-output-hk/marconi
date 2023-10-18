@@ -6,6 +6,7 @@ module Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as C
 import Gen.Marconi.ChainIndex.Types (genProtocolParametersForPlutusScripts, genTxOutTxContext)
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified as Gen
@@ -28,14 +29,18 @@ genTxBodyContentWithPlutusScripts = do
   let txMetadata = C.TxMetadataNone
   let txAuxScripts = C.TxAuxScriptsNone
   let txExtraKeyWits = C.TxExtraKeyWitnessesNone
-  txProtocolParams <- C.BuildTxWith . Just <$> genProtocolParametersForPlutusScripts
+  basicPP <- genProtocolParametersForPlutusScripts
+  ledgerPP <-
+    either (fail . C.displayError) pure $
+      C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage basicPP
+  let txProtocolParams = C.BuildTxWith $ Just ledgerPP
   let txWithdrawals = C.TxWithdrawalsNone
   let txCertificates = C.TxCertificatesNone
   let txUpdateProposal = C.TxUpdateProposalNone
   let txMintValue = C.TxMintNone
   let txScriptValidity = C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid
-  let txGovernanceActions = C.TxGovernanceActionsNone
-  let txVotes = C.TxVotesNone
+  let txProposalProcedures = Nothing
+  let txVotingProcedures = Nothing
 
   pure $
     C.TxBodyContent
@@ -56,8 +61,8 @@ genTxBodyContentWithPlutusScripts = do
       , C.txUpdateProposal
       , C.txMintValue
       , C.txScriptValidity
-      , C.txGovernanceActions
-      , C.txVotes
+      , C.txProposalProcedures
+      , C.txVotingProcedures
       }
   where
     -- Copied from cardano-api. Delete when this function is reexported

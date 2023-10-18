@@ -76,7 +76,7 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api          ^>=8.8
+    , cardano-api          ^>=8.20
     , cardano-ledger-core
     , cardano-slotting     ^>=0.1.1.1
     , iohk-monitoring
@@ -152,7 +152,7 @@ library db-utils
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:   cardano-api ^>=8.8
+  build-depends:   cardano-api ^>=8.20
 
   ------------------------
   -- Non-IOG dependencies
@@ -217,10 +217,11 @@ test-suite marconi-sidechain-test
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, gen}  ^>=8.8
+    , cardano-api             ^>=8.20
+    , cardano-api-gen         ^>=8.2
     , cardano-crypto-class
     , cardano-ledger-shelley
-    , cardano-slotting                ^>=0.1.1.1
+    , cardano-slotting        ^>=0.1.1.1
     , hedgehog-extras
     , iohk-monitoring
     , plutus-tx-plugin
