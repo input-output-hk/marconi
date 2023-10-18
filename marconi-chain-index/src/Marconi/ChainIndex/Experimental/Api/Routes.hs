@@ -140,18 +140,29 @@ data BurnTokenEventResult
   deriving (Eq, Ord, Show, Generic)
 
 instance ToJSON BurnTokenEventResult where
-  toJSON (BurnTokenEventResult slotNo bhh bn txId redh red an qty isStable) =
-    Aeson.object
-      [ "slotNo" .= slotNo
-      , "blockHeaderHash" .= bhh
-      , "blockNo" .= bn
-      , "txId" .= txId
-      , "redeemerHash" .= redh
-      , "redeemer" .= red
-      , "assetName" .= an
-      , "burnAmount" .= qty
-      , "isStable" .= isStable
-      ]
+  toJSON
+    ( BurnTokenEventResult
+        slotNo
+        blockHeaderHash
+        blockNo
+        txId
+        redeemerHash
+        redeemer
+        assetName'
+        burnAmount
+        isStable
+      ) =
+      Aeson.object
+        [ "slotNo" .= slotNo
+        , "blockHeaderHash" .= blockHeaderHash
+        , "blockNo" .= blockNo
+        , "txId" .= txId
+        , "redeemerHash" .= redeemerHash
+        , "redeemer" .= redeemer
+        , "assetName" .= assetName'
+        , "burnAmount" .= burnAmount
+        , "isStable" .= isStable
+        ]
 
 instance FromJSON BurnTokenEventResult where
   parseJSON =

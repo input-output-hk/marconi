@@ -206,7 +206,7 @@ getBurnTokenEventsHandler = dimapHandler mapQuery mapResults getMintingPolicyHas
     mapEvent :: C.ChainPoint -> Bool -> MintTokenEvent.MintTokenEvent -> BurnTokenEventResult
     mapEvent chainPoint isStable event =
       let (slotNo, headerHash) = case chainPoint of
-            (C.ChainPoint sn hh) -> (sn, hh)
+            (C.ChainPoint slot hash) -> (slot, hash)
             C.ChainPointAtGenesis -> (0, "genesis")
        in BurnTokenEventResult
             slotNo
