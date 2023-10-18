@@ -14,6 +14,7 @@ module Marconi.Core.Query (
   latestEvent,
   EventsFromQuery (EventsFromQuery),
   Stability (Stable, Volatile),
+  isStable,
   queryWithStability,
   WithStability (WithStability, unWithStability),
   withStability,
@@ -285,6 +286,11 @@ instance
 -- | Represents whether an event is considered to stable or not.
 data Stability a = Stable a | Volatile a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
+
+-- | Tests for stability
+isStable :: Stability a -> Bool
+isStable (Stable _) = True
+isStable (Volatile _) = False
 
 instance Comonad Stability where
   extract (Stable x) = x

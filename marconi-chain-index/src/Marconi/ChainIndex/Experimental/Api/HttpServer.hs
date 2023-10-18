@@ -13,6 +13,7 @@ module Marconi.ChainIndex.Experimental.Api.HttpServer where
 import Cardano.Api (AddressAny, serialiseAddress)
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
+import Control.Comonad (extract)
 import Control.Lens (makeLenses, view, (^.), (^?))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask, lift)
@@ -48,6 +49,7 @@ import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   mintTokenEventBlockNo,
   mintTokenEventLocation,
   mintTokenEventTxId,
+  mintTokenEvents,
  )
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Types (SecurityParam)
@@ -178,6 +180,8 @@ getBurnTokenEventsHandler = dimapHandler mapQuery mapResults getMintingPolicyHas
         (Just MintTokenEvent.BurnEventType)
         beforeSlotNo
         afterTx
+
+    -- Map our internal events to our 'getBurnTokenEventsHandler' response object
     mapResults
       :: [ Core.Stability
             ( Core.Timed
@@ -187,22 +191,22 @@ getBurnTokenEventsHandler = dimapHandler mapQuery mapResults getMintingPolicyHas
          ]
       -> GetBurnTokenEventsResult
     mapResults events = GetBurnTokenEventsResult $ mapResult =<< events
+
+    {- Map a block's worth of internal events to the components of our 'getBurnTokenEventsHandler'
+      response object -}
     mapResult
-      :: Core.Stability
-          ( Core.Timed
-              C.ChainPoint
-              MintTokenEvent.MintTokenBlockEvents
-          )
+      :: Core.Stability (Core.Timed C.ChainPoint MintTokenEvent.MintTokenBlockEvents)
       -> [BurnTokenEventResult]
-    mapResult res = case res of
-      Core.Stable x -> mapTimed True x
-      Core.Volatile x -> mapTimed False x
-    mapTimed
-      :: Bool
-      -> Core.Timed (Core.Point MintTokenEvent.MintTokenBlockEvents) MintTokenEvent.MintTokenBlockEvents
-      -> [BurnTokenEventResult]
-    mapTimed isStable (Core.Timed point (MintTokenEvent.MintTokenBlockEvents events)) =
-      mapEvent point isStable <$> NonEmpty.toList events
+    mapResult res =
+      let stable = Core.isStable res
+          timed = extract res
+       in mapEvent
+            (timed ^. Core.point)
+            stable
+            <$> NonEmpty.toList (timed ^. Core.event . mintTokenEvents)
+
+    {- Map an internal event to a single component of our 'getBurnTokenEventsHandler' response
+      object -}
     mapEvent :: C.ChainPoint -> Bool -> MintTokenEvent.MintTokenEvent -> BurnTokenEventResult
     mapEvent chainPoint isStable event =
       let (slotNo, headerHash) = case chainPoint of
