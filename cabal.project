@@ -23,6 +23,13 @@ packages: legacy/marconi-core-legacy
           doc/read-the-docs-site
           marconi-sidechain
           marconi-starter
+          /Users/sjoerdvisscher/Documents/GitHub/cardano-node-emulator/freer-extras
+          /Users/sjoerdvisscher/Documents/GitHub/cardano-node-emulator/plutus-ledger
+          /Users/sjoerdvisscher/Documents/GitHub/cardano-node-emulator/plutus-script-utils
+          /Users/sjoerdvisscher/Documents/GitHub/cardano-node-emulator/cardano-node-emulator
+          /Users/sjoerdvisscher/Documents/GitHub/cardano-node-emulator/cardano-node-socket-emulator
+          /Users/sjoerdvisscher/Documents/GitHub/quickcheck-contractmodel/quickcheck-contractmodel
+          /Users/sjoerdvisscher/Documents/GitHub/quickcheck-contractmodel/quickcheck-threatmodel
 
 -- We never, ever, want this.
 write-ghc-environment-files: never
