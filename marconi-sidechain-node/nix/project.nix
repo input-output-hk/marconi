@@ -29,8 +29,6 @@ let
 
       modules = [{
         packages = {
-          marconi-sidechain-node.package.buildable = !isCross;
-
           # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
           marconi-sidechain-node.ghcOptions = [ "-Werror" ];
         };
@@ -50,12 +48,8 @@ let
 
   project = lib.iogx.mkHaskellProject {
     inherit cabalProject;
-    includeMingwW64HydraJobs = true;
+    includeMingwW64HydraJobs = false;
     shellArgs = repoRoot.nix.shell;
-    readTheDocs = {
-      enable = true;
-      siteFolder = "doc/read-the-docs-site";
-    };
   };
 
 in
