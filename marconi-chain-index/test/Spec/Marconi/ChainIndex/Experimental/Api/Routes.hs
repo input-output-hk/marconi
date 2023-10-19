@@ -14,10 +14,8 @@ import Hedgehog (
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Marconi.ChainIndex.Experimental.Api.Routes (
-  BurnTokenEventResult (
-    BurnTokenEventResult
-  ),
+import Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.MintBurnToken (
+  BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
@@ -58,8 +56,8 @@ propJSONRountripGetBurnTokenEventsResult = property $ do
   r <- fmap GetBurnTokenEventsResult $ forAll $ Gen.list (Range.linear 0 10) $ do
     hsd <- Gen.maybe CGen.genHashableScriptData
     BurnTokenEventResult
-      <$> Gen.genSlotNo
-      <*> Gen.genHashBlockHeader
+      <$> (Just <$> Gen.genSlotNo)
+      <*> (Just <$> Gen.genHashBlockHeader)
       <*> Gen.genBlockNo
       <*> CGen.genTxId
       <*> pure (fmap C.hashScriptDataBytes hsd)

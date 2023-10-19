@@ -65,7 +65,20 @@ library
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
     Marconi.ChainIndex.Experimental.Api.HttpServer
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.Echo
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.EpochState
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.MintBurnToken
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Routes
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Server
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Metrics
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Params
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Time
+    Marconi.ChainIndex.Experimental.Api.Rest.Routes
+    Marconi.ChainIndex.Experimental.Api.Rest.Server
     Marconi.ChainIndex.Experimental.Api.Routes
+    Marconi.ChainIndex.Experimental.Api.Types
     Marconi.ChainIndex.Experimental.Extract.WithDistance
     Marconi.ChainIndex.Experimental.Indexers
     Marconi.ChainIndex.Experimental.Indexers.BlockInfo
