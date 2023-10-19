@@ -7,8 +7,8 @@
 module Marconi.ChainIndex.Logging (
   LastSyncStats (..),
   LastSyncLog (..),
-  renderLastSyncLog,
   chainSyncEventStreamLogging,
+  mkMarconiLogger,
 ) where
 
 import Cardano.Api qualified as C
@@ -17,6 +17,7 @@ import Cardano.Api.Extended.Streaming (
   ChainSyncEvent (RollBackward, RollForward),
  )
 import Cardano.BM.Trace (Trace, logInfo)
+import Cardano.BM.Tracing (contramap)
 import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
@@ -31,11 +32,21 @@ import Data.Time (
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
-import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty, (<+>))
-import Prettyprinter.Render.Text (renderStrict)
+import Prettyprinter (Doc, Pretty (pretty), (<+>))
+import Prettyprinter qualified as Pretty
+import Prettyprinter.Render.Text qualified as Pretty
 import Streaming (Of, Stream, effect)
 import Streaming.Prelude qualified as S
 import Text.Printf (printf)
+
+mkMarconiLogger :: Trace m Text -> Trace m (Pretty.Doc ann)
+mkMarconiLogger =
+  contramap
+    ( (fmap . fmap)
+        ( Pretty.renderStrict
+            . Pretty.layoutPretty Pretty.defaultLayoutOptions
+        )
+    )
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats
@@ -70,7 +81,7 @@ instance Pretty LastSyncLog where
               <+> pretty cp
               <+> "and current node tip is"
               <+> pretty nt
-              <> "."
+                <> "."
 
           processingSummaryMsg timeSinceLastMsg =
             "Processed"
@@ -79,12 +90,12 @@ instance Pretty LastSyncLog where
               <+> pretty numRollBackwards
               <+> "rollbacks in the last"
               <+> pretty (formatTime defaultTimeLocale "%s" timeSinceLastMsg)
-              <> "s"
+                <> "s"
        in case (timeSinceLastMsgM, cp, nt) of
             (Nothing, _, _) ->
               "Starting from"
                 <+> pretty cp
-                <> "."
+                  <> "."
                 <+> currentTipMsg timeSinceLastMsgM
             (Just _, _, C.ChainTipAtGenesis) ->
               "Not syncing. Node tip is at Genesis"
@@ -93,7 +104,7 @@ instance Pretty LastSyncLog where
               "Synchronising (0%)."
                 <+> currentTipMsg timeSinceLastMsgM
                 <+> processingSummaryMsg timeSinceLastMsg
-                <> "."
+                  <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -102,7 +113,7 @@ instance Pretty LastSyncLog where
                     "Fully synchronised."
                       <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
-                      <> "."
+                        <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -116,14 +127,8 @@ instance Pretty LastSyncLog where
                       <+> processingSummaryMsg timeSinceLastMsg
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
-renderLastSyncLog :: LastSyncLog -> Text
-renderLastSyncLog syncLog =
-  renderStrict $
-    layoutPretty defaultLayoutOptions $
-      pretty syncLog
-
 chainSyncEventStreamLogging
-  :: Trace IO Text
+  :: Trace IO (Doc ann)
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
 chainSyncEventStreamLogging tracer s = effect $ do
@@ -174,7 +179,7 @@ chainSyncEventStreamLogging tracer s = effect $ do
               | otherwise -> False
 
       when shouldPrint $ do
-        logInfo tracer $ renderLastSyncLog $ LastSyncLog syncStats timeSinceLastMsg
+        logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
         modifyIORef' statsRef $ \stats ->
           stats
             { syncStatsNumBlocks = 0

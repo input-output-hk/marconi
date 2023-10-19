@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -39,7 +38,6 @@ import Text.Pretty.Simple (pShowDarkBg)
 
 -- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
 
-#ifndef mingw32_HOST_OS
 import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (
   newEmptyMVar,
@@ -47,16 +45,17 @@ import Control.Concurrent.MVar (
   tryPutMVar,
  )
 import Data.Functor (void)
+import Marconi.ChainIndex.Logging (mkMarconiLogger)
 import System.Posix.Signals (
   Handler (CatchOnce),
   installHandler,
   sigTERM,
  )
-#endif
 
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
   (trace, sb) <- defaultStdOutLogger appName
+  let marconiLogger = mkMarconiLogger trace
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
@@ -104,8 +103,7 @@ run appName = withGracefulTermination_ $ do
       pure cfg
     Nothing -> withLogFullError exitFailure "No node config path provided"
 
-  securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
-    Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+  securityParam <- withNodeConnectRetry marconiLogger retryConfig socketPath $ Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
 
   mindexers <-
     runExceptT $
@@ -133,7 +131,7 @@ run appName = withGracefulTermination_ $ do
   let runIndexer' =
         Runner.runIndexer
           ( Runner.RunIndexerConfig
-              trace
+              marconiLogger
               Runner.withDistanceAndTipPreprocessor
               retryConfig
               securityParam
@@ -173,7 +171,7 @@ getStartingPoint preferredStartingPoint indexerLastSyncPoint =
   this code is not necessary on Windows, and the `unix` package (which it depends upon) is not
   supported by Windows. As such, in order to be able to cross-compile, the following `if` is
   unfortunately required. -}
-#ifndef mingw32_HOST_OS
+
 {- | Ensure that @SIGTERM@ is handled gracefully, because it's how containers are stopped.
 
  @action@ will receive an 'AsyncCancelled' exception if @SIGTERM@ is received by the process.
@@ -198,7 +196,3 @@ withGracefulTermination action = do
 -- | Like 'withGracefulTermination' but ignoring the return value
 withGracefulTermination_ :: IO a -> IO ()
 withGracefulTermination_ = void . withGracefulTermination
-#else
-withGracefulTermination_ :: a -> a
-withGracefulTermination_ = id
-#endif

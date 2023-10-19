@@ -68,6 +68,7 @@ import Marconi.ChainIndex.Indexers.Utxo (
   UtxoIndexer,
   lessThanOrEqual,
  )
+import Marconi.ChainIndex.Logging (mkMarconiLogger)
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig), withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   IndexingDepth (MinIndexingDepth),
@@ -79,6 +80,7 @@ import Marconi.ChainIndex.Types (
  )
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
+import Prettyprinter (Doc)
 import System.Environment (getEnv)
 import System.FilePath ((</>))
 import Test.Tasty.Bench (bench, bgroup, defaultMain, nfIO)
@@ -109,9 +111,10 @@ main = do
 
   traceConfig <- defaultConfigStdout
   withTrace traceConfig "marconi-benchmark" $ \trace -> do
+    let marconiLogger = mkMarconiLogger trace
     -- Run concurrently the indexing and the testing. The testing is only run once the indexing is
     -- fully synced with the local running node.
-    race_ (runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar) $ do
+    race_ (runIndexerSyncing marconiLogger databaseDir nodeSocketPath indexerTVar) $ do
       putStrLn "Waiting for indexer to be fully synced..."
       waitUntilSynced databaseDir nodeSocketPath
       putStrLn "Finished syncing!"
@@ -119,7 +122,7 @@ main = do
 
 -- | Run the IO code which syncs the Marconi Utxo indexer with the local running Cardano node.
 runIndexerSyncing
-  :: Trace IO Text
+  :: Trace IO (Doc ann)
   -> FilePath
   -- ^ Marconi indexer database directory
   -> FilePath

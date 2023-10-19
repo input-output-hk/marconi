@@ -52,12 +52,12 @@ import Cardano.BM.Data.Trace (Trace)
 import Control.Lens.TH qualified as Lens
 import Data.Aeson qualified as Aeson
 import Data.Set.NonEmpty (NESet)
-import Data.Text (Text)
 import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Node.Client.Retry (RetryConfig)
+import Prettyprinter (Doc)
 
 -- | Type represents non empty set of Bech32 Shelley compatible addresses
 type TargetAddresses = NESet (C.Address C.ShelleyAddr)
@@ -123,8 +123,8 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     )
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig = RunIndexerConfig
-  { _runIndexerConfigTrace :: Trace IO Text
+data RunIndexerConfig ann = RunIndexerConfig
+  { _runIndexerConfigTrace :: Trace IO (Doc ann)
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
   , _runIndexerConfigNetworkId :: C.NetworkId
