@@ -170,6 +170,26 @@ instance
           (const blockInfoBeforeOrAtSlotNoQuery)
           (\(Core.EventsMatchingQuery p) -> parseResult p)
 
+instance
+  (MonadIO m, MonadError (Core.QueryError (Core.LatestEventsQuery BlockInfo)) m)
+  => Core.Queryable m BlockInfo (Core.LatestEventsQuery BlockInfo) Core.SQLiteIndexer
+  where
+  query =
+    let blockInfoBeforeOrAtSlotNoQuery :: SQL.Query
+        blockInfoBeforeOrAtSlotNoQuery =
+          [sql|
+          SELECT blockNo, blockTimestamp, epochNo,
+                 slotNo, blockHeaderHash
+          FROM blockInfo
+          WHERE slotNo <= :slotNo
+          ORDER BY slotNo DESC
+          LIMIT n
+          |]
+     in Core.querySyncedOnlySQLiteIndexerWith
+          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
+          (const blockInfoBeforeOrAtSlotNoQuery)
+          (const id)
+
 fromBlockEratoBlockInfo
   :: C.Block era -> C.EpochNo -> POSIXTime -> BlockInfo
 fromBlockEratoBlockInfo (C.Block (C.BlockHeader _ _ blockNo') _) epochNo' posixTime =

@@ -100,8 +100,6 @@ data UtxoQueryAggregate m = forall
   -- ^ the source provider for the 'BlockInfo' table, usually a @BlockInfoIndexer@
   }
 
-Lens.makeLenses ''UtxoQueryAggregate
-
 -- | An alias for the 'SQLiteAggregateQuery' that handle the 'UtxoQueryEvent'
 type UtxoQueryIndexer m = Core.SQLiteAggregateQuery m C.ChainPoint UtxoQueryEvent
 
