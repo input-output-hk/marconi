@@ -1,4 +1,4 @@
-module Marconi.Tutorial.CLI where
+module Marconi.Starter.CLI where
 
 import Marconi.ChainIndex.CLI qualified as CLI
 import Options.Applicative qualified as Opt
@@ -28,5 +28,5 @@ optionsParser =
 programDescription :: Opt.InfoMod a
 programDescription =
   Opt.fullDesc
-    <> Opt.progDesc "marconi-tutorial"
-    <> Opt.header "Marconi tutorial executable"
+    <> Opt.progDesc "marconi-starter"
+    <> Opt.header "Marconi starter executable"

@@ -1,23 +1,23 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.Tutorial.Env where
+module Marconi.Starter.Env where
 
 import Cardano.BM.Trace (Trace)
 import Control.Lens (Lens', makeLenses)
 import Data.Text (Text)
 import Marconi.ChainIndex.Types (SecurityParam)
-import Marconi.Tutorial.CLI qualified as CLI
-import Marconi.Tutorial.Indexers.AddressCount (AddressCountStandardWorker)
+import Marconi.Starter.CLI qualified as CLI
+import Marconi.Starter.Indexers.AddressCount (AddressCountStandardWorker)
 
 data Env = Env
   { _envIndexers :: IndexersEnv
-  -- ^ Access the Tutorial indexers for querying purposes.
+  -- ^ Access the indexers for querying purposes.
   , _envCliArgs :: !CLI.Options
   , _envStdoutTrace :: !(Trace IO Text)
   , _securityParam :: !SecurityParam
   }
 
--- | Should contain all the indexers required by the tutorial.
+-- | Should contain all the indexers required by the app.
 newtype IndexersEnv = IndexersEnv
   { _addressCountIndexerEnv :: AddressCountIndexerEnv
   }

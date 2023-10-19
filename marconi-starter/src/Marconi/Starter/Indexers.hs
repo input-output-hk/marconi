@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Marconi.Tutorial.Indexers where
+module Marconi.Starter.Indexers where
 
 import Cardano.BM.Trace (logError)
 import Control.Lens (view, (^.))
@@ -17,10 +17,10 @@ import Marconi.ChainIndex.Experimental.Runner (
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
-import Marconi.Tutorial.CLI qualified as CLI
-import Marconi.Tutorial.Env (Env, envCliArgs, envStdoutTrace)
-import Marconi.Tutorial.Env qualified as Env
-import Marconi.Tutorial.Indexers.AddressCount qualified as AddressCount
+import Marconi.Starter.CLI qualified as CLI
+import Marconi.Starter.Env (Env, envCliArgs, envStdoutTrace)
+import Marconi.Starter.Env qualified as Env
+import Marconi.Starter.Indexers.AddressCount qualified as AddressCount
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
