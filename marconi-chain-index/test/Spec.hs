@@ -12,6 +12,7 @@ import Spec.Marconi.ChainIndex.Logging qualified as Logging
 
 -- TODO see tests below
 -- import Spec.Marconi.ChainIndex.Indexers.EpochStakepoolSize qualified as Indexers.EpochStakepoolSize
+import Spec.Marconi.ChainIndex.Experimental.Api.Routes qualified as Experimental.Api.Routes
 import Spec.Marconi.ChainIndex.Experimental.Indexers qualified as Experimental.Indexers
 import Spec.Marconi.ChainIndex.Indexers.MintBurn qualified as Indexers.MintBurn
 import Spec.Marconi.ChainIndex.Indexers.Utxo qualified as Indexers.Utxo
@@ -32,6 +33,7 @@ tests =
     , Indexers.MintBurn.tests
     , Indexers.AddressDatum.tests
     , Indexers.ScriptTx.tests
+    , Experimental.Api.Routes.tests
     , Experimental.Indexers.tests
     -- TODO Enable when test environemnt is reconfigured
     -- , EpochStakepoolSize.tests
