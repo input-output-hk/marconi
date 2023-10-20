@@ -1,23 +1,23 @@
 {-# LANGUAGE TypeApplications #-}
 
-module Marconi.Tutorial.Run where
+module Marconi.Starter.Run where
 
 import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Tracing (defaultConfigStdout)
+import Cardano.BM.Tracing (Trace, defaultConfigStdout)
 import Control.Concurrent.Async (race_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (runReaderT)
+import Data.Text (Text)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Types (MarconiTrace, SecurityParam)
+import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.ChainIndex.Utils qualified as Utils
-import Marconi.Tutorial.CLI qualified as CLI
-import Marconi.Tutorial.Env (Env (Env))
-import Marconi.Tutorial.HttpServer qualified as HttpServer
-import Marconi.Tutorial.Indexers (buildIndexersEnv)
-import Marconi.Tutorial.Indexers qualified as Indexers
+import Marconi.Starter.CLI qualified as CLI
+import Marconi.Starter.Env (Env (Env))
+import Marconi.Starter.HttpServer qualified as HttpServer
+import Marconi.Starter.Indexers (buildIndexersEnv)
+import Marconi.Starter.Indexers qualified as Indexers
 import System.Directory (createDirectoryIfMissing)
 
 runApp :: IO ()
@@ -26,7 +26,7 @@ runApp = do
 
   traceConfig <- defaultConfigStdout
 
-  withTrace traceConfig "marconi-tutorial" $ \stdoutTrace -> do
+  withTrace traceConfig "marconi-starter" $ \stdoutTrace -> do
     let marconiTrace = mkMarconiTrace stdoutTrace
     securityParam <- querySecuritParamWithRetry marconiTrace cliOptions
     liftIO $ createDirectoryIfMissing True (CLI.optionsDbPath cliOptions)
@@ -37,7 +37,7 @@ runApp = do
       (runReaderT HttpServer.runHttpServer env)
 
 querySecuritParamWithRetry
-  :: MarconiTrace IO ann
+  :: Trace IO Text
   -> CLI.Options
   -> IO SecurityParam
 querySecuritParamWithRetry stdoutTrace cliOptions = do

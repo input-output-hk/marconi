@@ -1,5 +1,5 @@
 cabal-version: 3.0
-name:          marconi-tutorial
+name:          marconi-starter
 version:       1.2.0.0
 license:       Apache-2.0
 license-files:
@@ -37,12 +37,12 @@ library
   import:          lang
   hs-source-dirs:  src
   exposed-modules:
-    Marconi.Tutorial.CLI
-    Marconi.Tutorial.Env
-    Marconi.Tutorial.HttpServer
-    Marconi.Tutorial.Indexers
-    Marconi.Tutorial.Indexers.AddressCount
-    Marconi.Tutorial.Run
+    Marconi.Starter.CLI
+    Marconi.Starter.Env
+    Marconi.Starter.HttpServer
+    Marconi.Starter.Indexers
+    Marconi.Starter.Indexers.AddressCount
+    Marconi.Starter.Run
 
   --------------------
   -- Local components
@@ -77,7 +77,7 @@ library
     , sqlite-simple
     , warp
 
-executable marconi-tutorial
+executable marconi-starter
   import:         lang
   hs-source-dirs: app
   main-is:        Main.hs
@@ -85,20 +85,20 @@ executable marconi-tutorial
   --------------------
   -- Local components
   --------------------
-  build-depends:  marconi-tutorial
+  build-depends:  marconi-starter
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
   build-depends:  base >=4.9 && <5
 
-test-suite marconi-tutorial-test
+test-suite marconi-starter-test
   import:             lang
   ghc-options:        -Wno-unused-packages
   type:               exitcode-stdio-1.0
   main-is:            Driver.hs
   hs-source-dirs:     test
-  other-modules:      Spec.Marconi.Tutorial.AddressCount
+  other-modules:      Spec.Marconi.Starter.AddressCount
   build-tool-depends: tasty-discover:tasty-discover
 
   --------------------
@@ -108,7 +108,7 @@ test-suite marconi-tutorial-test
     , cardano-api
     , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}
     , marconi-core
-    , marconi-tutorial
+    , marconi-starter
 
   --------------------------
   -- Other IOG dependencies

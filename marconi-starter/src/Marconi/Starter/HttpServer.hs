@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Marconi.Tutorial.HttpServer where
+module Marconi.Starter.HttpServer where
 
 import Control.Lens (to, view, (^.))
 import Control.Monad.IO.Class (liftIO)
@@ -13,13 +13,13 @@ import Data.Data (Proxy (Proxy))
 import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc qualified as Core
-import Marconi.Tutorial.CLI (optionsHttpPort)
-import Marconi.Tutorial.Env (
+import Marconi.Starter.CLI (optionsHttpPort)
+import Marconi.Starter.Env (
   Env,
   addressCountIndexerWorker,
   envCliArgs,
  )
-import Marconi.Tutorial.Indexers.AddressCount (AddressCountQuery)
+import Marconi.Starter.Indexers.AddressCount (AddressCountQuery)
 import Network.JsonRpc.Server.Types ()
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setPort)

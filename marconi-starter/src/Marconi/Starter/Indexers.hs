@@ -1,12 +1,13 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Marconi.Tutorial.Indexers where
+module Marconi.Starter.Indexers where
 
 import Cardano.BM.Trace (logError)
 import Control.Lens (view, (^.))
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader (ask), ReaderT)
+import Data.Text qualified as Text
 import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Experimental.Runner (
@@ -14,13 +15,12 @@ import Marconi.ChainIndex.Experimental.Runner (
   withDistancePreprocessor,
  )
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
-import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Types (MarconiTrace, SecurityParam)
 import Marconi.Core qualified as Core
-import Marconi.Tutorial.CLI qualified as CLI
-import Marconi.Tutorial.Env (Env, envCliArgs, envStdoutTrace)
-import Marconi.Tutorial.Env qualified as Env
-import Marconi.Tutorial.Indexers.AddressCount qualified as AddressCount
-import Prettyprinter qualified as Pretty
+import Marconi.Starter.CLI qualified as CLI
+import Marconi.Starter.Env (Env, envCliArgs, envStdoutTrace)
+import Marconi.Starter.Env qualified as Env
+import Marconi.Starter.Indexers.AddressCount qualified as AddressCount
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
@@ -33,7 +33,7 @@ buildIndexersEnv securityParam cliOptions = do
         securityParam
   pure $ Env.IndexersEnv $ Env.AddressCountIndexerEnv addressCountWorker
 
-runIndexers :: ReaderT (Env ann) IO ()
+runIndexers :: ReaderT Env IO ()
 runIndexers = do
   env <- ask
   cliOptions <- view envCliArgs
@@ -63,11 +63,11 @@ runIndexers = do
       indexer
 
 getStartingPoint
-  :: forall event indexer m ann
+  :: forall event indexer m
    . ( Core.HasGenesis (Core.Point event)
      , Ord (Core.Point event)
      , MonadIO m
-     , MonadReader (Env ann) m
+     , MonadReader Env m
      , Core.IsSync (ExceptT Core.IndexerError m) event indexer
      )
   => Core.Point event
@@ -82,7 +82,7 @@ getStartingPoint preferredStartingPoint indexer = do
         Left err -> do
           stdoutTrace <- view envStdoutTrace
           liftIO $ do
-            logError stdoutTrace $ Pretty.viaShow err
+            logError stdoutTrace $ Text.pack $ show err
             exitFailure
         Right result -> pure result
     else do
