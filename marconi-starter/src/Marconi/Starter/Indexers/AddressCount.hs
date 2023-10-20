@@ -18,7 +18,7 @@
 -- ChainPointAtGenesis. Check test scenario when we provide the ChainPointAtGenesis in the
 -- generator.
 -- TODO Change back Timed to TimedEvent
-module Marconi.Tutorial.Indexers.AddressCount where
+module Marconi.Starter.Indexers.AddressCount where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (nullTracer)

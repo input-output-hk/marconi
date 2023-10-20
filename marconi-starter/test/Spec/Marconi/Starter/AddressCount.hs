@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Spec.Marconi.Tutorial.AddressCount where
+module Spec.Marconi.Starter.AddressCount where
 
 import Cardano.Api qualified as C
 import Control.Lens ((^.))
@@ -34,7 +34,7 @@ import Marconi.Core (
   point,
   query,
  )
-import Marconi.Tutorial.Indexers.AddressCount (
+import Marconi.Starter.Indexers.AddressCount (
   AddressCountEvent (AddressCountEvent, unAddressCountEvent),
   AddressCountQuery (AddressCountQuery),
   mkAddressCountSqliteIndexer,

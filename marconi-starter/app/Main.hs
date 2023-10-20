@@ -1,6 +1,6 @@
 module Main where
 
-import Marconi.Tutorial.Run (runApp)
+import Marconi.Starter.Run (runApp)
 
 main :: IO ()
 main = runApp
