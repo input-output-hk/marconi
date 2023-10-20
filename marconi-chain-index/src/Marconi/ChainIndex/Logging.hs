@@ -10,6 +10,8 @@ module Marconi.ChainIndex.Logging (
   chainSyncEventStreamLogging,
   MarconiTrace,
   mkMarconiTrace,
+  -- * Exported for testing purposes
+  marconiFormatting,
 ) where
 
 import Cardano.Api qualified as C
@@ -45,11 +47,12 @@ import Text.Printf (printf)
 mkMarconiTrace :: Trace m Text -> MarconiTrace m ann
 mkMarconiTrace =
   contramap
-    ( (fmap . fmap)
-        ( Pretty.renderStrict
-            . Pretty.layoutPretty Pretty.defaultLayoutOptions
-        )
-    )
+    ((fmap . fmap) marconiFormatting)
+
+marconiFormatting :: Pretty.Doc ann -> Text
+marconiFormatting =
+  Pretty.renderStrict
+    . Pretty.layoutPretty Pretty.defaultLayoutOptions
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats

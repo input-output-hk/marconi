@@ -11,10 +11,11 @@ import Data.Word (Word64)
 import Marconi.ChainIndex.Logging (
   LastSyncLog (LastSyncLog),
   LastSyncStats (LastSyncStats),
-  -- renderLastSyncLog,
+  marconiFormatting,
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
+import Prettyprinter (Pretty (pretty))
 
 tests :: TestTree
 tests =
@@ -52,7 +53,7 @@ goldenStartFromGenesisLogging = do
         , mkLastSyncLog fakeBlockHeaderHash 5 2 (Just 950) (Just 10)
         , mkLastSyncLog fakeBlockHeaderHash 5 3 (Just 1000) (Just 10)
         ]
-  pure "" -- \$ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap renderLastSyncLog logs
+  pure $ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap (marconiFormatting . pretty) logs
 
 goldenStartFromLaterPointLogging :: IO ByteString
 goldenStartFromLaterPointLogging = do
@@ -71,7 +72,7 @@ goldenStartFromLaterPointLogging = do
         , mkLastSyncLog fakeBlockHeaderHash 5 2 (Just 950) (Just 10)
         , mkLastSyncLog fakeBlockHeaderHash 5 3 (Just 1000) (Just 10)
         ]
-  pure "" -- \$ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap renderLastSyncLog logs
+  pure $ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap (marconiFormatting . pretty) logs
 
 mkLastSyncLog
   :: C.Hash C.BlockHeader -> Word64 -> Word64 -> Maybe Word64 -> Maybe Word64 -> LastSyncLog
