@@ -54,6 +54,7 @@ import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   BlockEvent (blockInMode),
+  MarconiTrace,
   RetryConfig,
   SecurityParam,
  )
@@ -73,7 +74,7 @@ Lens.makeLenses ''RunIndexerEventPreprocessing
 
 -- | Common configuration required to run indexers
 data RunIndexerConfig event ann = RunIndexerConfig
-  { _runIndexerConfigTrace :: Trace.Trace IO (PP.Doc ann)
+  { _runIndexerConfigTrace :: MarconiTrace IO ann
   , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
