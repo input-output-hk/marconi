@@ -14,7 +14,12 @@ import Control.Concurrent (
  )
 import Control.Exception (Handler (Handler), catches, throwIO)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Types (MarconiTrace, RetryConfig, baseTimeBeforeNextRetry, maybeMaxWaitTime)
+import Marconi.ChainIndex.Types (
+  MarconiTrace,
+  RetryConfig,
+  baseTimeBeforeNextRetry,
+  maybeMaxWaitTime,
+ )
 import Network.Mux.Trace (MuxError (MuxError), MuxErrorType (MuxBearerClosed, MuxIOException))
 import Prettyprinter (
   pretty,
@@ -61,7 +66,7 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
               <+> pretty socketPath
               <+> "does not exist. Retrying in"
               <+> pretty (secondsBeforeNextRetry retryState)
-                <> "s ..."
+              <> "s ..."
 
           threadDelay $ fromIntegral $ secondsBeforeNextRetry retryState * 1_000_000
           runActionWithRetries

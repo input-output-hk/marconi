@@ -11,6 +11,7 @@ import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
 import Marconi.ChainIndex.Error (IndexerError)
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Sidechain.Api.HttpServer (runHttpServer)
@@ -24,7 +25,6 @@ import Marconi.Sidechain.Concurrency (HandledAction (Handled, Unhandled), raceSi
 import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 import System.Directory (createDirectoryIfMissing)
 import Text.Pretty.Simple (pShowDarkBg)
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
 
 {- | Concurrently start:
 

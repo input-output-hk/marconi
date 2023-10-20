@@ -30,9 +30,9 @@ import Marconi.ChainIndex.Git.Rev (gitRev)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
+  RetryConfig (RetryConfig),
   ShouldFailIfResync (ShouldFailIfResync),
   TargetAddresses,
-  RetryConfig (RetryConfig),
   UtxoIndexerConfig (UtxoIndexerConfig),
   addressDatumDbName,
   epochStateDbName,

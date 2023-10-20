@@ -231,7 +231,9 @@ getMintingPolicyHashTxHandler query = do
 getEpochStakePoolDelegationHandler
   :: Word64
   -- ^ EpochNo
-  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
+  -> ReaderHandler
+      (SidechainEnv ann)
+      (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
 getEpochStakePoolDelegationHandler epochNo = do
   env <- ask
   liftIO $

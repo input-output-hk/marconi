@@ -5,6 +5,7 @@ module Main (main) where
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Tracing (defaultConfigTesting)
 import Control.Monad.Reader (runReaderT)
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import Marconi.Sidechain.Api.HttpServer (marconiApp)
 import Marconi.Sidechain.CLI (parseCliArgs)
 import Marconi.Sidechain.CLI qualified as CLI
@@ -25,7 +26,6 @@ import System.IO.Temp (withTempDirectory)
 import Test.Tasty (TestTree, defaultMain, localOption, testGroup)
 import Test.Tasty.ExpectedFailure (ignoreTestBecause)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
 
 main :: IO ()
 main = do

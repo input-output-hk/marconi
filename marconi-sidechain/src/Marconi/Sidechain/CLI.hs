@@ -16,9 +16,9 @@ import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   IndexingDepth,
+  RetryConfig,
   ShouldFailIfResync,
   TargetAddresses,
-  RetryConfig,
  )
 import Options.Applicative qualified as Opt
 

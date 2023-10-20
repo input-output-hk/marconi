@@ -10,6 +10,7 @@ module Marconi.ChainIndex.Logging (
   chainSyncEventStreamLogging,
   MarconiTrace,
   mkMarconiTrace,
+
   -- * Exported for testing purposes
   marconiFormatting,
 ) where
@@ -87,7 +88,7 @@ instance Pretty LastSyncLog where
               <+> pretty cp
               <+> "and current node tip is"
               <+> pretty nt
-                <> "."
+              <> "."
 
           processingSummaryMsg timeSinceLastMsg =
             "Processed"
@@ -96,12 +97,12 @@ instance Pretty LastSyncLog where
               <+> pretty numRollBackwards
               <+> "rollbacks in the last"
               <+> pretty (formatTime defaultTimeLocale "%s" timeSinceLastMsg)
-                <> "s"
+              <> "s"
        in case (timeSinceLastMsgM, cp, nt) of
             (Nothing, _, _) ->
               "Starting from"
                 <+> pretty cp
-                  <> "."
+                <> "."
                 <+> currentTipMsg timeSinceLastMsgM
             (Just _, _, C.ChainTipAtGenesis) ->
               "Not syncing. Node tip is at Genesis"
@@ -110,7 +111,7 @@ instance Pretty LastSyncLog where
               "Synchronising (0%)."
                 <+> currentTipMsg timeSinceLastMsgM
                 <+> processingSummaryMsg timeSinceLastMsg
-                  <> "."
+                <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -119,7 +120,7 @@ instance Pretty LastSyncLog where
                     "Fully synchronised."
                       <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
-                        <> "."
+                      <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _

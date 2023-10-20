@@ -13,9 +13,9 @@ import Marconi.ChainIndex.Logging (
   LastSyncStats (LastSyncStats),
   marconiFormatting,
  )
+import Prettyprinter (Pretty (pretty))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
-import Prettyprinter (Pretty (pretty))
 
 tests :: TestTree
 tests =
