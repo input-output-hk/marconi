@@ -6,6 +6,7 @@ module Marconi.ChainIndex.Experimental.Run where
 import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
+import Control.Concurrent.Async (race_)
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
@@ -36,8 +37,8 @@ import System.Exit (exitFailure)
 import Text.Pretty.Simple (pShowDarkBg)
 
 -- See note 4e8b9e02-fae4-448b-8b32-1eee50dd95ab
-
-import Control.Concurrent.Async (race, race_)
+#ifndef mingw32_HOST_OS
+import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (
   newEmptyMVar,
   takeMVar,
@@ -50,6 +51,7 @@ import System.Posix.Signals (
   installHandler,
   sigTERM,
  )
+#endif
 
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
