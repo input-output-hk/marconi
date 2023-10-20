@@ -34,7 +34,7 @@ import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (MarconiTrace)
-import Prettyprinter (Doc, Pretty (pretty), (<+>))
+import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
 import Streaming (Of, Stream, effect)
@@ -131,7 +131,7 @@ instance Pretty LastSyncLog where
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
 chainSyncEventStreamLogging
-  :: Trace IO (Doc ann)
+  :: MarconiTrace IO ann
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
 chainSyncEventStreamLogging tracer s = effect $ do

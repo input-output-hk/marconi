@@ -103,7 +103,10 @@ run appName = withGracefulTermination_ $ do
       pure cfg
     Nothing -> withLogFullError exitFailure "No node config path provided"
 
-  securityParam <- withNodeConnectRetry marconiTrace retryConfig socketPath $ Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+  securityParam <-
+    withNodeConnectRetry marconiTrace retryConfig socketPath $
+      Utils.toException $
+        Utils.querySecurityParam @Void networkId socketPath
 
   mindexers <-
     runExceptT $
@@ -171,7 +174,7 @@ getStartingPoint preferredStartingPoint indexerLastSyncPoint =
   this code is not necessary on Windows, and the `unix` package (which it depends upon) is not
   supported by Windows. As such, in order to be able to cross-compile, the following `if` is
   unfortunately required. -}
-
+#ifndef mingw32_HOST_OS
 {- | Ensure that @SIGTERM@ is handled gracefully, because it's how containers are stopped.
 
  @action@ will receive an 'AsyncCancelled' exception if @SIGTERM@ is received by the process.
@@ -196,3 +199,7 @@ withGracefulTermination action = do
 -- | Like 'withGracefulTermination' but ignoring the return value
 withGracefulTermination_ :: IO a -> IO ()
 withGracefulTermination_ = void . withGracefulTermination
+#else
+withGracefulTermination_ :: a -> a
+withGracefulTermination_ = id
+#endif
