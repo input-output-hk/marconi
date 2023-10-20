@@ -8,7 +8,8 @@ module Marconi.ChainIndex.Logging (
   LastSyncStats (..),
   LastSyncLog (..),
   chainSyncEventStreamLogging,
-  mkMarconiLogger,
+  MarconiTrace,
+  mkMarconiTrace,
 ) where
 
 import Cardano.Api qualified as C
@@ -32,6 +33,7 @@ import Data.Time (
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
+import Marconi.ChainIndex.Types (MarconiTrace)
 import Prettyprinter (Doc, Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
@@ -39,8 +41,9 @@ import Streaming (Of, Stream, effect)
 import Streaming.Prelude qualified as S
 import Text.Printf (printf)
 
-mkMarconiLogger :: Trace m Text -> Trace m (Pretty.Doc ann)
-mkMarconiLogger =
+-- | Builds a 'MarconiTrace' from a base tracer.
+mkMarconiTrace :: Trace m Text -> MarconiTrace m ann
+mkMarconiTrace =
   contramap
     ( (fmap . fmap)
         ( Pretty.renderStrict

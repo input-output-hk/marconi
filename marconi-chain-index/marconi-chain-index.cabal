@@ -332,7 +332,6 @@ benchmark marconi-chain-index-bench
     , base           >=4.9 && <5
     , bytestring
     , filepath
-    , prettyprinter
     , sqlite-simple
     , stm
     , tasty-bench

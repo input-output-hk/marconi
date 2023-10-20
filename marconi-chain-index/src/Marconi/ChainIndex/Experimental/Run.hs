@@ -45,7 +45,7 @@ import Control.Concurrent.MVar (
   tryPutMVar,
  )
 import Data.Functor (void)
-import Marconi.ChainIndex.Logging (mkMarconiLogger)
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import System.Posix.Signals (
   Handler (CatchOnce),
   installHandler,
@@ -55,7 +55,7 @@ import System.Posix.Signals (
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
   (trace, sb) <- defaultStdOutLogger appName
-  let marconiLogger = mkMarconiLogger trace
+  let marconiTrace = mkMarconiTrace trace
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
@@ -103,7 +103,7 @@ run appName = withGracefulTermination_ $ do
       pure cfg
     Nothing -> withLogFullError exitFailure "No node config path provided"
 
-  securityParam <- withNodeConnectRetry marconiLogger retryConfig socketPath $ Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+  securityParam <- withNodeConnectRetry marconiTrace retryConfig socketPath $ Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
 
   mindexers <-
     runExceptT $
@@ -131,7 +131,7 @@ run appName = withGracefulTermination_ $ do
   let runIndexer' =
         Runner.runIndexer
           ( Runner.RunIndexerConfig
-              marconiLogger
+              marconiTrace
               Runner.withDistanceAndTipPreprocessor
               retryConfig
               securityParam

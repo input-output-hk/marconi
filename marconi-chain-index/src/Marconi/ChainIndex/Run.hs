@@ -11,7 +11,7 @@ import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CLI
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Indexers qualified as Indexers
-import Marconi.ChainIndex.Logging (mkMarconiLogger)
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   RunIndexerConfig (RunIndexerConfig),
@@ -31,7 +31,7 @@ run :: IO ()
 run = do
   traceConfig <- defaultConfigStdout
   withTrace traceConfig "marconi-chain-index" $ \trace -> do
-    let marconiLogger = mkMarconiLogger trace
+    let marconiTrace = mkMarconiTrace trace
     logInfo trace $ Text.pack $ "marconi-chain-index-" <> CLI.getVersion
 
     o <- Cli.parseOptions
@@ -59,12 +59,12 @@ run = do
     let socketPath = Cli.optionsSocketPath $ Cli.commonOptions o
         networkId = Cli.optionsNetworkId $ Cli.commonOptions o
 
-    securityParam <- withNodeConnectRetry marconiLogger retryConfig socketPath $ do
+    securityParam <- withNodeConnectRetry marconiTrace retryConfig socketPath $ do
       Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
 
     Indexers.runIndexers
       ( RunIndexerConfig
-          marconiLogger
+          marconiTrace
           retryConfig
           securityParam
           networkId

@@ -51,9 +51,10 @@ import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance, getEv
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
-import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   BlockEvent (blockInMode),
+  RetryConfig,
   SecurityParam,
  )
 import Marconi.Core qualified as Core

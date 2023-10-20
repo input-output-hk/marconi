@@ -6,7 +6,6 @@
 module Marconi.ChainIndex.Node.Client.Retry where
 
 import Cardano.BM.Trace (
-  Trace,
   logError,
   logWarning,
  )
@@ -17,6 +16,7 @@ import Control.Exception (Handler (Handler), catches, throwIO)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Types (MarconiTrace, RetryConfig (..))
 import Network.Mux.Trace (MuxError (MuxError), MuxErrorType (MuxBearerClosed, MuxIOException))
 import Prettyprinter (
   Doc,
@@ -26,26 +26,17 @@ import Prettyprinter (
 import System.Exit (exitFailure)
 import System.IO.Error (isDoesNotExistError)
 
-data RetryConfig = RetryConfig
-  { baseTimeBeforeNextRetry :: !Word64
-  -- ^ Initial time before next retry (in seconds)
-  , maybeMaxWaitTime :: !(Maybe Word64)
-  -- ^ Max time before stopping retries (in seconds)
-  }
-  deriving stock (Show, Generic)
-  deriving anyclass (FromJSON, ToJSON)
-
 data RetryState = RetryState
   { totalWaitTime :: !Word64
   , secondsBeforeNextRetry :: !Word64
   }
 
-withNodeConnectRetry :: forall a ann. Trace IO (Doc ann) -> RetryConfig -> FilePath -> IO a -> IO a
+withNodeConnectRetry :: forall a ann. MarconiTrace IO ann -> RetryConfig -> FilePath -> IO a -> IO a
 withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
   let initialRetryState = RetryState 0 (baseTimeBeforeNextRetry retryConfig)
   runActionWithRetries stdoutTrace initialRetryState
   where
-    runActionWithRetries :: Trace IO (Doc ann) -> RetryState -> IO a
+    runActionWithRetries :: MarconiTrace IO ann -> RetryState -> IO a
     runActionWithRetries trace retryState = do
       catches
         action
@@ -64,7 +55,7 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
               e -> throwIO e
         ]
 
-    handleCantConnectToNodeException :: Trace IO (Doc ann) -> RetryState -> IO a
+    handleCantConnectToNodeException :: MarconiTrace IO ann -> RetryState -> IO a
     handleCantConnectToNodeException trace retryState = do
       if maybe True (totalWaitTime retryState <) $ maybeMaxWaitTime retryConfig
         then do

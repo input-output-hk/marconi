@@ -27,12 +27,12 @@ import Data.Set.NonEmpty qualified as NESet
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Git.Rev (gitRev)
-import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig))
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   ShouldFailIfResync (ShouldFailIfResync),
   TargetAddresses,
+  RetryConfig (RetryConfig),
   UtxoIndexerConfig (UtxoIndexerConfig),
   addressDatumDbName,
   epochStateDbName,
