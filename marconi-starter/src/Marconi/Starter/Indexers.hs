@@ -7,7 +7,6 @@ import Control.Lens (view, (^.))
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader (ask), ReaderT)
-import Data.Text qualified as Text
 import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Experimental.Runner (
@@ -15,12 +14,13 @@ import Marconi.ChainIndex.Experimental.Runner (
   withDistancePreprocessor,
  )
 import Marconi.ChainIndex.Experimental.Runner qualified as Runner
-import Marconi.ChainIndex.Types (MarconiTrace, SecurityParam)
+import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
 import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Env (Env, envCliArgs, envStdoutTrace)
 import Marconi.Starter.Env qualified as Env
 import Marconi.Starter.Indexers.AddressCount qualified as AddressCount
+import Prettyprinter qualified as Pretty
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
@@ -33,7 +33,7 @@ buildIndexersEnv securityParam cliOptions = do
         securityParam
   pure $ Env.IndexersEnv $ Env.AddressCountIndexerEnv addressCountWorker
 
-runIndexers :: ReaderT Env IO ()
+runIndexers :: ReaderT (Env ann) IO ()
 runIndexers = do
   env <- ask
   cliOptions <- view envCliArgs
@@ -63,11 +63,11 @@ runIndexers = do
       indexer
 
 getStartingPoint
-  :: forall event indexer m
+  :: forall event indexer m ann
    . ( Core.HasGenesis (Core.Point event)
      , Ord (Core.Point event)
      , MonadIO m
-     , MonadReader Env m
+     , MonadReader (Env ann) m
      , Core.IsSync (ExceptT Core.IndexerError m) event indexer
      )
   => Core.Point event
@@ -82,7 +82,7 @@ getStartingPoint preferredStartingPoint indexer = do
         Left err -> do
           stdoutTrace <- view envStdoutTrace
           liftIO $ do
-            logError stdoutTrace $ Text.pack $ show err
+            logError stdoutTrace $ Pretty.viaShow err
             exitFailure
         Right result -> pure result
     else do
