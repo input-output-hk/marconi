@@ -185,21 +185,28 @@ genTxBodyContentWithTxInsCollateral
   -> C.TxInsCollateral era
   -> Gen (C.TxBodyContent C.BuildTx era)
 genTxBodyContentWithTxInsCollateral era txIns txInsCollateral = do
+  sbe <- case C.cardanoEraStyle era of
+    C.LegacyByronEra -> fail "Byron era not supported"
+    C.ShelleyBasedEra e -> pure e
   txbody <- CGen.genTxBodyContent era
   initialPP <- CGen.genProtocolParameters C.BabbageEra
-  let txProtocolParams =
-        C.BuildTxWith $
-          Just $
-            initialPP
-              { C.protocolParamUTxOCostPerWord = Just 1
-              , C.protocolParamUTxOCostPerByte = Just 1
-              , C.protocolParamPrices = Just $ C.ExecutionUnitPrices 1 1
-              , C.protocolParamMaxTxExUnits = Just $ C.ExecutionUnits 1 1
-              , C.protocolParamMaxBlockExUnits = Just $ C.ExecutionUnits 1 1
-              , C.protocolParamMaxValueSize = Just 1
-              , C.protocolParamCollateralPercent = Just 1
-              , C.protocolParamMaxCollateralInputs = Just 1
-              }
+  let modifiedPP =
+        initialPP
+          { C.protocolParamUTxOCostPerWord = Just 1
+          , C.protocolParamUTxOCostPerByte = Just 1
+          , C.protocolParamMinUTxOValue = Just 1
+          , C.protocolParamDecentralization = Just 0.1
+          , C.protocolParamPrices = Just $ C.ExecutionUnitPrices 1 1
+          , C.protocolParamMaxTxExUnits = Just $ C.ExecutionUnits 1 1
+          , C.protocolParamMaxBlockExUnits = Just $ C.ExecutionUnits 1 1
+          , C.protocolParamMaxValueSize = Just 1
+          , C.protocolParamCollateralPercent = Just 1
+          , C.protocolParamMaxCollateralInputs = Just 1
+          }
+  ledgerPP <-
+    either (fail . C.displayError) pure $
+      C.convertToLedgerProtocolParameters sbe modifiedPP
+  let txProtocolParams = C.BuildTxWith $ Just ledgerPP
   pure $
     txbody
       { C.txIns
@@ -223,14 +230,18 @@ genTxBodyContentForPlutusScripts = do
   let txMetadata = C.TxMetadataNone
   let txAuxScripts = C.TxAuxScriptsNone
   let txExtraKeyWits = C.TxExtraKeyWitnessesNone
-  txProtocolParams <- C.BuildTxWith . Just <$> genProtocolParametersForPlutusScripts
+  basicPP <- genProtocolParametersForPlutusScripts
+  ledgerPP <-
+    either (fail . C.displayError) pure $
+      C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage basicPP
+  let txProtocolParams = C.BuildTxWith $ Just ledgerPP
   let txWithdrawals = C.TxWithdrawalsNone
   let txCertificates = C.TxCertificatesNone
   let txUpdateProposal = C.TxUpdateProposalNone
   let txMintValue = C.TxMintNone
   let txScriptValidity = C.TxScriptValidity C.TxScriptValiditySupportedInBabbageEra C.ScriptValid
-  let txGovernanceActions = C.TxGovernanceActionsNone
-  let txVotes = C.TxVotesNone
+  let txProposalProcedures = Nothing
+  let txVotingProcedures = Nothing
 
   pure $
     C.TxBodyContent
@@ -251,8 +262,8 @@ genTxBodyContentForPlutusScripts = do
       , C.txUpdateProposal
       , C.txMintValue
       , C.txScriptValidity
-      , C.txGovernanceActions
-      , C.txVotes
+      , C.txProposalProcedures
+      , C.txVotingProcedures
       }
   where
     -- Copied from cardano-api. Delete when this function is reexported

@@ -162,7 +162,7 @@ genTxBodyContentFromTxIns
   :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentFromTxIns inputs = do
   initialPP <- CGen.genProtocolParameters C.BabbageEra
-  let pp =
+  let modifiedPP =
         initialPP
           { C.protocolParamUTxOCostPerByte = Just 1
           , C.protocolParamPrices = Just $ C.ExecutionUnitPrices 1 1
@@ -172,10 +172,13 @@ genTxBodyContentFromTxIns inputs = do
           , C.protocolParamCollateralPercent = Just 1
           , C.protocolParamMaxCollateralInputs = Just 1
           }
-      txBodyContent =
+  ledgerPP <-
+    either (fail . C.displayError) pure $
+      C.convertToLedgerProtocolParameters C.ShelleyBasedEraBabbage modifiedPP
+  let txBodyContent =
         emptyTxBodyContent
           (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
-          pp
+          ledgerPP
 
   txOuts <- Gen.list (Range.linear 1 5) $ genTxOutTxContext C.BabbageEra
   pure $
