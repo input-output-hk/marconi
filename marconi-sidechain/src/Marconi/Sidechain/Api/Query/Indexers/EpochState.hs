@@ -42,7 +42,7 @@ updateEnvState = writeTMVar
  We return an empty list if the 'EpochNo' is not found.
 -}
 queryActiveSDDByEpochNo
-  :: SidechainEnv
+  :: SidechainEnv ann
   -- ^ Query run time environment
   -> Word64
   -- ^ Epoch number
@@ -77,7 +77,7 @@ queryActiveSDDByEpochNo env epochNo = do
  We return an empty list if the 'EpochNo' is not found.
 -}
 queryNonceByEpochNo
-  :: SidechainEnv
+  :: SidechainEnv ann
   -- ^ Query run time environment
   -> Word64
   -- ^ Epoch number

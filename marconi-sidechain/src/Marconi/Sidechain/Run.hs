@@ -24,6 +24,7 @@ import Marconi.Sidechain.Concurrency (HandledAction (Handled, Unhandled), raceSi
 import Marconi.Sidechain.Env (mkSidechainEnvFromCliArgs)
 import System.Directory (createDirectoryIfMissing)
 import Text.Pretty.Simple (pShowDarkBg)
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 
 {- | Concurrently start:
 
@@ -39,6 +40,7 @@ run :: IO ()
 run = do
   traceConfig <- defaultConfigStdout
   withTrace traceConfig "marconi-sidechain" $ \trace -> do
+    let marconiTrace = mkMarconiTrace trace
     logInfo trace $ "marconi-sidechain-" <> Text.pack getVersion
 
     cliArgs@CliArgs{dbDir, socketFilePath, networkId, optionsRetryConfig} <- parseCli
@@ -47,10 +49,10 @@ run = do
 
     createDirectoryIfMissing True dbDir
 
-    securityParam <- withNodeConnectRetry trace optionsRetryConfig socketFilePath $ do
+    securityParam <- withNodeConnectRetry marconiTrace optionsRetryConfig socketFilePath $ do
       Utils.toException $ Utils.querySecurityParam @Void networkId socketFilePath
 
-    rpcEnv <- mkSidechainEnvFromCliArgs securityParam cliArgs trace
+    rpcEnv <- mkSidechainEnvFromCliArgs securityParam cliArgs marconiTrace
 
     {- In an ideal world, we'd map both threads' errors to exit codes, but we'd need some machinery
     to determine which one takes priority, or something similar. Currently, we only care about

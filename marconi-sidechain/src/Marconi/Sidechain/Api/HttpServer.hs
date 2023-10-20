@@ -25,6 +25,7 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
+import Marconi.ChainIndex.Types (MarconiTrace)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
@@ -72,6 +73,7 @@ import Network.Wai.Middleware.RequestLogger (
   mkRequestLogger,
   outputFormat,
  )
+import Prettyprinter (Pretty (..))
 import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (
@@ -86,14 +88,14 @@ import Servant.Server (
 import System.Log.FastLogger (fromLogStr)
 
 -- | Bootstraps the HTTP server
-runHttpServer :: ReaderT SidechainEnv IO ()
+runHttpServer :: ReaderT (SidechainEnv ann) IO ()
 runHttpServer = do
   env <- ask
   requestLogger <-
     lift $
       mkRequestLogger
         def
-          { destination = Callback $ logDebug (env ^. sidechainTrace) . Text.decodeUtf8 . fromLogStr
+          { destination = Callback $ logDebug (env ^. sidechainTrace) . pretty . Text.decodeUtf8 . fromLogStr
           , outputFormat = DetailedWithSettings def{mPrelogRequests = True}
           }
   lift
@@ -102,7 +104,7 @@ runHttpServer = do
     $ requestLogger
     $ marconiApp env
 
-marconiApp :: SidechainEnv -> Application
+marconiApp :: SidechainEnv ann -> Application
 marconiApp env =
   serve (Proxy @API) $
     hoistServer (Proxy @API) (hoistHandler env) httpRpcServer
@@ -110,16 +112,16 @@ marconiApp env =
 type ReaderHandler env = ExceptT ServerError (ReaderT env IO)
 type ReaderServer env api = ServerT api (ReaderHandler env)
 
-hoistHandler :: SidechainEnv -> ReaderHandler SidechainEnv a -> Handler a
+hoistHandler :: SidechainEnv ann -> ReaderHandler (SidechainEnv ann) a -> Handler a
 hoistHandler env = Handler . ExceptT . catchExceptions (env ^. sidechainTrace) . flip runReaderT env . runExceptT
 
-catchExceptions :: Trace IO Text -> IO (Either ServerError a) -> IO (Either ServerError a)
+catchExceptions :: MarconiTrace IO ann -> IO (Either ServerError a) -> IO (Either ServerError a)
 catchExceptions trace action =
   action
     `catches` [ Exception.Handler $ \(e :: ServerError) -> pure $ Left e
               , Exception.Handler $ \(e :: SomeAsyncException) -> throwIO e
               , Exception.Handler $ \(e :: SomeException) -> do
-                  logError trace . Text.pack $ "Exception caught while handling HTTP request: " <> displayException e
+                  logError trace $ "Exception caught while handling HTTP request: " <> pretty (displayException e)
                   let
                     -- TODO: Provide better info, especially the request ID
                     jsonErr = Errors @Int @Aeson.Value Nothing $ mkJsonRpcInternalErr Nothing
@@ -131,7 +133,7 @@ catchExceptions trace action =
                       }
               ]
 
-jsonRpcServer :: ReaderServer SidechainEnv JsonRpcAPI
+jsonRpcServer :: ReaderServer (SidechainEnv ann) JsonRpcAPI
 jsonRpcServer =
   echo
     :<|> getTargetAddressesQueryHandler
@@ -141,48 +143,48 @@ jsonRpcServer =
     :<|> getEpochStakePoolDelegationHandler
     :<|> getEpochNonceHandler
 
-restApiServer :: ReaderServer SidechainEnv RestAPI
+restApiServer :: ReaderServer (SidechainEnv ann) RestAPI
 restApiServer =
   getTimeHandler
     :<|> getParamsHandler
     :<|> getTargetAddressesHandler
     :<|> getMetricsHandler
 
-httpRpcServer :: ReaderServer SidechainEnv API
+httpRpcServer :: ReaderServer (SidechainEnv ann) API
 httpRpcServer = jsonRpcServer :<|> restApiServer
 
 -- | Echoes message back as a Jsonrpc response. Used for testing the server.
 echo
   :: String
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) String)
+  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) String)
 echo = return . Right
 
 {- | Echos current time as REST response. Used for testing the http server outside of jsonrpc
  protocol.
 -}
-getTimeHandler :: ReaderHandler SidechainEnv String
+getTimeHandler :: ReaderHandler (SidechainEnv ann) String
 getTimeHandler = timeString <$> liftIO getCurrentTime
   where
     timeString = formatTime defaultTimeLocale "%T"
 
 -- | Returns params given through CLI as a JSON REST response.
-getParamsHandler :: ReaderHandler SidechainEnv CliArgs
+getParamsHandler :: ReaderHandler (SidechainEnv ann) CliArgs
 getParamsHandler = view sidechainCliArgs
 
 -- | Prints TargetAddresses Bech32 representation to the console
-getTargetAddressesHandler :: ReaderHandler SidechainEnv [Text]
+getTargetAddressesHandler :: ReaderHandler (SidechainEnv ann) [Text]
 getTargetAddressesHandler = do
   indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
   pure $ Q.Utxo.reportBech32Addresses indexer
 
-getMetricsHandler :: ReaderHandler SidechainEnv Text
+getMetricsHandler :: ReaderHandler (SidechainEnv ann) Text
 getMetricsHandler = liftIO $ Text.decodeUtf8 . BS.toStrict <$> P.exportMetricsAsText
 
 -- | Prints TargetAddresses Bech32 representation as thru JsonRpc
 getTargetAddressesQueryHandler
   :: UnusedRequestParams
   -- ^ Will be an empty string, empty object, or null, as we are ignoring this param, and returning everything
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) [Text])
+  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) [Text])
 getTargetAddressesQueryHandler _ = do
   indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
   pure $ Right $ Q.Utxo.reportBech32Addresses indexer
@@ -191,7 +193,7 @@ getTargetAddressesQueryHandler _ = do
 getCurrentSyncedBlockHandler
   :: UnusedRequestParams
   -- ^ Will be an empty string, empty object, or null, as we are ignoring this param, and returning everything
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetCurrentSyncedBlockResult)
+  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) GetCurrentSyncedBlockResult)
 getCurrentSyncedBlockHandler _ = do
   indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
   liftIO $ first toRpcErr <$> Q.Utxo.queryCurrentSyncedBlock indexer
@@ -200,7 +202,7 @@ getCurrentSyncedBlockHandler _ = do
 getAddressUtxoHandler
   :: GetUtxosFromAddressParams
   -- ^ Bech32 addressCredential and a slotNumber
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetUtxosFromAddressResult)
+  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) GetUtxosFromAddressResult)
 getAddressUtxoHandler query = do
   indexer <- view $ sidechainIndexersEnv . sidechainAddressUtxoIndexer
   liftIO $
@@ -213,7 +215,7 @@ getAddressUtxoHandler query = do
 -- | Handler for retrieving Txs by Minting Policy Hash.
 getMintingPolicyHashTxHandler
   :: GetBurnTokenEventsParams
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetBurnTokenEventsResult)
+  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) GetBurnTokenEventsResult)
 getMintingPolicyHashTxHandler query = do
   env <- ask
   liftIO $
@@ -230,7 +232,7 @@ getMintingPolicyHashTxHandler query = do
 getEpochStakePoolDelegationHandler
   :: Word64
   -- ^ EpochNo
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
+  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
 getEpochStakePoolDelegationHandler epochNo = do
   env <- ask
   liftIO $
@@ -241,7 +243,7 @@ getEpochStakePoolDelegationHandler epochNo = do
 getEpochNonceHandler
   :: Word64
   -- ^ EpochNo
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetEpochNonceResult)
+  -> ReaderHandler (SidechainEnv ann) (Either (JsonRpcErr String) GetEpochNonceResult)
 getEpochNonceHandler epochNo = do
   env <- ask
   liftIO $

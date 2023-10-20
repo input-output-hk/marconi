@@ -25,6 +25,7 @@ import System.IO.Temp (withTempDirectory)
 import Test.Tasty (TestTree, defaultMain, localOption, testGroup)
 import Test.Tasty.ExpectedFailure (ignoreTestBecause)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 
 main :: IO ()
 main = do
@@ -32,13 +33,14 @@ main = do
   withTempDirectory tmp "marconi-sidechain" $ \tempDir -> do
     traceConfig <- defaultConfigTesting
     withTrace traceConfig "marconi-sidechain" $ \trace -> do
+      let marconiTrace = mkMarconiTrace trace
       cliArgs <- mkCliArgs tempDir
-      env <- mkSidechainEnv 2160 (CLI.httpPort cliArgs) Nothing Nothing cliArgs trace
+      env <- mkSidechainEnv 2160 (CLI.httpPort cliArgs) Nothing Nothing cliArgs marconiTrace
       Warp.testWithApplication (pure $ marconiApp env) $ \port -> do
         rpcClientAction <- flip runReaderT env $ mkRpcClientAction port
         defaultMain $ tests env rpcClientAction
 
-tests :: SidechainEnv -> RpcClientAction -> TestTree
+tests :: SidechainEnv ann -> RpcClientAction -> TestTree
 tests env rpcClientAction =
   testGroup
     "marconi-sidechain"

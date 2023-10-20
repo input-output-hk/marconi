@@ -53,6 +53,7 @@ import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
 import Marconi.ChainIndex.Types (
+  MarconiTrace,
   SecurityParam,
   TargetAddresses,
  )
@@ -63,12 +64,12 @@ import Marconi.Sidechain.CLI (
 import Network.Wai.Handler.Warp (Port, Settings, defaultSettings, setPort)
 
 -- | JSON-RPC as well as the Query Indexer Env
-data SidechainEnv = SidechainEnv
+data SidechainEnv ann = SidechainEnv
   { _sidechainQueryEnv :: !SidechainQueryEnv
   , _sidechainIndexersEnv :: !SidechainIndexersEnv
   -- ^ Access the Sidechain indexers for querying purposes.
   , _sidechainCliArgs :: !CliArgs
-  , _sidechainTrace :: !(Trace IO Text)
+  , _sidechainTrace :: !(MarconiTrace IO ann)
   }
 
 data SidechainQueryEnv = SidechainQueryEnv
@@ -104,8 +105,8 @@ newtype EpochStateIndexerEnv = EpochStateIndexerEnv
 mkSidechainEnvFromCliArgs
   :: SecurityParam
   -> CliArgs
-  -> Trace IO Text
-  -> IO SidechainEnv
+  -> MarconiTrace IO ann
+  -> IO (SidechainEnv ann)
 mkSidechainEnvFromCliArgs securityParam cliArgs@CliArgs{httpPort, targetAddresses, targetAssets} trace = do
   mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace
 
@@ -115,8 +116,8 @@ mkSidechainEnv
   -> Maybe TargetAddresses
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> CliArgs
-  -> Trace IO Text
-  -> IO SidechainEnv
+  -> MarconiTrace IO ann
+  -> IO (SidechainEnv ann)
 mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace = do
   let httpSettings = setPort httpPort defaultSettings
   let sidechainQueryEnv = SidechainQueryEnv securityParam httpSettings
