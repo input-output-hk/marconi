@@ -72,9 +72,9 @@ library
     , lens
     , mtl
     , optparse-applicative
+    , prettyprinter
     , servant-server
     , sqlite-simple
-    , text
     , warp
 
 executable marconi-tutorial

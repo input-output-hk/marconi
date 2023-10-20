@@ -8,7 +8,7 @@
 module Marconi.Sidechain.Api.HttpServer where
 
 import Cardano.Api ()
-import Cardano.BM.Trace (Trace, logDebug, logError)
+import Cardano.BM.Trace (logDebug, logError)
 import Control.Exception (SomeAsyncException, SomeException, catches, displayException, throwIO)
 import Control.Exception qualified as Exception
 import Control.Lens (view, (^.))
@@ -21,7 +21,6 @@ import Data.ByteString qualified as BS
 import Data.Default (def)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, pack, unpack)
-import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
@@ -73,7 +72,7 @@ import Network.Wai.Middleware.RequestLogger (
   mkRequestLogger,
   outputFormat,
  )
-import Prettyprinter (Pretty (..))
+import Prettyprinter (Pretty (pretty))
 import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (

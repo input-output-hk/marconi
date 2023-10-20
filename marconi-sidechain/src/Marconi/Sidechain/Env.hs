@@ -44,11 +44,9 @@ module Marconi.Sidechain.Env (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Trace (Trace)
 import Control.Concurrent.STM (TMVar, newEmptyTMVarIO)
 import Control.Lens (makeLenses)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Text (Text)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)

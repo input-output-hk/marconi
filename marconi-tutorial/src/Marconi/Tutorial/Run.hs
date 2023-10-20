@@ -3,15 +3,15 @@
 module Marconi.Tutorial.Run where
 
 import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Tracing (Trace, defaultConfigStdout)
+import Cardano.BM.Tracing (defaultConfigStdout)
 import Control.Concurrent.Async (race_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (runReaderT)
-import Data.Text (Text)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Types (MarconiTrace, SecurityParam)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Tutorial.CLI qualified as CLI
 import Marconi.Tutorial.Env (Env (Env))
@@ -27,16 +27,17 @@ runApp = do
   traceConfig <- defaultConfigStdout
 
   withTrace traceConfig "marconi-tutorial" $ \stdoutTrace -> do
-    securityParam <- querySecuritParamWithRetry stdoutTrace cliOptions
+    let marconiTrace = mkMarconiTrace stdoutTrace
+    securityParam <- querySecuritParamWithRetry marconiTrace cliOptions
     liftIO $ createDirectoryIfMissing True (CLI.optionsDbPath cliOptions)
     indexersEnv <- buildIndexersEnv securityParam cliOptions
-    let env = Env indexersEnv cliOptions stdoutTrace securityParam
+    let env = Env indexersEnv cliOptions marconiTrace securityParam
     race_
       (runReaderT Indexers.runIndexers env)
       (runReaderT HttpServer.runHttpServer env)
 
 querySecuritParamWithRetry
-  :: Trace IO Text
+  :: MarconiTrace IO ann
   -> CLI.Options
   -> IO SecurityParam
 querySecuritParamWithRetry stdoutTrace cliOptions = do

@@ -13,13 +13,10 @@ import Control.Concurrent (
   threadDelay,
  )
 import Control.Exception (Handler (Handler), catches, throwIO)
-import Data.Aeson (FromJSON, ToJSON)
 import Data.Word (Word64)
-import GHC.Generics (Generic)
-import Marconi.ChainIndex.Types (MarconiTrace, RetryConfig (..))
+import Marconi.ChainIndex.Types (MarconiTrace, RetryConfig, baseTimeBeforeNextRetry, maybeMaxWaitTime)
 import Network.Mux.Trace (MuxError (MuxError), MuxErrorType (MuxBearerClosed, MuxIOException))
 import Prettyprinter (
-  Doc,
   pretty,
   (<+>),
  )
