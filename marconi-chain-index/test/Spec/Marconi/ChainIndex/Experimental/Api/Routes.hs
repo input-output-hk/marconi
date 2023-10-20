@@ -2,10 +2,7 @@
 
 module Spec.Marconi.ChainIndex.Experimental.Api.Routes (tests) where
 
-import Cardano.Api qualified as C
 import Data.Aeson qualified as Aeson
-import Data.String (fromString)
-import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (
   Property,
   forAll,
@@ -15,9 +12,11 @@ import Hedgehog (
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.MintBurnToken (
-  BurnTokenEventResult (BurnTokenEventResult),
-  GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
+ )
+import Spec.Marconi.ChainIndex.Experimental.Api.Gen (
+  genBurnTokenEventResult,
+  genGetBurnTokenEventsParams,
  )
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
@@ -42,27 +41,12 @@ tests =
 
 propJSONRountripGetBurnTokenEventsParams :: Property
 propJSONRountripGetBurnTokenEventsParams = property $ do
-  r <-
-    forAll $
-      GetBurnTokenEventsParams
-        <$> (C.PolicyId <$> CGen.genScriptHash)
-        <*> (fmap fromString <$> Gen.maybe (Gen.string (Range.linear 1 10) Gen.alphaNum))
-        <*> (Gen.maybe $ C.SlotNo . fromInteger <$> Gen.integral (Range.linear 1 10))
-        <*> Gen.maybe CGen.genTxId
+  r <- forAll genGetBurnTokenEventsParams
   tripping r Aeson.encode Aeson.eitherDecode
 
 propJSONRountripGetBurnTokenEventsResult :: Property
 propJSONRountripGetBurnTokenEventsResult = property $ do
   r <- fmap GetBurnTokenEventsResult $ forAll $ Gen.list (Range.linear 0 10) $ do
     hsd <- Gen.maybe CGen.genHashableScriptData
-    BurnTokenEventResult
-      <$> (Just <$> Gen.genSlotNo)
-      <*> (Just <$> Gen.genHashBlockHeader)
-      <*> Gen.genBlockNo
-      <*> CGen.genTxId
-      <*> pure (fmap C.hashScriptDataBytes hsd)
-      <*> pure (fmap C.getScriptData hsd)
-      <*> CGen.genAssetName
-      <*> Gen.genQuantity (Range.linear 0 10)
-      <*> pure True
+    genBurnTokenEventResult hsd
   tripping r Aeson.encode Aeson.eitherDecode
