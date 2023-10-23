@@ -45,7 +45,7 @@ import Streaming.Prelude qualified as S
 import Text.Printf (printf)
 
 -- | Builds a 'MarconiTrace' from a base tracer.
-mkMarconiTrace :: Trace m Text -> MarconiTrace m ann
+mkMarconiTrace :: Trace m Text -> MarconiTrace m
 mkMarconiTrace =
   contramap
     ((fmap . fmap) marconiFormatting)
@@ -88,7 +88,7 @@ instance Pretty LastSyncLog where
               <+> pretty cp
               <+> "and current node tip is"
               <+> pretty nt
-              <> "."
+                <> "."
 
           processingSummaryMsg timeSinceLastMsg =
             "Processed"
@@ -97,12 +97,12 @@ instance Pretty LastSyncLog where
               <+> pretty numRollBackwards
               <+> "rollbacks in the last"
               <+> pretty (formatTime defaultTimeLocale "%s" timeSinceLastMsg)
-              <> "s"
+                <> "s"
        in case (timeSinceLastMsgM, cp, nt) of
             (Nothing, _, _) ->
               "Starting from"
                 <+> pretty cp
-                <> "."
+                  <> "."
                 <+> currentTipMsg timeSinceLastMsgM
             (Just _, _, C.ChainTipAtGenesis) ->
               "Not syncing. Node tip is at Genesis"
@@ -111,7 +111,7 @@ instance Pretty LastSyncLog where
               "Synchronising (0%)."
                 <+> currentTipMsg timeSinceLastMsgM
                 <+> processingSummaryMsg timeSinceLastMsg
-                <> "."
+                  <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -120,7 +120,7 @@ instance Pretty LastSyncLog where
                     "Fully synchronised."
                       <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
-                      <> "."
+                        <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -135,7 +135,7 @@ instance Pretty LastSyncLog where
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
 chainSyncEventStreamLogging
-  :: MarconiTrace IO ann
+  :: MarconiTrace IO
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
 chainSyncEventStreamLogging tracer s = effect $ do

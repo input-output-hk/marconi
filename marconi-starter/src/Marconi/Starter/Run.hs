@@ -37,7 +37,7 @@ runApp = do
       (runReaderT HttpServer.runHttpServer env)
 
 querySecuritParamWithRetry
-  :: MarconiTrace IO ann
+  :: MarconiTrace IO
   -> CLI.Options
   -> IO SecurityParam
 querySecuritParamWithRetry stdoutTrace cliOptions = do

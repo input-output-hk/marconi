@@ -40,7 +40,7 @@ main = do
         rpcClientAction <- flip runReaderT env $ mkRpcClientAction port
         defaultMain $ tests env rpcClientAction
 
-tests :: SidechainEnv ann -> RpcClientAction -> TestTree
+tests :: SidechainEnv -> RpcClientAction -> TestTree
 tests env rpcClientAction =
   testGroup
     "marconi-sidechain"

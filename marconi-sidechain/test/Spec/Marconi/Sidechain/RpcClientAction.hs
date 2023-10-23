@@ -60,7 +60,7 @@ data RpcClientAction = RpcClientAction
       :: !((PolicyId, Maybe AssetName) -> IO (JsonRpcResponse String GetBurnTokenEventsResult))
   }
 
-mkRpcClientAction :: Port -> ReaderT (SidechainEnv ann) IO RpcClientAction
+mkRpcClientAction :: Port -> ReaderT SidechainEnv IO RpcClientAction
 mkRpcClientAction port = do
   manager <- liftIO $ newManager defaultManagerSettings
   let clientEnv = mkClientEnv manager (baseUrl port)
@@ -84,13 +84,13 @@ type InsertUtxoEventsCallback = [Utxo.StorableEvent Utxo.UtxoHandle] -> IO () --
 -- | An alias for storing events in the indexer.
 type InsertMintBurnEventsCallback = [Utxo.StorableEvent MintBurn.MintBurnHandle] -> IO () --  callback
 
-mkInsertUtxoEventsCallback :: SidechainEnv ann -> InsertUtxoEventsCallback
+mkInsertUtxoEventsCallback :: SidechainEnv -> InsertUtxoEventsCallback
 mkInsertUtxoEventsCallback env =
   let cb :: Utxo.UtxoIndexer -> IO ()
       cb = atomically . UIQ.updateEnvState (env ^. sidechainIndexersEnv . sidechainAddressUtxoIndexer)
    in mocUtxoWorker cb
 
-mkInsertMintBurnEventsCallback :: SidechainEnv ann -> InsertMintBurnEventsCallback
+mkInsertMintBurnEventsCallback :: SidechainEnv -> InsertMintBurnEventsCallback
 mkInsertMintBurnEventsCallback env =
   let cb :: MintBurn.MintBurnIndexer -> IO ()
       cb =

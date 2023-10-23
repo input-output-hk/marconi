@@ -122,7 +122,7 @@ main = do
 
 -- | Run the IO code which syncs the Marconi Utxo indexer with the local running Cardano node.
 runIndexerSyncing
-  :: MarconiTrace IO ann
+  :: MarconiTrace IO
   -> FilePath
   -- ^ Marconi indexer database directory
   -> FilePath

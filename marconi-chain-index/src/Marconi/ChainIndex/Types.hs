@@ -76,7 +76,7 @@ data RetryConfig = RetryConfig
   deriving anyclass (FromJSON, ToJSON)
 
 -- | Alias for a 'Doc' tracer, it is the 'Trace' used throughout the Marconi application
-type MarconiTrace m ann = Trace m (Doc ann)
+type MarconiTrace m = Trace m (Doc ())
 
 -- | Type represents non empty set of Bech32 Shelley compatible addresses
 type TargetAddresses = NESet (C.Address C.ShelleyAddr)
@@ -142,8 +142,8 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     )
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig ann = RunIndexerConfig
-  { _runIndexerConfigTrace :: MarconiTrace IO ann
+data RunIndexerConfig = RunIndexerConfig
+  { _runIndexerConfigTrace :: MarconiTrace IO
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
   , _runIndexerConfigNetworkId :: C.NetworkId

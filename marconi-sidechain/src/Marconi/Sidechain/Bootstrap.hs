@@ -44,7 +44,7 @@ import Marconi.Sidechain.Env (
 import System.FilePath ((</>))
 
 -- | Run Sidechain indexers
-runSidechainIndexers :: ReaderT (SidechainEnv ann) IO ()
+runSidechainIndexers :: ReaderT SidechainEnv IO ()
 runSidechainIndexers = do
   cliArgs <- view sidechainCliArgs
   trace <- view sidechainTrace

@@ -11,7 +11,7 @@ data Env ann = Env
   { _envIndexers :: IndexersEnv
   -- ^ Access the indexers for querying purposes.
   , _envCliArgs :: !CLI.Options
-  , _envStdoutTrace :: !(MarconiTrace IO ann)
+  , _envStdoutTrace :: !(MarconiTrace IO)
   , _securityParam :: !SecurityParam
   }
 

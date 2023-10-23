@@ -74,7 +74,7 @@ Lens.makeLenses ''RunIndexerEventPreprocessing
 
 -- | Common configuration required to run indexers
 data RunIndexerConfig event ann = RunIndexerConfig
-  { _runIndexerConfigTrace :: MarconiTrace IO ann
+  { _runIndexerConfigTrace :: MarconiTrace IO
   , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam

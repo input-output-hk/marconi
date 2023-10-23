@@ -11,7 +11,7 @@ import System.FilePath (takeDirectory)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, testCase)
 
-tests :: SidechainEnv ann -> TestTree
+tests :: SidechainEnv -> TestTree
 tests env =
   testGroup
     "marconi-sidechain Env Specs"

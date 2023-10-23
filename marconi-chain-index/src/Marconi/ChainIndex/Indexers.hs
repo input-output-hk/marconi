@@ -643,7 +643,7 @@ mkIndexerStream
 mkIndexerStream = mkIndexerStream' (CE.bimSlotNo . blockInMode)
 
 runIndexers
-  :: RunIndexerConfig ann
+  :: RunIndexerConfig
   -> IndexingDepth
   -> ShouldFailIfResync
   -> [(Worker, Maybe FilePath)]
@@ -705,7 +705,7 @@ runIndexers
                 logError stdoutTrace $
                   "No intersection found when looking for the chain point"
                     <+> pretty resumePoint
-                    <> "."
+                      <> "."
                     <+> "Please check the slot number and the block hash do belong to the chain."
                 signalQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
            in finally

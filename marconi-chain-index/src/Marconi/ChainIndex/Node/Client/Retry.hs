@@ -33,12 +33,12 @@ data RetryState = RetryState
   , secondsBeforeNextRetry :: !Word64
   }
 
-withNodeConnectRetry :: forall a ann. MarconiTrace IO ann -> RetryConfig -> FilePath -> IO a -> IO a
+withNodeConnectRetry :: forall a. MarconiTrace IO -> RetryConfig -> FilePath -> IO a -> IO a
 withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
   let initialRetryState = RetryState 0 (baseTimeBeforeNextRetry retryConfig)
   runActionWithRetries stdoutTrace initialRetryState
   where
-    runActionWithRetries :: MarconiTrace IO ann -> RetryState -> IO a
+    runActionWithRetries :: MarconiTrace IO -> RetryState -> IO a
     runActionWithRetries trace retryState = do
       catches
         action
@@ -57,7 +57,7 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
               e -> throwIO e
         ]
 
-    handleCantConnectToNodeException :: MarconiTrace IO ann -> RetryState -> IO a
+    handleCantConnectToNodeException :: MarconiTrace IO -> RetryState -> IO a
     handleCantConnectToNodeException trace retryState = do
       if maybe True (totalWaitTime retryState <) $ maybeMaxWaitTime retryConfig
         then do
@@ -66,7 +66,7 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
               <+> pretty socketPath
               <+> "does not exist. Retrying in"
               <+> pretty (secondsBeforeNextRetry retryState)
-              <> "s ..."
+                <> "s ..."
 
           threadDelay $ fromIntegral $ secondsBeforeNextRetry retryState * 1_000_000
           runActionWithRetries
