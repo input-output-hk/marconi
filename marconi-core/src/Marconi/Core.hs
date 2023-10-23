@@ -366,7 +366,6 @@ module Marconi.Core (
   startWorker,
   createWorker,
   createWorkerHoist,
-  createWorkerPure,
   createWorkerWithPreprocessing,
   ProcessedInput (..),
 
@@ -715,7 +714,6 @@ import Marconi.Core.Worker (
   WorkerM (..),
   createWorker,
   createWorkerHoist,
-  createWorkerPure,
   createWorkerWithPreprocessing,
   startWorker,
  )

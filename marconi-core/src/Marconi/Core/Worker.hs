@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
@@ -14,23 +15,17 @@ module Marconi.Core.Worker (
   WorkerM (..),
   Worker,
   createWorker,
-  createWorkerPure,
-  createWorkerHoist,
-  createWorkerWithPreprocessing,
   startWorker,
+  createWorkerWithPreprocessing,
+  createWorkerHoist,
 ) where
 
 import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
-import Control.Concurrent.STM (TChan)
+import Control.Concurrent.STM (TChan, TVar)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (SomeException (SomeException), catch, finally)
+import Control.Exception (SomeException (SomeException), finally)
 import Control.Monad (void)
-import Control.Monad.Except (ExceptT, runExceptT)
-import Control.Monad.State.Strict (
-  MonadIO (liftIO),
-  MonadTrans (lift),
- )
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Core.Class (
@@ -44,6 +39,7 @@ import Marconi.Core.Type (
   Point,
   ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
  )
+import UnliftIO (MonadUnliftIO, catch, liftIO)
 
 -- | Worker which also provides direct access to the indexer hidden inside it.
 data WorkerIndexer m input event indexer = WorkerIndexer
@@ -61,19 +57,18 @@ type WorkerIndexerType n event indexer =
 {- | A worker hides the shape of an indexer and integrates the data needed to interact with a
 coordinator.
 -}
-data WorkerM m input point = forall indexer event n.
-  ( WorkerIndexerType n event indexer
+data WorkerM m input point = forall indexer event.
+  ( WorkerIndexerType m event indexer
   , Point event ~ point
+  , Closeable m indexer
   ) =>
   Worker
   { workerName :: Text
   -- ^ use to identify the worker in logs
   , workerState :: MVar (indexer event)
   -- ^ the indexer controlled by this worker
-  , transformInput :: Preprocessor (ExceptT IndexerError m) point input event
+  , transformInput :: Preprocessor m point input event
   -- ^ adapt the input event givent by the coordinator to the worker type
-  , hoistError :: forall a. n a -> ExceptT IndexerError m a
-  -- ^ adapt the monadic stack of the indexer to the one of the worker
   }
 
 -- | A worker that operates in @IO@.
@@ -82,110 +77,132 @@ type Worker = WorkerM IO
 -- Create workers
 
 -- | create a worker for an indexer, retuning the worker and the @MVar@ it's using internally
-createWorkerHoist
-  :: (MonadIO f, WorkerIndexerType n event indexer)
-  => (forall a. n a -> ExceptT IndexerError m a)
-  -> Text
-  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
+createWorkerHoistM
+  :: (MonadUnliftIO f, WorkerIndexerType m event indexer)
+  => Text
+  -> Preprocessor m (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
-createWorkerHoist hoist name f ix = liftIO $ do
+createWorkerHoistM name f ix = liftIO $ do
   workerState <- Con.newMVar ix
-  pure $ WorkerIndexer workerState $ Worker name workerState f hoist
+  pure $ WorkerIndexer workerState $ Worker name workerState f
+
+createWorkerHoist
+  :: (WorkerIndexerType m event indexer)
+  => Text
+  -> Preprocessor m (Point event) input event
+  -> MVar (indexer event)
+  -> WorkerIndexer m input event indexer
+createWorkerHoist name f workerState = do
+  WorkerIndexer workerState $ Worker name workerState f
 
 -- | create a worker for an indexer that already throws IndexerError
 createWorkerWithPreprocessing
-  :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
+  :: (MonadUnliftIO f, WorkerIndexerType m event indexer)
   => Text
-  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
+  -> Preprocessor m (Point event) input event
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
-createWorkerWithPreprocessing = createWorkerHoist id
-
--- | create a worker for an indexer that doesn't throw error
-createWorkerPure
-  :: (MonadIO f, MonadIO m, WorkerIndexerType m event indexer)
-  => Text
-  -> Preprocessor (ExceptT IndexerError m) (Point event) input event
-  -> indexer event
-  -> f (WorkerIndexer m input event indexer)
-createWorkerPure = createWorkerHoist lift
+createWorkerWithPreprocessing = createWorkerHoistM
 
 -- | create a worker for an indexer that already throws IndexerError
 createWorker
-  :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
+  :: (IsIndex m event indexer, IsSync m event indexer, Closeable m indexer)
   => Text
   -> (input -> Maybe event)
-  -> indexer event
-  -> f (WorkerIndexer m input event indexer)
-createWorker name = createWorkerWithPreprocessing name . mapMaybeEvent
+  -> MVar (indexer event)
+  -> WorkerIndexer m input event indexer
+createWorker name = createWorkerHoist name . mapMaybeEvent
+
+-- createWorker
+--   :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
+--   => Text
+--   -> (input -> Maybe event)
+--   -> indexer event
+--   -> f (WorkerIndexer m input event indexer)
+-- createWorker name = createWorkerWithPreprocessing name . mapMaybeEvent
+
+-- createWorkerHoist
+--   :: (MonadIO f, WorkerIndexerType n event indexer)
+--   => (forall a. n a -> ExceptT IndexerError m a)
+--   -> Text
+--   -> Preprocessor (ExceptT IndexerError m) (Point event) input event
+--   -> indexer event
+--   -> f (WorkerIndexer m input event indexer)
+-- createWorkerHoist hoist name f ix = liftIO $ do
+--   workerState <- Con.newMVar ix
+--   pure $ WorkerIndexer workerState $ Worker name workerState f hoist
 
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come
 -}
 startWorker
   :: forall input m
-   . (MonadIO m)
+   . (MonadUnliftIO m)
   => (Ord (Point input))
   => TChan (ProcessedInput (Point input) input)
-  -> MVar IndexerError
+  -> TVar [IndexerError]
   -> QSemN
   -> QSemN
   -> Worker input (Point input)
   -> m ThreadId
-startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistError) =
+startWorker chan errorBox endTokens tokens (Worker name ix transformInput) =
   let unlockCoordinator :: IO ()
       unlockCoordinator = Con.signalQSemN tokens 1
 
       notifyEndToCoordinator :: IO ()
       notifyEndToCoordinator = Con.signalQSemN endTokens 1
 
-      indexEvent timedEvent = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ index timedEvent indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+      indexEvent timedEvent =
+        Con.modifyMVar ix $ \indexer ->
+          ( liftIO $ do
+              res <- index timedEvent indexer
+              pure (res, Nothing)
+          )
+            `catch` (\e -> pure (indexer, Just e))
 
-      indexAllEventsDescending timedEvents = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ indexAllDescending timedEvents indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+      indexAllEventsDescending timedEvents =
+        Con.modifyMVar ix $ \indexer ->
+          ( liftIO $ do
+              res <- indexAllDescending timedEvents indexer
+              pure (res, Nothing)
+          )
+            `catch` (\e -> pure (indexer, Just e))
 
       handleRollback :: Point input -> IO (Maybe IndexerError)
       handleRollback p = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ rollback p indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+        Con.modifyMVar ix $ \indexer ->
+          ( liftIO $ do
+              res <- rollback p indexer
+              pure (res, Nothing)
+          )
+            `catch` (\e -> pure (indexer, Just e))
 
       handleStableAt :: Point input -> IO (Maybe IndexerError)
       handleStableAt p = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ setLastStablePoint p indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+        Con.modifyMVar ix $ \indexer ->
+          ( liftIO $ do
+              res <- setLastStablePoint p indexer
+              pure (res, Nothing)
+          )
+            `catch` (\e -> pure (indexer, Just e))
 
-      checkError :: IO (Maybe IndexerError)
-      checkError = Con.tryReadMVar errorBox
+      checkError :: IO [IndexerError]
+      checkError = STM.readTVarIO errorBox
 
       closeIndexer :: IO ()
       closeIndexer = do
         indexer <- Con.readMVar ix
-        void $ runExceptT $ hoistError $ close indexer
+        close indexer
 
       swallowPill :: IO ()
-      swallowPill = finally closeIndexer notifyEndToCoordinator
+      swallowPill = finally closeIndexer notifyEndToCoordinator `catch` notifyCoordinatorOnError
 
       notifyCoordinatorOnError :: IndexerError -> IO ()
       notifyCoordinatorOnError e =
         -- We don't need to check if tryPutMVar succeed
         -- because if @errorBox@ is already full, our job is done anyway
-        void $ Con.tryPutMVar errorBox e
+        void $ appendToTVar errorBox [e]
 
       process = \case
         Rollback p -> handleRollback p
@@ -208,19 +225,22 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
       onProcessError (SomeException e) =
         pure . Just . StopIndexer . Just $ displayError e
 
-      safeProcessEvent f input = do
-        processed <- runExceptT $ runPreprocessor f (pure input)
-        case processed of
-          Left err -> (,f) <$> onProcessError (SomeException err)
-          Right (processedInputs, f') ->
-            (,f') <$> processAll processedInputs `catch` onProcessError
+      runSafeProcessing f input = do
+        (processedInputs, f') <- runPreprocessor f (pure input)
+        (,f') <$> processAll processedInputs `catch` onProcessError
+
+      withCatchProcessing f input =
+        runSafeProcessing f input
+          `catch` \(err :: SomeException) -> (,f) <$> onProcessError (SomeException err)
+
+      safeProcessEvent = withCatchProcessing
 
       loop :: TChan (ProcessedInput (Point input) input) -> IO ()
       loop chan' =
         let loop' f = do
               err <- checkError
               case err of
-                Nothing -> do
+                [] -> do
                   event <- STM.atomically $ STM.readTChan chan'
                   (result, f') <- safeProcessEvent f event
                   case result of
@@ -230,8 +250,14 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
                     Just err' -> do
                       notifyCoordinatorOnError err'
                       unlockCoordinator
-                Just _ -> unlockCoordinator
+                _ -> unlockCoordinator
          in loop' transformInput
    in liftIO $ do
         chan' <- STM.atomically $ STM.dupTChan chan
         Con.forkFinally (loop chan') (const swallowPill)
+
+appendToTVar :: (Monoid a) => TVar a -> a -> IO ()
+appendToTVar tvar newVal = do
+  STM.atomically $
+    STM.modifyTVar tvar $
+      \currentVal -> currentVal <> newVal

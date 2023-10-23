@@ -52,6 +52,8 @@ import System.Posix.Signals (
   installHandler,
   sigTERM,
  )
+import Control.Exception (throwIO)
+import Marconi.ChainIndex.Error (IndexerError(CantStartIndexer))
 #endif
 
 run :: Text -> IO ()
@@ -107,24 +109,28 @@ run appName = withGracefulTermination_ $ do
   securityParam <- withNodeConnectRetry trace retryConfig socketPath $ do
     Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
 
-  mindexers <-
-    runExceptT $
-      buildIndexers
-        securityParam
-        (Core.mkCatchupConfig batchSize stopCatchupDistance)
-        (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
-        (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
-        ( EpochState.EpochStateWorkerConfig
-            (EpochState.NodeConfig nodeConfigPath)
-            volatileEpochStateSnapshotInterval
-        )
-        trace
-        (Cli.optionsDbPath o)
+  nodeConfigE <- runExceptT $ C.readNodeConfig (C.File nodeConfigPath)
+  nodeConfig <- either (throwIO . CantStartIndexer @Void . Text.pack . show) pure nodeConfigE
+
+  genesisConfigE <- runExceptT $ C.readCardanoGenesisConfig nodeConfig
+  genesisConfig <-
+    either
+      (throwIO . CantStartIndexer @Void . Text.pack . show . C.renderGenesisConfigError)
+      pure
+      genesisConfigE
+
   (indexerLastStablePoint, queryables, coordinator) <-
-    ( case mindexers of
-        Left err -> withLogFullError exitFailure $ Text.pack $ show err
-        Right result -> pure result
+    buildIndexers
+      securityParam
+      (Core.mkCatchupConfig batchSize stopCatchupDistance)
+      (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
+      (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
+      ( EpochState.EpochStateWorkerConfig
+          genesisConfig
+          volatileEpochStateSnapshotInterval
       )
+      trace
+      (Cli.optionsDbPath o)
 
   let startingPoint = getStartingPoint preferredStartingPoint indexerLastStablePoint
 

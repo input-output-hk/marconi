@@ -8,7 +8,7 @@ module Marconi.ChainIndex.Experimental.Indexers.Coordinator (
 ) where
 
 import Cardano.BM.Tracing (Trace)
-import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
+import Control.Monad.Cont (MonadIO (liftIO))
 import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.Core qualified as Core
@@ -29,4 +29,4 @@ coordinatorWorker
   -> m (Core.WorkerIndexer IO a b (Core.WithTrace IO Core.Coordinator))
 coordinatorWorker name logger extract workers = liftIO $ do
   coordinator <- standardCoordinator logger workers
-  Core.createWorkerWithPreprocessing name (Core.traverseMaybeEvent $ lift . extract) coordinator
+  Core.createWorkerWithPreprocessing name (Core.traverseMaybeEvent extract) coordinator

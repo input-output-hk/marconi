@@ -42,7 +42,7 @@ import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Except (ExceptT, void)
+import Control.Monad.Except (void)
 import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
@@ -104,7 +104,7 @@ given indexer.
 If you want to start several indexers, use @runIndexers@.
 -}
 runIndexer
-  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) a indexer
+  :: ( Core.IsIndex IO a indexer
      , Core.Closeable IO indexer
      , Core.Point a ~ C.ChainPoint
      )

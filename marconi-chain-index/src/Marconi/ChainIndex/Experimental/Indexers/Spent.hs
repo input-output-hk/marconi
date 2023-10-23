@@ -51,6 +51,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
+import UnliftIO (MonadUnliftIO)
 
 data SpentInfo = SpentInfo
   { _spentTxOutRef :: C.TxIn
@@ -99,7 +100,7 @@ type SpentIndexer = Core.SQLiteIndexer SpentInfoEvent
 type StandardSpentIndexer m = StandardSQLiteIndexer m SpentInfoEvent
 
 mkSpentIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => FilePath
   -> m (Core.SQLiteIndexer SpentInfoEvent)
 mkSpentIndexer path = do
@@ -156,7 +157,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadUnliftIO n, MonadUnliftIO m)
   => StandardWorkerConfig m input SpentInfoEvent
   -- ^ General configuration of a worker
   -> FilePath
@@ -167,7 +168,7 @@ spentWorker config path = do
   mkStandardWorker config indexer
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery SpentInfoEvent)) m)
+  (MonadUnliftIO m)
   => Core.Queryable m SpentInfoEvent (Core.EventAtQuery SpentInfoEvent) Core.SQLiteIndexer
   where
   query =
@@ -184,7 +185,7 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery SpentInfoEvent)) m)
+  (MonadUnliftIO m)
   => Core.Queryable
       m
       SpentInfoEvent

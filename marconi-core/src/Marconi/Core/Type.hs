@@ -105,10 +105,12 @@ data IndexerError
     StopIndexer (Maybe Text)
   | -- | The indexer failed at resuming (likely due to a bug)
     ResumingFailed Text
+  | ShutdownTimeout
   | -- | Any other cause of failure
     OtherIndexError Text
 
 instance Exception IndexerError
+instance Exception [IndexerError]
 
 deriving stock instance Show IndexerError
 deriving stock instance Eq IndexerError

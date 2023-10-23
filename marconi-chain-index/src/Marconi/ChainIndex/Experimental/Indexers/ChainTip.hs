@@ -17,14 +17,13 @@ import Codec.CBOR.Decoding qualified as CBOR
 import Codec.CBOR.Encoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
-import Control.Monad.Cont (MonadIO)
-import Control.Monad.Except (MonadError)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BS.Lazy
 import Data.ByteString.Short qualified as BS.Short
 import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.Core qualified as Core
+import UnliftIO (MonadUnliftIO, newMVar)
 
 type instance Core.Point C.ChainTip = C.ChainPoint
 
@@ -39,7 +38,7 @@ data ChainTipConfig = ChainTipConfig
 
 -- | Configure and start the 'ChainTip' indexer
 mkChainTipIndexer
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadUnliftIO n, MonadUnliftIO m)
   => BM.Trace m (Core.IndexerEvent C.ChainPoint)
   -> ChainTipConfig
   -> n (ChainTipIndexer m)
@@ -59,7 +58,10 @@ mkChainTipIndexer tracer cfg = do
 
 -- | Start a 'ChainTipIndexer' and put it in a worker
 chainTipWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: ( MonadUnliftIO n
+     , MonadUnliftIO m
+     , Core.IsIndex m C.ChainTip (Core.WithTrace m Core.LastEventIndexer)
+     )
   => BM.Trace m (Core.IndexerEvent C.ChainPoint)
   -> (event -> Maybe C.ChainTip)
   -> ChainTipConfig
@@ -70,8 +72,10 @@ chainTipWorker
           C.ChainTip
           (Core.WithTrace m Core.LastEventIndexer)
       )
-chainTipWorker tracer extractor cfg =
-  Core.createWorker "chainTip" extractor =<< mkChainTipIndexer tracer cfg
+chainTipWorker tracer extractor cfg = do
+  ix <- mkChainTipIndexer tracer cfg
+  workerState <- newMVar ix
+  pure $ Core.createWorker "chainTip" extractor workerState
 
 serialiseTip :: C.ChainTip -> BS.ByteString
 serialiseTip =

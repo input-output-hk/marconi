@@ -36,7 +36,7 @@ module Marconi.Core.Indexer.SQLiteIndexer (
 ) where
 
 import Control.Concurrent.Async qualified as Async
-import Control.Exception (Handler (Handler), catches)
+import Control.Exception (Handler (Handler), catches, throwIO)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
@@ -54,13 +54,14 @@ import Marconi.Core.Class (
   IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Type (
-  IndexerError (IndexerInternalError, InvalidIndexer),
+  IndexerError (IndexerInternalError, InvalidIndexer, OtherIndexError),
   Point,
   QueryError (AheadOfLastSync),
   Result,
   Timed,
   point,
  )
+import UnliftIO (MonadUnliftIO)
 
 -- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
 data SQLInsertPlan event = forall a.
@@ -128,8 +129,7 @@ makeLenses ''SQLiteIndexer
 -}
 mkSqliteIndexer
   :: forall event m
-   . ( MonadIO m
-     , MonadError IndexerError m
+   . ( MonadUnliftIO m
      , HasGenesis (Point event)
      , SQL.FromRow (Point event)
      , SQL.ToRow (Point event)
@@ -185,8 +185,7 @@ mkSqliteIndexer
 -}
 mkSingleInsertSqliteIndexer
   :: forall m event param
-   . ( MonadIO m
-     , MonadError IndexerError m
+   . ( MonadUnliftIO m
      , HasGenesis (Point event)
      , SQL.FromRow (Point event)
      , SQL.ToRow (Point event)
@@ -245,7 +244,7 @@ runIndexPlan c = traverse_ . runIndexQueriesStep c
 
 -- | Run a list of insert queries in one single transaction.
 runIndexQueries
-  :: (MonadIO m, MonadError IndexerError m)
+  :: (MonadIO m)
   => SQL.Connection
   -> [Timed (Point event) (Maybe event)]
   -> [[SQLInsertPlan event]]
@@ -259,11 +258,13 @@ runIndexQueries c events' plan =
         Nothing -> pure ()
         Just runIndexers ->
           let
-           in either throwError pure <=< liftIO $
+           in -- \| uhh hello indexEvents . pure
+
+              either (liftIO . throwIO) pure <=< liftIO $
                 handleSQLErrors (SQL.withTransaction c runIndexers)
 
 indexEvents
-  :: (MonadIO m, MonadError IndexerError m)
+  :: (MonadIO m)
   => [Timed (Point event) (Maybe event)]
   -> SQLiteIndexer event
   -> m (SQLiteIndexer event)
@@ -274,19 +275,19 @@ indexEvents evts@(e : _) indexer = do
   setDbLastSync (e ^. point) indexer
 
 runLastStablePointQuery
-  :: (MonadError IndexerError m, MonadIO m, SQL.FromRow r)
+  :: (MonadIO m, SQL.FromRow r)
   => SQL.Connection
   -> GetLastStablePointQuery
   -> m (Maybe r)
 runLastStablePointQuery conn (GetLastStablePointQuery q) =
-  either throwError (pure . listToMaybe) <=< liftIO $
+  either (liftIO . throwIO) (pure . listToMaybe) <=< liftIO $
     handleSQLErrors (SQL.query_ conn q)
 
 instance
-  (MonadIO m, MonadError IndexerError m, SQL.ToRow (Point event))
+  (MonadUnliftIO m, SQL.ToRow (Point event))
   => IsIndex m event SQLiteIndexer
   where
-  index = indexEvents . pure
+  index x y = liftIO $ throwIO $ OtherIndexError "qwe"
 
   indexAllDescending = indexEvents . toList
 
@@ -370,8 +371,7 @@ querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
  It doesn't filter the result based on the given data point.
 -}
 querySyncedOnlySQLiteIndexerWith
-  :: (MonadIO m)
-  => (MonadError (QueryError query) m)
+  :: (MonadUnliftIO m)
   => (Ord (Point event))
   => (SQL.FromRow r)
   => (Point event -> query -> [SQL.NamedParam])
@@ -388,6 +388,6 @@ querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
     let c = indexer ^. connection
     when (p > indexer ^. dbLastSync) $
-      throwError (AheadOfLastSync Nothing)
+      undefined
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     pure $ fromRows q res

@@ -26,6 +26,7 @@ import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distanc
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
+import UnliftIO (MonadUnliftIO)
 
 -- | An alias for an indexer with catchup and transformation to perform filtering
 type StandardIndexer m indexer event =
@@ -68,11 +69,13 @@ mkStandardIndexer config indexer =
 
 -- | Create a worker for the given indexer with some standard catchup values
 mkStandardWorker
-  :: ( MonadIO m
-     , MonadIO n
-     , Core.WorkerIndexerType (ExceptT Core.IndexerError m) event indexer
-     , Core.IsSync n event indexer
+  :: ( Core.IsSync n event indexer
      , Core.Point event ~ C.ChainPoint
+     , Core.IsIndex m event indexer
+     , Core.IsSync m event indexer
+     , Core.Closeable m indexer
+     , MonadUnliftIO m
+     , MonadUnliftIO n
      )
   => StandardWorkerConfig m input event
   -> indexer event
@@ -97,12 +100,12 @@ mkStandardIndexerWithFilter config eventFilter indexer =
 
 -- | Create a worker for the given indexer with some standard catchup values with extra filtering.
 mkStandardWorkerWithFilter
-  :: ( MonadIO n
-     , MonadIO m
-     , Core.WorkerIndexerType (ExceptT Core.IndexerError m) event indexer
-     , Core.IsSync n event indexer
+  :: ( MonadUnliftIO m
+     , Core.WorkerIndexerType m event indexer
      , Ord (Core.Point event)
      , Core.Point event ~ C.ChainPoint
+     , Core.IsSync n event indexer
+     , MonadUnliftIO n
      )
   => StandardWorkerConfig m input event
   -> (event -> Maybe event)
@@ -110,7 +113,7 @@ mkStandardWorkerWithFilter
   -> n (StandardWorker m input event indexer)
 mkStandardWorkerWithFilter config eventFilter indexer = do
   let mapEventUnderDistance =
-        Core.traverseMaybeEvent $ fmap Just . traverse (lift . eventExtractor config)
+        Core.traverseMaybeEvent $ fmap Just . traverse (eventExtractor config)
       transformedIndexer = mkStandardIndexerWithFilter config eventFilter indexer
   lastStable <- Core.lastStablePoint indexer
   let eventPreprocessing = Core.withResume lastStable <<< mapEventUnderDistance

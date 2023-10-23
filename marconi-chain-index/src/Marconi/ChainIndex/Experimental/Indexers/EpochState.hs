@@ -31,6 +31,7 @@ module Marconi.ChainIndex.Experimental.Indexers.EpochState (
   NodeConfig (..),
   EpochStateWorkerConfig (..),
   StandardEpochStateIndexer,
+  WorkerState,
   mkEpochStateIndexer,
   mkEpochStateWorker,
 
@@ -39,6 +40,7 @@ module Marconi.ChainIndex.Experimental.Indexers.EpochState (
   NonceByEpochNoQuery,
 ) where
 
+import Cardano.Api (GenesisConfig)
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.ExtLedgerState qualified as CE
 import Cardano.Api.Shelley qualified as C
@@ -54,12 +56,12 @@ import Codec.CBOR.Write qualified as CBOR
 import Control.Applicative (Alternative (empty))
 import Control.Arrow ((<<<))
 import Control.Concurrent qualified as Con
-import Control.Exception (throw)
+import Control.Exception (throw, throwIO)
 import Control.Lens (Lens', (%~), (&), (-=), (.=), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (foldM, when, (<=<))
-import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
-import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Control.Monad.Cont (MonadIO (liftIO))
+import Control.Monad.Except (runExceptT)
 import Control.Monad.State.Strict (MonadState)
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
 import Data.Aeson (FromJSON, ToJSON)
@@ -116,6 +118,7 @@ import Prettyprinter (pretty)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import Text.Read qualified as Text
+import UnliftIO (MonadUnliftIO, catch)
 
 type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
 type ExtLedgerConfig = O.ExtLedgerCfg (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -279,15 +282,14 @@ newtype NodeConfig = NodeConfig
   }
 
 mkEpochStateIndexer
-  :: (MonadIO n, MonadError Core.IndexerError n)
+  :: (MonadUnliftIO n)
   => StandardWorkerConfig IO a b
-  -> NodeConfig
+  -> GenesisConfig
   -> FilePath
   -> n
       ( EpochStateIndexer (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
       )
-mkEpochStateIndexer workerCfg cfg rootDir = do
-  genesisCfg <- readGenesisFile (nodeConfig cfg)
+mkEpochStateIndexer workerCfg genesisCfg rootDir = do
   let securityParam' = securityParamConfig workerCfg
       config = EpochStateIndexerConfig genesisCfg
       extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
@@ -321,13 +323,16 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
   pure indexer
 
 data EpochStateWorkerConfig = EpochStateWorkerConfig
-  { indexerConfig :: NodeConfig
+  { indexerConfig :: GenesisConfig
   , epochSnapshotInterval :: Word
   }
 
 mkEpochStateWorker
   :: forall m input
-   . (MonadIO m, MonadError Core.IndexerError m)
+   . ( MonadUnliftIO m
+     , Core.IsIndex IO (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)) EpochStateIndexer
+     , Core.Closeable IO EpochStateIndexer
+     )
   => StandardWorkerConfig IO input (C.BlockInMode C.CardanoMode)
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> EpochStateWorkerConfig
@@ -343,17 +348,18 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
   indexer <- mkEpochStateIndexer workerConfig (indexerConfig epochStateConfig) rootDir
   workerState <- liftIO $ Con.newMVar indexer
   lastStable <- Core.lastStablePoint indexer
-  ledgerStateE <- runExceptT $ restoreLedgerState (Just lastStable) indexer
-  epochState <- case ledgerStateE of
-    Left _err -> throwError $ Core.IndexerInternalError "can't restore ledger state"
-    Right res -> pure res
+  epochState <-
+    restoreLedgerState (Just lastStable) indexer
+      `catch` ( \(_ :: Core.IndexerError) ->
+                  liftIO . throwIO $ Core.IndexerInternalError "can't restore ledger state"
+              )
   let extLedgerCfg = extLedgerConfig indexer
 
       snapshotInterval = epochSnapshotInterval epochStateConfig
       initialState = pure $ WorkerState epochState workerState snapshotInterval
 
       mapOneEvent
-        :: (MonadState WorkerState n, MonadError Core.IndexerError n, MonadIO n)
+        :: (MonadState WorkerState n, MonadIO n)
         => Maybe (WithDistance input)
         -> n (Maybe (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)))
       mapOneEvent Nothing = pure Nothing
@@ -365,7 +371,7 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
         let newBlockNo = getBlockNo block
         EpochState currentLedgerState' _block <- Lens.use lastEpochState
         case applyBlock block currentLedgerState' of
-          Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
+          Left err -> liftIO . throwIO . Core.IndexerInternalError . Text.pack . show $ err
           Right res -> do
             lastEpochState .= EpochState res newBlockNo
             blocksToNextSnapshot -= 1
@@ -380,9 +386,9 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
               | otherwise -> empty
 
       processAsEpochState
-        :: ExceptT Core.IndexerError IO WorkerState
+        :: IO WorkerState
         -> Core.Preprocessor
-            (ExceptT Core.IndexerError IO)
+            IO
             C.ChainPoint
             (WithDistance input)
             (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
@@ -393,15 +399,10 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
           Core.Rollback p -> do
             lastIndexerM <- Lens.use accessToIndexer
             lastIndexer <- liftIO $ Con.readMVar lastIndexerM
-            queryResult <- lift $ runExceptT $ Core.query p Core.EventAtQuery lastIndexer
+            queryResult <- liftIO $ Core.query p Core.EventAtQuery lastIndexer
             case queryResult of
-              Left (Core.IndexerQueryError err) ->
-                throwError $
-                  Core.IndexerInternalError $
-                    "Can't rollback to the given epoch:" <> Text.pack (show err)
-              Left _err -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch"
-              Right Nothing -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch: no event found"
-              Right (Just res) -> do
+              Nothing -> liftIO . throwIO $ Core.IndexerInternalError "Can't rollback to the given epoch: no event found"
+              (Just res) -> do
                 lastEpochState .= res
                 pure . pure $ Core.Rollback p
           Core.StableAt p -> pure . pure $ Core.StableAt p
@@ -410,7 +411,7 @@ mkEpochStateWorker workerConfig epochStateConfig rootDir = do
   let eventPreprocessing = processAsEpochState initialState <<< Core.withResume lastStable
   pure $
     Core.WorkerIndexer workerState $
-      Core.Worker (workerName workerConfig) workerState eventPreprocessing id
+      Core.Worker (workerName workerConfig) workerState eventPreprocessing
 
 deserialiseMetadata :: [Text] -> Maybe EpochMetadata
 deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
@@ -427,7 +428,7 @@ deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
 deserialiseMetadata _ = Nothing
 
 buildEpochStateIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> SecurityParam
   -> FilePath
@@ -529,7 +530,7 @@ deserialiseBlock codecConfig blockToNode _metadata =
     . BS.fromStrict
 
 buildBlockIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> SecurityParam
   -> FilePath
@@ -565,7 +566,7 @@ buildBlockIndexer codecConfig securityParam' path = do
         Map.lookup nodeToClientVersion $
           O.supportedNodeToClientVersions (Proxy @(O.CardanoBlock O.StandardCrypto))
   blockNodeToNodeVersion <- case blockNodeToNodeVersionM of
-    Nothing -> throwError $ Core.IndexerInternalError "Can't finde block to Node version"
+    Nothing -> liftIO . throwIO $ Core.IndexerInternalError "Can't finde block to Node version"
     Just v -> pure v
   Core.mkFileIndexer
     path
@@ -586,7 +587,7 @@ buildBlockIndexer codecConfig securityParam' path = do
     )
 
 buildEpochSDDIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => FilePath
   -> m (Core.SQLiteIndexer (NonEmpty EpochSDD))
 buildEpochSDDIndexer path = do
@@ -616,7 +617,7 @@ buildEpochSDDIndexer path = do
     [Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo]
 
 buildEpochNonceIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => FilePath
   -> m (Core.SQLiteIndexer EpochNonce)
 buildEpochNonceIndexer path = do
@@ -644,7 +645,7 @@ buildEpochNonceIndexer path = do
     [Core.SQLRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo]
 
 getLatestNonEmpty
-  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m)
+  :: (MonadUnliftIO m)
   => Maybe C.ChainPoint
   -> EpochState
   -> LedgerStateFileIndexer
@@ -659,23 +660,23 @@ getLatestNonEmpty p firstEpochState indexer = do
     Right xs -> pure $ getLatest xs
     Left (Core.AheadOfLastSync partialResult) -> case partialResult of
       Nothing ->
-        throwError $
-          Core.IndexerQueryError $
+        liftIO . throwIO $
+          Core.OtherIndexError $
             "Cant resolve last epochState: No previous result: " <> Text.pack (show $ pretty p)
       Just xs -> pure $ getLatest xs
     Left (Core.IndexerQueryError err) ->
-      throwError $
-        Core.IndexerQueryError $
+      liftIO . throwIO $
+        Core.OtherIndexError $
           "Cant resolve last epochState: " <> Text.pack (show err)
     Left Core.NotStoredAnymore ->
-      throwError $
-        Core.IndexerQueryError
+      liftIO . throwIO $
+        Core.OtherIndexError
           "Cant resolve last epochState: Not stored anymore"
     Left (Core.SlotNoBoundsInvalid _) ->
-      throwError $ Core.IndexerQueryError "Invalid bounds"
+      liftIO . throwIO $ Core.OtherIndexError "Invalid bounds"
 
 getBlocksFrom
-  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m)
+  :: (MonadUnliftIO m)
   => C.ChainPoint
   -> Maybe C.ChainPoint
   -> BlockFileIndexer
@@ -689,16 +690,16 @@ getBlocksFrom from to indexer = do
     Left (Core.AheadOfLastSync partialResult) -> case partialResult of
       Nothing -> do
         lastSync <- Core.lastSyncPoint indexer
-        throwError $
-          Core.IndexerQueryError $
+        liftIO . throwIO $
+          Core.OtherIndexError $
             "Cant resolve last blocks: No result - ahead of sync - No previous result: "
               <> Text.pack (show $ pretty to)
               <> " head is: "
               <> Text.pack (show $ pretty lastSync)
       Just xs -> do
         lastSync <- Core.lastSyncPoint indexer
-        throwError $
-          Core.IndexerQueryError $
+        liftIO . throwIO $
+          Core.OtherIndexError $
             "Cant resolve last blocks: No result - ahead of sync - Latest results: "
               <> Text.pack (show (Lens.view Core.point <$> xs))
               <> " Head is: "
@@ -706,19 +707,18 @@ getBlocksFrom from to indexer = do
               <> " Expecting: "
               <> Text.pack (show to)
     Left (Core.IndexerQueryError err) ->
-      throwError $
-        Core.IndexerQueryError $
+      liftIO . throwIO $
+        Core.OtherIndexError $
           "Cant resolve last blocks: " <> Text.pack (show err)
     Left Core.NotStoredAnymore ->
-      throwError $
-        Core.IndexerQueryError
+      liftIO . throwIO $
+        Core.OtherIndexError
           "Cant resolve last blocks: Not stored anymore"
     Left (Core.SlotNoBoundsInvalid _) ->
-      throwError $ Core.IndexerQueryError "Invalid bounds"
+      liftIO . throwIO $ Core.OtherIndexError "Invalid bounds"
 
 restoreLedgerState
-  :: ( MonadIO m
-     , MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m
+  :: ( MonadUnliftIO m
      , Core.Point event ~ C.ChainPoint
      )
   => Maybe C.ChainPoint
@@ -734,15 +734,14 @@ restoreLedgerState p indexer = do
             blocks
   Core.Timed epochStatePoint closestLedgerState <-
     getLatestNonEmpty p (initialEpochState indexer) (indexer ^. epochStateIndexer)
-  mlast <- runExceptT $ Core.lastSyncPoint indexer
-  last' <- either (const $ throwError $ Core.IndexerQueryError "can't find lastpoint") pure mlast
-  if epochStatePoint == fromMaybe last' p
+  lst <- Core.lastSyncPoint indexer
+  if epochStatePoint == fromMaybe lst p
     then pure closestLedgerState
     else applyBlocksUpToGivenSlot epochStatePoint closestLedgerState
 
 instance
   Core.IsIndex
-    (ExceptT Core.IndexerError IO)
+    IO
     (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
     EpochStateIndexer
   where
@@ -758,16 +757,19 @@ instance
       <=< Core.indexVia epochSDDIndexer (Core.Timed point (Just (WithDistance d Nothing)))
       <=< Core.indexVia epochNonceIndexer (Core.Timed point (Just (WithDistance d Nothing)))
       $ indexer
-  index (Core.Timed point (Just (WithDistance d (Just ledgerState, block)))) indexer = do
-    let blockNo' = getBlockNo block
-        epochState = EpochState ledgerState blockNo'
-        epochStateWithDistance = WithDistance d epochState
-        addSnapshot = fmap (snapshots %~ (point :))
-    addSnapshot
-      $ Core.indexVia blockIndexer (Core.Timed point (Just block))
-        <=< Core.indexVia epochStateIndexer (Core.Timed point $ Just epochState)
-        <=< Core.indexVia epochSDDIndexer (Core.Timed point $ toEpochSDD epochStateWithDistance)
-        <=< Core.indexVia epochNonceIndexer (Core.Timed point $ toEpochNonce epochStateWithDistance)
+  index (Core.Timed point (Just (WithDistance d (Just ledgerState, block)))) indexer =
+    do
+      let blockNo' = getBlockNo block
+          epochState = EpochState ledgerState blockNo'
+          epochStateWithDistance = WithDistance d epochState
+          addSnapshot
+            :: (EpochStateIndexer a -> IO (EpochStateIndexer b)) -> EpochStateIndexer a -> IO (EpochStateIndexer b)
+          addSnapshot f = fmap (snapshots %~ (point :)) <$> f
+      addSnapshot $
+        Core.indexVia blockIndexer (Core.Timed point (Just block))
+          <=< Core.indexVia epochStateIndexer (Core.Timed point $ Just epochState)
+          <=< Core.indexVia epochSDDIndexer (Core.Timed point $ toEpochSDD epochStateWithDistance)
+          <=< Core.indexVia epochNonceIndexer (Core.Timed point $ toEpochNonce epochStateWithDistance)
       $ indexer
   rollback p =
     epochStateIndexer (Core.rollback p)
@@ -787,7 +789,7 @@ instance
      in maybe pure setStablePointOnIndexers p' indexer'
 
 instance
-  (MonadIO m, Core.Point event ~ C.ChainPoint)
+  (MonadUnliftIO m, Core.Point event ~ C.ChainPoint)
   => Core.IsSync m event EpochStateIndexer
   where
   lastSyncPoint indexer = do
@@ -798,7 +800,7 @@ instance
     pure $ minimum [lastBlock, lastEpoch, lastSDD, lastNonce]
   lastStablePoint indexer = Core.lastStablePoint $ indexer ^. epochStateIndexer
 
-instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
+instance Core.Closeable IO EpochStateIndexer where
   close indexer = do
     Core.close $ indexer ^. epochStateIndexer
     Core.close $ indexer ^. blockIndexer
@@ -811,7 +813,7 @@ newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
 type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
 
 instance
-  (MonadIO m, MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m)
+  (MonadUnliftIO m)
   => Core.Queryable m event ActiveSDDByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
@@ -828,8 +830,7 @@ instance
       (const id)
 
 instance
-  ( MonadIO m
-  , MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m
+  ( MonadUnliftIO m
   , Core.Point event ~ C.ChainPoint
   )
   => Core.Queryable m event ActiveSDDByEpochNoQuery EpochStateIndexer
@@ -837,8 +838,7 @@ instance
   query = Core.queryVia epochSDDIndexer
 
 instance
-  ( MonadIO m
-  , MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m
+  ( MonadUnliftIO m
   , Core.Point event ~ C.ChainPoint
   )
   => Core.Queryable m event (Core.EventAtQuery EpochState) EpochStateIndexer
@@ -851,7 +851,7 @@ newtype NonceByEpochNoQuery = NonceByEpochNoQuery C.EpochNo
 type instance Core.Result NonceByEpochNoQuery = Maybe (Core.Timed C.ChainPoint EpochNonce)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError NonceByEpochNoQuery) m)
+  (MonadUnliftIO m)
   => Core.Queryable m event NonceByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
@@ -867,8 +867,7 @@ instance
       (const listToMaybe)
 
 instance
-  ( MonadIO m
-  , MonadError (Core.QueryError NonceByEpochNoQuery) m
+  ( MonadUnliftIO m
   , Core.Point event ~ C.ChainPoint
   )
   => Core.Queryable m event NonceByEpochNoQuery EpochStateIndexer
@@ -962,20 +961,6 @@ getEpochNo extLedgerState' = case O.ledgerState extLedgerState' of
   O.LedgerStateConway st -> getEpochNoFromShelleyBlock st
   where
     getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
-
-readGenesisFile
-  :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
-  -> m C.GenesisConfig
-readGenesisFile nodeConfigPath = do
-  nodeCfgE <- liftIO $ runExceptT $ C.readNodeConfig (C.File nodeConfigPath)
-  nodeCfg <- case nodeCfgE of
-    Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
-    Right cfg -> pure cfg
-  genesisConfigE <- liftIO $ runExceptT $ C.readCardanoGenesisConfig nodeCfg
-  case genesisConfigE of
-    Left err -> throwError . Core.IndexerInternalError . Text.pack . show . C.renderGenesisConfigError $ err
-    Right cfg -> pure cfg
 
 getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
 getBlockNo (C.BlockInMode block _eraInMode) =

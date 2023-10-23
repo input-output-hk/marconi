@@ -15,6 +15,7 @@ module Marconi.Core.Indexer.LastEventIndexer (
   GetLastQuery (GetLastQuery),
 ) where
 
+import Control.Exception (throwIO)
 import Control.Lens (Lens', (&), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void, when)
@@ -44,6 +45,7 @@ import Marconi.Core.Type (
  )
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
+import UnliftIO (MonadUnliftIO)
 
 data LastEventConfig event = LastEventConfig
   { _configDirectory :: FilePath
@@ -131,7 +133,7 @@ tickSave indexer = do
     then (True, indexer & timeToNextSave .~ indexer ^. saveEvery)
     else (False, indexer & timeToNextSave .~ timeToNextSave')
 
-instance (MonadIO m, MonadError IndexerError m) => IsIndex m a LastEventIndexer where
+instance (MonadUnliftIO m) => IsIndex m a LastEventIndexer where
   index timedEvent indexer = do
     let (saveTime, indexer') =
           tickSave $
@@ -171,7 +173,7 @@ instance (MonadIO m) => Closeable m LastEventIndexer where
   close = savePoint
 
 mkLastEventIndexer
-  :: (HasGenesis (Point event), MonadIO m, MonadError IndexerError m)
+  :: (HasGenesis (Point event), MonadIO m)
   => LastEventConfig event
   -> m (LastEventIndexer event)
 mkLastEventIndexer cfg = do
@@ -219,7 +221,7 @@ lastStableFilename indexer =
     dir </> Text.unpack filename
 
 readCurrentStable
-  :: (MonadIO m, MonadError IndexerError m)
+  :: (MonadIO m)
   => LastEventIndexer event
   -> m (Maybe (Point event))
 readCurrentStable indexer = do
@@ -230,7 +232,7 @@ readCurrentStable indexer = do
     then do
       res <- deserialise <$> liftIO (BS.readFile f)
       case res of
-        Left _ -> throwError $ IndexerInternalError "Can't read current stable"
+        Left _ -> liftIO . throwIO $ IndexerInternalError "Can't read current stable"
         Right r -> pure $ Just r
     else pure Nothing
 

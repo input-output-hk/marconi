@@ -64,7 +64,8 @@ import Marconi.Core.Transformer.IndexTransformer (
   setLastStablePointVia,
   wrapperConfig,
  )
-import Marconi.Core.Type (Point, point)
+import Marconi.Core.Type (IndexerError, Point, point)
+import UnliftIO (MonadUnliftIO, SomeException, catch, throwIO)
 
 -- | Event available for the tracer
 data IndexerEvent point
@@ -76,6 +77,8 @@ data IndexerEvent point
   | IndexerHasRollbackedTo
   | IndexerIsClosing
   | IndexerClosed
+  | IndexerErr [IndexerError]
+  | TestError String
 
 deriving stock instance (Show point) => Show (IndexerEvent point)
 
@@ -311,22 +314,32 @@ deriving via
   instance
     (HasDatabasePath indexer) => HasDatabasePath (WithTrace m indexer)
 
-instance (MonadIO m, Closeable m indexer) => Closeable m (WithTrace m indexer) where
+instance (MonadUnliftIO m, Closeable m indexer) => Closeable m (WithTrace m indexer) where
   close indexer = do
     let tr = indexer ^. trace
     Trace.logDebug tr IndexerIsClosing
-    res <- closeVia unwrap indexer
+    res <-
+      closeVia unwrap indexer
+        `catch` ( \(e :: SomeException) -> do
+                    Trace.logError tr (TestError $ show e)
+                    throwIO e
+                )
     Trace.logInfo tr IndexerClosed
     pure res
 
 instance
-  (MonadTrans t, MonadIO (t m), MonadIO m, Closeable (t m) indexer)
+  (MonadTrans t, MonadUnliftIO (t m), MonadUnliftIO m, Closeable (t m) indexer)
   => Closeable (t m) (WithTrace m indexer)
   where
   close indexer = do
     let tr = indexer ^. trace
     lift $ Trace.logDebug tr IndexerIsClosing
-    res <- closeVia unwrap indexer
+    res <-
+      closeVia unwrap indexer
+        `catch` ( \(e :: SomeException) -> do
+                    lift $ Trace.logError tr (TestError $ show e)
+                    throwIO e
+                )
     lift $ Trace.logInfo tr IndexerClosed
     pure res
 
@@ -359,12 +372,17 @@ instance
   where
   trace = unwrapMap . trace
 
-instance (MonadIO m, IsIndex m event index) => IsIndex m event (WithTrace m index) where
+instance (MonadUnliftIO m, IsIndex m event index) => IsIndex m event (WithTrace m index) where
   index timedEvent indexer = do
     let tr = indexer ^. trace
         point' = timedEvent ^. point
     Trace.logDebug tr $ IndexerIndexes point'
-    res <- indexVia unwrap timedEvent indexer
+    res <-
+      indexVia unwrap timedEvent indexer
+        `catch` ( \(e :: IndexerError) -> do
+                    Trace.logError tr (IndexerErr [e])
+                    throwIO e
+                )
     Trace.logDebug tr IndexerHasIndexed
     pure res
 
@@ -401,14 +419,19 @@ instance (MonadIO m, IsIndex m event index) => IsIndex m event (WithTrace m inde
   setLastStablePoint = setLastStablePointVia unwrap
 
 instance
-  (MonadTrans t, MonadIO m, MonadIO (t m), IsIndex (t m) event index)
+  (MonadTrans t, MonadUnliftIO m, MonadUnliftIO (t m), IsIndex (t m) event index)
   => IsIndex (t m) event (WithTrace m index)
   where
   index timedEvent indexer = do
     let tr = indexer ^. trace
         point' = timedEvent ^. point
     lift $ Trace.logDebug tr $ IndexerIndexes point'
-    res <- indexVia unwrap timedEvent indexer
+    res <-
+      indexVia unwrap timedEvent indexer
+        `catch` ( \(e :: [IndexerError]) -> do
+                    lift $ Trace.logError tr (IndexerErr e)
+                    throwIO e
+                )
     lift $ Trace.logDebug tr IndexerHasIndexed
     pure res
 
@@ -418,7 +441,12 @@ instance
         firstPoint = fmap (view point) . listToMaybe $ events
         lastPoint = fmap (view point) . listToMaybe $ reverse events
     maybe (pure ()) (lift . Trace.logDebug tr . IndexerIndexes) firstPoint
-    res <- indexAllVia unwrap timedEvents indexer
+    res <-
+      indexAllVia unwrap timedEvents indexer
+        `catch` ( \(e :: [IndexerError]) -> do
+                    lift $ Trace.logError tr (IndexerErr e)
+                    throwIO e
+                )
     maybe (pure ()) (const $ lift $ Trace.logDebug tr IndexerHasIndexed) lastPoint
     pure res
 
@@ -428,7 +456,12 @@ instance
         firstPoint = fmap (view point) . listToMaybe $ reverse events
         lastPoint = fmap (view point) . listToMaybe $ events
     maybe (pure ()) (lift . Trace.logDebug tr . IndexerIndexes) firstPoint
-    res <- indexAllDescendingVia unwrap timedEvents indexer
+    res <-
+      indexAllDescendingVia unwrap timedEvents indexer
+        `catch` ( \(e :: IndexerError) -> do
+                    lift $ Trace.logError tr (IndexerErr [e])
+                    throwIO e
+                )
     maybe (pure ()) (const $ lift $ Trace.logDebug tr IndexerHasIndexed) lastPoint
     pure res
 
@@ -438,7 +471,12 @@ instance
      in do
           -- Warn about the rollback first
           lift . Trace.logDebug tr $ IndexerRollbackTo p
-          res <- rollbackWrappedIndexer p
+          res <-
+            rollbackWrappedIndexer p
+              `catch` ( \(e :: IndexerError) -> do
+                          lift $ Trace.logError tr (IndexerErr [e])
+                          throwIO e
+                      )
           lift $ Trace.logDebug tr IndexerHasRollbackedTo
           pure res
 

@@ -123,6 +123,7 @@ import Marconi.ChainIndex.Types (
   TxIndexInBlock,
  )
 import Marconi.Core qualified as Core
+import UnliftIO (MonadUnliftIO, throwIO)
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
 type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenBlockEvents
@@ -271,7 +272,7 @@ type instance Core.Point MintTokenBlockEvents = C.ChainPoint
 
 -- | Create a worker for the MintTokenEvent indexer
 mkMintTokenEventWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadUnliftIO n, MonadUnliftIO m)
   => StandardWorkerConfig m input MintTokenBlockEvents
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> MintTokenEventConfig
@@ -351,7 +352,7 @@ fromMaryAssetName :: AssetName -> C.AssetName
 fromMaryAssetName (AssetName n) = C.AssetName $ Short.fromShort n -- from cardano-api:src/Cardano/Api/Value.hs
 
 mkMintTokenIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => FilePath
   -> m MintTokenEventIndexer
 mkMintTokenIndexer dbPath = do
@@ -454,7 +455,7 @@ type instance
     [Core.Timed (Core.Point event) event]
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
+  (MonadUnliftIO m)
   => Core.Queryable
       m
       MintTokenBlockEvents
@@ -644,11 +645,14 @@ convertEventsMatchingErrorToQueryByAssetIdError = \case
   (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
+  (MonadUnliftIO m)
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.SQLiteIndexer
   where
   query point config ix = do
-    validUpperSlotNo <- validatedUpperBound point (config ^. queryByAssetIdUpperSlotNo)
+    validUpperSlotNoE <- runExceptT $ validatedUpperBound point (config ^. queryByAssetIdUpperSlotNo)
+    validUpperSlotNo <- case validUpperSlotNoE of
+      Right x -> pure x
+      Left e -> throwIO $ Core.OtherIndexError "Some error"
     lowerSlotNo <- queryLowerSlotNoByTxId validUpperSlotNo point config ix
 
     -- Build the main query
@@ -695,7 +699,7 @@ as to be able to check that the 'lowerSlotNo' found is <= 'upperSlotNo'. If not,
 throw an error.
 -}
 queryLowerSlotNoByTxId
-  :: (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
+  :: (MonadUnliftIO m)
   => C.SlotNo
   -> C.ChainPoint
   -> QueryByAssetId MintTokenBlockEvents
@@ -710,28 +714,19 @@ queryLowerSlotNoByTxId upperSlotNo point config ix =
     lowerTxIdQueryNamedParams lowerTxId = [":lowerTxId" := lowerTxId, ":slotNo" := upperSlotNo]
 
     slotNoOfLowerTxIdQuery rs = listToMaybe rs >>= \r -> C.chainPointToSlotNo (r ^. Core.point)
-
-    handleSlotNoLowerTxIdQuery Nothing =
-      Left $
-        Core.SlotNoBoundsInvalid "SlotNo associated with query lowerTxId not found within upperSlotNo bound"
-    handleSlotNoLowerTxIdQuery (Just sn) = Right sn
    in
     case config ^. queryByAssetIdLowerTxId of
       Nothing -> pure Nothing
       Just lower -> do
-        lowerSlotNoE <-
-          runExceptT $
-            Core.querySyncedOnlySQLiteIndexerWith
-              (const . const (lowerTxIdQueryNamedParams lower))
-              (const lowerTxIdQuery)
-              (const toTimedMintEvents)
-              point
-              config
-              ix
-        either
-          throwError
-          (pure . Just)
-          (lowerSlotNoE >>= handleSlotNoLowerTxIdQuery . slotNoOfLowerTxIdQuery)
+        lowerSlotNo <-
+          Core.querySyncedOnlySQLiteIndexerWith
+            (const . const (lowerTxIdQueryNamedParams lower))
+            (const lowerTxIdQuery)
+            (const toTimedMintEvents)
+            point
+            config
+            ix
+        pure (lowerSlotNo & slotNoOfLowerTxIdQuery)
 
 mkMintTokenEventQueryBy :: Maybe Text -> SQL.Query
 mkMintTokenEventQueryBy whereClauseM =

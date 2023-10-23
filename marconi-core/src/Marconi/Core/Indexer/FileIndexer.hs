@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -28,23 +29,25 @@ module Marconi.Core.Indexer.FileIndexer (
   fileIndexerLastSyncPoint,
   fullPath,
   getDirectoryMetadata,
+  fileWriteEnvSem,
+  fileWriteEnvTimeout,
   EventInfo (..),
 ) where
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
-import Control.Exception (Exception (displayException), bracket_, handle)
+import Control.Exception (Exception (displayException), bracket_, handle, throwIO)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
-import Control.Monad (forM_, join, void, when)
-import Control.Monad.Except (ExceptT (ExceptT), MonadError (throwError), runExceptT)
+import Control.Monad (forM_, join, unless, void, when)
+import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Function ((&))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Core.Class (
@@ -54,9 +57,8 @@ import Marconi.Core.Class (
   IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Type (
-  IndexerError (IndexerInternalError),
+  IndexerError (IndexerInternalError, ShutdownTimeout),
   Point,
-  QueryError (IndexerQueryError),
   Timed (Timed),
   event,
   point,
@@ -173,7 +175,6 @@ compareMeta ix = ix ^. storageConfig . fileComparison
 -- Create a 'FileIndexer', rebuilding the contenc
 mkFileIndexer
   :: ( MonadIO m
-     , MonadError IndexerError m
      , Ord (Point event)
      , HasGenesis (Point event)
      )
@@ -220,18 +221,18 @@ toFilename dir indexer evt =
             <> (indexer ^. eventSuffix)
    in dir </> filename
 
-handleIOErrors :: (MonadIO m, MonadError IndexerError m) => IO a -> m a
+handleIOErrors :: (MonadIO m) => IO a -> m a
 handleIOErrors action = do
   let throwIOError :: IOError -> IO (Either IndexerError b)
       throwIOError e = pure $ Left $ IndexerInternalError . Text.pack $ displayException e
   result <- liftIO $ handle throwIOError (Right <$> action)
-  either throwError pure result
+  either (liftIO . throwIO) pure result
 
 fullPath :: FileIndexer meta event -> EventInfo meta -> FilePath
 fullPath indexer info = indexer ^. eventDirectory </> path info
 
 extractEventsInfo
-  :: (MonadIO m, MonadError (QueryError q) m)
+  :: (MonadIO m)
   => Text
   -> ([Text] -> Maybe meta)
   -> FilePath
@@ -244,9 +245,7 @@ extractEventsInfo expectedPrefix metaExtractor eventDir =
             let hasContent' = contentFlag == "just"
             meta <- case metaExtractor parts of
               Nothing ->
-                throwError $
-                  IndexerQueryError $
-                    "Invalid file in a file indexer: " <> Text.pack filename
+                liftIO . throwIO $ IndexerInternalError "Can't read directory content"
               Just x -> pure x
             pure [EventInfo hasContent' meta path]
           _other -> pure []
@@ -255,7 +254,7 @@ extractEventsInfo expectedPrefix metaExtractor eventDir =
         join <$> traverse extractEventInfo files
 
 getDirectoryMetadata
-  :: (MonadIO m, MonadError (QueryError q) m)
+  :: (MonadIO m)
   => FileIndexer meta event
   -> m [EventInfo meta]
 getDirectoryMetadata indexer = do
@@ -285,33 +284,30 @@ instance (Applicative m) => IsSync m event (FileIndexer meta) where
   lastStablePoint = pure . Lens.view fileIndexerLastStablePoint
 
 writeTimedEvent
-  :: (MonadIO m, MonadError IndexerError m)
+  :: (MonadIO m)
   => Timed (Point event) (Maybe event)
   -> FileIndexer meta event
   -> m ()
 writeTimedEvent timedEvent indexer =
   let filename = toFilename (indexer ^. eventDirectory) (indexer ^. fileBuilder) timedEvent
-      write :: (MonadIO m, MonadError IndexerError m) => FilePath -> ByteString -> m ()
+      write :: (MonadIO m) => FilePath -> ByteString -> m ()
       write filepath = handleIOErrors . writeIndexer indexer filepath
    in case timedEvent ^. event of
         Nothing -> when (indexer ^. storageConfig . keepEmptyEvent) $ write filename ""
         Just evt -> write filename (indexer ^. fileBuilder . serialiseEvent $ evt)
 
 cleanEvents
-  :: (MonadIO m, MonadError IndexerError m)
+  :: (MonadIO m)
   => Timed (Point event) (Maybe event)
   -> FileIndexer meta event
   -> m ()
 cleanEvents timedEvent indexer = do
-  dirMetadataE <- runExceptT $ getDirectoryMetadata indexer
-  case dirMetadataE of
-    Left _err -> throwError $ IndexerInternalError "Can't read directory content"
-    Right dirMetadata -> do
-      let removeFilter = indexer ^. storageConfig . eventsToRemove
-          toRemove = removeFilter timedEvent dirMetadata
-      liftIO $ traverse_ removeFile (fullPath indexer <$> toRemove)
+  dirMetadata <- getDirectoryMetadata indexer
+  let removeFilter = indexer ^. storageConfig . eventsToRemove
+      toRemove = removeFilter timedEvent dirMetadata
+  liftIO $ traverse_ removeFile (fullPath indexer <$> toRemove)
 
-instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer meta) where
+instance (MonadIO m) => IsIndex m event (FileIndexer meta) where
   index timedEvent indexer = do
     let currentPoint = timedEvent ^. point
         setLastSync ix = ix & fileIndexerLastSyncPoint .~ currentPoint
@@ -331,7 +327,7 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
   rollback p indexer = do
     filesWithMetadata <- runExceptT $ getDirectoryMetadata indexer
     case filesWithMetadata of
-      Left _err -> throwError $ IndexerInternalError "can't parse directory content"
+      Left _err -> liftIO . throwIO $ IndexerInternalError "can't parse directory content"
       Right xs -> forM_ xs $ \eventFile -> do
         let pt = indexer ^. eventBuilder . extractPoint $ fileMetadata eventFile
         when (pt > p) $ do
@@ -356,7 +352,7 @@ lastStableFilename indexer =
     dir </> Text.unpack filename
 
 readCurrentStable
-  :: (MonadIO m, MonadError IndexerError m)
+  :: (MonadIO m)
   => FileIndexer meta event
   -> m (Maybe (Point event))
 readCurrentStable indexer = do
@@ -367,7 +363,7 @@ readCurrentStable indexer = do
     then do
       res <- deserialise <$> liftIO (BS.readFile f)
       case res of
-        Left _ -> throwError $ IndexerInternalError "Can't read current stable"
+        Left _ -> liftIO . throwIO $ IndexerInternalError "Can't read current stable"
         Right r -> pure $ Just r
     else pure Nothing
 
@@ -402,10 +398,12 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
     case indexer ^. fileIndexerWriteEnv of
       Just fileWriteEnv -> do
         -- TODO https://input-output.atlassian.net/browse/PLT-7811
-        void $
-          timeout
-            (fileWriteEnv ^. fileWriteEnvTimeout)
-            (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+        res <-
+          isJust
+            <$> timeout
+              1 -- (fileWriteEnv ^. fileWriteEnvTimeout)
+              (threadDelay 1000000 >> Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+        unless res (throwIO ShutdownTimeout)
       Nothing -> pure ()
 
 -- * File writing | TODO https://input-output.atlassian.net/browse/PLT-7809

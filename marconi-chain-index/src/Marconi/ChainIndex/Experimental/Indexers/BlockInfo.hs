@@ -48,6 +48,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
+import UnliftIO (MonadUnliftIO)
 
 data BlockInfo = BlockInfo
   { _blockNo :: !C.BlockNo
@@ -88,7 +89,7 @@ instance SQL.FromRow (Core.Timed C.ChainPoint BlockInfo) where
 
 -- | A smart constructor for BlockInfoIndexer
 mkBlockInfoIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => FilePath
   -- ^ SQL connection to database
   -> m (Core.SQLiteIndexer BlockInfo)
@@ -115,9 +116,8 @@ mkBlockInfoIndexer path = do
 
 -- | Create a worker for 'BlockInfoIndexer' with catchup
 blockInfoWorker
-  :: ( MonadIO n
-     , MonadError Core.IndexerError n
-     , MonadIO m
+  :: ( MonadUnliftIO n
+     , MonadUnliftIO m
      )
   => StandardWorkerConfig m input BlockInfo
   -- ^ General indexer configuration
@@ -129,7 +129,7 @@ blockInfoWorker config path = do
   mkStandardWorker config indexer
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery BlockInfo)) m)
+  (MonadUnliftIO m)
   => Core.Queryable m BlockInfo (Core.EventAtQuery BlockInfo) Core.SQLiteIndexer
   where
   query =
@@ -147,7 +147,7 @@ instance
           (const listToMaybe)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery BlockInfo)) m)
+  (MonadUnliftIO m)
   => Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
   where
   query =

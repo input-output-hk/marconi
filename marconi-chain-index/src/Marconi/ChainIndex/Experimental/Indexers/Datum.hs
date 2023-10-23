@@ -56,6 +56,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Marconi.ChainIndex.Indexers.Utxo (getTxOutFromTxBodyContent)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
+import UnliftIO (MonadUnliftIO)
 
 data DatumInfo = DatumInfo
   { _datumHash :: C.Hash C.ScriptData
@@ -89,7 +90,7 @@ type StandardDatumIndexer m = StandardSQLiteIndexer m DatumEvent
 
 -- | A smart constructor for 'DatumIndexer'
 mkDatumIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => FilePath
   -> m (Core.SQLiteIndexer DatumEvent)
 mkDatumIndexer path = do
@@ -118,7 +119,7 @@ mkDatumIndexer path = do
 
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker
-  :: (MonadIO m, MonadIO n, MonadError Core.IndexerError n)
+  :: (MonadUnliftIO m, MonadUnliftIO n)
   => StandardWorkerConfig m input DatumEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> FilePath
@@ -129,7 +130,7 @@ datumWorker workerConfig path = do
   mkStandardWorker workerConfig indexer
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery DatumEvent)) m)
+  (MonadUnliftIO m)
   => Core.Queryable m DatumEvent (Core.EventAtQuery DatumEvent) Core.SQLiteIndexer
   where
   query =
@@ -146,7 +147,7 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery DatumEvent)) m)
+  (MonadUnliftIO m)
   => Core.Queryable
       m
       DatumEvent
@@ -188,7 +189,7 @@ newtype ResolvedData = ResolvedData {getData :: C.ScriptData}
 type instance Core.Result ResolveDatumQuery = Maybe C.ScriptData
 
 instance
-  (MonadIO m, MonadError (Core.QueryError ResolveDatumQuery) m)
+  (MonadUnliftIO m)
   => Core.Queryable m DatumEvent ResolveDatumQuery Core.SQLiteIndexer
   where
   query =

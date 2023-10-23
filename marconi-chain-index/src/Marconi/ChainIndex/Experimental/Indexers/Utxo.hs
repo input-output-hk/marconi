@@ -80,6 +80,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
 import Marconi.Core qualified as Core
+import UnliftIO (MonadUnliftIO)
 
 -- | Indexer representation of an UTxO
 data Utxo = Utxo
@@ -114,7 +115,7 @@ type StandardUtxoIndexer m = StandardSQLiteIndexer m UtxoEvent
 
 -- | Make a SQLiteIndexer for Utxos
 mkUtxoIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
+  :: (MonadUnliftIO m)
   => FilePath
   -- ^ SQL connection to database
   -> m UtxoIndexer
@@ -175,7 +176,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadUnliftIO n, MonadUnliftIO m)
   => StandardWorkerConfig m input UtxoEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> UtxoIndexerConfig
@@ -254,7 +255,7 @@ instance SQL.FromRow Utxo where
         }
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery UtxoEvent)) m)
+  (MonadUnliftIO m)
   => Core.Queryable m UtxoEvent (Core.EventAtQuery UtxoEvent) Core.SQLiteIndexer
   where
   query =
@@ -271,7 +272,7 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery UtxoEvent)) m)
+  (MonadUnliftIO m)
   => Core.Queryable m UtxoEvent (Core.EventsMatchingQuery UtxoEvent) Core.SQLiteIndexer
   where
   query =
