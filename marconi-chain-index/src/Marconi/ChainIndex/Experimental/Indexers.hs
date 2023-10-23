@@ -141,6 +141,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
 
   let currentSyncPointIndexer =
         CurrentSyncPoint.CurrentSyncPointQueryIndexer
+          mainCoordinator
           blockInfoMVar
           chainTipMVar
       queryables =

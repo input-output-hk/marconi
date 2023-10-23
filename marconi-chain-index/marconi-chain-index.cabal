@@ -84,6 +84,7 @@ library
     Marconi.ChainIndex.Experimental.Indexers.BlockInfo
     Marconi.ChainIndex.Experimental.Indexers.ChainTip
     Marconi.ChainIndex.Experimental.Indexers.Coordinator
+    Marconi.ChainIndex.Experimental.Indexers.CurrentSyncPointQuery
     Marconi.ChainIndex.Experimental.Indexers.Datum
     Marconi.ChainIndex.Experimental.Indexers.EpochState
     Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent
