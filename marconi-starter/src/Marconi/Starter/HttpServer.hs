@@ -45,7 +45,7 @@ type RpcAddressCountMethod =
    API implementation
 -----------------------}
 
-runHttpServer :: ReaderT (Env ann) IO ()
+runHttpServer :: ReaderT Env IO ()
 runHttpServer = do
   env <- ask
   let cliOptions = view envCliArgs env
@@ -53,12 +53,12 @@ runHttpServer = do
   liftIO $ runSettings httpSettings (httpApp env)
 
 httpApp
-  :: Env ann
+  :: Env
   -> Application
 httpApp env = serve (Proxy @API) (httpServer env)
 
 httpServer
-  :: Env ann
+  :: Env
   -> Server API
 httpServer env =
   Core.queryIndexerVarHttpHandler $

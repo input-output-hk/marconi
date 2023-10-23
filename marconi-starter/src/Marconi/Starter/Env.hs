@@ -7,7 +7,7 @@ import Marconi.ChainIndex.Types (MarconiTrace, SecurityParam)
 import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Indexers.AddressCount (AddressCountStandardWorker)
 
-data Env ann = Env
+data Env = Env
   { _envIndexers :: IndexersEnv
   -- ^ Access the indexers for querying purposes.
   , _envCliArgs :: !CLI.Options
@@ -28,5 +28,5 @@ makeLenses ''Env
 makeLenses ''IndexersEnv
 makeLenses ''AddressCountIndexerEnv
 
-addressCountIndexerWorker :: Lens' (Env ann) AddressCountStandardWorker
+addressCountIndexerWorker :: Lens' Env AddressCountStandardWorker
 addressCountIndexerWorker = envIndexers . addressCountIndexerEnv . addressCountIndexerVar

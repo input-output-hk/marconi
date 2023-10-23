@@ -33,7 +33,7 @@ buildIndexersEnv securityParam cliOptions = do
         securityParam
   pure $ Env.IndexersEnv $ Env.AddressCountIndexerEnv addressCountWorker
 
-runIndexers :: ReaderT (Env ann) IO ()
+runIndexers :: ReaderT Env IO ()
 runIndexers = do
   env <- ask
   cliOptions <- view envCliArgs
@@ -63,11 +63,11 @@ runIndexers = do
       indexer
 
 getStartingPoint
-  :: forall event indexer m ann
+  :: forall event indexer m
    . ( Core.HasGenesis (Core.Point event)
      , Ord (Core.Point event)
      , MonadIO m
-     , MonadReader (Env ann) m
+     , MonadReader Env m
      , Core.IsSync (ExceptT Core.IndexerError m) event indexer
      )
   => Core.Point event
