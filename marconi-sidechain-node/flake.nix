@@ -3,7 +3,7 @@
 
   inputs = {
     iogx = {
-      url = "github:input-output-hk/iogx?ref=v4";
+      url = "github:input-output-hk/iogx";
       inputs.haskell-nix.follows = "haskell-nix";
       inputs.nixpkgs.follows = "haskell-nix/nixpkgs-2305";
       inputs.hackage.follows = "hackage";
