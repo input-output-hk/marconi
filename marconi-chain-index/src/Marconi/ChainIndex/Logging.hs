@@ -47,8 +47,7 @@ import Text.Printf (printf)
 -- | Builds a 'MarconiTrace' from a base tracer.
 mkMarconiTrace :: Trace m Text -> MarconiTrace m
 mkMarconiTrace =
-  contramap
-    ((fmap . fmap) marconiFormatting)
+  contramap . fmap . fmap $ marconiFormatting
 
 marconiFormatting :: Pretty.Doc ann -> Text
 marconiFormatting =
