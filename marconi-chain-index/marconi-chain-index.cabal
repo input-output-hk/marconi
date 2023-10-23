@@ -65,6 +65,8 @@ library
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
     Marconi.ChainIndex.Experimental.Api.HttpServer
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
     Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.Echo
     Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.EpochState
     Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.MintBurnToken

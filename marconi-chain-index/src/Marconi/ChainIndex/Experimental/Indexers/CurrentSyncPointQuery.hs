@@ -62,6 +62,7 @@ data CurrentSyncPointResult = CurrentSyncPointResult
   { currentBlockInfo :: BlockInfo
   , currentTip :: C.ChainTip
   }
+  deriving (Show)
 
 data CurrentSyncPointQuery = CurrentSyncPointQuery
 type instance Core.Result CurrentSyncPointQuery = Core.Timed C.ChainPoint CurrentSyncPointResult
@@ -82,10 +83,10 @@ instance
       Right r -> pure r
 
 instance
-  (MonadIO m, MonadError (Core.QueryError CurrentSyncPointQuery) m)
+  (MonadIO m, MonadError (Core.QueryError CurrentSyncPointQuery) m, Core.Point event ~ C.ChainPoint)
   => Core.Queryable
       m
-      CurrentSyncPointEvent
+      event
       CurrentSyncPointQuery
       CurrentSyncPointQueryIndexer
   where
