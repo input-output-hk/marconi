@@ -65,7 +65,7 @@ import Marconi.Core.Transformer.IndexTransformer (
   wrapperConfig,
  )
 import Marconi.Core.Type (IndexerError, Point, point)
-import UnliftIO (MonadUnliftIO, SomeException, catch, throwIO)
+import UnliftIO (MonadUnliftIO, catch, throwIO)
 
 -- | Event available for the tracer
 data IndexerEvent point
@@ -78,7 +78,6 @@ data IndexerEvent point
   | IndexerIsClosing
   | IndexerClosed
   | IndexerErr [IndexerError]
-  | TestError String
 
 deriving stock instance (Show point) => Show (IndexerEvent point)
 
@@ -320,8 +319,8 @@ instance (MonadUnliftIO m, Closeable m indexer) => Closeable m (WithTrace m inde
     Trace.logDebug tr IndexerIsClosing
     res <-
       closeVia unwrap indexer
-        `catch` ( \(e :: SomeException) -> do
-                    Trace.logError tr (TestError $ show e)
+        `catch` ( \(e :: [IndexerError]) -> do
+                    Trace.logError tr (IndexerErr e)
                     throwIO e
                 )
     Trace.logInfo tr IndexerClosed
@@ -336,8 +335,8 @@ instance
     lift $ Trace.logDebug tr IndexerIsClosing
     res <-
       closeVia unwrap indexer
-        `catch` ( \(e :: SomeException) -> do
-                    lift $ Trace.logError tr (TestError $ show e)
+        `catch` ( \(e :: [IndexerError]) -> do
+                    lift $ Trace.logError tr (IndexerErr e)
                     throwIO e
                 )
     lift $ Trace.logInfo tr IndexerClosed

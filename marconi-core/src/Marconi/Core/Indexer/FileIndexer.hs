@@ -34,7 +34,7 @@ module Marconi.Core.Indexer.FileIndexer (
   EventInfo (..),
 ) where
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
 import Control.Exception (Exception (displayException), bracket_, handle, throwIO)

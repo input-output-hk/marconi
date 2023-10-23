@@ -652,7 +652,7 @@ instance
     validUpperSlotNoE <- runExceptT $ validatedUpperBound point (config ^. queryByAssetIdUpperSlotNo)
     validUpperSlotNo <- case validUpperSlotNoE of
       Right x -> pure x
-      Left e -> throwIO $ Core.OtherIndexError "Some error"
+      Left _ -> throwIO $ Core.OtherIndexError "Some error"
     lowerSlotNo <- queryLowerSlotNoByTxId validUpperSlotNo point config ix
 
     -- Build the main query

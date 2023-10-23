@@ -26,8 +26,6 @@ module Marconi.ChainIndex.Experimental.Indexers.BlockInfo (
 import Cardano.Api qualified as C
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadIO)
-import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Time qualified as Time

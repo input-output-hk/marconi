@@ -53,8 +53,8 @@ import Control.Lens (
   (^.),
  )
 import Control.Lens qualified as Lens
-import Control.Monad.Except (MonadError, guard)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except (guard)
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Either (fromRight)
 import Data.Function (on)

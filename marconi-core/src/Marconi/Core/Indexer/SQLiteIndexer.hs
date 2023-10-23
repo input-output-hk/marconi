@@ -54,7 +54,7 @@ import Marconi.Core.Class (
   IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Type (
-  IndexerError (IndexerInternalError, InvalidIndexer, OtherIndexError),
+  IndexerError (IndexerInternalError, InvalidIndexer),
   Point,
   QueryError (AheadOfLastSync),
   Result,
@@ -258,9 +258,7 @@ runIndexQueries c events' plan =
         Nothing -> pure ()
         Just runIndexers ->
           let
-           in -- \| uhh hello indexEvents . pure
-
-              either (liftIO . throwIO) pure <=< liftIO $
+           in either (liftIO . throwIO) pure <=< liftIO $
                 handleSQLErrors (SQL.withTransaction c runIndexers)
 
 indexEvents
@@ -287,7 +285,7 @@ instance
   (MonadUnliftIO m, SQL.ToRow (Point event))
   => IsIndex m event SQLiteIndexer
   where
-  index x y = liftIO $ throwIO $ OtherIndexError "qwe"
+  index = indexEvents . pure
 
   indexAllDescending = indexEvents . toList
 
