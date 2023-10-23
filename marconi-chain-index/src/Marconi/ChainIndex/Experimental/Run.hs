@@ -19,8 +19,10 @@ import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Experimental.Api.HttpServer (
-  HttpServerConfig (HttpServerConfig),
   runHttpServer,
+ )
+import Marconi.ChainIndex.Experimental.Api.Types (
+  HttpServerConfig (HttpServerConfig),
  )
 import Marconi.ChainIndex.Experimental.Indexers (buildIndexers)
 import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState

@@ -14,6 +14,9 @@ module Marconi.Core.Query (
   latestEvent,
   EventsFromQuery (EventsFromQuery),
   Stability (Stable, Volatile),
+  isStable,
+  queryWithStability,
+  WithStability (WithStability, unWithStability),
   withStability,
   withStabilityAt,
 ) where
@@ -22,7 +25,13 @@ import Control.Comonad (Comonad (duplicate, extract))
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
-import Control.Monad.Except (MonadError (catchError, throwError), MonadIO (liftIO), runExceptT)
+import Control.Monad.Except (
+  ExceptT,
+  MonadError (catchError, throwError),
+  MonadIO (liftIO),
+  runExceptT,
+  (<=<),
+ )
 import Data.ByteString qualified as BS
 import Data.Function (on)
 import Data.List (find, sortBy)
@@ -45,7 +54,7 @@ import Marconi.Core.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Indexer.ListIndexer (ListIndexer, events)
 import Marconi.Core.Type (
   Point,
-  QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore),
+  QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore, SlotNoBoundsInvalid),
   Result,
   Timed,
   event,
@@ -209,7 +218,15 @@ instance
 -- | Get the non empty events from the given point (excluded) to the one of the query (included)
 newtype EventsFromQuery event = EventsFromQuery {startingPoint :: Point event}
 
+{- | A wrapper representing the demand that the result of a @query@ should come with 'Stability'
+    data
+-}
+newtype WithStability query = WithStability {unWithStability :: query}
+
 type instance Result (EventsFromQuery event) = [Timed (Point event) event]
+type instance
+  Result (WithStability (EventsFromQuery event)) =
+    [Stability (Timed (Point event) event)]
 
 instance
   (MonadError (QueryError (EventsFromQuery event)) m)
@@ -273,6 +290,11 @@ instance
 data Stability a = Stable a | Volatile a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
+-- | Tests for stability
+isStable :: Stability a -> Bool
+isStable (Stable _) = True
+isStable (Volatile _) = False
+
 instance Comonad Stability where
   extract (Stable x) = x
   extract (Volatile x) = x
@@ -330,3 +352,46 @@ calcStability lsp p e = do
   if p <= lsp
     then Stable e
     else Volatile e
+
+-- | Convert a non-'Stability' supporting instance to a 'Stability' supporting instance
+queryWithStability
+  :: ( Result query1 ~ f (Timed (Point event) event)
+     , Result query2 ~ [Timed (Point event) event]
+     , Result (WithStability query2)
+        ~ [Stability (Timed (Point event) event)]
+     , Queryable
+        (ExceptT (QueryError query2) m)
+        event
+        query1
+        indexer
+     , Ord (Point event)
+     , MonadError (QueryError (WithStability query2)) m
+     , MonadIO m
+     , IsSync m event indexer
+     , Traversable f
+     )
+  => Point event
+  -> WithStability query1
+  -> indexer event
+  -> m (f (Stability (Timed (Point event) event)))
+queryWithStability p (WithStability q) idx = do
+  resultE <- runExceptT $ query p q idx
+  result <- either (throwError <=< timedErrorWithStability idx) pure resultE
+  withStability idx result
+  where
+    timedErrorWithStability
+      :: forall m event query indexer
+       . ( MonadIO m
+         , Ord (Point event)
+         , IsSync m event indexer
+         , Result (WithStability query) ~ [Stability (Timed (Point event) event)]
+         , Result query ~ [Timed (Point event) event]
+         )
+      => indexer event
+      -> QueryError query
+      -> m (QueryError (WithStability query))
+    timedErrorWithStability idx' = \case
+      NotStoredAnymore -> pure NotStoredAnymore
+      (IndexerQueryError t) -> pure $ IndexerQueryError t
+      (AheadOfLastSync r) -> AheadOfLastSync <$> traverse (withStability idx') r
+      (SlotNoBoundsInvalid r) -> pure $ SlotNoBoundsInvalid r
