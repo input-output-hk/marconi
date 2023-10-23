@@ -19,6 +19,7 @@ packages: legacy/marconi-core-legacy
           marconi-chain-index
           marconi-core
           marconi-core-json-rpc
+          doc/read-the-docs-site
           marconi-sidechain
           marconi-starter
 
