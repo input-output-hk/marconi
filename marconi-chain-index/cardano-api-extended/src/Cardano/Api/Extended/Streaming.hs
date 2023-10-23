@@ -236,10 +236,8 @@ chainSyncStreamingClient points nextChainEventVar =
   where
     onIntersect =
       ClientStIntersect
-        { recvMsgIntersectFound = \cp ct ->
-            C.ChainSyncClient $ do
-              putMVar nextChainEventVar (RollBackward cp ct)
-              sendRequestNext
+        { recvMsgIntersectFound = \_ _ ->
+            C.ChainSyncClient sendRequestNext
         , recvMsgIntersectNotFound =
             -- There is nothing we can do here
             throw NoIntersectionFound

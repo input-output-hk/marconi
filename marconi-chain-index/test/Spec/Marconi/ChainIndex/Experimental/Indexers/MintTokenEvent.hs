@@ -35,12 +35,8 @@ import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   MintTokenEvent (MintTokenEvent),
   MintTokenEventConfig (MintTokenEventConfig),
   MintTokenEventLocation (MintTokenEventLocation),
-  MintTokenEventsMatchingQuery (MintTokenEventsMatchingQuery),
   QueryByAssetId (QueryByAssetId),
   StandardMintTokenEventIndexer,
-  allBurnEvents,
-  allMintEvents,
-  filterByTargetAssetIds,
   mintAssetAssetId,
   mintAssetPolicyId,
   mintAssetQuantity,
@@ -136,9 +132,9 @@ propActLikeListIndexerOnEventsMatchingQuery = H.property $ do
   sqlIndexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:" >>= Core.indexAll events
   listIndexer <- Core.indexAll events Core.mkListIndexer
   (actualResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents sqlIndexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents sqlIndexer
   expectedResult <-
-    H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents listIndexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents listIndexer
   actualResult === expectedResult
 
 -- | On 'QueryByAssetId', the 'MintTokenEventIndexer' behaves like a 'ListIndexer'.
@@ -149,7 +145,7 @@ propActLikeListIndexerOnQueryByAssetId = H.property $ do
   listIndexer <- Core.indexAll events Core.mkListIndexer
 
   (allTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents sqlIndexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents sqlIndexer
   let assetIds = getAssetIdsFromTimedEvents allTimedEvents
 
   eventType <- H.forAll genEventType
@@ -236,11 +232,11 @@ propQueryingMintEventsAndBurnEventsIsTheSameAsQueryingAllEvents = H.property $ d
   let allEvents = getMintTokenBlockEvents allTimedEvents
 
   (mintTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest allMintEvents indexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllMintEvents indexer
   let mintEvents = getMintTokenBlockEvents mintTimedEvents
 
   (burnTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest allBurnEvents indexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllBurnEvents indexer
   let burnEvents = getMintTokenBlockEvents burnTimedEvents
 
   List.sort allEvents === List.sort (mintEvents ++ burnEvents)
@@ -254,11 +250,11 @@ propMintEventsShouldNeverAppearInBurnEvensAndVisVersa = H.property $ do
       getMintTokenBlockEvents = fmap (view Core.event) . getFlattenedTimedEvents
 
   (mintTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest allMintEvents indexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllMintEvents indexer
   let mintEvents = getMintTokenBlockEvents mintTimedEvents
 
   (burnTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest allBurnEvents indexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllBurnEvents indexer
   let burnEvents = getMintTokenBlockEvents burnTimedEvents
 
   forM_ mintEvents $ \e -> H.assert $ List.notElem e burnEvents
@@ -273,7 +269,7 @@ propMintEventsShouldAlwaysHavePositiveMintedQuantity = H.property $ do
       getMintTokenBlockEvents = fmap (view Core.event) . getFlattenedTimedEvents
 
   (mintTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest allMintEvents indexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllMintEvents indexer
   let mintEvents = getMintTokenBlockEvents mintTimedEvents
 
   forM_ mintEvents $ \e -> H.assert $ (e ^. mintTokenEventAsset . mintAssetQuantity) > 0
@@ -287,7 +283,7 @@ propBurnEventsShouldAlwaysHaveNegativeMintedQuantity = H.property $ do
       getMintTokenBlockEvents = fmap (view Core.event) . getFlattenedTimedEvents
 
   (burnTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-    H.evalExceptT $ Core.queryLatest allBurnEvents indexer
+    H.evalExceptT $ Core.queryLatest MintTokenEvent.AllBurnEvents indexer
   let burnEvents = getMintTokenBlockEvents burnTimedEvents
 
   forM_ burnEvents $ \e -> H.assert $ (e ^. mintTokenEventAsset . mintAssetQuantity) < 0
@@ -521,7 +517,7 @@ propRunnerTracksSelectedAssetId = H.property $ do
   listIndexerEvents <- queryListIndexerEventsMatchingTargetAssetIds trackedAssetIds listIndexer
 
   sqlIndexer <- indexWithRunner trackedAssetIds events
-  sqlIndexerEvents <- H.evalExceptT $ Core.queryLatest MintTokenEvent.allEvents sqlIndexer
+  sqlIndexerEvents <- H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents sqlIndexer
 
   sqlIndexerEvents === listIndexerEvents
 
@@ -573,7 +569,9 @@ queryListIndexerEventsMatchingTargetAssetIds
   -> PropertyT IO [Core.Timed C.ChainPoint MintTokenBlockEvents]
 queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
   -- If assetIds is Nothing, query does no filtering (looks for all ids).
-  let query = MintTokenEventsMatchingQuery $ maybe Just filterByTargetAssetIds assetIds
+  let query = case assetIds of
+        Just x -> MintTokenEvent.ByTargetAssetIds (MintTokenEvent.ByTargetAssetIdsArgs x)
+        Nothing -> MintTokenEvent.AllEvents
   H.evalExceptT $ Core.queryLatest query indexer
 
 getPolicyIdFromAssetId :: C.AssetId -> C.PolicyId

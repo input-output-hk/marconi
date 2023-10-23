@@ -5,6 +5,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {- |
 
@@ -60,10 +61,9 @@ module Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   extractEventsFromTx,
 
   -- * Queries
-  MintTokenEventsMatchingQuery (MintTokenEventsMatchingQuery),
-  allEvents,
-  allMintEvents,
-  allBurnEvents,
+  MintTokenEventsMatchingQuery (AllEvents, AllMintEvents, AllBurnEvents, ByTargetAssetIds),
+  ByTargetAssetIdsArgs (ByTargetAssetIdsArgs),
+  evalMintTokenEventsMatchingQuery,
   QueryByAssetId (..),
   EventType (..),
   toTimedMintEvents,
@@ -432,22 +432,42 @@ toTimedMintEvents =
    in mapMaybe (traverse Just . fmap MintTokenBlockEvents . groupSamePointEvents)
         . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
 
-allEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
-allEvents = MintTokenEventsMatchingQuery Just
+allEvents :: MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+allEvents = Just
 
-allMintEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
-allMintEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
+allMintEvents :: MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+allMintEvents (MintTokenBlockEvents events) =
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
       NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity > 0) events
 
-allBurnEvents :: MintTokenEventsMatchingQuery MintTokenBlockEvents
-allBurnEvents = MintTokenEventsMatchingQuery $ \(MintTokenBlockEvents events) ->
+allBurnEvents :: MintTokenBlockEvents -> Maybe MintTokenBlockEvents
+allBurnEvents (MintTokenBlockEvents events) =
   fmap MintTokenBlockEvents $
     NonEmpty.nonEmpty $
       NonEmpty.filter (\e -> e ^. mintTokenEventAsset . mintAssetQuantity < 0) events
 
-newtype MintTokenEventsMatchingQuery event = MintTokenEventsMatchingQuery (event -> Maybe event)
+newtype ByTargetAssetIdsArgs = ByTargetAssetIdsArgs (NonEmpty (C.PolicyId, Maybe C.AssetName))
+  deriving (Show, Eq, Ord)
+
+-- | Defunctionalisation of queries
+data MintTokenEventsMatchingQuery event
+  = AllEvents
+  | AllMintEvents
+  | AllBurnEvents
+  | ByTargetAssetIds ByTargetAssetIdsArgs
+  deriving (Show, Eq, Ord)
+
+-- | Evaluator for 'MintTokenEventsMatchingQuery'
+evalMintTokenEventsMatchingQuery
+  :: MintTokenEventsMatchingQuery MintTokenBlockEvents
+  -> MintTokenBlockEvents
+  -> Maybe MintTokenBlockEvents
+evalMintTokenEventsMatchingQuery AllEvents = allEvents
+evalMintTokenEventsMatchingQuery AllMintEvents = allMintEvents
+evalMintTokenEventsMatchingQuery AllBurnEvents = allBurnEvents
+evalMintTokenEventsMatchingQuery (ByTargetAssetIds (ByTargetAssetIdsArgs assetIds)) =
+  filterByTargetAssetIds assetIds
 
 type instance
   Core.Result (MintTokenEventsMatchingQuery event) =
@@ -471,7 +491,7 @@ instance
      in Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
           (const $ mkMintTokenEventQueryBy Nothing)
-          (\(MintTokenEventsMatchingQuery p) r -> parseResult p r)
+          (\p r -> parseResult (evalMintTokenEventsMatchingQuery p) r)
 
 instance
   (MonadError (Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)) m)
@@ -481,7 +501,7 @@ instance
       (MintTokenEventsMatchingQuery MintTokenBlockEvents)
       Core.ListIndexer
   where
-  query p (MintTokenEventsMatchingQuery predicate) ix = do
+  query p (evalMintTokenEventsMatchingQuery -> predicate) ix = do
     let convertError
           :: Core.QueryError (Core.EventsMatchingQuery MintTokenBlockEvents)
           -> Core.QueryError (MintTokenEventsMatchingQuery MintTokenBlockEvents)
@@ -496,6 +516,9 @@ instance
     pure $ sortEventsByOrderOfBlockchainAppearance timedEvents
 
 type instance Core.Result (QueryByAssetId event) = [Core.Timed (Core.Point event) event]
+type instance
+  Core.Result (Core.WithStability (QueryByAssetId event)) =
+    [Core.Stability (Core.Timed (Core.Point event) event)]
 
 {- | Utility for QueryByAssetId queries. Check whether the upper SlotNo bound is
  less than or equal to the provided @C.'ChainPoint'@. If the upperSlotNo is is provided
@@ -567,6 +590,18 @@ instance
     -- ascending by block number in sortEventsByOrderOfBlockchainAppearance guarantees ascending
     -- order by slot number.
     either throwError pure $ filterBySlotNoBounds lowerTxId validUpperSlotNo sortedTimedEvents
+
+instance
+  ( MonadIO m
+  , MonadError (Core.QueryError (Core.WithStability (QueryByAssetId MintTokenBlockEvents))) m
+  )
+  => Core.Queryable
+      m
+      MintTokenBlockEvents
+      (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
+      Core.ListIndexer
+  where
+  query = Core.queryWithStability
 
 {- | Helper for ListIndexer query.
  Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
@@ -688,6 +723,18 @@ instance
       point
       config
       ix
+
+instance
+  ( MonadIO m
+  , MonadError (Core.QueryError (Core.WithStability (QueryByAssetId MintTokenBlockEvents))) m
+  )
+  => Core.Queryable
+      m
+      MintTokenBlockEvents
+      (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
+      Core.SQLiteIndexer
+  where
+  query = Core.queryWithStability
 
 {- | Helper for MintTokenEventIndexer in the case where a 'lowerTxId' is provided.
 Query to look up the earliest SlotNo matching a TxId. This is implemented as a separate query so

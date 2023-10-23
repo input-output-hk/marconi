@@ -17,7 +17,8 @@ import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy (toStrict)
 import Data.Coerce (coerce)
 import Data.Proxy (Proxy (Proxy))
-import Data.SOP.Strict (K (K), NP (Nil, (:*)), fn, type (:.:) (Comp))
+import Data.SOP (K (K), fn, type (:.:) (Comp))
+import Data.SOP.Strict (NP (Nil, (:*)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.FromRow (FromRow (fromRow))

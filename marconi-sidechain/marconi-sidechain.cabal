@@ -68,14 +68,15 @@ library
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index:{marconi-chain-index, json-rpc}  >=1.2.0
-    , marconi-core-legacy                                  >=1.2.0
+    , marconi-chain-index    >=1.2.0
+    , marconi-core-json-rpc  >=1.2.0
+    , marconi-core-legacy    >=1.2.0
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api          ^>=8.8
+    , cardano-api          ^>=8.20
     , cardano-ledger-core
     , cardano-slotting     ^>=0.1.1.1
     , iohk-monitoring
@@ -131,8 +132,8 @@ executable examples-json-rpc-client
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index:json-rpc  >=1.2.0
-    , marconi-sidechain             >=1.2.0
+    , marconi-core-json-rpc  >=1.2.0
+    , marconi-sidechain      >=1.2.0
 
   ------------------------
   -- Non-IOG dependencies
@@ -151,7 +152,7 @@ library db-utils
   --------------------------
   -- Other IOG dependencies
   --------------------------
-  build-depends:   cardano-api ^>=8.8
+  build-depends:   cardano-api ^>=8.20
 
   ------------------------
   -- Non-IOG dependencies
@@ -207,18 +208,20 @@ test-suite marconi-sidechain-test
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index:{marconi-chain-index, json-rpc, marconi-chain-index-test-lib}  >=1.2.0
-    , marconi-core-legacy                                                                >=1.2.0
-    , marconi-sidechain                                                                  >=1.2.0
+    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}  >=1.2.0
+    , marconi-core-json-rpc                                                    >=1.2.0
+    , marconi-core-legacy                                                      >=1.2.0
+    , marconi-sidechain                                                        >=1.2.0
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, gen}  ^>=8.8
+    , cardano-api             ^>=8.20
+    , cardano-api-gen         ^>=8.2
     , cardano-crypto-class
     , cardano-ledger-shelley
-    , cardano-slotting                ^>=0.1.1.1
+    , cardano-slotting        ^>=0.1.1.1
     , hedgehog-extras
     , iohk-monitoring
     , plutus-tx-plugin

@@ -3,12 +3,14 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Marconi.ChainIndex.Experimental.Indexers where
 
 import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
-import Control.Lens ((?~))
+import Control.Concurrent (MVar)
+import Control.Lens (makeLenses, (?~))
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
 import Data.Function ((&))
@@ -26,6 +28,7 @@ import Marconi.ChainIndex.Experimental.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Experimental.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Experimental.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.ChainIndex.Experimental.Indexers.Worker (
+  StandardIndexer,
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
@@ -45,6 +48,24 @@ type instance Core.Point BlockEvent = C.ChainPoint
 type instance Core.Point C.ChainTip = C.ChainPoint
 type instance Core.Point [AnyTxBody] = C.ChainPoint
 
+-- Convenience aliases for indexers
+type Coordinator = Core.WithTrace IO Core.Coordinator TipOrBlock
+type EpochStateIndexer =
+  EpochState.EpochStateIndexer
+    (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
+type MintTokenEventIndexer =
+  StandardIndexer IO Core.SQLiteIndexer MintTokenEvent.MintTokenBlockEvents
+type UtxoIndexer = UtxoQuery.UtxoQueryIndexer IO
+
+-- | Container for all the queryable indexers of marconi-chain-index.
+data MarconiChainIndexQueryables = MarconiChainIndexQueryables
+  { _queryableEpochState :: !(MVar EpochStateIndexer)
+  , _queryableMintToken :: !(MVar MintTokenEventIndexer)
+  , _queryableUtxo :: !UtxoIndexer
+  }
+
+makeLenses 'MarconiChainIndexQueryables
+
 {- | Build all the indexers of marconi-chain-index
 (all those which are available with the new implementation)
 and expose a single coordinator to operate them
@@ -61,10 +82,8 @@ buildIndexers
       Core.IndexerError
       IO
       ( C.ChainPoint
-      , -- Query part (should probably be wrapped in a more complex object later)
-        UtxoQuery.UtxoQueryIndexer IO
-      , -- Indexing part
-        Core.WithTrace IO Core.Coordinator TipOrBlock
+      , MarconiChainIndexQueryables
+      , Coordinator
       )
 buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateConfig textLogger path = do
   let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
@@ -76,7 +95,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
   StandardWorker blockInfoMVar blockInfoWorker <-
     blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
 
-  Core.WorkerIndexer _epochStateMVar epochStateWorker <-
+  Core.WorkerIndexer epochStateMVar epochStateWorker <-
     epochStateBuilder securityParam catchupConfig epochStateConfig blockEventTextLogger path
 
   StandardWorker utxoMVar utxoWorker <-
@@ -85,7 +104,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
     spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
   StandardWorker datumMVar datumWorker <-
     datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-  StandardWorker _mintTokenMVar mintTokenWorker <-
+  StandardWorker mintTokenMVar mintTokenWorker <-
     mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
 
   let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
@@ -105,6 +124,12 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
       UtxoQuery.mkUtxoSQLiteQuery $
         UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
 
+  let queryables =
+        MarconiChainIndexQueryables
+          epochStateMVar
+          mintTokenMVar
+          queryIndexer
+
   blockCoordinator <-
     lift $
       buildBlockEventCoordinator
@@ -117,9 +142,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
 
   resumePoint <- Core.lastStablePoint mainCoordinator
 
-  -- TODO Create a dedicated return type for it instead of a tuple.
-  -- However, we should wait until we have more stuff in the query side before we do it.
-  pure (resumePoint, queryIndexer, mainCoordinator)
+  pure (resumePoint, queryables, mainCoordinator)
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildBlockEventCoordinator

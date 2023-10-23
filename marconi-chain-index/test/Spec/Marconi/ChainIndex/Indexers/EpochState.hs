@@ -205,7 +205,10 @@ makeStakePoolRegistrationCert_ stakePoolVerKey vrfVerKey pldg pCost pMrgn rwdSta
         , C.stakePoolMetadata = mbMetadata
         }
    in
-    C.makeStakePoolRegistrationCertificate C.ShelleyBasedEraBabbage stakePoolParams
+    C.makeStakePoolRegistrationCertificate $
+      C.StakePoolRegistrationRequirementsPreConway
+        C.ShelleyToBabbageEraBabbage
+        (C.toShelleyPoolParams stakePoolParams)
 
 -- | Create a payment and related stake keys
 createPaymentAndStakeKey
@@ -229,32 +232,35 @@ createPaymentAndStakeKey networkId = do
 registerStakeAddress
   :: C.NetworkId
   -> C.LocalNodeConnectInfo C.CardanoMode
-  -> C.ProtocolParameters
+  -> C.LedgerProtocolParameters C.BabbageEra
   -> C.Address C.ShelleyAddr
   -> C.SigningKey C.GenesisUTxOKey
   -> C.StakeCredential
   -> HE.Integration (C.Tx C.BabbageEra, C.TxBody C.BabbageEra)
-registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredential = do
+registerStakeAddress networkId con ledgerPP payerAddress payerSKey stakeCredential = do
   -- Create a registration certificate: cardano-cli stake-address registration-certificate
   let stakeAddressRegCert =
-        C.makeStakeAddressRegistrationCertificate C.ShelleyBasedEraBabbage stakeCredential
-          :: C.Certificate C.BabbageEra
+        C.makeStakeAddressRegistrationCertificate $
+          C.StakeAddrRegistrationPreConway
+            C.ShelleyToBabbageEraBabbage
+            stakeCredential
 
   -- Draft transaction & Calculate fees; Submit the certificate with a transaction
   -- cardano-cli transaction build
   -- cardano-cli transaction sign
   -- cardano-cli transaction submit
   (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
-  let keyWitnesses = [C.WitnessGenesisUTxOKey payerSKey]
+  let apiPP = C.fromLedgerPParams C.shelleyBasedEra $ C.unLedgerProtocolParameters ledgerPP
+      keyWitnesses = [C.WitnessGenesisUTxOKey payerSKey]
       mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
       validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
   (feeLovelace, tx) <-
     TN.calculateAndUpdateTxFee
-      pparams
+      apiPP
       networkId
       (length txIns)
       (length keyWitnesses)
-      (TN.emptyTxBodyContent validityRange pparams)
+      (TN.emptyTxBodyContent validityRange ledgerPP)
         { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
         , C.txOuts = mkTxOuts 0
         , C.txCertificates =
@@ -269,13 +275,13 @@ registerStakeAddress networkId con pparams payerAddress payerSKey stakeCredentia
 registerPool
   :: C.LocalNodeConnectInfo C.CardanoMode
   -> C.NetworkId
-  -> C.ProtocolParameters
+  -> C.LedgerProtocolParameters C.BabbageEra
   -> FilePath
   -> [C.ShelleyWitnessSigningKey]
   -> [C.StakeCredential]
   -> C.Address C.ShelleyAddr
   -> HE.Integration (C.PoolId, C.Tx C.BabbageEra, C.TxBody C.BabbageEra)
-registerPool con networkId pparams tempAbsPath keyWitnesses stakeCredentials payerAddress = do
+registerPool con networkId ledgerPP tempAbsPath keyWitnesses stakeCredentials payerAddress = do
   -- Create the metadata file
   HE.lbsWriteFile (tempAbsPath </> "poolMetadata.json") . J.encode $
     J.object
@@ -317,24 +323,28 @@ registerPool con networkId pparams tempAbsPath keyWitnesses stakeCredentials pay
           networkId -- -> C.NetworkId
 
   -- Generate delegation certificate pledge: cardano-cli stake-address delegation-certificate
-  let delegationCertificates =
-        map
-          (\c -> C.makeStakeAddressPoolDelegationCertificate C.ShelleyBasedEraBabbage c coldVKeyHash)
-          stakeCredentials
+  let delegationCertificates = map makeCert stakeCredentials
       keyWitnesses' = keyWitnesses <> [C.WitnessStakePoolKey coldSKey]
+      makeCert cred =
+        C.makeStakeAddressDelegationCertificate $
+          C.StakeDelegationRequirementsPreConway
+            C.ShelleyToBabbageEraBabbage
+            cred
+            coldVKeyHash
 
   -- Create transaction
   do
     (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
-    let mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
+    let apiPP = C.fromLedgerPParams C.shelleyBasedEra $ C.unLedgerProtocolParameters ledgerPP
+        mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
         validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
     (feeLovelace, txbc) <-
       TN.calculateAndUpdateTxFee
-        pparams
+        apiPP
         networkId
         (length txIns)
         (length keyWitnesses)
-        (TN.emptyTxBodyContent validityRange pparams)
+        (TN.emptyTxBodyContent validityRange ledgerPP)
           { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
           , C.txOuts = mkTxOuts 0
           , C.txCertificates =

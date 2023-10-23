@@ -1,0 +1,128 @@
+cabal-version: 3.0
+name:          marconi-starter
+version:       1.2.0.0
+license:       Apache-2.0
+license-files:
+  LICENSE
+  NOTICE
+
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/input-output-hk/marconi
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+
+  ghc-options:
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wmissing-import-lists
+    -Wnoncanonical-monad-instances -Wredundant-constraints
+    -Wunused-packages
+
+library
+  import:          lang
+  hs-source-dirs:  src
+  exposed-modules:
+    Marconi.Starter.CLI
+    Marconi.Starter.Env
+    Marconi.Starter.HttpServer
+    Marconi.Starter.Indexers
+    Marconi.Starter.Indexers.AddressCount
+    Marconi.Starter.Run
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-chain-index    >=1.2.0
+    , marconi-core           >=1.2.0
+    , marconi-core-json-rpc  >=1.2.0
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api
+    , iohk-monitoring
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                  >=4.9 && <5
+    , containers
+    , directory
+    , filepath
+    , lens
+    , mtl
+    , optparse-applicative
+    , servant-server
+    , sqlite-simple
+    , text
+    , warp
+
+executable marconi-starter
+  import:         lang
+  hs-source-dirs: app
+  main-is:        Main.hs
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-starter
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:  base >=4.9 && <5
+
+test-suite marconi-starter-test
+  import:             lang
+  ghc-options:        -Wno-unused-packages
+  type:               exitcode-stdio-1.0
+  main-is:            Driver.hs
+  hs-source-dirs:     test
+  other-modules:      Spec.Marconi.Starter.AddressCount
+  build-tool-depends: tasty-discover:tasty-discover
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api
+    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}
+    , marconi-core
+    , marconi-starter
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , base            >=4.9 && <5
+    , containers
+    , hedgehog
+    , lens
+    , mtl
+    , tasty
+    , tasty-discover
+    , tasty-golden
+    , tasty-hedgehog

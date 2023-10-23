@@ -64,6 +64,21 @@ library
   exposed-modules:
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Experimental.Api.HttpServer
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.Echo
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.EpochState
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.MintBurnToken
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Routes
+    Marconi.ChainIndex.Experimental.Api.JsonRpc.Server
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Metrics
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Params
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Time
+    Marconi.ChainIndex.Experimental.Api.Rest.Routes
+    Marconi.ChainIndex.Experimental.Api.Rest.Server
+    Marconi.ChainIndex.Experimental.Api.Routes
+    Marconi.ChainIndex.Experimental.Api.Types
     Marconi.ChainIndex.Experimental.Extract.WithDistance
     Marconi.ChainIndex.Experimental.Indexers
     Marconi.ChainIndex.Experimental.Indexers.BlockInfo
@@ -107,22 +122,23 @@ library
   build-depends:
     , cardano-api-extended
     , marconi-core
+    , marconi-core-json-rpc
     , marconi-core-legacy
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                   ^>=8.8
+    , cardano-api                   ^>=8.20
     , cardano-binary
-    , cardano-ledger-alonzo         ^>=1.3
+    , cardano-ledger-alonzo         >=1.3.1.1
     , cardano-ledger-api
-    , cardano-ledger-babbage        ^>=1.4
-    , cardano-ledger-conway         ^>=1.6
+    , cardano-ledger-babbage        >=1.4.0.1
+    , cardano-ledger-conway         >=1.5
     , cardano-ledger-core
-    , cardano-ledger-mary           ^>=1.3
+    , cardano-ledger-mary           >=1.3.0.2
     , cardano-ledger-shelley
-    , cardano-protocol-tpraos       ^>=1.0
+    , cardano-protocol-tpraos       >=1.0.3.3
     , cardano-slotting              ^>=0.1.1.1
     , iohk-monitoring
     , network-mux
@@ -140,6 +156,7 @@ library
     , base16-bytestring
     , bytestring
     , cborg
+    , comonad
     , containers
     , directory
     , filepath
@@ -153,14 +170,19 @@ library
     , process
     , prometheus-client
     , serialise
+    , servant
+    , servant-server
+    , sop-core
     , sqlite-simple
     , stm
     , streaming
+    , strict-sop-core
     , template-haskell
     , text
     , time
     , transformers
     , vector-map
+    , warp
 
 library cardano-api-extended
   import:          lang
@@ -184,7 +206,7 @@ library cardano-api-extended
     , base
     , base16-bytestring
     , bytestring
-    , cardano-api                    ^>=8.8
+    , cardano-api                    ^>=8.20
     , cardano-crypto-class
     , cardano-crypto-wrapper
     , cardano-ledger-byron
@@ -197,35 +219,11 @@ library cardano-api-extended
     , ouroboros-consensus-protocol
     , ouroboros-network-protocols
     , streaming
+    , strict-sop-core
     , text
     , time
     , transformers
     , typed-protocols
-
-------------------------
--- Non-IOG dependencies
-------------------------
-library json-rpc
-  import:          lang
-  visibility:      public
-  hs-source-dirs:  json-rpc/src
-  exposed-modules:
-    Network.JsonRpc.Client.Types
-    Network.JsonRpc.Server.Types
-    Network.JsonRpc.Types
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , aeson
-    , base                 >=4.9 && <5
-    , containers
-    , http-media
-    , servant
-    , servant-client-core
-    , servant-server
-    , text
 
 executable marconi-chain-index
   import:         lang
@@ -287,14 +285,15 @@ library marconi-chain-index-test-lib
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, gen}  ^>=8.8
+    , cardano-api                  ^>=8.20
+    , cardano-api-gen              ^>=8.2
     , cardano-binary
     , cardano-crypto-class
     , cardano-ledger-core
     , hedgehog-extras
     , ouroboros-network-protocols
     , plutus-core
-    , plutus-ledger-api               ^>=1.7
+    , plutus-ledger-api            ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
 
@@ -338,7 +337,7 @@ benchmark marconi-chain-index-bench
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api           ^>=8.8
+    , cardano-api           ^>=8.20
     , cardano-ledger-byron
     , iohk-monitoring
 
@@ -365,6 +364,8 @@ test-suite marconi-chain-index-test
   other-modules:
     Spec.Marconi.ChainIndex.CLI
     Spec.Marconi.ChainIndex.Coordinator
+    Spec.Marconi.ChainIndex.Experimental.Api.Gen
+    Spec.Marconi.ChainIndex.Experimental.Api.Routes
     Spec.Marconi.ChainIndex.Experimental.Indexers
     Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo
     Spec.Marconi.ChainIndex.Experimental.Indexers.ChainTip
@@ -400,20 +401,21 @@ test-suite marconi-chain-index-test
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, gen}                                    ^>=8.8
+    , cardano-api                  ^>=8.20
+    , cardano-api-gen              ^>=8.2
     , cardano-binary
     , cardano-crypto-class
-    , cardano-ledger-alonzo                                             ^>=1.3
+    , cardano-ledger-alonzo        >=1.3.1.1
     , cardano-ledger-core
     , cardano-ledger-shelley
-    , cardano-slotting                                                  ^>=0.1.1.1
+    , cardano-slotting             ^>=0.1.1.1
     , hedgehog-extras
     , iohk-monitoring
     , ouroboros-consensus
     , ouroboros-consensus-cardano
     , ouroboros-network
     , plutus-core
-    , plutus-ledger-api:{plutus-ledger-api, plutus-ledger-api-testlib}  ^>=1.7
+    , plutus-ledger-api            ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
 
@@ -468,7 +470,8 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, gen}  ^>=8.8
+    , cardano-api                    ^>=8.20
+    , cardano-api-gen                ^>=8.2
     , cardano-binary
     , cardano-crypto-class
     , cardano-ledger-core
@@ -481,7 +484,7 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
     , ouroboros-consensus-diffusion
     , ouroboros-network
     , plutus-core
-    , plutus-ledger-api               ^>=1.7
+    , plutus-ledger-api              ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
 
