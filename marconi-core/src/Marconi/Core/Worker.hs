@@ -114,25 +114,6 @@ createWorker
   -> WorkerIndexer m input event indexer
 createWorker name = createWorkerHoist name . mapMaybeEvent
 
--- createWorker
---   :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
---   => Text
---   -> (input -> Maybe event)
---   -> indexer event
---   -> f (WorkerIndexer m input event indexer)
--- createWorker name = createWorkerWithPreprocessing name . mapMaybeEvent
-
--- createWorkerHoist
---   :: (MonadIO f, WorkerIndexerType n event indexer)
---   => (forall a. n a -> ExceptT IndexerError m a)
---   -> Text
---   -> Preprocessor (ExceptT IndexerError m) (Point event) input event
---   -> indexer event
---   -> f (WorkerIndexer m input event indexer)
--- createWorkerHoist hoist name f ix = liftIO $ do
---   workerState <- Con.newMVar ix
---   pure $ WorkerIndexer workerState $ Worker name workerState f hoist
-
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come
 -}
