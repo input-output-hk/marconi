@@ -401,8 +401,8 @@ instance (MonadIO m) => Closeable m (FileIndexer meta) where
         res <-
           isJust
             <$> timeout
-              1 -- (fileWriteEnv ^. fileWriteEnvTimeout)
-              (threadDelay 1000000 >> Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+              (fileWriteEnv ^. fileWriteEnvTimeout)
+              (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
         unless res (throwIO ShutdownTimeout)
       Nothing -> pure ()
 
