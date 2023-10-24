@@ -59,14 +59,9 @@ executable marconi-doc
   build-depends:
     , aeson
     , async
-    , base                  >=4.9 && <5
-    , containers
-    , directory
-    , filepath
+    , base            >=4.9 && <5
     , lens
     , mtl
-    , optparse-applicative
     , servant-server
     , sqlite-simple
-    , text
     , warp

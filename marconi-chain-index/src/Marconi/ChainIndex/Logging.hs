@@ -7,8 +7,12 @@
 module Marconi.ChainIndex.Logging (
   LastSyncStats (..),
   LastSyncLog (..),
-  renderLastSyncLog,
   chainSyncEventStreamLogging,
+  MarconiTrace,
+  mkMarconiTrace,
+
+  -- * Exported for testing purposes
+  marconiFormatting,
 ) where
 
 import Cardano.Api qualified as C
@@ -17,6 +21,7 @@ import Cardano.Api.Extended.Streaming (
   ChainSyncEvent (RollBackward, RollForward),
  )
 import Cardano.BM.Trace (Trace, logInfo)
+import Cardano.BM.Tracing (contramap)
 import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
@@ -31,11 +36,23 @@ import Data.Time (
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
-import Prettyprinter (Pretty (pretty), defaultLayoutOptions, layoutPretty, (<+>))
-import Prettyprinter.Render.Text (renderStrict)
+import Marconi.ChainIndex.Types (MarconiTrace)
+import Prettyprinter (Pretty (pretty), (<+>))
+import Prettyprinter qualified as Pretty
+import Prettyprinter.Render.Text qualified as Pretty
 import Streaming (Of, Stream, effect)
 import Streaming.Prelude qualified as S
 import Text.Printf (printf)
+
+-- | Builds a 'MarconiTrace' from a base tracer.
+mkMarconiTrace :: Trace m Text -> MarconiTrace m
+mkMarconiTrace =
+  contramap . fmap . fmap $ marconiFormatting
+
+marconiFormatting :: Pretty.Doc ann -> Text
+marconiFormatting =
+  Pretty.renderStrict
+    . Pretty.layoutPretty Pretty.defaultLayoutOptions
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats
@@ -116,14 +133,8 @@ instance Pretty LastSyncLog where
                       <+> processingSummaryMsg timeSinceLastMsg
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
-renderLastSyncLog :: LastSyncLog -> Text
-renderLastSyncLog syncLog =
-  renderStrict $
-    layoutPretty defaultLayoutOptions $
-      pretty syncLog
-
 chainSyncEventStreamLogging
-  :: Trace IO Text
+  :: MarconiTrace IO
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
 chainSyncEventStreamLogging tracer s = effect $ do
@@ -174,7 +185,7 @@ chainSyncEventStreamLogging tracer s = effect $ do
               | otherwise -> False
 
       when shouldPrint $ do
-        logInfo tracer $ renderLastSyncLog $ LastSyncLog syncStats timeSinceLastMsg
+        logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
         modifyIORef' statsRef $ \stats ->
           stats
             { syncStatsNumBlocks = 0

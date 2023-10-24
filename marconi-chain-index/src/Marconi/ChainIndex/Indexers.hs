@@ -125,16 +125,13 @@ import Marconi.Core.Storable qualified as Storable
 import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Prettyprinter (
   align,
-  defaultLayoutOptions,
   indent,
-  layoutPretty,
   line,
   list,
   nest,
   pretty,
   (<+>),
  )
-import Prettyprinter.Render.Text (renderStrict)
 import Prometheus qualified as P
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
@@ -679,11 +676,9 @@ runIndexers
             C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
             cliCp -> cliCp -- otherwise use what was provided on CLI.
       logInfo stdoutTrace $
-        renderStrict $
-          layoutPretty defaultLayoutOptions $
-            "Resumable points for each indexer:"
-              <> line
-              <> indent 4 (align (list (fmap pretty resumablePoints)))
+        "Resumable points for each indexer:"
+          <> line
+          <> indent 4 (align (list (fmap pretty resumablePoints)))
 
       -- Possible runtime failure if an indexer with a non-genesis resumable point will resume from
       -- genesis.
@@ -692,16 +687,14 @@ runIndexers
         && any (\case ChainPoint{} -> True; _ -> False) resumablePoints
         then do
           logError stdoutTrace $
-            renderStrict $
-              layoutPretty defaultLayoutOptions $
-                nest
-                  4
-                  ( "At least one indexer has a non-genesis resumable point, while the oldest common resumable point between indexers is genesis."
-                      <> line
-                      <> "Are you sure you want to restart syncing that indexer from genesis?"
-                      <> line
-                      <> "If so, remove the '--fail-if-resyncing-from-genesis' flag."
-                  )
+            nest
+              4
+              ( "At least one indexer has a non-genesis resumable point, while the oldest common resumable point between indexers is genesis."
+                  <> line
+                  <> "Are you sure you want to restart syncing that indexer from genesis?"
+                  <> line
+                  <> "If so, remove the '--fail-if-resyncing-from-genesis' flag."
+              )
         else do
           let stream =
                 mkIndexerStream coordinator
@@ -710,12 +703,10 @@ runIndexers
               runChainSyncStream = withChainSyncBlockEventStream socketPath networkId [resumePoint] stream
               whenNoIntersectionFound NoIntersectionFound = do
                 logError stdoutTrace $
-                  renderStrict $
-                    layoutPretty defaultLayoutOptions $
-                      "No intersection found when looking for the chain point"
-                        <+> pretty resumePoint
-                        <> "."
-                        <+> "Please check the slot number and the block hash do belong to the chain."
+                  "No intersection found when looking for the chain point"
+                    <+> pretty resumePoint
+                    <> "."
+                    <+> "Please check the slot number and the block hash do belong to the chain."
                 signalQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
            in finally
                 (runChainSyncStream `catch` whenNoIntersectionFound)
@@ -726,7 +717,7 @@ runIndexers
         let secondsBeforeTimeout = 180
         logInfo stdoutTrace $
           "Stopping indexing. Waiting for indexers to finish their work (timeout after "
-            <> Text.pack (show secondsBeforeTimeout)
+            <> pretty secondsBeforeTimeout
             <> "s) ..."
         res <-
           timeout (secondsBeforeTimeout * 1_000_000) $

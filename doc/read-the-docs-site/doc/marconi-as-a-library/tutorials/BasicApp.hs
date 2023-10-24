@@ -28,7 +28,6 @@ import Data.Aeson (FromJSON, ToJSON, (.=))
 import Data.Aeson qualified as Aeson
 import Data.List qualified as List
 import Data.Maybe (listToMaybe)
-import Data.Text (Text)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -44,9 +43,15 @@ import Data.Void (Void)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Core
 import Marconi.ChainIndex.Experimental.Runner qualified as Core
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry qualified as Core
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam)
+import Marconi.ChainIndex.Types (
+  BlockEvent (BlockEvent),
+  MarconiTrace,
+  RetryConfig (RetryConfig),
+  SecurityParam,
+ )
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc qualified as Core
@@ -59,7 +64,7 @@ main = runBlockInfoSqliteIndexerHttp
 
 -- BLOCKSTART env
 data Env indexer = Env
-  { envTrace :: !(Trace.Trace IO Text)
+  { envTrace :: !(MarconiTrace IO)
   -- ^ The 'Trace' used for logging by `marconi-core`
   , envSocketFilePath :: !String
   -- ^ The local file path of the local node's socket file used to connect to the local node and
@@ -93,14 +98,15 @@ withIndexerBuildEnv worker action = do
   -- We initialise the trace with default values.
   traceConfig <- Trace.defaultConfigStdout
   Trace.withTrace traceConfig "marconi-tutorial" $ \stdoutTrace -> do
+    let marconiTrace = mkMarconiTrace stdoutTrace
     let networkId = C.Testnet $ C.NetworkMagic networkMagic
 
     -- We query the local node for the security parameter with a retry mechanism
     -- in case the node has not been started.
-    k <- Core.withNodeConnectRetry stdoutTrace (Core.RetryConfig 30 Nothing) socketFilePath $ do
+    k <- Core.withNodeConnectRetry marconiTrace (RetryConfig 30 Nothing) socketFilePath $ do
       Utils.toException $ Utils.querySecurityParam @Void networkId socketFilePath
 
-    action (Env stdoutTrace socketFilePath networkId k worker)
+    action (Env marconiTrace socketFilePath networkId k worker)
 
 -- BLOCKEND env
 
@@ -138,7 +144,7 @@ runIndexer env = do
           Core.withNoPreprocessor
           -- The retry configuration. If can't connect to local node, or lost
           -- connection, we retry given this configuration.
-          (Core.RetryConfig 30 Nothing)
+          (RetryConfig 30 Nothing)
           -- The security parameter
           (envSecurityParam env)
           -- The NetworkId

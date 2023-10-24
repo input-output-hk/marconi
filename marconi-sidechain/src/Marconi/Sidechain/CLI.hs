@@ -13,10 +13,10 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.List.NonEmpty (NonEmpty)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.CLI qualified as Cli
-import Marconi.ChainIndex.Node.Client.Retry (RetryConfig)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   IndexingDepth,
+  RetryConfig,
   ShouldFailIfResync,
   TargetAddresses,
  )

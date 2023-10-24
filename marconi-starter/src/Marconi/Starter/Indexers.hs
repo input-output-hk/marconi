@@ -7,7 +7,6 @@ import Control.Lens (view, (^.))
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader (ask), ReaderT)
-import Data.Text qualified as Text
 import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Experimental.Runner (
@@ -21,6 +20,7 @@ import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Env (Env, envCliArgs, envStdoutTrace)
 import Marconi.Starter.Env qualified as Env
 import Marconi.Starter.Indexers.AddressCount qualified as AddressCount
+import Prettyprinter qualified as Pretty
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
 
@@ -82,7 +82,7 @@ getStartingPoint preferredStartingPoint indexer = do
         Left err -> do
           stdoutTrace <- view envStdoutTrace
           liftIO $ do
-            logError stdoutTrace $ Text.pack $ show err
+            logError stdoutTrace $ Pretty.viaShow err
             exitFailure
         Right result -> pure result
     else do

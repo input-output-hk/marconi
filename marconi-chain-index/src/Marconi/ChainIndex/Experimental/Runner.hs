@@ -48,19 +48,19 @@ import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Text (Text)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Experimental.Indexers.Orphans qualified ()
 import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
-import Marconi.ChainIndex.Node.Client.Retry (RetryConfig, withNodeConnectRetry)
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   BlockEvent (blockInMode),
+  MarconiTrace,
+  RetryConfig,
   SecurityParam,
  )
 import Marconi.Core qualified as Core
 import Prettyprinter qualified as PP
-import Prettyprinter.Render.Text qualified as PP
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
 
@@ -75,7 +75,7 @@ Lens.makeLenses ''RunIndexerEventPreprocessing
 
 -- | Common configuration required to run indexers
 data RunIndexerConfig event = RunIndexerConfig
-  { _runIndexerConfigTrace :: Trace.Trace IO Text
+  { _runIndexerConfigTrace :: MarconiTrace IO
   , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
@@ -125,10 +125,8 @@ runIndexer
   indexer = do
     withNodeConnectRetry trace retryConfig socketPath $ do
       Trace.logInfo trace $
-        PP.renderStrict $
-          PP.layoutPretty PP.defaultLayoutOptions $
-            PP.pretty $
-              StartingPointLog startingPoint
+        PP.pretty $
+          StartingPointLog startingPoint
       eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
       cBox <- Concurrent.newMVar indexer
       let processEvent = eventProcessing ^. runIndexerPreprocessEvent
@@ -140,9 +138,7 @@ runIndexer
               (mkEventStream processEvent eventQueue . chainSyncEventStreamLogging trace)
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
-              PP.renderStrict $
-                PP.layoutPretty PP.defaultLayoutOptions $
-                  PP.pretty NoIntersectionFoundLog
+              PP.pretty NoIntersectionFoundLog
       void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
       Core.processQueue (stablePointComputation securityParam eventProcessing) Map.empty eventQueue cBox
 

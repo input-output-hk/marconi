@@ -44,15 +44,14 @@ module Marconi.Sidechain.Env (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Trace (Trace)
 import Control.Concurrent.STM (TMVar, newEmptyTMVarIO)
 import Control.Lens (makeLenses)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Text (Text)
 import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
 import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
 import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
 import Marconi.ChainIndex.Types (
+  MarconiTrace,
   SecurityParam,
   TargetAddresses,
  )
@@ -68,7 +67,7 @@ data SidechainEnv = SidechainEnv
   , _sidechainIndexersEnv :: !SidechainIndexersEnv
   -- ^ Access the Sidechain indexers for querying purposes.
   , _sidechainCliArgs :: !CliArgs
-  , _sidechainTrace :: !(Trace IO Text)
+  , _sidechainTrace :: !(MarconiTrace IO)
   }
 
 data SidechainQueryEnv = SidechainQueryEnv
@@ -104,7 +103,7 @@ newtype EpochStateIndexerEnv = EpochStateIndexerEnv
 mkSidechainEnvFromCliArgs
   :: SecurityParam
   -> CliArgs
-  -> Trace IO Text
+  -> MarconiTrace IO
   -> IO SidechainEnv
 mkSidechainEnvFromCliArgs securityParam cliArgs@CliArgs{httpPort, targetAddresses, targetAssets} trace = do
   mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace
@@ -115,7 +114,7 @@ mkSidechainEnv
   -> Maybe TargetAddresses
   -> Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName))
   -> CliArgs
-  -> Trace IO Text
+  -> MarconiTrace IO
   -> IO SidechainEnv
 mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace = do
   let httpSettings = setPort httpPort defaultSettings

@@ -6,7 +6,6 @@
 module Marconi.ChainIndex.Node.Client.Retry where
 
 import Cardano.BM.Trace (
-  Trace,
   logError,
   logWarning,
  )
@@ -14,41 +13,32 @@ import Control.Concurrent (
   threadDelay,
  )
 import Control.Exception (Handler (Handler), catches, throwIO)
-import Data.Aeson (FromJSON, ToJSON)
-import Data.Text (Text)
 import Data.Word (Word64)
-import GHC.Generics (Generic)
+import Marconi.ChainIndex.Types (
+  MarconiTrace,
+  RetryConfig,
+  baseTimeBeforeNextRetry,
+  maybeMaxWaitTime,
+ )
 import Network.Mux.Trace (MuxError (MuxError), MuxErrorType (MuxBearerClosed, MuxIOException))
 import Prettyprinter (
-  defaultLayoutOptions,
-  layoutPretty,
   pretty,
   (<+>),
  )
-import Prettyprinter.Render.Text (renderStrict)
 import System.Exit (exitFailure)
 import System.IO.Error (isDoesNotExistError)
-
-data RetryConfig = RetryConfig
-  { baseTimeBeforeNextRetry :: !Word64
-  -- ^ Initial time before next retry (in seconds)
-  , maybeMaxWaitTime :: !(Maybe Word64)
-  -- ^ Max time before stopping retries (in seconds)
-  }
-  deriving stock (Show, Generic)
-  deriving anyclass (FromJSON, ToJSON)
 
 data RetryState = RetryState
   { totalWaitTime :: !Word64
   , secondsBeforeNextRetry :: !Word64
   }
 
-withNodeConnectRetry :: forall a. Trace IO Text -> RetryConfig -> FilePath -> IO a -> IO a
+withNodeConnectRetry :: forall a. MarconiTrace IO -> RetryConfig -> FilePath -> IO a -> IO a
 withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
   let initialRetryState = RetryState 0 (baseTimeBeforeNextRetry retryConfig)
   runActionWithRetries stdoutTrace initialRetryState
   where
-    runActionWithRetries :: Trace IO Text -> RetryState -> IO a
+    runActionWithRetries :: MarconiTrace IO -> RetryState -> IO a
     runActionWithRetries trace retryState = do
       catches
         action
@@ -67,18 +57,16 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
               e -> throwIO e
         ]
 
-    handleCantConnectToNodeException :: Trace IO Text -> RetryState -> IO a
+    handleCantConnectToNodeException :: MarconiTrace IO -> RetryState -> IO a
     handleCantConnectToNodeException trace retryState = do
       if maybe True (totalWaitTime retryState <) $ maybeMaxWaitTime retryConfig
         then do
           logWarning trace $
-            renderStrict $
-              layoutPretty defaultLayoutOptions $
-                "Could not connect to Cardano node: socket file"
-                  <+> pretty socketPath
-                  <+> "does not exist. Retrying in"
-                  <+> pretty (secondsBeforeNextRetry retryState)
-                  <> "s ..."
+            "Could not connect to Cardano node: socket file"
+              <+> pretty socketPath
+              <+> "does not exist. Retrying in"
+              <+> pretty (secondsBeforeNextRetry retryState)
+              <> "s ..."
 
           threadDelay $ fromIntegral $ secondsBeforeNextRetry retryState * 1_000_000
           runActionWithRetries
@@ -90,9 +78,7 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
             )
         else do
           logError trace $
-            renderStrict $
-              layoutPretty defaultLayoutOptions $
-                "Could not connect to Cardano node: socket file"
-                  <+> pretty socketPath
-                  <+> "does not exist."
+            "Could not connect to Cardano node: socket file"
+              <+> pretty socketPath
+              <+> "does not exist."
           exitFailure

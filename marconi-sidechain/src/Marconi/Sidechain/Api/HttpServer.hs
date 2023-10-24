@@ -8,7 +8,7 @@
 module Marconi.Sidechain.Api.HttpServer where
 
 import Cardano.Api ()
-import Cardano.BM.Trace (Trace, logDebug, logError)
+import Cardano.BM.Trace (logDebug, logError)
 import Control.Exception (SomeAsyncException, SomeException, catches, displayException, throwIO)
 import Control.Exception qualified as Exception
 import Control.Lens (view, (^.))
@@ -21,10 +21,10 @@ import Data.ByteString qualified as BS
 import Data.Default (def)
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, pack, unpack)
-import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
+import Marconi.ChainIndex.Types (MarconiTrace)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo
@@ -72,6 +72,7 @@ import Network.Wai.Middleware.RequestLogger (
   mkRequestLogger,
   outputFormat,
  )
+import Prettyprinter (Pretty (pretty))
 import Prometheus qualified as P
 import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (
@@ -93,7 +94,7 @@ runHttpServer = do
     lift $
       mkRequestLogger
         def
-          { destination = Callback $ logDebug (env ^. sidechainTrace) . Text.decodeUtf8 . fromLogStr
+          { destination = Callback $ logDebug (env ^. sidechainTrace) . pretty . Text.decodeUtf8 . fromLogStr
           , outputFormat = DetailedWithSettings def{mPrelogRequests = True}
           }
   lift
@@ -113,13 +114,13 @@ type ReaderServer env api = ServerT api (ReaderHandler env)
 hoistHandler :: SidechainEnv -> ReaderHandler SidechainEnv a -> Handler a
 hoistHandler env = Handler . ExceptT . catchExceptions (env ^. sidechainTrace) . flip runReaderT env . runExceptT
 
-catchExceptions :: Trace IO Text -> IO (Either ServerError a) -> IO (Either ServerError a)
+catchExceptions :: MarconiTrace IO -> IO (Either ServerError a) -> IO (Either ServerError a)
 catchExceptions trace action =
   action
     `catches` [ Exception.Handler $ \(e :: ServerError) -> pure $ Left e
               , Exception.Handler $ \(e :: SomeAsyncException) -> throwIO e
               , Exception.Handler $ \(e :: SomeException) -> do
-                  logError trace . Text.pack $ "Exception caught while handling HTTP request: " <> displayException e
+                  logError trace $ "Exception caught while handling HTTP request: " <> pretty (displayException e)
                   let
                     -- TODO: Provide better info, especially the request ID
                     jsonErr = Errors @Int @Aeson.Value Nothing $ mkJsonRpcInternalErr Nothing
@@ -230,7 +231,9 @@ getMintingPolicyHashTxHandler query = do
 getEpochStakePoolDelegationHandler
   :: Word64
   -- ^ EpochNo
-  -> ReaderHandler SidechainEnv (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
+  -> ReaderHandler
+      SidechainEnv
+      (Either (JsonRpcErr String) GetEpochActiveStakePoolDelegationResult)
 getEpochStakePoolDelegationHandler epochNo = do
   env <- ask
   liftIO $

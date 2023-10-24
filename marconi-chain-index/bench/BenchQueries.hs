@@ -30,7 +30,7 @@ module Main (main) where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Tracing (Trace, defaultConfigStdout)
+import Cardano.BM.Tracing (defaultConfigStdout)
 import Cardano.Chain.Slotting (EpochSlots (EpochSlots))
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
@@ -47,7 +47,6 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Maybe (fromMaybe, listToMaybe)
-import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Data.Word (Word64)
@@ -68,9 +67,12 @@ import Marconi.ChainIndex.Indexers.Utxo (
   UtxoIndexer,
   lessThanOrEqual,
  )
-import Marconi.ChainIndex.Node.Client.Retry (RetryConfig (RetryConfig), withNodeConnectRetry)
+import Marconi.ChainIndex.Logging (mkMarconiTrace)
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   IndexingDepth (MinIndexingDepth),
+  MarconiTrace,
+  RetryConfig (RetryConfig),
   RunIndexerConfig (RunIndexerConfig),
   ShouldFailIfResync (ShouldFailIfResync),
   UtxoIndexerConfig (UtxoIndexerConfig),
@@ -109,9 +111,10 @@ main = do
 
   traceConfig <- defaultConfigStdout
   withTrace traceConfig "marconi-benchmark" $ \trace -> do
+    let marconiTrace = mkMarconiTrace trace
     -- Run concurrently the indexing and the testing. The testing is only run once the indexing is
     -- fully synced with the local running node.
-    race_ (runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar) $ do
+    race_ (runIndexerSyncing marconiTrace databaseDir nodeSocketPath indexerTVar) $ do
       putStrLn "Waiting for indexer to be fully synced..."
       waitUntilSynced databaseDir nodeSocketPath
       putStrLn "Finished syncing!"
@@ -119,7 +122,7 @@ main = do
 
 -- | Run the IO code which syncs the Marconi Utxo indexer with the local running Cardano node.
 runIndexerSyncing
-  :: Trace IO Text
+  :: MarconiTrace IO
   -> FilePath
   -- ^ Marconi indexer database directory
   -> FilePath
