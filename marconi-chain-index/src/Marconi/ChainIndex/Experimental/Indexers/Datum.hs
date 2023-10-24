@@ -1,6 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -53,7 +54,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
   StandardWorkerConfig,
   mkStandardWorker,
  )
-import Marconi.ChainIndex.Indexers.Utxo (getTxOutFromTxBodyContent)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
 
@@ -228,3 +228,12 @@ getDatumMapFromTxBody = \case
   C.ShelleyTxBody _ _ _ (C.TxBodyScriptData C.ScriptDataInConwayEra (Ledger.TxDats' data_) _) _ _ ->
     Map.mapKeys C.ScriptDataHash $ C.getScriptData . C.fromAlonzoData <$> data_
   _ -> mempty
+
+getTxOutFromTxBodyContent :: C.TxBodyContent build era -> [C.TxOut C.CtxTx era]
+getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txScriptValidity} =
+  case C.txScriptValidityToScriptValidity txScriptValidity of
+    C.ScriptValid -> txOuts -- When transaction is valid, only transaction fee is collected
+    C.ScriptInvalid -> collateral txReturnCollateral -- failed Tx, we collect from collateral and return excess collateral
+  where
+    collateral C.TxReturnCollateralNone = []
+    collateral (C.TxReturnCollateral _ txout) = [txout]

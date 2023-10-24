@@ -60,10 +60,10 @@ library
     , maybe-unix
 
   hs-source-dirs:  src
-
-  -- TODO: PLT-7727 remove commented modules if indeed not needed
-  -- c-sources:       cbits/rev.c
+  c-sources:       cbits/rev.c
   exposed-modules:
+    Marconi.ChainIndex.CLI
+    Marconi.ChainIndex.Error
     Marconi.ChainIndex.Experimental.Api.HttpServer
     Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.Echo
     Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.EpochState
@@ -96,13 +96,16 @@ library
     Marconi.ChainIndex.Experimental.Logger
     Marconi.ChainIndex.Experimental.Run
     Marconi.ChainIndex.Experimental.Runner
+    Marconi.ChainIndex.Git.Rev
+    Marconi.ChainIndex.Git.RevFromGit
+    Marconi.ChainIndex.Logging
+    Marconi.ChainIndex.Node.Client.Retry
+    Marconi.ChainIndex.Orphans
+    Marconi.ChainIndex.Types
+    Marconi.ChainIndex.Utils
 
   -- TODO: PLT-7727 remove commented modules if indeed not needed
-  --Marconi.ChainIndex.CLI
-  --Marconi.ChainIndex.Error
   --Marconi.ChainIndex.Extract.Datum
-  --Marconi.ChainIndex.Git.Rev
-  --Marconi.ChainIndex.Git.RevFromGit
   --Marconi.ChainIndex.Indexers
   --Marconi.ChainIndex.Indexers.AddressDatum
   --Marconi.ChainIndex.Indexers.EpochState
@@ -110,12 +113,7 @@ library
   --Marconi.ChainIndex.Indexers.MintBurn
   --Marconi.ChainIndex.Indexers.ScriptTx
   --Marconi.ChainIndex.Indexers.Utxo
-  --Marconi.ChainIndex.Logging
-  --Marconi.ChainIndex.Node.Client.Retry
-  --Marconi.ChainIndex.Orphans
   --Marconi.ChainIndex.Run
-  --Marconi.ChainIndex.Types
-  --Marconi.ChainIndex.Utils
 
   other-modules:   Paths_marconi_chain_index
   autogen-modules: Paths_marconi_chain_index
