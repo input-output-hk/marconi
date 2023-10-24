@@ -60,13 +60,8 @@ executable marconi-doc
     , aeson
     , async
     , base                  >=4.9 && <5
-    , containers
-    , directory
-    , filepath
     , lens
     , mtl
-    , optparse-applicative
     , servant-server
     , sqlite-simple
-    , text
     , warp
