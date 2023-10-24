@@ -133,6 +133,7 @@ tickSave indexer = do
 
 instance (MonadIO m, MonadError IndexerError m) => IsIndex m a LastEventIndexer where
   index timedEvent indexer = do
+    -- We only keep the last non empty event, so we don't update the lastEvent field on empty events
     let setLastEvent = case timedEvent ^. event of
           Nothing -> id
           Just e -> lastEvent ?~ e

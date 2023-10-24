@@ -60,7 +60,7 @@ getCurrentSyncPointHandler = do
         Left $
           mkJsonRpcInternalErr $
             Just $
-              "Can't resolve last point it getCurrentSyncedBlock: " <> show err
+              "Can't resolve last point in getCurrentSyncedBlock: " <> show err
     Right lastPoint ->
       hoistHttpHandler $
         liftIO $
