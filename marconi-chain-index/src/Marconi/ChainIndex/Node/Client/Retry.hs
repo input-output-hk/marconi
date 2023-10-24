@@ -33,6 +33,9 @@ data RetryState = RetryState
   , secondsBeforeNextRetry :: !Word64
   }
 
+-- TODO: this function is problematic because it is used both inside the
+-- ChainIndexT context and outside to initialize the config
+-- see Marconi.ChainIndex.Run.run
 withNodeConnectRetry :: forall a. MarconiTrace IO -> RetryConfig -> FilePath -> IO a -> IO a
 withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
   let initialRetryState = RetryState 0 (baseTimeBeforeNextRetry retryConfig)
@@ -66,7 +69,7 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
               <+> pretty socketPath
               <+> "does not exist. Retrying in"
               <+> pretty (secondsBeforeNextRetry retryState)
-              <> "s ..."
+                <> "s ..."
 
           threadDelay $ fromIntegral $ secondsBeforeNextRetry retryState * 1_000_000
           runActionWithRetries

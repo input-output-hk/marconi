@@ -10,6 +10,7 @@ module Marconi.ChainIndex.Logging (
   chainSyncEventStreamLogging,
   MarconiTrace,
   mkMarconiTrace,
+  logMInfo,
 
   -- * Exported for testing purposes
   marconiFormatting,
@@ -22,7 +23,11 @@ import Cardano.Api.Extended.Streaming (
  )
 import Cardano.BM.Trace (Trace, logInfo)
 import Cardano.BM.Tracing (contramap)
+import Control.Lens.Getter qualified as Lens
 import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Reader (asks)
+import Control.Monad.Trans (lift)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Time (
@@ -36,7 +41,7 @@ import Data.Time (
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (MarconiTrace)
+import Marconi.ChainIndex.Types (ChainIndexerT, MarconiTrace, runIndexerConfigTrace)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
@@ -53,6 +58,14 @@ marconiFormatting :: Pretty.Doc ann -> Text
 marconiFormatting =
   Pretty.renderStrict
     . Pretty.layoutPretty Pretty.defaultLayoutOptions
+
+logMInfo :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMInfo msg = do
+  trace <- Lens.view runIndexerConfigTrace
+  lift $ logInfo trace msg
+
+-- TODO: this should also throw an exception
+logMError = undefined
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats
@@ -87,7 +100,7 @@ instance Pretty LastSyncLog where
               <+> pretty cp
               <+> "and current node tip is"
               <+> pretty nt
-              <> "."
+                <> "."
 
           processingSummaryMsg timeSinceLastMsg =
             "Processed"
@@ -96,12 +109,12 @@ instance Pretty LastSyncLog where
               <+> pretty numRollBackwards
               <+> "rollbacks in the last"
               <+> pretty (formatTime defaultTimeLocale "%s" timeSinceLastMsg)
-              <> "s"
+                <> "s"
        in case (timeSinceLastMsgM, cp, nt) of
             (Nothing, _, _) ->
               "Starting from"
                 <+> pretty cp
-                <> "."
+                  <> "."
                 <+> currentTipMsg timeSinceLastMsgM
             (Just _, _, C.ChainTipAtGenesis) ->
               "Not syncing. Node tip is at Genesis"
@@ -110,7 +123,7 @@ instance Pretty LastSyncLog where
               "Synchronising (0%)."
                 <+> currentTipMsg timeSinceLastMsgM
                 <+> processingSummaryMsg timeSinceLastMsg
-                <> "."
+                  <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -119,7 +132,7 @@ instance Pretty LastSyncLog where
                     "Fully synchronised."
                       <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
-                      <> "."
+                        <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _

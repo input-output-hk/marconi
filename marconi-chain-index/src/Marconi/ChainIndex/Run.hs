@@ -16,6 +16,7 @@ import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   RunIndexerConfig (RunIndexerConfig),
   UtxoIndexerConfig (UtxoIndexerConfig),
+  runChainIndexerT,
  )
 import Marconi.ChainIndex.Utils qualified as Utils
 import System.Directory (createDirectoryIfMissing)
@@ -62,7 +63,8 @@ run = do
     securityParam <- withNodeConnectRetry marconiTrace retryConfig socketPath $ do
       Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
 
-    Indexers.runIndexers
+    runChainIndexerT
+      (Indexers.runIndexers indexers)
       ( RunIndexerConfig
           marconiTrace
           retryConfig
@@ -73,4 +75,3 @@ run = do
           (Cli.optionsMinIndexingDepth $ Cli.commonOptions o)
           (Cli.optionsFailsIfResync o)
       )
-      indexers

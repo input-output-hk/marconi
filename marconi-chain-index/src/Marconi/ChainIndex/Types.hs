@@ -6,6 +6,9 @@
 
 -- | This module provides several type aliases and utility functions to deal with them.
 module Marconi.ChainIndex.Types (
+  ChainIndexerT (..),
+  runChainIndexerT,
+
   -- * Config for retrying
   RetryConfig (..),
 
@@ -58,6 +61,9 @@ import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
 import Cardano.BM.Data.Trace (Trace)
 import Control.Lens.TH qualified as Lens
+import Control.Monad.Reader (MonadReader)
+import Control.Monad.Trans (MonadTrans (lift))
+import Control.Monad.Trans.Reader (ReaderT (runReaderT))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.Set.NonEmpty (NESet)
@@ -66,6 +72,17 @@ import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
 import Prettyprinter (Doc)
+
+newtype ChainIndexerT m a = ChainIndexerT
+  {getChainIndexerT :: ReaderT (RunIndexerConfig m) m a}
+  deriving newtype (Functor, Applicative, Monad, MonadReader (RunIndexerConfig m))
+
+instance MonadTrans ChainIndexerT where
+  lift = ChainIndexerT . lift
+
+runChainIndexerT :: ChainIndexerT m a -> RunIndexerConfig m -> m a
+runChainIndexerT (ChainIndexerT chainIndexerT) config =
+  runReaderT chainIndexerT config
 
 -- | Config type for node retries
 data RetryConfig = RetryConfig
@@ -144,8 +161,8 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     )
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig = RunIndexerConfig
-  { _runIndexerConfigTrace :: MarconiTrace IO
+data RunIndexerConfig m = RunIndexerConfig
+  { _runIndexerConfigTrace :: MarconiTrace m
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
   , _runIndexerConfigNetworkId :: C.NetworkId

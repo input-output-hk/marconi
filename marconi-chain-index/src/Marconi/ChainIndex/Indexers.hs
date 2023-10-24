@@ -86,6 +86,7 @@ import Control.Monad.Trans.Except (
   ExceptT,
   runExceptT,
  )
+import Control.Monad.Trans.Reader (ReaderT (runReaderT))
 import Data.Functor (($>))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
@@ -110,9 +111,10 @@ import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
 import Marconi.ChainIndex.Indexers.ScriptTx qualified as ScriptTx
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
+import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging, logMInfo)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
+  ChainIndexerT (ChainIndexerT),
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   RunIndexerConfig (RunIndexerConfig),
   SecurityParam (SecurityParam),
@@ -642,88 +644,81 @@ mkIndexerStream
   -> IO ()
 mkIndexerStream = mkIndexerStream' (CE.bimSlotNo . blockInMode)
 
-runIndexers
-  :: RunIndexerConfig
-  -> [(Worker, Maybe FilePath)]
-  -> IO ()
-runIndexers
-  ( RunIndexerConfig
-      stdoutTrace
-      retryConfig
-      securityParam
-      networkId
-      cliChainPoint
-      socketPath
-      indexingDepth
-      (ShouldFailIfResync shouldFailIfResync)
-    )
-  indexerList = do
-    withNodeConnectRetry stdoutTrace retryConfig socketPath $ do
-      currentNodeBlockNo <- Utils.toException $ Utils.queryCurrentNodeBlockNo @Void networkId socketPath
-      let indexers = mapMaybe sequenceA indexerList
-      coordinator <- initializeCoordinatorFromIndexers securityParam indexingDepth indexers
-      let indexerDepth =
-            let SecurityParam s = securityParam
-             in case indexingDepth of
-                  MinIndexingDepth d -> SecurityParam $ s - d + 1
-                  MaxIndexingDepth -> SecurityParam 1
-      resumablePoints <-
-        getStartingPointsFromIndexers indexerDepth currentNodeBlockNo indexers coordinator
-      let oldestCommonChainPoint = minimum resumablePoints
-          resumePoint = case cliChainPoint of
-            C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
-            cliCp -> cliCp -- otherwise use what was provided on CLI.
-      logInfo stdoutTrace $
-        "Resumable points for each indexer:"
-          <> line
-          <> indent 4 (align (list (fmap pretty resumablePoints)))
+-- TODO: placeholder, see definition of 'withNodeConnectRetry'
+withNodeConnectRetryNEW = undefined
 
-      -- Possible runtime failure if an indexer with a non-genesis resumable point will resume from
-      -- genesis.
-      if shouldFailIfResync
-        && elem C.ChainPointAtGenesis resumablePoints
-        && any (\case ChainPoint{} -> True; _ -> False) resumablePoints
-        then do
-          logError stdoutTrace $
-            nest
-              4
-              ( "At least one indexer has a non-genesis resumable point, while the oldest common resumable point between indexers is genesis."
-                  <> line
-                  <> "Are you sure you want to restart syncing that indexer from genesis?"
-                  <> line
-                  <> "If so, remove the '--fail-if-resyncing-from-genesis' flag."
-              )
-        else do
-          let stream =
-                mkIndexerStream coordinator
-                  . chainSyncEventStreamLogging stdoutTrace
-                  . updateProcessedBlocksMetric
-              runChainSyncStream = withChainSyncBlockEventStream socketPath networkId [resumePoint] stream
-              whenNoIntersectionFound NoIntersectionFound = do
-                logError stdoutTrace $
-                  "No intersection found when looking for the chain point"
-                    <+> pretty resumePoint
+runIndexers
+  :: [(Worker, Maybe FilePath)]
+  -> ChainIndexerT IO ()
+runIndexers indexerList = do
+  withNodeConnectRetryNEW $ do
+    -- TODO: get values of config items from Reader, refactor impure functions to run in ChainIndexerT IO
+    --
+    -- currentNodeBlockNo <- Utils.toException $ Utils.queryCurrentNodeBlockNo @Void networkId socketPath
+    -- let indexers = mapMaybe sequenceA indexerList
+    -- coordinator <- initializeCoordinatorFromIndexers securityParam indexingDepth indexers
+    -- let indexerDepth =
+    --       let SecurityParam s = securityParam
+    --        in case indexingDepth of
+    --             MinIndexingDepth d -> SecurityParam $ s - d + 1
+    --             MaxIndexingDepth -> SecurityParam 1
+    -- resumablePoints <-
+    --   getStartingPointsFromIndexers indexerDepth currentNodeBlockNo indexers coordinator
+    -- let oldestCommonChainPoint = minimum resumablePoints
+    --     resumePoint = case cliChainPoint of
+    --       C.ChainPointAtGenesis -> oldestCommonChainPoint -- User didn't specify a chain point, use oldest common chain point,
+    --       cliCp -> cliCp -- otherwise use what was provided on CLI.
+    logMInfo $
+      "Resumable points for each indexer:"
+        <> line
+        <> indent 4 (align (list (fmap pretty resumablePoints)))
+
+    -- Possible runtime failure if an indexer with a non-genesis resumable point will resume from
+    -- genesis.
+    if shouldFailIfResync
+      && elem C.ChainPointAtGenesis resumablePoints
+      && any (\case ChainPoint{} -> True; _ -> False) resumablePoints
+      then do
+        logError stdoutTrace $
+          nest
+            4
+            ( "At least one indexer has a non-genesis resumable point, while the oldest common resumable point between indexers is genesis."
+                <> line
+                <> "Are you sure you want to restart syncing that indexer from genesis?"
+                <> line
+                <> "If so, remove the '--fail-if-resyncing-from-genesis' flag."
+            )
+      else do
+        let stream =
+              mkIndexerStream coordinator
+                . chainSyncEventStreamLogging stdoutTrace
+                . updateProcessedBlocksMetric
+            runChainSyncStream = withChainSyncBlockEventStream socketPath networkId [resumePoint] stream
+            whenNoIntersectionFound NoIntersectionFound = do
+              logError stdoutTrace $
+                "No intersection found when looking for the chain point"
+                  <+> pretty resumePoint
                     <> "."
-                    <+> "Please check the slot number and the block hash do belong to the chain."
-                signalQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
-           in finally
-                (runChainSyncStream `catch` whenNoIntersectionFound)
-                (waitForIndexersToFinishProcessingLastEvent coordinator)
-    where
-      waitForIndexersToFinishProcessingLastEvent :: Coordinator' a -> IO ()
-      waitForIndexersToFinishProcessingLastEvent coordinator = do
-        let secondsBeforeTimeout = 180
-        logInfo stdoutTrace $
-          "Stopping indexing. Waiting for indexers to finish their work (timeout after "
-            <> pretty secondsBeforeTimeout
-            <> "s) ..."
-        res <-
-          timeout (secondsBeforeTimeout * 1_000_000) $
-            waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
-        case res of
-          Just _ -> logInfo stdoutTrace "Done!"
-          -- TODO: When it's possible, let's put some useful information in this exception
-          Nothing -> throwIO (Timeout @Void "Timed out.")
+                  <+> "Please check the slot number and the block hash do belong to the chain."
+              signalQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
+         in finally
+              (runChainSyncStream `catch` whenNoIntersectionFound)
+              (waitForIndexersToFinishProcessingLastEvent coordinator)
+  where
+    waitForIndexersToFinishProcessingLastEvent :: Coordinator' a -> IO ()
+    waitForIndexersToFinishProcessingLastEvent coordinator = do
+      let secondsBeforeTimeout = 180
+      logInfo stdoutTrace $
+        "Stopping indexing. Waiting for indexers to finish their work (timeout after "
+          <> pretty secondsBeforeTimeout
+          <> "s) ..."
+      res <-
+        timeout (secondsBeforeTimeout * 1_000_000) $
+          waitQSemN (coordinator ^. barrier) (coordinator ^. indexerCount)
+      case res of
+        Just _ -> logInfo stdoutTrace "Done!"
+        -- TODO: When it's possible, let's put some useful information in this exception
+        Nothing -> throwIO (Timeout @Void "Timed out.")
 
 updateProcessedBlocksMetric
   :: S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
