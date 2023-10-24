@@ -10,8 +10,10 @@ module Marconi.Core.Preprocessor.Resume (
   withResume,
 ) where
 
+import Control.Exception (throwIO)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad.Except (MonadIO, liftIO)
 import Control.Monad.State.Strict (MonadState (get, put))
 import Data.Foldable (Foldable (toList))
 import Data.Functor (($>))
@@ -19,6 +21,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
 import Marconi.Core.Preprocessor (Preprocessor, preprocessorM)
 import Marconi.Core.Type (
+  IndexerError (ResumingFailed),
   Point,
   ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
   Timed,
@@ -48,8 +51,8 @@ We don't use a newtype to ease preprocessors composition.
 type Resume m event = Preprocessor m (Point event) event event
 
 withResume
-  :: ( Monad m
-     , Ord (Point event)
+  :: ( Ord (Point event)
+     , MonadIO m
      )
   => Point event
   -- ^ The last point of an indexer.
@@ -59,6 +62,7 @@ withResume = preprocessorM (fmap toList . resumeStep) . (pure . ResumeStarts)
 resumeStep
   :: ( Ord (Point event)
      , MonadState (ResumeState event) m
+     , MonadIO m -- This obviously isn't ideal
      )
   => ProcessedInput (Point event) event
   -> m (Maybe (ProcessedInput (Point event) event))
@@ -80,21 +84,21 @@ resumeStep = \case
     case currentState of
       -- Ignore initial rollbacks
       ResumeStarts _ -> pure Nothing
-      ResumeOngoing _ -> undefined -- errorOnImmutableRollback p' p
+      ResumeOngoing p' -> errorOnImmutableRollback p' p
       ResumeDone -> pure . pure $ Rollback p
   StableAt p -> pure . pure $ StableAt p
   Stop -> pure . pure $ Stop
 
--- errorOnImmutableRollback
---   :: ( Ord (Point event)
---      , MonadError IndexerError m
---      )
---   => Point event
---   -> Point event
---   -> m (Maybe (ProcessedInput (Point event) event))
--- errorOnImmutableRollback lastPoint rollbackTo
---   | lastPoint == rollbackTo = pure Nothing
---   | otherwise = throwError $ ResumingFailed "There was a rollback on a stable point"
+errorOnImmutableRollback
+  :: ( Ord (Point event)
+     , MonadIO m
+     )
+  => Point event
+  -> Point event
+  -> m (Maybe (ProcessedInput (Point event) event))
+errorOnImmutableRollback lastPoint rollbackTo
+  | lastPoint == rollbackTo = pure Nothing
+  | otherwise = liftIO $ throwIO $ ResumingFailed "There was a rollback on a stable point"
 
 drainAllDescending
   :: ( Ord (Point event)

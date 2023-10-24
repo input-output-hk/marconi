@@ -42,6 +42,7 @@ import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Data (Typeable)
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Text qualified as Text
@@ -368,9 +369,12 @@ querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
  It doesn't filter the result based on the given data point.
 -}
 querySyncedOnlySQLiteIndexerWith
-  :: (MonadIO m)
+  :: forall m event r query
+   . (MonadIO m)
   => (Ord (Point event))
   => (SQL.FromRow r)
+  => (Typeable query)
+  => (Show (Result query))
   => (Point event -> query -> [SQL.NamedParam])
   -- ^ A preprocessing of the query, to obtain SQL parameters
   -> (query -> SQL.Query)
@@ -385,6 +389,7 @@ querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
     let c = indexer ^. connection
     when (p > indexer ^. dbLastSync) $
-      undefined
+      liftIO $
+        throwIO (AheadOfLastSync @query Nothing)
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     pure $ fromRows q res

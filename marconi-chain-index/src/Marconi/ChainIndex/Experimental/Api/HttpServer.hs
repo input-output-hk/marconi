@@ -28,7 +28,7 @@ import Marconi.ChainIndex.Experimental.Api.Routes (
  )
 import Marconi.ChainIndex.Experimental.Indexers (
   MarconiChainIndexQueryables,
-  -- queryableEpochState,
+  queryableEpochState,
   -- queryableMintToken,
   -- queryableUtxo,
  )
@@ -41,7 +41,7 @@ import Marconi.Core.JsonRpc (
   catchHttpHandlerExceptions,
   hoistReaderHandler,
   mkHttpRequestTracer,
-  -- queryHttpReaderHandler,
+  queryHttpReaderHandler,
  )
 import Network.JsonRpc.Server.Types ()
 import Network.JsonRpc.Types (JsonRpcErr, UnusedRequestParams)
@@ -117,7 +117,7 @@ getEpochStakePoolDelegationHandler
   -> ReaderHandler
       HttpServerConfig
       (Either (JsonRpcErr String) (Core.Result EpochState.ActiveSDDByEpochNoQuery))
-getEpochStakePoolDelegationHandler = undefined -- queryHttpReaderHandler (configQueryables . queryableEpochState)
+getEpochStakePoolDelegationHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
 
 -- | Return an epoch nonce
 getEpochNonceHandler
@@ -125,7 +125,7 @@ getEpochNonceHandler
   -> ReaderHandler
       HttpServerConfig
       (Either (JsonRpcErr String) (Core.Result EpochState.NonceByEpochNoQuery))
-getEpochNonceHandler = undefined -- queryHttpReaderHandler (configQueryables . queryableEpochState)
+getEpochNonceHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
 
 --------------
 -- REST API --
