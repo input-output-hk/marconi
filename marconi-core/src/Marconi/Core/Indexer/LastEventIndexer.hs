@@ -15,7 +15,7 @@ module Marconi.Core.Indexer.LastEventIndexer (
   GetLastQuery (GetLastQuery),
 ) where
 
-import Control.Lens (Lens', (&), (.~), (^.))
+import Control.Lens (Lens', (&), (.~), (?~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void, when)
 import Control.Monad.Cont (MonadIO (liftIO))
@@ -133,11 +133,15 @@ tickSave indexer = do
 
 instance (MonadIO m, MonadError IndexerError m) => IsIndex m a LastEventIndexer where
   index timedEvent indexer = do
-    let (saveTime, indexer') =
+    -- We only keep the last non empty event, so we don't update the lastEvent field on empty events
+    let setLastEvent = case timedEvent ^. event of
+          Nothing -> id
+          Just e -> lastEvent ?~ e
+        (saveTime, indexer') =
           tickSave $
             indexer
               & lastSync .~ (timedEvent ^. point)
-              & lastEvent .~ (timedEvent ^. event)
+              & setLastEvent
     when saveTime (savePoint indexer')
     pure indexer'
 
@@ -193,17 +197,19 @@ instance
   (MonadIO m, MonadError (QueryError (GetLastQuery event)) m)
   => Queryable m event (GetLastQuery event) LastEventIndexer
   where
-  query _point _query indexer = do
+  query _point _query indexer =
     let lastEventFile = eventFilename indexer
-    hasEvent <- liftIO $ doesFileExist lastEventFile
-    if hasEvent
-      then do
-        content <- liftIO $ BS.readFile lastEventFile
-        let result = indexer ^. deserialiseEvent $ content
-        case result of
-          Left err -> throwError $ IndexerQueryError err
-          Right res -> pure $ Just res
-      else pure Nothing
+        queryFromDisk = do
+          hasEvent <- liftIO $ doesFileExist lastEventFile
+          if hasEvent
+            then do
+              content <- liftIO $ BS.readFile lastEventFile
+              let result = indexer ^. deserialiseEvent $ content
+              case result of
+                Left err -> throwError $ IndexerQueryError err
+                Right res -> pure $ Just res
+            else pure Nothing
+     in maybe queryFromDisk (pure . Just) $ indexer ^. lastEvent
 
 savePoint :: (MonadIO m) => LastEventIndexer a -> m ()
 savePoint indexer = do
