@@ -3,6 +3,9 @@
 
 module Marconi.ChainIndex.Experimental.Api.JsonRpc.Routes (JsonRpcAPI) where
 
+import Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+  RpcGetCurrentSyncedBlock,
+ )
 import Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.Echo (RpcEchoMethod)
 import Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.EpochState (
   RpcEpochActiveStakePoolDelegationMethod,
@@ -27,3 +30,4 @@ type RpcAPI =
     :<|> RpcEpochActiveStakePoolDelegationMethod
     :<|> RpcEpochNonceMethod
     :<|> RpcGetBurnTokenEventsMethod
+    :<|> RpcGetCurrentSyncedBlock

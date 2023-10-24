@@ -31,7 +31,7 @@ import Servant (Handler, runHandler)
 
 type RpcGetCurrentSyncedBlock =
   JsonRpc
-    "getCurrentSyncBlock"
+    "getCurrentSyncedBlock"
     UnusedRequestParams
     String
     GetCurrentSyncedBlockResult

@@ -183,10 +183,12 @@ instance
           FROM blockInfo
           WHERE slotNo <= :slotNo
           ORDER BY slotNo DESC
-          LIMIT n
+          LIMIT :n
           |]
      in Core.querySyncedOnlySQLiteIndexerWith
-          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
+          ( \cp (Core.LatestEventsQuery n) ->
+              [":slotNo" := C.chainPointToSlotNo cp, ":n" := n]
+          )
           (const blockInfoBeforeOrAtSlotNoQuery)
           (const id)
 

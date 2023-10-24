@@ -17,6 +17,7 @@ import Control.Concurrent qualified as Con
 import Control.Lens ((^.))
 import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Data.Text qualified as Text
 import Marconi.ChainIndex.Experimental.Indexers.BlockInfo (BlockInfo)
 import Marconi.ChainIndex.Experimental.Indexers.ChainTip ()
 import Marconi.Core qualified as Core
@@ -102,10 +103,13 @@ instance
       ([timedBlockInfo], Just tip) -> do
         let blockInfo = timedBlockInfo ^. Core.event
         pure $ Core.Timed point $ CurrentSyncPointResult blockInfo tip
-      _other -> throwError Core.NotStoredAnymore
+      ([_blockInfo], Nothing) -> throwError $ Core.IndexerQueryError "tip not Found"
+      ([], _tip) -> throwError $ Core.IndexerQueryError "Block info not found"
+      (_blockInfo, _tip) -> throwError $ Core.IndexerQueryError "Too many blockInfo"
 
 toSyncPointError
-  :: ( MonadIO m
+  :: ( Show err
+     , MonadIO m
      , MonadError (Core.QueryError b) m
      )
   => IO (Either err a)
@@ -113,5 +117,9 @@ toSyncPointError
 toSyncPointError mres = do
   res <- liftIO mres
   case res of
-    Left _ -> throwError $ Core.IndexerQueryError "Can't resolve a part of CurrentSyncPointQuery"
+    Left _err ->
+      throwError $
+        Core.IndexerQueryError $
+          Text.pack $
+            "Can't resolve a part of CurrentSyncPointQuery: " <> show _err
     Right r -> pure r

@@ -22,6 +22,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BS.Lazy
 import Data.ByteString.Short qualified as BS.Short
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.Core qualified as Core
 
@@ -96,7 +97,8 @@ deserialiseTip bs =
           else pure C.ChainTipAtGenesis
    in case CBOR.deserialiseFromBytes tipDecoding . BS.fromStrict $ bs of
         Right (remain, res) | BS.Lazy.null remain -> Right res
-        _other -> Left "Can't read chainpoint"
+        Right _ -> Left "Extra pieces to extract"
+        Left err -> Left $ Text.pack $ "Can't read chaintip: " <> show err
 
 serialisePoint :: C.ChainPoint -> BS.ByteString
 serialisePoint =

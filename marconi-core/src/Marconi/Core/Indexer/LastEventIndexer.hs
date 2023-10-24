@@ -15,7 +15,7 @@ module Marconi.Core.Indexer.LastEventIndexer (
   GetLastQuery (GetLastQuery),
 ) where
 
-import Control.Lens (Lens', (&), (.~), (^.))
+import Control.Lens (Lens', (&), (.~), (?~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void, when)
 import Control.Monad.Cont (MonadIO (liftIO))
@@ -133,11 +133,14 @@ tickSave indexer = do
 
 instance (MonadIO m, MonadError IndexerError m) => IsIndex m a LastEventIndexer where
   index timedEvent indexer = do
-    let (saveTime, indexer') =
+    let setLastEvent = case timedEvent ^. event of
+          Nothing -> id
+          Just e -> lastEvent ?~ e
+        (saveTime, indexer') =
           tickSave $
             indexer
               & lastSync .~ (timedEvent ^. point)
-              & lastEvent .~ (timedEvent ^. event)
+              & setLastEvent
     when saveTime (savePoint indexer')
     pure indexer'
 
