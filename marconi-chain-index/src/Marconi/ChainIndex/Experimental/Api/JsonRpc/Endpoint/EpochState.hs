@@ -41,7 +41,7 @@ getEpochStakePoolDelegationHandler
   -> ReaderHandler
       HttpServerConfig
       (Either (JsonRpcErr String) (Core.Result EpochState.ActiveSDDByEpochNoQuery))
-getEpochStakePoolDelegationHandler = undefined -- queryHttpReaderHandler (configQueryables . queryableEpochState)
+getEpochStakePoolDelegationHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
 
 -- | Return an epoch nonce
 getEpochNonceHandler
@@ -49,4 +49,4 @@ getEpochNonceHandler
   -> ReaderHandler
       HttpServerConfig
       (Either (JsonRpcErr String) (Core.Result EpochState.NonceByEpochNoQuery))
-getEpochNonceHandler = undefined -- queryHttpReaderHandler (configQueryables . queryableEpochState)
+getEpochNonceHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)

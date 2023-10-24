@@ -118,11 +118,10 @@ getMintingPolicyHashTxHandler
               )
           )
       )
-getMintingPolicyHashTxHandler = undefined
-
--- queryHttpReaderHandler
---   (configQueryables . queryableMintToken)
---   . Core.WithStability
+getMintingPolicyHashTxHandler =
+  queryHttpReaderHandler
+    (configQueryables . queryableMintToken)
+    . Core.WithStability
 
 -- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
 getBurnTokenEventsHandler
