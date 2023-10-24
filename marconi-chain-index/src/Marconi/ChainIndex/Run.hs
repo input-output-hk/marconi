@@ -70,7 +70,7 @@ run = do
           networkId
           (Cli.optionsChainPoint $ Cli.commonOptions o)
           socketPath
+          (Cli.optionsMinIndexingDepth $ Cli.commonOptions o)
+          (Cli.optionsFailsIfResync o)
       )
-      (Cli.optionsMinIndexingDepth $ Cli.commonOptions o)
-      (Cli.optionsFailsIfResync o)
       indexers

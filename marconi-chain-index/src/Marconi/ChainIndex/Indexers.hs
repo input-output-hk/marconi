@@ -644,8 +644,6 @@ mkIndexerStream = mkIndexerStream' (CE.bimSlotNo . blockInMode)
 
 runIndexers
   :: RunIndexerConfig
-  -> IndexingDepth
-  -> ShouldFailIfResync
   -> [(Worker, Maybe FilePath)]
   -> IO ()
 runIndexers
@@ -656,9 +654,9 @@ runIndexers
       networkId
       cliChainPoint
       socketPath
+      indexingDepth
+      (ShouldFailIfResync shouldFailIfResync)
     )
-  indexingDepth
-  (ShouldFailIfResync shouldFailIfResync)
   indexerList = do
     withNodeConnectRetry stdoutTrace retryConfig socketPath $ do
       currentNodeBlockNo <- Utils.toException $ Utils.queryCurrentNodeBlockNo @Void networkId socketPath

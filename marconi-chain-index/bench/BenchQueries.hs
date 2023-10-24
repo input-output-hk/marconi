@@ -153,9 +153,9 @@ runIndexerSyncing trace databaseDir nodeSocketPath indexerTVar = do
         networkId
         C.ChainPointAtGenesis
         nodeSocketPath
+        (MinIndexingDepth 0)
+        (ShouldFailIfResync True)
     )
-    (MinIndexingDepth 0)
-    (ShouldFailIfResync True)
     indexers
 
 tests

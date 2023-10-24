@@ -50,6 +50,8 @@ module Marconi.ChainIndex.Types (
   runIndexerConfigNetworkId,
   runIndexerConfigChainPoint,
   runIndexerConfigSocketPath,
+  runIndexerConfigIndexingDepth,
+  runIndexerConfigShouldFailIfResync,
 ) where
 
 import Cardano.Api qualified as C
@@ -149,6 +151,8 @@ data RunIndexerConfig = RunIndexerConfig
   , _runIndexerConfigNetworkId :: C.NetworkId
   , _runIndexerConfigChainPoint :: C.ChainPoint
   , _runIndexerConfigSocketPath :: FilePath
+  , _runIndexerConfigIndexingDepth :: IndexingDepth
+  , _runIndexerConfigShouldFailIfResync :: ShouldFailIfResync
   }
 
 Lens.makeLenses ''RunIndexerConfig
