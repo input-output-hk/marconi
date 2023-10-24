@@ -1,0 +1,485 @@
+cabal-version: 3.0
+name:          marconi-chain-index-legacy
+version:       1.2.0.0
+license:       Apache-2.0
+license-files:
+  LICENSE
+  NOTICE
+
+author:        Markus Läll
+maintainer:    markus.lall@iohk.io
+homepage:      https://github.com/input-output-hk/marconi#readme
+bug-reports:   https://github.com/input-output-hk/marconi/issues
+description:
+  Please see the README on GitHub at <https://github.com/input-output-hk/marconi#readme>.
+
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/input-output-hk/marconi
+
+flag ci
+  description: Toggle features on/off when in CI
+  manual:      True
+  default:     True
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    FlexibleInstances
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    InstanceSigs
+    MultiParamTypeClasses
+    ScopedTypeVariables
+    StandaloneDeriving
+    TypeApplications
+    TypeFamilies
+
+  ghc-options:
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wmissing-import-lists
+    -Wnoncanonical-monad-instances -Wredundant-constraints
+    -Wunused-packages
+
+common maybe-unix
+  if !os(windows)
+    build-depends: unix
+
+library
+  import:
+    lang
+    , maybe-unix
+
+  hs-source-dirs:  src
+  c-sources:       cbits/rev.c
+  exposed-modules:
+    Marconi.ChainIndex.CLI
+    Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Extract.Datum
+    Marconi.ChainIndex.Git.Rev
+    Marconi.ChainIndex.Git.RevFromGit
+    Marconi.ChainIndex.Indexers
+    Marconi.ChainIndex.Indexers.AddressDatum
+    Marconi.ChainIndex.Indexers.EpochState
+    Marconi.ChainIndex.Indexers.LastSync
+    Marconi.ChainIndex.Indexers.MintBurn
+    Marconi.ChainIndex.Indexers.ScriptTx
+    Marconi.ChainIndex.Indexers.Utxo
+    Marconi.ChainIndex.Logging
+    Marconi.ChainIndex.Node.Client.Retry
+    Marconi.ChainIndex.Orphans
+    Marconi.ChainIndex.Run
+    Marconi.ChainIndex.Types
+    Marconi.ChainIndex.Utils
+
+  -- TODO: PLT-7727 action needed here?
+  other-modules:   Paths_marconi_chain_index
+  autogen-modules: Paths_marconi_chain_index
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api-extended
+    , marconi-core-json-rpc
+    , marconi-core-legacy
+
+  -- TODO: PLT-7727 remove commented section
+  --, marconi-core
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                   ^>=8.20
+    , cardano-binary
+    , cardano-ledger-alonzo         >=1.3.1.1
+    , cardano-ledger-api
+    , cardano-ledger-babbage        >=1.4.0.1
+    , cardano-ledger-conway         >=1.5
+    , cardano-ledger-core
+    , cardano-ledger-mary           >=1.3.0.2
+    , cardano-ledger-shelley
+    , cardano-protocol-tpraos       >=1.0.3.3
+    , cardano-slotting              ^>=0.1.1.1
+    , iohk-monitoring
+    , network-mux
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-consensus-protocol
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                  >=4.9 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , comonad
+    , containers
+    , directory
+    , filepath
+    , lens
+    , mtl
+    , mwc-random
+    , nonempty-containers
+    , optparse-applicative
+    , pretty-simple
+    , prettyprinter
+    , process
+    , prometheus-client
+    , serialise
+    , servant
+    , servant-server
+    , sop-core
+    , sqlite-simple
+    , stm
+    , streaming
+    , strict-sop-core
+    , template-haskell
+    , text
+    , time
+    , transformers
+    , vector-map
+    , warp
+
+-- TODO: PLT-7727 remove commented section
+
+--library cardano-api-extended
+--  import:          lang
+--  visibility:      public
+--  hs-source-dirs:  cardano-api-extended/src
+--  exposed-modules:
+--    Cardano.Api.Extended
+--    Cardano.Api.Extended.Block
+--    Cardano.Api.Extended.ExtLedgerState
+--    Cardano.Api.Extended.Gen
+--    Cardano.Api.Extended.IPC
+--    Cardano.Api.Extended.Streaming
+--    Cardano.Api.Extended.Streaming.Callback
+--    Cardano.Api.Extended.Streaming.ChainSyncEvent
+--
+--  --------------------------
+--  -- Other IOG dependencies
+--  --------------------------
+--  build-depends:
+--    , async
+--    , base
+--    , base16-bytestring
+--    , bytestring
+--    , cardano-api                    ^>=8.20
+--    , cardano-crypto-class
+--    , cardano-crypto-wrapper
+--    , cardano-ledger-byron
+--    , cardano-slotting
+--    , hedgehog
+--    , memory
+--    , ouroboros-consensus
+--    , ouroboros-consensus-cardano
+--    , ouroboros-consensus-diffusion
+--    , ouroboros-consensus-protocol
+--    , ouroboros-network-protocols
+--    , streaming
+--    , strict-sop-core
+--    , text
+--    , time
+--    , transformers
+--    , typed-protocols
+
+executable marconi-chain-index-legacy
+  import:         lang
+  hs-source-dirs: app
+  main-is:        Main.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-chain-index-legacy >=1.2.0
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:  base >=4.9 && <5
+
+-- TODO: PLT-7727 remove commented section
+--executable marconi-chain-index-experimental
+--  import:         lang
+--  hs-source-dirs: app
+--  main-is:        Experimental.hs
+--  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+--
+--  --------------------
+--  -- Local components
+--  --------------------
+--  build-depends:  marconi-chain-index >=1.2.0
+--
+--  ------------------------
+--  -- Non-IOG dependencies
+--  ------------------------
+--  build-depends:  base >=4.9 && <5
+
+library marconi-chain-index-legacy-test-lib
+  import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
+  visibility:      public
+  hs-source-dirs:  test-lib
+  exposed-modules:
+    Gen.Marconi.ChainIndex.Indexers.MintBurn
+    Gen.Marconi.ChainIndex.Indexers.Utxo
+    Gen.Marconi.ChainIndex.Mockchain
+    Gen.Marconi.ChainIndex.Types
+    Helpers
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api-extended
+    , marconi-chain-index-legacy
+    , marconi-core-legacy
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                  ^>=8.20
+    , cardano-api-gen              ^>=8.2
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , hedgehog-extras
+    , ouroboros-network-protocols
+    , plutus-core
+    , plutus-ledger-api            ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , async
+    , base        >=4.9 && <5
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , hedgehog
+    , lens
+    , mtl
+    , streaming
+    , temporary
+    , time
+
+benchmark marconi-chain-index-legacy-bench
+  import:         lang
+  main-is:        BenchQueries.hs
+  hs-source-dirs: bench
+  type:           exitcode-stdio-1.0
+
+  if impl(ghc >=8.10)
+    ghc-options: "-with-rtsopts=-A32m --nonmoving-gc"
+
+  else
+    ghc-options: -with-rtsopts=-A32m
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-chain-index-legacy
+    , marconi-core-legacy
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api           ^>=8.20
+    , cardano-ledger-byron
+    , iohk-monitoring
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base           >=4.9 && <5
+    , bytestring
+    , filepath
+    , sqlite-simple
+    , stm
+    , tasty-bench
+    , text
+
+test-suite marconi-chain-index-legacy-test
+  import:         lang
+  ghc-options:    -Wno-unused-packages
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: test
+  other-modules:
+    Spec.Marconi.ChainIndex.CLI
+    Spec.Marconi.ChainIndex.Coordinator
+    Spec.Marconi.ChainIndex.Indexers.AddressDatum
+    Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
+    Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent
+    Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators
+    Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils
+    Spec.Marconi.ChainIndex.Indexers.EpochState
+    Spec.Marconi.ChainIndex.Indexers.MintBurn
+    Spec.Marconi.ChainIndex.Indexers.ScriptTx
+    Spec.Marconi.ChainIndex.Indexers.Utxo
+    Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex
+    Spec.Marconi.ChainIndex.Logging
+    Spec.Marconi.ChainIndex.Orphans
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api-extended
+    , marconi-chain-index-legacy
+    , marconi-chain-index-legacy-test-lib
+    , marconi-core-legacy
+
+  -- TODO: PLT-7727 remove commented line
+  --, marconi-core:{marconi-core, marconi-core-test-lib}
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                  ^>=8.20
+    , cardano-api-gen              ^>=8.2
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-alonzo        >=1.3.1.1
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-slotting             ^>=0.1.1.1
+    , hedgehog-extras
+    , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-network
+    , plutus-core
+    , plutus-ledger-api            ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                  >=4.9 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , containers
+    , contra-tracer
+    , directory
+    , filepath
+    , hedgehog
+    , lens
+    , nonempty-containers
+    , optparse-applicative
+    , postgresql-simple
+    , prettyprinter
+    , serialise
+    , sqlite-simple
+    , stm
+    , streaming
+    , tasty
+    , tasty-golden
+    , tasty-hedgehog
+    , temporary
+    , text
+    , time
+    , transformers
+
+test-suite marconi-chain-index-legacy-test-compare-cardano-db-sync
+  import:         lang
+  ghc-options:    -Wno-unused-packages
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: test-compare-cardano-db-sync
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-chain-index-legacy           >=1.2.0
+    , marconi-chain-index-legacy-test-lib  >=1.2.0
+    , marconi-core-legacy                  >=1.2.0
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                    ^>=8.20
+    , cardano-api-gen                ^>=8.2
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-slotting
+    , hedgehog-extras
+    , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-consensus-diffusion
+    , ouroboros-network
+    , plutus-core
+    , plutus-ledger-api              ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                    >=4.9 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , containers
+    , directory
+    , filepath
+    , hedgehog
+    , lens
+    , mtl
+    , optparse-applicative
+    , postgresql-simple
+    , prettyprinter
+    , serialise
+    , sqlite-simple
+    , stm
+    , streaming
+    , tasty
+    , tasty-expected-failure
+    , tasty-golden
+    , tasty-hedgehog
+    , text
+    , time
+    , transformers
