@@ -48,6 +48,7 @@ package cardano-api
 package cardano-crypto-praos
   flags: -external-libsodium-vrf
 
+-- TODO: remove once this version is on CHaP
 source-repository-package
     type: git
     location: https://github.com/input-output-hk/quickcheck-contractmodel
@@ -57,11 +58,12 @@ source-repository-package
       quickcheck-contractmodel
       quickcheck-threatmodel
 
+-- TODO: remove once this version is on CHaP
 source-repository-package
     type: git
     location: https://github.com/input-output-hk/cardano-node-emulator
-    tag: 3d267bbc304b2b6f1d9bea1a9555ee616a9d9675
-    --sha256: sha256-7wNygwRNbR9WXY6OwsozTT7OKpGDxKVYiWIfy3KWToM=
+    tag: 485a9e59c6f65b052cb8c4c4310f530eb7d6f60e
+    --sha256: sha256-/6W/KUN3vFHQ5ah/XUiGvm7z1Vn/9wpI/1mucvgRwwk=
     subdir:
       plutus-ledger
       plutus-script-utils
