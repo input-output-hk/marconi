@@ -73,7 +73,7 @@ data RunIndexerEventPreprocessing event = RunIndexerEventPreprocessing
 Lens.makeLenses ''RunIndexerEventPreprocessing
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig event ann = RunIndexerConfig
+data RunIndexerConfig event = RunIndexerConfig
   { _runIndexerConfigTrace :: MarconiTrace IO
   , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event
   , _runIndexerConfigRetryConfig :: RetryConfig
@@ -108,7 +108,7 @@ runIndexer
      , Core.Closeable IO indexer
      , Core.Point a ~ C.ChainPoint
      )
-  => RunIndexerConfig a ann
+  => RunIndexerConfig a
   -> indexer a
   -> IO ()
 runIndexer
