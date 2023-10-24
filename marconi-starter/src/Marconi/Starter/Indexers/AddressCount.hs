@@ -140,10 +140,7 @@ instance (Monad m) => Queryable m AddressCountEvent AddressCountQuery ListIndexe
 
 -- * SQLite indexer
 
-{- | Query the in-memory indexer
- TODO The 'Point AddressCountEvent' param should be removed or at the very least really make a
- valid point on why we need it
--}
+-- | Query the SQLite indexer.
 instance (MonadIO m) => Queryable m AddressCountEvent AddressCountQuery SQLiteIndexer where
   query
     :: Point AddressCountEvent -- give me what you know up to this point, potentially a point in future

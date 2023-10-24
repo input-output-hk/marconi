@@ -440,6 +440,10 @@ They are expected, however, to clean up older registration.
         "type": "integer",
         "minimum": 0
       },
+      "epochNo": {
+        "type": "integer",
+        "minimum": 0
+      },
       "blockNo": {
         "type": "integer",
         "minimum": 0
@@ -521,11 +525,12 @@ They are expected, however, to clean up older registration.
     },
     "required": [
       "blockHeaderHash",
-      "blockNo",
+      "epochNo",
       "slotNo",
+      "blockNo",
+      "txIndexInBlock",
       "txId",
       "txIx",
-      "txIndexInBlock",
       "txInputs",
       "value"
     ]
