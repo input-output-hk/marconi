@@ -331,8 +331,6 @@ mkEpochStateWorker
   :: forall m input
    . ( MonadIO m
      , MonadCatch m
-     , Core.IsIndex IO (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)) EpochStateIndexer
-     , Core.Closeable IO EpochStateIndexer
      )
   => StandardWorkerConfig IO input (C.BlockInMode C.CardanoMode)
   -- ^ General configuration of the indexer (mostly for logging purpose)
