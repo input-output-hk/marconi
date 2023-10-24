@@ -196,17 +196,19 @@ instance
   (MonadIO m, MonadError (QueryError (GetLastQuery event)) m)
   => Queryable m event (GetLastQuery event) LastEventIndexer
   where
-  query _point _query indexer = do
+  query _point _query indexer =
     let lastEventFile = eventFilename indexer
-    hasEvent <- liftIO $ doesFileExist lastEventFile
-    if hasEvent
-      then do
-        content <- liftIO $ BS.readFile lastEventFile
-        let result = indexer ^. deserialiseEvent $ content
-        case result of
-          Left err -> throwError $ IndexerQueryError err
-          Right res -> pure $ Just res
-      else pure Nothing
+        queryFromDisk = do
+          hasEvent <- liftIO $ doesFileExist lastEventFile
+          if hasEvent
+            then do
+              content <- liftIO $ BS.readFile lastEventFile
+              let result = indexer ^. deserialiseEvent $ content
+              case result of
+                Left err -> throwError $ IndexerQueryError err
+                Right res -> pure $ Just res
+            else pure Nothing
+     in maybe queryFromDisk (pure . Just) $ indexer ^. lastEvent
 
 savePoint :: (MonadIO m) => LastEventIndexer a -> m ()
 savePoint indexer = do

@@ -69,13 +69,13 @@ data CurrentSyncPointQuery = CurrentSyncPointQuery
 type instance Core.Result CurrentSyncPointQuery = Core.Timed C.ChainPoint CurrentSyncPointResult
 
 instance
-  (MonadIO m, MonadError (Core.QueryError CurrentSyncPointEvent) m)
+  (MonadIO m, MonadError (Core.QueryError CurrentSyncPointQuery) m)
   => Core.IsSync m event CurrentSyncPointQueryIndexer
   where
   lastSyncPoint (CurrentSyncPointQueryIndexer _coordinator _ _) = do
     mRes <- liftIO $ runExceptT @Core.IndexerError $ Core.lastSyncPoint _coordinator
     case mRes of
-      Left _err -> throwError $ Core.IndexerQueryError "Can't get last sync point from the coordinator"
+      Left _err -> throwError $ Core.IndexerQueryError "Can't get last synced point from the coordinator"
       Right r -> pure r
   lastStablePoint (CurrentSyncPointQueryIndexer _coordinator _ _) = do
     mRes <- liftIO $ runExceptT @Core.IndexerError $ Core.lastStablePoint _coordinator
@@ -103,7 +103,7 @@ instance
       ([timedBlockInfo], Just tip) -> do
         let blockInfo = timedBlockInfo ^. Core.event
         pure $ Core.Timed point $ CurrentSyncPointResult blockInfo tip
-      ([_blockInfo], Nothing) -> throwError $ Core.IndexerQueryError "tip not Found"
+      ([_blockInfo], Nothing) -> throwError $ Core.IndexerQueryError "Tip not Found"
       ([], _tip) -> throwError $ Core.IndexerQueryError "Block info not found"
       (_blockInfo, _tip) -> throwError $ Core.IndexerQueryError "Too many blockInfo"
 

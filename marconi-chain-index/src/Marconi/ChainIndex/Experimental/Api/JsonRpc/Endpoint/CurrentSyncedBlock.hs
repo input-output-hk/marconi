@@ -55,7 +55,12 @@ getCurrentSyncPointHandler = do
   indexer <- Lens.view (configQueryables . queryableCurrentSyncPoint)
   lastPointM <- hoistHttpHandler $ runExceptT $ Core.lastSyncPoint indexer
   case lastPointM of
-    Left _err -> pure $ Left $ mkJsonRpcInternalErr $ Just "Can't resolve last point it getCurrentSyncedPoint"
+    Left err ->
+      pure $
+        Left $
+          mkJsonRpcInternalErr $
+            Just $
+              "Can't resolve last point it getCurrentSyncedBlock: " <> show err
     Right lastPoint ->
       hoistHttpHandler $
         liftIO $
