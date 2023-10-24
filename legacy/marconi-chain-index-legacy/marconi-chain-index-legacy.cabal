@@ -89,7 +89,7 @@ library
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
+    , cardano-api-extended-legacy
     , marconi-core-json-rpc
     , marconi-core-legacy
 
@@ -154,48 +154,46 @@ library
     , vector-map
     , warp
 
--- TODO: PLT-7727 remove commented section
+library cardano-api-extended-legacy
+  import:          lang
+  visibility:      public
+  hs-source-dirs:  cardano-api-extended-legacy/src
+  exposed-modules:
+    Cardano.Api.Extended
+    Cardano.Api.Extended.Block
+    Cardano.Api.Extended.ExtLedgerState
+    Cardano.Api.Extended.Gen
+    Cardano.Api.Extended.IPC
+    Cardano.Api.Extended.Streaming
+    Cardano.Api.Extended.Streaming.Callback
+    Cardano.Api.Extended.Streaming.ChainSyncEvent
 
---library cardano-api-extended
---  import:          lang
---  visibility:      public
---  hs-source-dirs:  cardano-api-extended/src
---  exposed-modules:
---    Cardano.Api.Extended
---    Cardano.Api.Extended.Block
---    Cardano.Api.Extended.ExtLedgerState
---    Cardano.Api.Extended.Gen
---    Cardano.Api.Extended.IPC
---    Cardano.Api.Extended.Streaming
---    Cardano.Api.Extended.Streaming.Callback
---    Cardano.Api.Extended.Streaming.ChainSyncEvent
---
---  --------------------------
---  -- Other IOG dependencies
---  --------------------------
---  build-depends:
---    , async
---    , base
---    , base16-bytestring
---    , bytestring
---    , cardano-api                    ^>=8.20
---    , cardano-crypto-class
---    , cardano-crypto-wrapper
---    , cardano-ledger-byron
---    , cardano-slotting
---    , hedgehog
---    , memory
---    , ouroboros-consensus
---    , ouroboros-consensus-cardano
---    , ouroboros-consensus-diffusion
---    , ouroboros-consensus-protocol
---    , ouroboros-network-protocols
---    , streaming
---    , strict-sop-core
---    , text
---    , time
---    , transformers
---    , typed-protocols
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , async
+    , base
+    , base16-bytestring
+    , bytestring
+    , cardano-api                    ^>=8.20
+    , cardano-crypto-class
+    , cardano-crypto-wrapper
+    , cardano-ledger-byron
+    , cardano-slotting
+    , hedgehog
+    , memory
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-consensus-diffusion
+    , ouroboros-consensus-protocol
+    , ouroboros-network-protocols
+    , streaming
+    , strict-sop-core
+    , text
+    , time
+    , transformers
+    , typed-protocols
 
 executable marconi-chain-index-legacy
   import:         lang
@@ -250,7 +248,7 @@ library marconi-chain-index-legacy-test-lib
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
+    , cardano-api-extended-legacy
     , marconi-chain-index-legacy
     , marconi-core-legacy
 
@@ -354,7 +352,7 @@ test-suite marconi-chain-index-legacy-test
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
+    , cardano-api-extended-legacy
     , marconi-chain-index-legacy
     , marconi-chain-index-legacy-test-lib
     , marconi-core-legacy
