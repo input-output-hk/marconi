@@ -53,8 +53,9 @@ import Control.Lens (
   (^.),
  )
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Except (guard)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Either (fromRight)
 import Data.Function (on)
@@ -80,7 +81,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
 import Marconi.Core qualified as Core
-import UnliftIO (MonadUnliftIO)
 
 -- | Indexer representation of an UTxO
 data Utxo = Utxo
@@ -115,7 +115,7 @@ type StandardUtxoIndexer m = StandardSQLiteIndexer m UtxoEvent
 
 -- | Make a SQLiteIndexer for Utxos
 mkUtxoIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => FilePath
   -- ^ SQL connection to database
   -> m UtxoIndexer
@@ -176,7 +176,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
-  :: (MonadUnliftIO n, MonadUnliftIO m)
+  :: (MonadIO n, MonadIO m, MonadCatch m)
   => StandardWorkerConfig m input UtxoEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> UtxoIndexerConfig
@@ -255,7 +255,7 @@ instance SQL.FromRow Utxo where
         }
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m UtxoEvent (Core.EventAtQuery UtxoEvent) Core.SQLiteIndexer
   where
   query =
@@ -272,7 +272,7 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m UtxoEvent (Core.EventsMatchingQuery UtxoEvent) Core.SQLiteIndexer
   where
   query =

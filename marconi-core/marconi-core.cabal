@@ -100,6 +100,7 @@ library
     , comonad
     , containers
     , directory
+    , exceptions
     , filepath
     , foldl
     , lens
@@ -108,7 +109,6 @@ library
     , stm
     , text
     , transformers
-    , unliftio
 
 library marconi-core-test-lib
   import:          lang
@@ -152,5 +152,4 @@ test-suite marconi-core-test
     , tasty-quickcheck
     , temporary
     , transformers
-    , unliftio
     , uuid

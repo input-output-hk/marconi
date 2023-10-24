@@ -23,9 +23,8 @@ import Marconi.Tutorial.Env qualified as Env
 import Marconi.Tutorial.Indexers.AddressCount qualified as AddressCount
 import System.Exit (exitFailure)
 import System.FilePath ((</>))
-import UnliftIO
 
-buildIndexersEnv :: (MonadUnliftIO m) => SecurityParam -> CLI.Options -> m Env.IndexersEnv
+buildIndexersEnv :: (MonadIO m) => SecurityParam -> CLI.Options -> m Env.IndexersEnv
 buildIndexersEnv securityParam cliOptions = do
   addressCountWorker <-
     liftIO $

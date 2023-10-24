@@ -145,6 +145,7 @@ library
     , cborg
     , containers
     , directory
+    , exceptions
     , filepath
     , lens
     , mtl
@@ -165,7 +166,6 @@ library
     , text
     , time
     , transformers
-    , unliftio
     , vector-map
     , warp
 

@@ -27,6 +27,8 @@ import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -49,7 +51,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
-import UnliftIO (MonadUnliftIO)
 
 data SpentInfo = SpentInfo
   { _spentTxOutRef :: C.TxIn
@@ -98,7 +99,7 @@ type SpentIndexer = Core.SQLiteIndexer SpentInfoEvent
 type StandardSpentIndexer m = StandardSQLiteIndexer m SpentInfoEvent
 
 mkSpentIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => FilePath
   -> m (Core.SQLiteIndexer SpentInfoEvent)
 mkSpentIndexer path = do
@@ -155,7 +156,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
-  :: (MonadUnliftIO n, MonadUnliftIO m)
+  :: (MonadIO n, MonadCatch m, MonadIO m)
   => StandardWorkerConfig m input SpentInfoEvent
   -- ^ General configuration of a worker
   -> FilePath
@@ -166,7 +167,7 @@ spentWorker config path = do
   mkStandardWorker config indexer
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m SpentInfoEvent (Core.EventAtQuery SpentInfoEvent) Core.SQLiteIndexer
   where
   query =
@@ -183,7 +184,7 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable
       m
       SpentInfoEvent

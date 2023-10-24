@@ -61,7 +61,6 @@ import Marconi.Core.Type (
   Timed,
   point,
  )
-import UnliftIO (MonadUnliftIO)
 
 -- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
 data SQLInsertPlan event = forall a.
@@ -129,7 +128,7 @@ makeLenses ''SQLiteIndexer
 -}
 mkSqliteIndexer
   :: forall event m
-   . ( MonadUnliftIO m
+   . ( MonadIO m
      , HasGenesis (Point event)
      , SQL.FromRow (Point event)
      , SQL.ToRow (Point event)
@@ -185,7 +184,7 @@ mkSqliteIndexer
 -}
 mkSingleInsertSqliteIndexer
   :: forall m event param
-   . ( MonadUnliftIO m
+   . ( MonadIO m
      , HasGenesis (Point event)
      , SQL.FromRow (Point event)
      , SQL.ToRow (Point event)
@@ -282,7 +281,7 @@ runLastStablePointQuery conn (GetLastStablePointQuery q) =
     handleSQLErrors (SQL.query_ conn q)
 
 instance
-  (MonadUnliftIO m, SQL.ToRow (Point event))
+  (MonadIO m, SQL.ToRow (Point event))
   => IsIndex m event SQLiteIndexer
   where
   index = indexEvents . pure
@@ -369,7 +368,7 @@ querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
  It doesn't filter the result based on the given data point.
 -}
 querySyncedOnlySQLiteIndexerWith
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => (Ord (Point event))
   => (SQL.FromRow r)
   => (Point event -> query -> [SQL.NamedParam])

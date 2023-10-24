@@ -60,6 +60,7 @@ import Control.Exception (throw, throwIO)
 import Control.Lens (Lens', (%~), (&), (-=), (.=), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (foldM, when, (<=<))
+import Control.Monad.Catch (MonadCatch, catch)
 import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.State.Strict (MonadState)
@@ -118,7 +119,6 @@ import Prettyprinter (pretty)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import Text.Read qualified as Text
-import UnliftIO (MonadUnliftIO, catch)
 
 type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
 type ExtLedgerConfig = O.ExtLedgerCfg (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -282,7 +282,7 @@ newtype NodeConfig = NodeConfig
   }
 
 mkEpochStateIndexer
-  :: (MonadUnliftIO n)
+  :: (MonadIO n)
   => StandardWorkerConfig IO a b
   -> GenesisConfig
   -> FilePath
@@ -329,7 +329,8 @@ data EpochStateWorkerConfig = EpochStateWorkerConfig
 
 mkEpochStateWorker
   :: forall m input
-   . ( MonadUnliftIO m
+   . ( MonadIO m
+     , MonadCatch m
      , Core.IsIndex IO (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)) EpochStateIndexer
      , Core.Closeable IO EpochStateIndexer
      )
@@ -428,7 +429,7 @@ deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
 deserialiseMetadata _ = Nothing
 
 buildEpochStateIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> SecurityParam
   -> FilePath
@@ -530,7 +531,7 @@ deserialiseBlock codecConfig blockToNode _metadata =
     . BS.fromStrict
 
 buildBlockIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> SecurityParam
   -> FilePath
@@ -587,7 +588,7 @@ buildBlockIndexer codecConfig securityParam' path = do
     )
 
 buildEpochSDDIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => FilePath
   -> m (Core.SQLiteIndexer (NonEmpty EpochSDD))
 buildEpochSDDIndexer path = do
@@ -617,7 +618,7 @@ buildEpochSDDIndexer path = do
     [Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo]
 
 buildEpochNonceIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => FilePath
   -> m (Core.SQLiteIndexer EpochNonce)
 buildEpochNonceIndexer path = do
@@ -645,7 +646,7 @@ buildEpochNonceIndexer path = do
     [Core.SQLRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo]
 
 getLatestNonEmpty
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => Maybe C.ChainPoint
   -> EpochState
   -> LedgerStateFileIndexer
@@ -676,7 +677,7 @@ getLatestNonEmpty p firstEpochState indexer = do
       liftIO . throwIO $ Core.OtherIndexError "Invalid bounds"
 
 getBlocksFrom
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => C.ChainPoint
   -> Maybe C.ChainPoint
   -> BlockFileIndexer
@@ -718,7 +719,7 @@ getBlocksFrom from to indexer = do
       liftIO . throwIO $ Core.OtherIndexError "Invalid bounds"
 
 restoreLedgerState
-  :: ( MonadUnliftIO m
+  :: ( MonadIO m
      , Core.Point event ~ C.ChainPoint
      )
   => Maybe C.ChainPoint
@@ -789,7 +790,7 @@ instance
      in maybe pure setStablePointOnIndexers p' indexer'
 
 instance
-  (MonadUnliftIO m, Core.Point event ~ C.ChainPoint)
+  (MonadIO m, Core.Point event ~ C.ChainPoint)
   => Core.IsSync m event EpochStateIndexer
   where
   lastSyncPoint indexer = do
@@ -813,7 +814,7 @@ newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
 type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m event ActiveSDDByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
@@ -830,7 +831,7 @@ instance
       (const id)
 
 instance
-  ( MonadUnliftIO m
+  ( MonadIO m
   , Core.Point event ~ C.ChainPoint
   )
   => Core.Queryable m event ActiveSDDByEpochNoQuery EpochStateIndexer
@@ -838,7 +839,7 @@ instance
   query = Core.queryVia epochSDDIndexer
 
 instance
-  ( MonadUnliftIO m
+  ( MonadIO m
   , Core.Point event ~ C.ChainPoint
   )
   => Core.Queryable m event (Core.EventAtQuery EpochState) EpochStateIndexer
@@ -851,7 +852,7 @@ newtype NonceByEpochNoQuery = NonceByEpochNoQuery C.EpochNo
 type instance Core.Result NonceByEpochNoQuery = Maybe (Core.Timed C.ChainPoint EpochNonce)
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m event NonceByEpochNoQuery Core.SQLiteIndexer
   where
   query = do
@@ -867,7 +868,7 @@ instance
       (const listToMaybe)
 
 instance
-  ( MonadUnliftIO m
+  ( MonadIO m
   , Core.Point event ~ C.ChainPoint
   )
   => Core.Queryable m event NonceByEpochNoQuery EpochStateIndexer

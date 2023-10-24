@@ -24,8 +24,9 @@ import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan, TVar)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (SomeException (SomeException), finally)
+import Control.Exception (SomeException (SomeException), catch, finally)
 import Control.Monad (void)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Core.Class (
@@ -39,7 +40,6 @@ import Marconi.Core.Type (
   Point,
   ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
  )
-import UnliftIO (MonadUnliftIO, catch, liftIO)
 
 -- | Worker which also provides direct access to the indexer hidden inside it.
 data WorkerIndexer m input event indexer = WorkerIndexer
@@ -78,7 +78,7 @@ type Worker = WorkerM IO
 
 -- | create a worker for an indexer, retuning the worker and the @MVar@ it's using internally
 createWorkerHoistM
-  :: (MonadUnliftIO f, WorkerIndexerType m event indexer)
+  :: (MonadIO f, WorkerIndexerType m event indexer)
   => Text
   -> Preprocessor m (Point event) input event
   -> indexer event
@@ -98,7 +98,7 @@ createWorkerHoist name f workerState = do
 
 -- | create a worker for an indexer that already throws IndexerError
 createWorkerWithPreprocessing
-  :: (MonadUnliftIO f, WorkerIndexerType m event indexer)
+  :: (MonadIO f, WorkerIndexerType m event indexer)
   => Text
   -> Preprocessor m (Point event) input event
   -> indexer event
@@ -119,7 +119,7 @@ createWorker name = createWorkerHoist name . mapMaybeEvent
 -}
 startWorker
   :: forall input m
-   . (MonadUnliftIO m)
+   . (MonadIO m)
   => (Ord (Point input))
   => TChan (ProcessedInput (Point input) input)
   -> TVar [IndexerError]

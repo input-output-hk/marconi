@@ -17,6 +17,7 @@ import Cardano.BM.Tracing (Trace)
 import Control.Arrow ((<<<))
 import Control.Concurrent (MVar)
 import Control.Monad ((<=<))
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Data.Text (Text)
 import Data.Word (Word64)
@@ -25,7 +26,6 @@ import Marconi.ChainIndex.Experimental.Extract.WithDistance qualified as Distanc
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
-import UnliftIO (MonadUnliftIO)
 
 -- | An alias for an indexer with catchup and transformation to perform filtering
 type StandardIndexer m indexer event =
@@ -73,8 +73,9 @@ mkStandardWorker
      , Core.IsIndex m event indexer
      , Core.IsSync m event indexer
      , Core.Closeable m indexer
-     , MonadUnliftIO m
-     , MonadUnliftIO n
+     , MonadIO m
+     , MonadCatch m
+     , MonadIO n
      )
   => StandardWorkerConfig m input event
   -> indexer event
@@ -99,12 +100,13 @@ mkStandardIndexerWithFilter config eventFilter indexer =
 
 -- | Create a worker for the given indexer with some standard catchup values with extra filtering.
 mkStandardWorkerWithFilter
-  :: ( MonadUnliftIO m
+  :: ( MonadIO m
      , Core.WorkerIndexerType m event indexer
      , Ord (Core.Point event)
      , Core.Point event ~ C.ChainPoint
      , Core.IsSync n event indexer
-     , MonadUnliftIO n
+     , MonadIO n
+     , MonadCatch m
      )
   => StandardWorkerConfig m input event
   -> (event -> Maybe event)

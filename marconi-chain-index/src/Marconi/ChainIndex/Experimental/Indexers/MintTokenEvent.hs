@@ -88,9 +88,11 @@ import Cardano.Ledger.Mary.Value (
   PolicyID (PolicyID),
   flattenMultiAsset,
  )
+import Control.Exception (throwIO)
 import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadIO)
+import Control.Monad.Catch (MonadCatch)
+import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Data.ByteString.Short qualified as Short
 import Data.Foldable (foldlM)
@@ -122,8 +124,34 @@ import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
   TxIndexInBlock,
  )
-import Marconi.Core qualified as Core
-import UnliftIO (MonadUnliftIO, throwIO)
+import Marconi.Core.Class qualified as Core (Queryable (..))
+import Marconi.Core.Indexer.ListIndexer qualified as Core (
+  ListIndexer,
+ )
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core (
+  SQLInsertPlan (SQLInsertPlan),
+  SQLRollbackPlan (SQLRollbackPlan),
+  SQLiteIndexer,
+  querySyncedOnlySQLiteIndexerWith,
+ )
+import Marconi.Core.Query qualified as Core (
+  EventsMatchingQuery (..),
+ )
+import Marconi.Core.Transformer.WithCatchup qualified as Core (
+  CatchupEvent (..),
+ )
+import Marconi.Core.Transformer.WithCatchup.SQLite qualified as Core (
+  createIndexTable,
+ )
+import Marconi.Core.Type qualified as Core (
+  IndexerError (OtherIndexError),
+  Point,
+  QueryError (..),
+  Result,
+  Timed (..),
+  event,
+  point,
+ )
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
 type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenBlockEvents
@@ -272,7 +300,7 @@ type instance Core.Point MintTokenBlockEvents = C.ChainPoint
 
 -- | Create a worker for the MintTokenEvent indexer
 mkMintTokenEventWorker
-  :: (MonadUnliftIO n, MonadUnliftIO m)
+  :: (MonadIO n, MonadCatch m, MonadIO m)
   => StandardWorkerConfig m input MintTokenBlockEvents
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> MintTokenEventConfig
@@ -352,7 +380,7 @@ fromMaryAssetName :: AssetName -> C.AssetName
 fromMaryAssetName (AssetName n) = C.AssetName $ Short.fromShort n -- from cardano-api:src/Cardano/Api/Value.hs
 
 mkMintTokenIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => FilePath
   -> m MintTokenEventIndexer
 mkMintTokenIndexer dbPath = do
@@ -455,7 +483,7 @@ type instance
     [Core.Timed (Core.Point event) event]
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable
       m
       MintTokenBlockEvents
@@ -645,14 +673,14 @@ convertEventsMatchingErrorToQueryByAssetIdError = \case
   (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m MintTokenBlockEvents (QueryByAssetId MintTokenBlockEvents) Core.SQLiteIndexer
   where
   query point config ix = do
     validUpperSlotNoE <- runExceptT $ validatedUpperBound point (config ^. queryByAssetIdUpperSlotNo)
     validUpperSlotNo <- case validUpperSlotNoE of
       Right x -> pure x
-      Left _ -> throwIO $ Core.OtherIndexError "Some error"
+      Left _ -> liftIO $ throwIO $ Core.OtherIndexError "Some error"
     lowerSlotNo <- queryLowerSlotNoByTxId validUpperSlotNo point config ix
 
     -- Build the main query
@@ -699,7 +727,7 @@ as to be able to check that the 'lowerSlotNo' found is <= 'upperSlotNo'. If not,
 throw an error.
 -}
 queryLowerSlotNoByTxId
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => C.SlotNo
   -> C.ChainPoint
   -> QueryByAssetId MintTokenBlockEvents

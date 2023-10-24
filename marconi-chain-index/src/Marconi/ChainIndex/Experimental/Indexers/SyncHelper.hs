@@ -13,12 +13,12 @@ module Marconi.ChainIndex.Experimental.Indexers.SyncHelper (
 ) where
 
 import Cardano.Api qualified as C
+import Control.Monad.IO.Class (MonadIO)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
-import UnliftIO (MonadUnliftIO)
 
 {- | A simple table to store the last stable point of an indexer.
 
@@ -81,7 +81,7 @@ syncHistoryQuery = [sql|SELECT slotNo, blockHeaderHash FROM sync ORDER BY slotNo
 -- | A helper to create an indexer for Cardano for a single table, with an immutable point tracker
 mkSingleInsertSyncedSqliteIndexer
   :: forall m event param
-   . ( MonadUnliftIO m
+   . ( MonadIO m
      , SQL.ToRow param
      , Core.Point event ~ C.ChainPoint
      )
@@ -106,7 +106,7 @@ mkSingleInsertSyncedSqliteIndexer path extract tableCreation insertQuery rollbac
 -- | A helper to create an indexer for Cardano, with an immutable point tracker
 mkSyncedSqliteIndexer
   :: forall m event
-   . ( MonadUnliftIO m
+   . ( MonadIO m
      , Core.Point event ~ C.ChainPoint
      )
   => FilePath

@@ -32,6 +32,8 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api qualified as Ledger
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -54,7 +56,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
 import Marconi.ChainIndex.Indexers.Utxo (getTxOutFromTxBodyContent)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
-import UnliftIO (MonadUnliftIO)
 
 data DatumInfo = DatumInfo
   { _datumHash :: C.Hash C.ScriptData
@@ -88,7 +89,7 @@ type StandardDatumIndexer m = StandardSQLiteIndexer m DatumEvent
 
 -- | A smart constructor for 'DatumIndexer'
 mkDatumIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => FilePath
   -> m (Core.SQLiteIndexer DatumEvent)
 mkDatumIndexer path = do
@@ -117,7 +118,7 @@ mkDatumIndexer path = do
 
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker
-  :: (MonadUnliftIO m, MonadUnliftIO n)
+  :: (MonadIO m, MonadIO n, MonadCatch m)
   => StandardWorkerConfig m input DatumEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> FilePath
@@ -128,7 +129,7 @@ datumWorker workerConfig path = do
   mkStandardWorker workerConfig indexer
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m DatumEvent (Core.EventAtQuery DatumEvent) Core.SQLiteIndexer
   where
   query =
@@ -145,7 +146,7 @@ instance
           (const NonEmpty.nonEmpty)
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable
       m
       DatumEvent
@@ -187,7 +188,8 @@ newtype ResolvedData = ResolvedData {getData :: C.ScriptData}
 type instance Core.Result ResolveDatumQuery = Maybe C.ScriptData
 
 instance
-  (MonadUnliftIO m)
+  ( MonadIO m
+  )
   => Core.Queryable m DatumEvent ResolveDatumQuery Core.SQLiteIndexer
   where
   query =

@@ -45,7 +45,6 @@ import Marconi.Core.Type (
  )
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath ((</>))
-import UnliftIO (MonadUnliftIO)
 
 data LastEventConfig event = LastEventConfig
   { _configDirectory :: FilePath
@@ -133,7 +132,7 @@ tickSave indexer = do
     then (True, indexer & timeToNextSave .~ indexer ^. saveEvery)
     else (False, indexer & timeToNextSave .~ timeToNextSave')
 
-instance (MonadUnliftIO m) => IsIndex m a LastEventIndexer where
+instance (MonadIO m) => IsIndex m a LastEventIndexer where
   index timedEvent indexer = do
     let (saveTime, indexer') =
           tickSave $

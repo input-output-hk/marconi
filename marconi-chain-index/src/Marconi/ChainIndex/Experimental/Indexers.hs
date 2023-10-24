@@ -11,6 +11,7 @@ import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar)
 import Control.Lens (makeLenses, (?~))
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Data.Function ((&))
 import Data.List.NonEmpty qualified as NonEmpty
@@ -40,7 +41,6 @@ import Marconi.ChainIndex.Types (
  )
 import Marconi.Core qualified as Core
 import System.FilePath ((</>))
-import UnliftIO (MonadUnliftIO)
 
 data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
 type instance Core.Point (Either C.ChainTip (WithDistance BlockEvent)) = C.ChainPoint
@@ -165,7 +165,7 @@ buildTxBodyCoordinator textLogger extract workers = do
 
 -- | Configure and start the @BlockInfo@ indexer
 blockInfoBuilder
-  :: (MonadUnliftIO n, MonadUnliftIO m)
+  :: (MonadIO n, MonadCatch m, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text
@@ -187,7 +187,7 @@ blockInfoBuilder securityParam catchupConfig textLogger path =
 
 -- | Configure and start the @Utxo@ indexer
 utxoBuilder
-  :: (MonadUnliftIO n)
+  :: (MonadIO n)
   => SecurityParam
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
@@ -214,7 +214,7 @@ utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
 
 -- | Configure and start the 'ChainTip' indexer
 chainTipBuilder
-  :: (MonadUnliftIO m)
+  :: (MonadIO m, MonadCatch m)
   => BM.Trace m (Core.IndexerEvent C.ChainPoint)
   -> FilePath
   -> m
@@ -232,7 +232,7 @@ chainTipBuilder tracer path = do
 
 -- | Configure and start the @SpentInfo@ indexer
 spentBuilder
-  :: (MonadUnliftIO n)
+  :: (MonadIO n)
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace IO Text
@@ -258,7 +258,7 @@ spentBuilder securityParam catchupConfig textLogger path =
 
 -- | Configure and start the @Datum@ indexer
 datumBuilder
-  :: (MonadUnliftIO n, MonadUnliftIO m)
+  :: (MonadIO n, MonadCatch m, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text
@@ -280,7 +280,7 @@ datumBuilder securityParam catchupConfig textLogger path =
 
 -- | Configure and start the @MintToken@ indexer
 mintBuilder
-  :: (MonadUnliftIO n)
+  :: (MonadIO n)
   => SecurityParam
   -> Core.CatchupConfig
   -> MintTokenEvent.MintTokenEventConfig
@@ -308,7 +308,7 @@ mintBuilder securityParam catchupConfig mintEventConfig textLogger path =
 
 -- | Configure and start the @EpochState@ indexer
 epochStateBuilder
-  :: (MonadUnliftIO n, Core.Closeable IO EpochState.EpochStateIndexer)
+  :: (MonadIO n, MonadCatch n, Core.Closeable IO EpochState.EpochStateIndexer)
   => SecurityParam
   -> Core.CatchupConfig
   -> EpochState.EpochStateWorkerConfig

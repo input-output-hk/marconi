@@ -25,6 +25,7 @@ import Control.Concurrent (QSemN, ThreadId)
 import Control.Concurrent qualified as Con
 import Control.Concurrent.STM (TChan, TVar)
 import Control.Concurrent.STM qualified as STM
+import Control.Exception (throwIO)
 import Control.Exception.Base (finally)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((^.))
@@ -52,7 +53,6 @@ import Marconi.Core.Worker (
   WorkerM (Worker),
   startWorker,
  )
-import UnliftIO (MonadUnliftIO, throwIO)
 
 {- | A coordinator synchronises the event processing of a list of indexers.
  A coordinator is itself is an indexer.
@@ -183,13 +183,13 @@ safeDispatch event coordinator = do
     errs -> liftIO $ throwIO errs
 
 -- A coordinator can be consider as an indexer that forwards the input to its worker
-instance (MonadUnliftIO m) => IsIndex m event Coordinator where
+instance (MonadIO m) => IsIndex m event Coordinator where
   index = safeDispatch . Index
   rollback = safeDispatch . Rollback
   setLastStablePoint = safeDispatch . StableAt
 
 instance
-  (Ord (Point event), MonadUnliftIO m)
+  (Ord (Point event), MonadIO m)
   => IsSync m event Coordinator
   where
   lastSyncPoint indexer =
@@ -206,7 +206,7 @@ instance
           liftIO $ lastStablePoint ix
      in minimum <$> traverse workerLastSyncPoint (indexer ^. workers)
 
-instance (MonadUnliftIO m) => Closeable m Coordinator where
+instance (MonadIO m) => Closeable m Coordinator where
   close coordinator = liftIO $ do
     dispatchNewInput coordinator Stop
     waitEnd coordinator

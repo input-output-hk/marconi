@@ -75,7 +75,6 @@ library
     , servant-server
     , sqlite-simple
     , text
-    , unliftio
     , warp
 
 executable marconi-tutorial

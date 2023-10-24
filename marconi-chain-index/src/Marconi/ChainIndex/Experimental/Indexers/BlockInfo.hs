@@ -26,6 +26,8 @@ module Marconi.ChainIndex.Experimental.Indexers.BlockInfo (
 import Cardano.Api qualified as C
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Time qualified as Time
@@ -46,7 +48,6 @@ import Marconi.ChainIndex.Experimental.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
-import UnliftIO (MonadUnliftIO)
 
 data BlockInfo = BlockInfo
   { _blockNo :: !C.BlockNo
@@ -87,7 +88,7 @@ instance SQL.FromRow (Core.Timed C.ChainPoint BlockInfo) where
 
 -- | A smart constructor for BlockInfoIndexer
 mkBlockInfoIndexer
-  :: (MonadUnliftIO m)
+  :: (MonadIO m)
   => FilePath
   -- ^ SQL connection to database
   -> m (Core.SQLiteIndexer BlockInfo)
@@ -114,8 +115,9 @@ mkBlockInfoIndexer path = do
 
 -- | Create a worker for 'BlockInfoIndexer' with catchup
 blockInfoWorker
-  :: ( MonadUnliftIO n
-     , MonadUnliftIO m
+  :: ( MonadIO n
+     , MonadCatch m
+     , MonadIO m
      )
   => StandardWorkerConfig m input BlockInfo
   -- ^ General indexer configuration
@@ -127,7 +129,7 @@ blockInfoWorker config path = do
   mkStandardWorker config indexer
 
 instance
-  (MonadUnliftIO m)
+  (MonadIO m)
   => Core.Queryable m BlockInfo (Core.EventAtQuery BlockInfo) Core.SQLiteIndexer
   where
   query =
@@ -145,7 +147,8 @@ instance
           (const listToMaybe)
 
 instance
-  (MonadUnliftIO m)
+  ( MonadIO m
+  )
   => Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
   where
   query =
