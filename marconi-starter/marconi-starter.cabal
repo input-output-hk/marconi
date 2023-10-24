@@ -48,9 +48,9 @@ library
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index    >=1.2.0
-    , marconi-core           >=1.2.0
-    , marconi-core-json-rpc  >=1.2.0
+    , marconi-chain-index-legacy  >=1.2.0
+    , marconi-core                >=1.2.0
+    , marconi-core-json-rpc       >=1.2.0
 
   --------------------------
   -- Other IOG dependencies
@@ -106,7 +106,7 @@ test-suite marconi-starter-test
   --------------------
   build-depends:
     , cardano-api
-    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}
+    , marconi-chain-index-legacy:{marconi-chain-index-legacy, marconi-chain-index-legacy-test-lib}
     , marconi-core
     , marconi-starter
 
