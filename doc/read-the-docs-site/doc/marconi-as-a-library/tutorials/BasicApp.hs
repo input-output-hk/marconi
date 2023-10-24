@@ -46,7 +46,12 @@ import Marconi.ChainIndex.Experimental.Runner qualified as Core
 import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry qualified as Core
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), MarconiTrace, RetryConfig (RetryConfig), SecurityParam)
+import Marconi.ChainIndex.Types (
+  BlockEvent (BlockEvent),
+  MarconiTrace,
+  RetryConfig (RetryConfig),
+  SecurityParam,
+ )
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc qualified as Core

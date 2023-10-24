@@ -59,7 +59,7 @@ executable marconi-doc
   build-depends:
     , aeson
     , async
-    , base                  >=4.9 && <5
+    , base            >=4.9 && <5
     , lens
     , mtl
     , servant-server
