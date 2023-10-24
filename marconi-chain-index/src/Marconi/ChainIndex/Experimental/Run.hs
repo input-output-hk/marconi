@@ -53,6 +53,7 @@ import System.Posix.Signals (
   installHandler,
   sigTERM,
  )
+import Control.Exception (finally)
 #endif
 
 run :: Text -> IO ()
@@ -156,6 +157,7 @@ run appName = withGracefulTermination_ $ do
   race_
     runIndexer'
     runHttpServer'
+    `finally` BM.shutdown sb
 
 shelleyAddressesToAddressAny :: Maybe TargetAddresses -> [C.AddressAny]
 shelleyAddressesToAddressAny Nothing = []

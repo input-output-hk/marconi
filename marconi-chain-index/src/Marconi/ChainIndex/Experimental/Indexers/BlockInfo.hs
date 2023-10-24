@@ -26,6 +26,7 @@ module Marconi.ChainIndex.Experimental.Indexers.BlockInfo (
 import Cardano.Api qualified as C
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
@@ -118,6 +119,7 @@ blockInfoWorker
   :: ( MonadIO n
      , MonadError Core.IndexerError n
      , MonadIO m
+     , MonadCatch m
      )
   => StandardWorkerConfig m input BlockInfo
   -- ^ General indexer configuration

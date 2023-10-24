@@ -32,6 +32,7 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api qualified as Ledger
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
@@ -118,7 +119,7 @@ mkDatumIndexer path = do
 
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker
-  :: (MonadIO m, MonadIO n, MonadError Core.IndexerError n)
+  :: (MonadIO m, MonadCatch m, MonadIO n, MonadError Core.IndexerError n)
   => StandardWorkerConfig m input DatumEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> FilePath

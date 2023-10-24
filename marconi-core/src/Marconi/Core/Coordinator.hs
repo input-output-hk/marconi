@@ -21,20 +21,24 @@ module Marconi.Core.Coordinator (
   processQueue,
 ) where
 
-import Control.Concurrent (MVar, QSemN, ThreadId)
+import Cardano.BM.Trace (Trace, logError)
+import Control.Concurrent (QSemN, ThreadId)
 import Control.Concurrent qualified as Con
-import Control.Concurrent.STM (TChan)
+import Control.Concurrent.Async (race)
+import Control.Concurrent.STM (TChan, TVar)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (throwIO)
 import Control.Exception.Base (finally)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((^.))
-import Control.Monad (foldM)
+import Control.Monad (foldM, when)
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State.Strict (State)
 import Data.Foldable (Foldable (toList))
 import Data.Maybe (catMaybes)
+import Data.Text (Text)
+import Data.Text qualified as Text
 import Marconi.Core.Class (
   Closeable (close),
   IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
@@ -42,7 +46,7 @@ import Marconi.Core.Class (
  )
 import Marconi.Core.Preprocessor (Preprocessor, preprocessor, runPreprocessor)
 import Marconi.Core.Type (
-  IndexerError (StopIndexer),
+  IndexerError (OtherIndexError, StopIndexer),
   Point,
   ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
   Timed,
@@ -69,7 +73,7 @@ data Coordinator input = Coordinator
   -- ^ used to check workers end
   , _channel :: TChan (ProcessedInput (Point input) input)
   -- ^ to dispatch input to workers
-  , _errorBox :: MVar IndexerError
+  , _errorBox :: TVar [IndexerError]
   -- ^ keep track of workers error
   , _nbWorkers :: Int
   -- ^ how many workers are we waiting for, should always be equal to @length workers@
@@ -85,7 +89,7 @@ mkCoordinator
 mkCoordinator workers' = do
   let startWorkers channel' errorBox' endTokens' tokens' =
         traverse (startWorker channel' errorBox' endTokens' tokens') workers'
-  errorBox' <- Con.newEmptyMVar
+  errorBox' <- STM.atomically $ STM.newTVar []
   let nb = length workers'
   tokens' <- Con.newQSemN 0 -- starts empty, will be filled when the workers will start
   endTokens' <- Con.newQSemN 0 -- starts empty, will be filled when the workers will start
@@ -101,15 +105,16 @@ processQueue
   :: forall indexer event s r
    . ( Ord (Point event)
      , IsIndex (ExceptT IndexerError IO) event indexer
-     , Closeable IO indexer
+     , Closeable (ExceptT IndexerError IO) indexer
      )
   => (Timed (Point event) (Maybe event) -> State s (Maybe (Point event)))
   -- ^ emit stable point based on incoming information
   -> s
   -> STM.TBQueue (ProcessedInput (Point event) event)
   -> Con.MVar (indexer event)
+  -> Trace IO Text
   -> IO r
-processQueue f initialState q cBox =
+processQueue f initialState q cBox trace =
   let attachStable :: Preprocessor IO (Point event) event event
       attachStable = flip preprocessor initialState $ \case
         Index timedEvent -> do
@@ -133,7 +138,13 @@ processQueue f initialState q cBox =
             Left (err :: IndexerError) -> throwIO err
             Right res -> pure (res, g')
         queueStep g'
-   in queueStep attachStable `finally` Con.withMVar cBox close
+
+      close' idx = do
+        res <- runExceptT . close $ idx
+        case res of
+          Right x -> pure x
+          Left (e :: IndexerError) -> (logError trace $ Text.pack $ show e) >> (liftIO $ throwIO e)
+   in queueStep attachStable `finally` Con.withMVar cBox close'
 
 {- | A coordinator step
 (send an input to its workers, wait for an ack of every worker before listening again)
@@ -165,8 +176,8 @@ dispatchNewInput coordinator = STM.atomically . STM.writeTChan (coordinator ^. c
 healthCheck
   :: (MonadIO m)
   => Coordinator input
-  -> m (Maybe IndexerError)
-healthCheck c = liftIO $ Con.tryReadMVar $ c ^. errorBox
+  -> m [IndexerError]
+healthCheck c = liftIO $ STM.readTVarIO $ c ^. errorBox
 
 safeDispatch
   :: (MonadIO m, MonadError IndexerError m)
@@ -179,8 +190,8 @@ safeDispatch event coordinator = do
     waitWorkers coordinator
   errors <- healthCheck coordinator
   case errors of
-    Just err -> throwError err
-    Nothing -> pure coordinator
+    [] -> pure coordinator
+    (err : _) -> throwError err
 
 -- A coordinator can be consider as an indexer that forwards the input to its worker
 instance (MonadIO m, MonadError IndexerError m) => IsIndex m event Coordinator where
@@ -212,10 +223,24 @@ instance
             Right res' -> pure res'
      in minimum <$> traverse workerLastSyncPoint (indexer ^. workers)
 
-instance (MonadIO m) => Closeable m Coordinator where
-  close coordinator = liftIO $ do
-    dispatchNewInput coordinator Stop
-    waitEnd coordinator
+instance (MonadIO m, MonadError IndexerError m) => Closeable m Coordinator where
+  close coordinator = do
+    liftIO $ dispatchNewInput coordinator Stop
+    res <- liftIO $ race (handle coordinator) (waitEnd coordinator)
+    case res of
+      Left (e : _) -> throwError e
+      _ -> pure ()
+    where
+      handle c = loop
+        where
+          loop = do
+            STM.atomically $ do
+              errs <- fmap (filter (not . isStop)) <$> STM.readTVar $ c ^. errorBox
+              when (all isStop errs) STM.retry
+              pure errs
+            where
+              isStop (OtherIndexError "Stop") = True
+              isStop _ = False
 
 -- There is no point in providing a 'Queryable' interface for 'CoordinatorIndex' though,
 -- as it's sole interest would be to get the latest synchronisation points,

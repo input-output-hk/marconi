@@ -11,6 +11,7 @@ import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar)
 import Control.Lens (makeLenses, (?~))
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
 import Data.Function ((&))
@@ -169,7 +170,7 @@ buildTxBodyCoordinator textLogger extract workers = do
 
 -- | Configure and start the @BlockInfo@ indexer
 blockInfoBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m, MonadCatch m)
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text
@@ -218,7 +219,7 @@ utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
 
 -- | Configure and start the 'ChainTip' indexer
 chainTipBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m, MonadCatch m)
   => BM.Trace m (Core.IndexerEvent C.ChainPoint)
   -> FilePath
   -> n
@@ -236,12 +237,11 @@ chainTipBuilder tracer path = do
 
 -- | Configure and start the @SpentInfo@ indexer
 spentBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n)
-  => SecurityParam
+  :: SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace IO Text
   -> FilePath
-  -> n (StandardWorker IO [AnyTxBody] Spent.SpentInfoEvent Core.SQLiteIndexer)
+  -> ExceptT Core.IndexerError IO (StandardWorker IO [AnyTxBody] Spent.SpentInfoEvent Core.SQLiteIndexer)
 spentBuilder securityParam catchupConfig textLogger path =
   let indexerName = "Spent"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
@@ -262,7 +262,7 @@ spentBuilder securityParam catchupConfig textLogger path =
 
 -- | Configure and start the @Datum@ indexer
 datumBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadCatch m, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text

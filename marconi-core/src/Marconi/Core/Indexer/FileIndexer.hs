@@ -44,7 +44,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Function ((&))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Core.Class (
@@ -54,7 +54,7 @@ import Marconi.Core.Class (
   IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Type (
-  IndexerError (IndexerInternalError),
+  IndexerError (IndexerInternalError, TimedOutIndexer),
   Point,
   QueryError (IndexerQueryError),
   Timed (Timed),
@@ -394,18 +394,22 @@ writeStable p indexer = do
   writeIndexer indexer filename $ serialise p
   pure indexer
 
-instance (MonadIO m) => Closeable m (FileIndexer meta) where
+instance (MonadIO m, MonadError IndexerError m) => Closeable m (FileIndexer meta) where
   {- If we've got a write token it means a write is occurring asynchronously.
      We need to wait for it to finish before closing. -}
   close :: FileIndexer meta event -> m ()
-  close indexer = liftIO $
+  close indexer =
     case indexer ^. fileIndexerWriteEnv of
       Just fileWriteEnv -> do
-        -- TODO https://input-output.atlassian.net/browse/PLT-7811
-        void $
-          timeout
-            (fileWriteEnv ^. fileWriteEnvTimeout)
-            (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+        res <-
+          liftIO $
+            isJust
+              <$> timeout
+                (fileWriteEnv ^. fileWriteEnvTimeout)
+                (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+        if res
+          then pure ()
+          else throwError $ TimedOutIndexer "A file-writing operation timed out during close"
       Nothing -> pure ()
 
 -- * File writing | TODO https://input-output.atlassian.net/browse/PLT-7809

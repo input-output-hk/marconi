@@ -17,6 +17,7 @@ import Codec.CBOR.Decoding qualified as CBOR
 import Codec.CBOR.Encoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Data.ByteString qualified as BS
@@ -59,7 +60,7 @@ mkChainTipIndexer tracer cfg = do
 
 -- | Start a 'ChainTipIndexer' and put it in a worker
 chainTipWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m, MonadCatch m)
   => BM.Trace m (Core.IndexerEvent C.ChainPoint)
   -> (event -> Maybe C.ChainTip)
   -> ChainTipConfig

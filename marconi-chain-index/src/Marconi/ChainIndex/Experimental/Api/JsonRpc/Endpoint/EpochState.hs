@@ -7,13 +7,10 @@ module Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.EpochState (
   getEpochStakePoolDelegationHandler,
 ) where
 
-import Marconi.ChainIndex.Experimental.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Experimental.Indexers (
-  queryableEpochState,
- )
+import Marconi.ChainIndex.Experimental.Api.Types (HttpServerConfig)
 import Marconi.ChainIndex.Experimental.Indexers.EpochState qualified as EpochState
 import Marconi.Core qualified as Core
-import Marconi.Core.JsonRpc (ReaderHandler, queryHttpReaderHandler)
+import Marconi.Core.JsonRpc (ReaderHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
 
 ------------------
@@ -44,7 +41,7 @@ getEpochStakePoolDelegationHandler
   -> ReaderHandler
       HttpServerConfig
       (Either (JsonRpcErr String) (Core.Result EpochState.ActiveSDDByEpochNoQuery))
-getEpochStakePoolDelegationHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
+getEpochStakePoolDelegationHandler = undefined -- queryHttpReaderHandler (configQueryables . queryableEpochState)
 
 -- | Return an epoch nonce
 getEpochNonceHandler
@@ -52,4 +49,4 @@ getEpochNonceHandler
   -> ReaderHandler
       HttpServerConfig
       (Either (JsonRpcErr String) (Core.Result EpochState.NonceByEpochNoQuery))
-getEpochNonceHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
+getEpochNonceHandler = undefined -- queryHttpReaderHandler (configQueryables . queryableEpochState)

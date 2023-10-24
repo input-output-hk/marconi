@@ -27,6 +27,7 @@ import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Data.Aeson.TH qualified as Aeson
@@ -156,7 +157,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m, MonadCatch m)
   => StandardWorkerConfig m input SpentInfoEvent
   -- ^ General configuration of a worker
   -> FilePath

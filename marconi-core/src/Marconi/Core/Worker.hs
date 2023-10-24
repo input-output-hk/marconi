@@ -22,7 +22,7 @@ module Marconi.Core.Worker (
 
 import Control.Concurrent (MVar, QSemN, ThreadId)
 import Control.Concurrent qualified as Con
-import Control.Concurrent.STM (TChan)
+import Control.Concurrent.STM (TChan, TVar)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (SomeException (SomeException), catch, finally)
 import Control.Monad (void)
@@ -128,7 +128,7 @@ startWorker
    . (MonadIO m)
   => (Ord (Point input))
   => TChan (ProcessedInput (Point input) input)
-  -> MVar IndexerError
+  -> TVar [IndexerError]
   -> QSemN
   -> QSemN
   -> Worker input (Point input)
@@ -170,13 +170,16 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
             Left err -> pure (indexer, Just err)
             Right res -> pure (res, Nothing)
 
-      checkError :: IO (Maybe IndexerError)
-      checkError = Con.tryReadMVar errorBox
+      checkError :: IO [IndexerError]
+      checkError = STM.readTVarIO errorBox
 
       closeIndexer :: IO ()
       closeIndexer = do
         indexer <- Con.readMVar ix
-        void $ runExceptT $ hoistError $ close indexer
+        res <- runExceptT $ hoistError $ close indexer
+        case res of
+          Right _ -> pure ()
+          Left e -> notifyCoordinatorOnError e
 
       swallowPill :: IO ()
       swallowPill = finally closeIndexer notifyEndToCoordinator
@@ -185,7 +188,7 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
       notifyCoordinatorOnError e =
         -- We don't need to check if tryPutMVar succeed
         -- because if @errorBox@ is already full, our job is done anyway
-        void $ Con.tryPutMVar errorBox e
+        void $ STM.atomically $ STM.modifyTVar errorBox (\currentVal -> e : currentVal)
 
       process = \case
         Rollback p -> handleRollback p
@@ -220,7 +223,7 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
         let loop' f = do
               err <- checkError
               case err of
-                Nothing -> do
+                [] -> do
                   event <- STM.atomically $ STM.readTChan chan'
                   (result, f') <- safeProcessEvent f event
                   case result of
@@ -230,7 +233,7 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
                     Just err' -> do
                       notifyCoordinatorOnError err'
                       unlockCoordinator
-                Just _ -> unlockCoordinator
+                _ -> unlockCoordinator
          in loop' transformInput
    in liftIO $ do
         chan' <- STM.atomically $ STM.dupTChan chan

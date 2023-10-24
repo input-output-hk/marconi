@@ -53,6 +53,7 @@ import Control.Lens (
   (^.),
  )
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Except (MonadError, guard)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson.TH qualified as Aeson
@@ -175,7 +176,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m, MonadCatch m)
   => StandardWorkerConfig m input UtxoEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> UtxoIndexerConfig

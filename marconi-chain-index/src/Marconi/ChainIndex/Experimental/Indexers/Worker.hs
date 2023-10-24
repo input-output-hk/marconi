@@ -17,6 +17,7 @@ import Cardano.BM.Tracing (Trace)
 import Control.Arrow ((<<<))
 import Control.Concurrent (MVar)
 import Control.Monad ((<=<))
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO, MonadTrans (lift))
 import Control.Monad.Except (ExceptT)
 import Data.Text (Text)
@@ -70,6 +71,7 @@ mkStandardIndexer config indexer =
 mkStandardWorker
   :: ( MonadIO m
      , MonadIO n
+     , MonadCatch m
      , Core.WorkerIndexerType (ExceptT Core.IndexerError m) event indexer
      , Core.IsSync n event indexer
      , Core.Point event ~ C.ChainPoint
@@ -99,6 +101,7 @@ mkStandardIndexerWithFilter config eventFilter indexer =
 mkStandardWorkerWithFilter
   :: ( MonadIO n
      , MonadIO m
+     , MonadCatch m
      , Core.WorkerIndexerType (ExceptT Core.IndexerError m) event indexer
      , Core.IsSync n event indexer
      , Ord (Core.Point event)

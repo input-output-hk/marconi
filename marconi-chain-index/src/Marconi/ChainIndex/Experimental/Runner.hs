@@ -106,7 +106,7 @@ If you want to start several indexers, use @runIndexers@.
 -}
 runIndexer
   :: ( Core.IsIndex (ExceptT Core.IndexerError IO) a indexer
-     , Core.Closeable IO indexer
+     , Core.Closeable (ExceptT Core.IndexerError IO) indexer
      , Core.Point a ~ C.ChainPoint
      )
   => RunIndexerConfig a
@@ -144,7 +144,12 @@ runIndexer
                 PP.layoutPretty PP.defaultLayoutOptions $
                   PP.pretty NoIntersectionFoundLog
       void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-      Core.processQueue (stablePointComputation securityParam eventProcessing) Map.empty eventQueue cBox
+      Core.processQueue
+        (stablePointComputation securityParam eventProcessing)
+        Map.empty
+        eventQueue
+        cBox
+        trace
 
 stablePointComputation
   :: SecurityParam

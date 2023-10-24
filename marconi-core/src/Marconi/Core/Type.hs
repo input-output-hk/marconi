@@ -105,6 +105,8 @@ data IndexerError
     StopIndexer (Maybe Text)
   | -- | The indexer failed at resuming (likely due to a bug)
     ResumingFailed Text
+  | -- | A timeout occurred
+    TimedOutIndexer Text
   | -- | Any other cause of failure
     OtherIndexError Text
 

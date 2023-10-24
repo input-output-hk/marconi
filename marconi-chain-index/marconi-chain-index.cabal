@@ -159,6 +159,7 @@ library
     , comonad
     , containers
     , directory
+    , exceptions
     , filepath
     , lens
     , mtl

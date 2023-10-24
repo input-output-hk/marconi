@@ -20,8 +20,7 @@ import Data.Aeson.Types (ToJSON (toJSON), object, parseJSON, withObject, (.:), (
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Experimental.Indexers (queryableMintToken)
+import Marconi.ChainIndex.Experimental.Api.Types (HttpServerConfig)
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
   mintAssetAssetName,
   mintAssetQuantity,
@@ -37,7 +36,7 @@ import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent (
 import Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
-import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, queryHttpReaderHandler)
+import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
 
 ------------------
@@ -119,10 +118,11 @@ getMintingPolicyHashTxHandler
               )
           )
       )
-getMintingPolicyHashTxHandler =
-  queryHttpReaderHandler
-    (configQueryables . queryableMintToken)
-    . Core.WithStability
+getMintingPolicyHashTxHandler = undefined
+
+-- queryHttpReaderHandler
+--   (configQueryables . queryableMintToken)
+--   . Core.WithStability
 
 -- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
 getBurnTokenEventsHandler

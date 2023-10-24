@@ -90,6 +90,7 @@ import Cardano.Ledger.Mary.Value (
  )
 import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
 import Control.Lens qualified as Lens
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Data.ByteString.Short qualified as Short
@@ -271,7 +272,7 @@ type instance Core.Point MintTokenBlockEvents = C.ChainPoint
 
 -- | Create a worker for the MintTokenEvent indexer
 mkMintTokenEventWorker
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m, MonadCatch m)
   => StandardWorkerConfig m input MintTokenBlockEvents
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> MintTokenEventConfig
