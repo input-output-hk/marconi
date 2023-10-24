@@ -40,7 +40,7 @@ import Marconi.ChainIndex.Types (
   scriptTxDbName,
   utxoDbName,
  )
-import Paths_marconi_chain_index (version)
+import Paths_marconi_chain_index_legacy (version)
 
 {- | Allow the user to set a starting point for indexing the user needs to provide both
  a @BlockHeaderHash@ (encoded in RawBytesHex) and a @SlotNo@ (a natural number).

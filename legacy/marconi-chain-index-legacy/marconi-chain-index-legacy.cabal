@@ -82,8 +82,8 @@ library
     Marconi.ChainIndex.Utils
 
   -- TODO: PLT-7727 action needed here?
-  other-modules:   Paths_marconi_chain_index
-  autogen-modules: Paths_marconi_chain_index
+  other-modules:   Paths_marconi_chain_index_legacy
+  autogen-modules: Paths_marconi_chain_index_legacy
 
   --------------------
   -- Local components
