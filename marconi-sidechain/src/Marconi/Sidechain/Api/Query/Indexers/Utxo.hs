@@ -20,11 +20,11 @@ import Data.Bifunctor (Bifunctor (bimap))
 import Data.Foldable (toList)
 import Data.Functor ((<&>))
 import Data.Text (Text, pack)
-import Marconi.ChainIndex.Error (IndexerError (InvalidIndexer))
-import Marconi.ChainIndex.Error qualified as CI
-import Marconi.ChainIndex.Indexers.AddressDatum (StorableQuery)
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Legacy.Error (IndexerError (InvalidIndexer))
+import Marconi.ChainIndex.Legacy.Error qualified as CI
+import Marconi.ChainIndex.Legacy.Indexers.AddressDatum (StorableQuery)
+import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Legacy.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (
   AddressUtxoResult (AddressUtxoResult),

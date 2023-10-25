@@ -1,223 +1,879 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 
-{- | Module for indexing the stakepool delegation per epoch in the Cardano blockchain.
-
- This module will create the SQL tables:
-
- + table: epoch_sdd
-
- @
-    |---------+--------+----------+--------+-----------------+---------|
-    | epochNo | poolId | lovelace | slotNo | blockHeaderHash | blockNo |
-    |---------+--------+----------+--------+-----------------+---------|
- @
-
- + table: epoch_nonce
-
- @
-    |---------+-------+--------+-----------------+---------|
-    | epochNo | nonce | slotNo | blockHeaderHash | blockNo |
-    |---------+-------+--------+-----------------+---------|
- @
-
- To create those tables, we need to compute the `ExtLedgerState` from `ouroboros-network`
- (combination of `LedgerState, called `NewEpochState` in `cardano-ledger`, and the `HeaderState`)
- at each 'Rollforward' chain sync event. Using the `ExtLegderState`, we can easily compute the
- epoch nonce as well as the stake pool delegation for that epoch.
-
- The main issue with this indexer is that building the ExtLedgerState and saving it on disk for being
- able to resume is VERY resource intensive. Syncing time for this indexer is over 20h and uses
- about ~16GB of RAM (which will keep increasing as the blockchain continues to grow).
-
- Here is a synopsis of what this indexer does.
-
- We assume that the construction of 'LedgerState' is done outside of this indexer (this module).
-
-   * the 'Storable.insert' function is called with the *first* event of an epoch (therefore, the
-   first 'LedgerState' when starting a new epoch). We do that because we only care about the SDD
-   (Stake Pool Delegation Distribution) of the snapshot of the previous epoch.
-
- Once the 'Storable.StorableEvent' is stored on disk, we perform various steps:
-
-   1. we save the SDD for the current epoch in the `epoch_sdd` table
-   2. we save the Nonce for the current epoch in the `epoch_nonce` table
-   3. we save the 'LedgerState's in the filesystem as binary files (the ledger state file path has
-   the format: `ledgerState_<SLOT_NO>_<BLOCK_HEADER_HASH>_<BLOCK_NO>.bin`). We only store a
-   'LedgerState' if it's rollbackable or if the last one of a given epoch. This step is necessary
-   for resuming the indexer.
-   4. we delete immutable 'LedgerState' binary files expect latest one (this step is necessary for
-   keeping the disk usage as low as possible).
-
- The indexer provides the following queries:
-
-   * C.EpochNo -> Nonce
-   * C.EpochNo -> SDD
-   * C.ChainPoint -> LedgerState (query that is necessary for resuming)
--}
 module Marconi.ChainIndex.Indexers.EpochState (
-  -- * EpochStateIndex
-  EpochStateIndex,
-  EpochStateHandle,
-  EpochSDDRow (..),
-  EpochNonceRow (..),
-  StorableEvent (..),
-  StorableQuery (..),
-  StorableResult (..),
-  toStorableEvent,
-  open,
-  getEpochNo,
+  -- * Events
+  EpochState (EpochState),
+  ExtLedgerState,
+  extLedgerState,
+  blockNo,
+  EpochNonce (EpochNonce),
+  nonceEpochNo,
+  nonceNonce,
+  nonceBlockNo,
+  EpochSDD (EpochSDD),
+  sddEpochNo,
+  sddPoolId,
+  sddLovelace,
+  sddBlockNo,
+  EpochMetadata (..),
+
+  -- * Indexer and worker
+  EpochStateIndexer,
+  NodeConfig (..),
+  EpochStateWorkerConfig (..),
+  StandardEpochStateIndexer,
+  mkEpochStateIndexer,
+  mkEpochStateWorker,
+
+  -- * Queries
+  ActiveSDDByEpochNoQuery,
+  NonceByEpochNoQuery,
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.ExtLedgerState qualified as CE
 import Cardano.Api.Shelley qualified as C
-import Cardano.Ledger.Compactible qualified as Ledger
-import Cardano.Ledger.Era qualified as Ledger
+import Cardano.BM.Trace qualified as BM
 import Cardano.Ledger.Shelley.API qualified as Ledger
+import Cardano.Ledger.UMap qualified as Ledger
 import Cardano.Protocol.TPraos.API qualified as Shelley
 import Cardano.Protocol.TPraos.Rules.Tickn qualified as Shelley
-import Cardano.Slotting.Slot (EpochNo)
-
+import Codec.CBOR.Decoding qualified as CBOR
+import Codec.CBOR.Encoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
-import Control.Monad (filterM, forM_, when)
-import Control.Monad.Except (ExceptT)
-import Control.Monad.Trans (MonadTrans (lift))
-
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.=))
+import Control.Applicative (Alternative (empty))
+import Control.Arrow ((<<<))
+import Control.Concurrent qualified as Con
+import Control.Exception (throw)
+import Control.Lens (Lens', (%~), (&), (-=), (.=), (.~), (^.))
+import Control.Lens qualified as Lens
+import Control.Monad (foldM, when, (<=<))
+import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
+import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Control.Monad.State.Strict (MonadState)
+import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Bifunctor (bimap)
+import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
-import Data.ByteString.Lazy qualified as BS
+import Data.ByteString.Lazy qualified as BS.Lazy
+import Data.ByteString.Short qualified as BS.Short
 import Data.Coerce (coerce)
 import Data.Data (Proxy (Proxy))
-import Data.Foldable (toList)
-import Data.List qualified as List
-import Data.List.NonEmpty qualified as NE
-import Data.Map.Strict (Map)
-import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
-import Data.Ord (Down (Down))
+import Data.Foldable (Foldable (toList))
+import Data.List (sortOn)
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
+import Data.Ord (Down (Down), comparing)
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Data.Tuple (swap)
+import Data.VMap (VMap)
 import Data.VMap qualified as VMap
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
-
 import GHC.Generics (Generic)
-
-import Data.Void (Void)
-import Marconi.ChainIndex.Error (
-  IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
-  liftSQLError,
+import Marconi.ChainIndex.Extract.WithDistance (
+  WithDistance (WithDistance),
+ )
+import Marconi.ChainIndex.Indexers.Orphans ()
+import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
+import Marconi.ChainIndex.Indexers.Worker (
+  StandardSQLiteIndexer,
+  StandardWorkerConfig (logger, securityParamConfig),
+  eventExtractor,
+  mkStandardIndexer,
+  workerName,
  )
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (SecurityParam)
-import Marconi.ChainIndex.Utils (chainPointOrGenesis, getBlockNoFromChainTip, isBlockRollbackable)
-import Marconi.Core.Storable (
-  Buffered (persistToStorage),
-  HasPoint (getPoint),
-  Queryable (queryStorage),
-  Resumable,
-  Rewindable (rewindStorage),
-  State,
-  StorableEvent,
-  StorableMonad,
-  StorablePoint,
-  StorableQuery,
-  StorableResult,
-  emptyState,
- )
-import Marconi.Core.Storable qualified as Storable
+import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
+import Marconi.Core (IsSync (lastSyncPoint))
+import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
+import Ouroboros.Consensus.Node.NetworkProtocolVersion qualified as O
+import Ouroboros.Consensus.Node.Serialisation qualified as O
 import Ouroboros.Consensus.Protocol.Praos qualified as O
 import Ouroboros.Consensus.Protocol.TPraos qualified as O
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Ouroboros.Consensus.Storage.Serialisation qualified as O
-import System.Directory (listDirectory, removeFile)
-import System.FilePath (dropExtension, (</>))
-import Text.Read (readMaybe)
+import Prettyprinter (pretty)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>))
+import Text.Read qualified as Text
 
-data EpochStateHandle = EpochStateHandle
-  { _epochStateHandleTopLevelCfg :: !(O.TopLevelConfig (O.CardanoBlock O.StandardCrypto))
-  , _epochStateHandleConnection :: !SQL.Connection
-  , _epochStateHandleLedgerStateDirPath :: !FilePath
-  , _epochStateHandleSecurityParam :: !SecurityParam
-  , _epochStateHandleCurrentNodeBlockNoAtStartup :: !C.BlockNo
-  -- ^ ONLY USED for removing LedgerState files that have become immutable (not rollbackable) when
-  -- resuming.
+type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+type ExtLedgerConfig = O.ExtLedgerCfg (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+type instance Core.Point (C.BlockInMode C.CardanoMode) = C.ChainPoint
+type instance Core.Point EpochState = C.ChainPoint
+type instance Core.Point (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode) = C.ChainPoint
+
+-- | Base event used to store the 'ExtLedgerState'
+data EpochState = EpochState {extLedgerState :: ExtLedgerState, blockNo :: C.BlockNo}
+
+-- | Event for @Nonce@ storage
+data EpochNonce = EpochNonce
+  { _nonceEpochNo :: !C.EpochNo
+  , _nonceNonce :: !Ledger.Nonce
+  , _nonceBlockNo :: !C.BlockNo
+  }
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (SQL.FromRow, SQL.ToRow, FromJSON, ToJSON)
+
+instance SQL.ToRow (Core.Timed C.ChainPoint EpochNonce) where
+  toRow epochNonce =
+    SQL.toRow (epochNonce ^. Core.event)
+      <> SQL.toRow (epochNonce ^. Core.point)
+
+instance SQL.FromRow (Core.Timed C.ChainPoint EpochNonce) where
+  fromRow = do
+    nonce <- SQL.fromRow
+    point <- SQL.fromRow
+    pure $ Core.Timed point nonce
+
+type instance Core.Point EpochNonce = C.ChainPoint
+
+Lens.makeLenses ''EpochNonce
+
+-- | Event for @SDD@ storage
+data EpochSDD = EpochSDD
+  { _sddEpochNo :: !C.EpochNo
+  , _sddPoolId :: !C.PoolId
+  , _sddLovelace :: !C.Lovelace
+  , _sddBlockNo :: !C.BlockNo
+  }
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (SQL.FromRow, SQL.ToRow, FromJSON, ToJSON)
+
+type instance Core.Point (NonEmpty EpochSDD) = C.ChainPoint
+
+instance SQL.ToRow (Core.Timed C.ChainPoint EpochSDD) where
+  toRow epochSDD =
+    SQL.toRow (epochSDD ^. Core.event)
+      <> SQL.toRow (epochSDD ^. Core.point)
+
+instance SQL.FromRow (Core.Timed C.ChainPoint EpochSDD) where
+  fromRow = do
+    sdd <- SQL.fromRow
+    point <- SQL.fromRow
+    pure $ Core.Timed point sdd
+
+-- | Metadata used to cerate 'EpochStateIndexer' filenames
+data EpochMetadata = EpochMetadata
+  { metadataBlockNo :: Maybe C.BlockNo
+  , metadataChainpoint :: C.ChainPoint
+  }
+  deriving (Show)
+
+type instance Core.Point EpochSDD = C.ChainPoint
+
+Lens.makeLenses ''EpochSDD
+
+type LedgerStateFileIndexer = Core.FileIndexer EpochMetadata EpochState
+
+type BlockFileIndexer = Core.FileIndexer EpochMetadata (C.BlockInMode C.CardanoMode)
+
+type NonceIndexer = StandardSQLiteIndexer IO EpochNonce
+
+-- As we rarely index anything with this indexer, we don't need catchup
+type SDDIndexer = StandardSQLiteIndexer IO (NonEmpty EpochSDD)
+
+-- | The inner state of the 'EpochStateIndexer'
+data EpochStateIndexerState event = EpochStateIndexerState
+  { _stateEpochStateIndexer :: LedgerStateFileIndexer
+  , _stateBlockIndexer :: BlockFileIndexer
+  , _stateEpochNonceIndexer :: NonceIndexer
+  , _stateEpochSDDIndexer :: SDDIndexer
+  , _stateSnapshots :: [C.ChainPoint]
   }
 
-type instance StorableMonad EpochStateHandle = ExceptT (IndexerError Void) IO
+Lens.makeLenses ''EpochStateIndexerState
 
-data instance StorableEvent EpochStateHandle = EpochStateEvent
-  { epochStateEventLedgerState
-      :: Maybe (O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto)))
-  , epochStateEventEpochNo :: Maybe C.EpochNo
-  , epochStateEventNonce :: Ledger.Nonce
-  , epochStateEventSDD :: Map C.PoolId C.Lovelace
-  , epochStateEventSlotNo :: C.SlotNo
-  , epochStateEventBlockHeaderHash :: C.Hash C.BlockHeader
-  , epochStateEventBlockNo :: C.BlockNo
-  , epochStateEventChainTip :: C.ChainTip
-  -- ^ Actual tip of the chain
-  , epochStateEventIsFirstEventOfEpoch :: Bool
+-- | The configuration of the 'EpochStateIndexer'
+newtype EpochStateIndexerConfig event = EpochStateIndexerConfig
+  { _configGenesisConfig :: C.GenesisConfig
   }
-  deriving (Eq, Show)
 
-type instance StorablePoint EpochStateHandle = C.ChainPoint
+Lens.makeLenses ''EpochStateIndexerConfig
 
-instance HasPoint (StorableEvent EpochStateHandle) C.ChainPoint where
-  getPoint (EpochStateEvent _ _ _ _ s bhh _ _ _) = C.ChainPoint s bhh
+{- | The main type of the epoch state indexer, it contains both the indexers it operates and its
+configuration
+-}
+data EpochStateIndexer event = EpochStateIndexer
+  { _epochStateIndexerState :: EpochStateIndexerState event
+  , _epochStateIndexerConfig :: EpochStateIndexerConfig event
+  }
 
-data instance StorableQuery EpochStateHandle
-  = -- See Note [Active stake pool delegation query]
-    ActiveSDDByEpochNoQuery C.EpochNo
-  | NonceByEpochNoQuery C.EpochNo
-  | LedgerStateAtPointQuery C.ChainPoint
+Lens.makeLenses ''EpochStateIndexer
 
-data instance StorableResult EpochStateHandle
-  = ActiveSDDByEpochNoResult [EpochSDDRow]
-  | NonceByEpochNoResult (Maybe EpochNonceRow)
-  | LedgerStateAtPointResult (Maybe (O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)))
-  deriving (Eq, Show)
+type StandardEpochStateIndexer = EpochStateIndexer (WithDistance (C.BlockInMode C.CardanoMode))
 
-type EpochStateIndex = State EpochStateHandle
+-- | The state maintained by the indexer to decide how to handle incoming events
+data WorkerState = WorkerState
+  { _lastEpochState :: EpochState
+  -- ^ The last computed ledger state
+  , _accessToIndexer
+      :: Con.MVar (EpochStateIndexer (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)))
+  -- ^ allow query to the indexer
+  , _blocksToNextSnapshot :: Word
+  -- ^ Number of blocks until the next snapshot
+  }
 
-toStorableEvent
-  :: O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> C.SlotNo
-  -> C.Hash C.BlockHeader
-  -> C.BlockNo
-  -> C.ChainTip
+Lens.makeLenses ''WorkerState
+
+epochNonceIndexer :: Lens' (EpochStateIndexer event) NonceIndexer
+epochNonceIndexer = epochStateIndexerState . stateEpochNonceIndexer
+
+epochSDDIndexer :: Lens' (EpochStateIndexer event) SDDIndexer
+epochSDDIndexer = epochStateIndexerState . stateEpochSDDIndexer
+
+epochStateIndexer :: Lens' (EpochStateIndexer event) LedgerStateFileIndexer
+epochStateIndexer = epochStateIndexerState . stateEpochStateIndexer
+
+blockIndexer :: Lens' (EpochStateIndexer event) BlockFileIndexer
+blockIndexer = epochStateIndexerState . stateBlockIndexer
+
+genesisConfig :: Lens' (EpochStateIndexer event) C.GenesisConfig
+genesisConfig = epochStateIndexerConfig . configGenesisConfig
+
+snapshots :: Lens' (EpochStateIndexer event) [C.ChainPoint]
+snapshots = epochStateIndexerState . stateSnapshots
+
+extLedgerConfig :: EpochStateIndexer event -> ExtLedgerConfig
+extLedgerConfig = Lens.views genesisConfig CE.mkExtLedgerConfig
+
+initialEpochState :: EpochStateIndexer event -> EpochState
+initialEpochState = Lens.views genesisConfig (flip EpochState 0 . CE.mkInitExtLedgerState)
+
+toEpochNonce :: WithDistance EpochState -> Maybe (WithDistance (Maybe EpochNonce))
+toEpochNonce (WithDistance d epochState) = do
+  let ledgerState = extLedgerState epochState
+  epochNo <- getEpochNo ledgerState
+  pure $ WithDistance d $ Just $ EpochNonce epochNo (getEpochNonce ledgerState) (blockNo epochState)
+
+toEpochSDD :: WithDistance EpochState -> Maybe (WithDistance (Maybe (NonEmpty EpochSDD)))
+toEpochSDD (WithDistance d epochState) = fmap (WithDistance d) $ Just . NonEmpty.nonEmpty $ do
+  let ledgerState = extLedgerState epochState
+  epochNo <- toList $ getEpochNo ledgerState
+  (poolId, lovelace) <- Map.toList $ getStakeMap $ extLedgerState epochState
+  pure $ EpochSDD epochNo poolId lovelace (blockNo epochState)
+
+newtype NodeConfig = NodeConfig
+  { nodeConfig :: FilePath
+  -- ^ node config path
+  }
+
+mkEpochStateIndexer
+  :: (MonadIO n, MonadError Core.IndexerError n)
+  => StandardWorkerConfig IO a b
+  -> NodeConfig
+  -> FilePath
+  -> n
+      ( EpochStateIndexer (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
+      )
+mkEpochStateIndexer workerCfg cfg rootDir = do
+  genesisCfg <- readGenesisFile (nodeConfig cfg)
+  let securityParam' = securityParamConfig workerCfg
+      config = EpochStateIndexerConfig genesisCfg
+      extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
+      configCodec = O.configCodec . O.getExtLedgerCfg $ extLedgerCfg
+  liftIO $ createDirectoryIfMissing True rootDir
+  let epochSDDConfig = workerCfg{logger = BM.appendName "epochSDD" $ logger workerCfg}
+  epochSDDIndexer' <-
+    mkStandardIndexer epochSDDConfig <$> buildEpochSDDIndexer (rootDir </> "epochSDD.db")
+  let epochNonceConfig = workerCfg{logger = BM.appendName "nonce" $ logger workerCfg}
+  epochNonceIndexer' <-
+    mkStandardIndexer epochNonceConfig <$> buildEpochNonceIndexer (rootDir </> "epochNonce.db")
+  epochStateIndexer' <-
+    buildEpochStateIndexer
+      configCodec
+      securityParam'
+      (rootDir </> "epochState")
+  epochBlocksIndexer <-
+    buildBlockIndexer
+      configCodec
+      securityParam'
+      (rootDir </> "epochBlocks")
+  let state =
+        EpochStateIndexerState
+          epochStateIndexer'
+          epochBlocksIndexer
+          epochNonceIndexer'
+          epochSDDIndexer'
+          []
+
+  let indexer = EpochStateIndexer state config
+  pure indexer
+
+data EpochStateWorkerConfig = EpochStateWorkerConfig
+  { indexerConfig :: NodeConfig
+  , epochSnapshotInterval :: Word
+  }
+
+mkEpochStateWorker
+  :: forall m input
+   . (MonadIO m, MonadError Core.IndexerError m)
+  => StandardWorkerConfig IO input (C.BlockInMode C.CardanoMode)
+  -- ^ General configuration of the indexer (mostly for logging purpose)
+  -> EpochStateWorkerConfig
+  -> FilePath
+  -> m
+      ( Core.WorkerIndexer
+          IO
+          (WithDistance input)
+          (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
+          EpochStateIndexer
+      )
+mkEpochStateWorker workerConfig epochStateConfig rootDir = do
+  indexer <- mkEpochStateIndexer workerConfig (indexerConfig epochStateConfig) rootDir
+  workerState <- liftIO $ Con.newMVar indexer
+  lastStable <- Core.lastStablePoint indexer
+  ledgerStateE <- runExceptT $ restoreLedgerState (Just lastStable) indexer
+  epochState <- case ledgerStateE of
+    Left _err -> throwError $ Core.IndexerInternalError "can't restore ledger state"
+    Right res -> pure res
+  let extLedgerCfg = extLedgerConfig indexer
+
+      snapshotInterval = epochSnapshotInterval epochStateConfig
+      initialState = pure $ WorkerState epochState workerState snapshotInterval
+
+      mapOneEvent
+        :: (MonadState WorkerState n, MonadError Core.IndexerError n, MonadIO n)
+        => Maybe (WithDistance input)
+        -> n (Maybe (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)))
+      mapOneEvent Nothing = pure Nothing
+      mapOneEvent (Just (WithDistance d e)) = runMaybeT $ do
+        let applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
+            extract = eventExtractor workerConfig
+            resetBlocksToSnapshot = blocksToNextSnapshot .= snapshotInterval
+        block <- MaybeT $ liftIO $ extract e
+        let newBlockNo = getBlockNo block
+        EpochState currentLedgerState' _block <- Lens.use lastEpochState
+        case applyBlock block currentLedgerState' of
+          Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
+          Right res -> do
+            lastEpochState .= EpochState res newBlockNo
+            blocksToNextSnapshot -= 1
+            snapshotTime <- (== 0) <$> Lens.use blocksToNextSnapshot
+            let isNewEpoch = getEpochNo currentLedgerState' /= getEpochNo res
+                isVolatile = SecurityParam d < securityParamConfig workerConfig
+                snapshotEpoch = (snapshotTime && isVolatile) || isNewEpoch
+            when (snapshotTime || isNewEpoch) resetBlocksToSnapshot
+            if
+              | snapshotEpoch -> pure $ WithDistance d (Just res, block)
+              | isVolatile -> pure $ WithDistance d (Nothing, block)
+              | otherwise -> empty
+
+      processAsEpochState
+        :: ExceptT Core.IndexerError IO WorkerState
+        -> Core.Preprocessor
+            (ExceptT Core.IndexerError IO)
+            C.ChainPoint
+            (WithDistance input)
+            (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
+      processAsEpochState = do
+        Core.preprocessorM $ \case
+          Core.Index x -> pure . Core.Index <$> traverse mapOneEvent x
+          Core.IndexAllDescending xs -> pure . Core.IndexAllDescending <$> traverse (traverse mapOneEvent) xs
+          Core.Rollback p -> do
+            lastIndexerM <- Lens.use accessToIndexer
+            lastIndexer <- liftIO $ Con.readMVar lastIndexerM
+            queryResult <- lift $ runExceptT $ Core.query p Core.EventAtQuery lastIndexer
+            case queryResult of
+              Left (Core.IndexerQueryError err) ->
+                throwError $
+                  Core.IndexerInternalError $
+                    "Can't rollback to the given epoch:" <> Text.pack (show err)
+              Left _err -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch"
+              Right Nothing -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch: no event found"
+              Right (Just res) -> do
+                lastEpochState .= res
+                pure . pure $ Core.Rollback p
+          Core.StableAt p -> pure . pure $ Core.StableAt p
+          Core.Stop -> pure $ pure Core.Stop
+
+  let eventPreprocessing = processAsEpochState initialState <<< Core.withResume lastStable
+  pure $
+    Core.WorkerIndexer workerState $
+      Core.Worker (workerName workerConfig) workerState eventPreprocessing id
+
+deserialiseMetadata :: [Text] -> Maybe EpochMetadata
+deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
+  EpochMetadata
+    <$> parseBlockNo blockNoStr
+    <*> (C.ChainPoint <$> parseSlotNo slotNoStr <*> parseBlockHeaderHash bhhStr)
+  where
+    parseSlotNo = fmap C.SlotNo . Text.readMaybe . Text.unpack
+    parseBlockHeaderHash bhhStr' = do
+      bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 bhhStr'
+      either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
+    parseBlockNo "" = pure Nothing
+    parseBlockNo bhh = Just . C.BlockNo <$> Text.readMaybe (Text.unpack bhh)
+deserialiseMetadata _ = Nothing
+
+buildEpochStateIndexer
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> SecurityParam
-  -> Bool
-  -- ^ Is the first event of the current epoch
-  -> StorableEvent EpochStateHandle
-toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEventOfEpoch = do
-  let doesStoreLedgerState =
-        isBlockRollbackable securityParam bn (getBlockNoFromChainTip chainTip)
-          || isBlockRollbackable securityParam (bn + 1) (getBlockNoFromChainTip chainTip)
-          || isFirstEventOfEpoch
-  EpochStateEvent
-    (if doesStoreLedgerState then Just extLedgerState else Nothing)
-    (getEpochNo extLedgerState)
-    (getEpochNonce extLedgerState)
-    (getStakeMap extLedgerState)
-    slotNo
-    bhh
-    bn
-    chainTip
-    isFirstEventOfEpoch
+  -> FilePath
+  -> m (Core.FileIndexer EpochMetadata EpochState)
+buildEpochStateIndexer codecConfig securityParam' path = do
+  let serialiseLedgerState =
+        CBOR.toStrictByteString
+          . O.encodeExtLedgerState
+            (O.encodeDisk codecConfig)
+            (O.encodeDisk codecConfig)
+            (O.encodeDisk codecConfig)
+          . extLedgerState
+
+      deserialiseLedgerState (EpochMetadata Nothing _) = const (Right Nothing)
+      deserialiseLedgerState (EpochMetadata (Just blockNo') _) =
+        bimap
+          (Text.pack . show)
+          (Just . flip EpochState blockNo' . snd)
+          . CBOR.deserialiseFromBytes
+            ( O.decodeExtLedgerState
+                (O.decodeDisk codecConfig)
+                (O.decodeDisk codecConfig)
+                (O.decodeDisk codecConfig)
+            )
+          . BS.fromStrict
+      blockNoAsText = maybe "" (Text.pack . show . (\(C.BlockNo b) -> b) . blockNo)
+      metadataAsText (Core.Timed C.ChainPointAtGenesis evt) = [blockNoAsText evt]
+      metadataAsText (Core.Timed chainPoint evt) =
+        let chainPointTexts = case chainPoint of
+              C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
+                [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
+         in blockNoAsText evt : chainPointTexts
+      immutableEpochs
+        :: Core.Timed (Core.Point EpochState) (Maybe EpochState)
+        -> [Core.EventInfo EpochMetadata]
+        -> [Core.EventInfo EpochMetadata]
+      immutableEpochs (Core.Timed _ Nothing) _eventsInfo = []
+      immutableEpochs (Core.Timed _ (Just event)) eventsInfo = do
+        let sortedEvents = sortOn (metadataBlockNo . Core.fileMetadata) eventsInfo
+            lastBlockNo = blockNo event
+            blockDepth = (\(C.BlockNo b) -> b) . (lastBlockNo -)
+            isImmutable =
+              maybe True ((> securityParam') . fromIntegral . blockDepth)
+                . metadataBlockNo
+                . Core.fileMetadata
+            immutableEvents = takeWhile isImmutable sortedEvents
+        case immutableEvents of
+          [] -> []
+          _ -> init immutableEvents
+  Core.mkFileIndexer
+    path
+    (Just 180_000_000) -- Wait 180s for files to finish writing before terminating
+    (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
+    (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
+    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState deserialisePoint)
+
+serialisePoint :: C.ChainPoint -> BS.ByteString
+serialisePoint =
+  let pointEncoding :: C.ChainPoint -> CBOR.Encoding
+      pointEncoding C.ChainPointAtGenesis = CBOR.encodeBool False
+      pointEncoding (C.ChainPoint (C.SlotNo s) (C.HeaderHash bhh)) =
+        CBOR.encodeBool True <> CBOR.encodeWord64 s <> CBOR.encodeBytes (BS.Short.fromShort bhh)
+   in CBOR.toStrictByteString . pointEncoding
+
+deserialisePoint :: BS.ByteString -> Either Text C.ChainPoint
+deserialisePoint bs =
+  let pointDecoding = do
+        b <- CBOR.decodeBool
+        if b
+          then do
+            s <- C.SlotNo <$> CBOR.decodeWord64
+            bhh <- C.HeaderHash . BS.Short.toShort <$> CBOR.decodeBytes
+            pure $ C.ChainPoint s bhh
+          else pure C.ChainPointAtGenesis
+   in case CBOR.deserialiseFromBytes pointDecoding . BS.fromStrict $ bs of
+        Right (remain, res) | BS.Lazy.null remain -> Right res
+        _other -> Left "Can't read chainpoint"
+
+serialiseBlock
+  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
+  -> C.BlockInMode C.CardanoMode
+  -> BS.ByteString
+serialiseBlock codecConfig blockToNode =
+  CBOR.toStrictByteString . O.encodeNodeToClient codecConfig blockToNode . C.toConsensusBlock
+
+deserialiseBlock
+  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
+  -> EpochMetadata
+  -> BS.ByteString
+  -> Either Text (Maybe (C.BlockInMode C.CardanoMode))
+deserialiseBlock _codecConfig _blockToNode (EpochMetadata Nothing _) = const (Right Nothing)
+deserialiseBlock codecConfig blockToNode _metadata =
+  bimap
+    (Text.pack . show)
+    (Just . C.fromConsensusBlock C.CardanoMode . snd)
+    . CBOR.deserialiseFromBytes (O.decodeNodeToClient codecConfig blockToNode)
+    . BS.fromStrict
+
+buildBlockIndexer
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+  -> SecurityParam
+  -> FilePath
+  -> m (Core.FileIndexer EpochMetadata (C.BlockInMode C.CardanoMode))
+buildBlockIndexer codecConfig securityParam' path = do
+  let blockNoAsText = maybe "" (Text.pack . show . (\(C.BlockNo b) -> b) . getBlockNo)
+      metadataAsText :: Core.Timed C.ChainPoint (Maybe (C.BlockInMode C.CardanoMode)) -> [Text]
+      metadataAsText (Core.Timed C.ChainPointAtGenesis evt) = [blockNoAsText evt]
+      metadataAsText (Core.Timed chainPoint evt) =
+        let chainPointTexts = case chainPoint of
+              C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
+                [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
+         in blockNoAsText evt : chainPointTexts
+      immutableBlocks
+        :: Core.Timed (Core.Point EpochState) (Maybe (C.BlockInMode C.CardanoMode))
+        -> [Core.EventInfo EpochMetadata]
+        -> [Core.EventInfo EpochMetadata]
+      immutableBlocks (Core.Timed _ Nothing) _eventsInfo = []
+      immutableBlocks (Core.Timed _ (Just event)) eventsInfo = do
+        let sortedEvents = sortOn (metadataBlockNo . Core.fileMetadata) eventsInfo
+            lastBlockNo = getBlockNo event
+            blockDepth = (\(C.BlockNo b) -> b) . (lastBlockNo -)
+            isImmutable =
+              maybe True ((> securityParam') . fromIntegral . blockDepth)
+                . metadataBlockNo
+                . Core.fileMetadata
+            immutableEvents = takeWhile isImmutable sortedEvents
+        case immutableEvents of
+          [] -> []
+          _ -> init immutableEvents
+      blockNodeToNodeVersionM = do
+        nodeToClientVersion <- snd $ O.latestReleasedNodeVersion (Proxy @(O.CardanoBlock O.StandardCrypto))
+        Map.lookup nodeToClientVersion $
+          O.supportedNodeToClientVersions (Proxy @(O.CardanoBlock O.StandardCrypto))
+  blockNodeToNodeVersion <- case blockNodeToNodeVersionM of
+    Nothing -> throwError $ Core.IndexerInternalError "Can't finde block to Node version"
+    Just v -> pure v
+  Core.mkFileIndexer
+    path
+    (Just 60_000_000) -- Wait 60s for files to finish writing before terminating
+    (Core.FileStorageConfig False immutableBlocks (comparing metadataBlockNo))
+    ( Core.FileBuilder
+        "block"
+        "cbor"
+        metadataAsText
+        (serialiseBlock codecConfig blockNodeToNodeVersion)
+        serialisePoint
+    )
+    ( Core.EventBuilder
+        deserialiseMetadata
+        metadataChainpoint
+        (deserialiseBlock codecConfig blockNodeToNodeVersion)
+        deserialisePoint
+    )
+
+buildEpochSDDIndexer
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => FilePath
+  -> m (Core.SQLiteIndexer (NonEmpty EpochSDD))
+buildEpochSDDIndexer path = do
+  let createSDD =
+        [sql|CREATE TABLE IF NOT EXISTS epoch_sdd
+              ( epochNo INT NOT NULL
+              , poolId BLOB NOT NULL
+              , lovelace INT NOT NULL
+              , blockNo INT NOT NULL
+              , slotNo INT NOT NULL
+              , blockHeaderHash BLOB NOT NULL
+              )|]
+      sddInsertQuery =
+        [sql|INSERT INTO epoch_sdd
+                ( epochNo
+                , poolId
+                , lovelace
+                , blockNo
+                , slotNo
+                , blockHeaderHash
+                ) VALUES (?, ?, ?, ?, ?, ?)|]
+      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) sddInsertQuery]
+  Sync.mkSyncedSqliteIndexer
+    path
+    [createSDD]
+    [insertEvent]
+    [Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo]
+
+buildEpochNonceIndexer
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => FilePath
+  -> m (Core.SQLiteIndexer EpochNonce)
+buildEpochNonceIndexer path = do
+  let createNonce =
+        [sql|CREATE TABLE IF NOT EXISTS epoch_nonce
+              ( epochNo INT NOT NULL
+              , nonce BLOB NOT NULL
+              , blockNo INT NOT NULL
+              , slotNo INT NOT NULL
+              , blockHeaderHash BLOB NOT NULL
+              )|]
+      nonceInsertQuery =
+        [sql|INSERT INTO epoch_nonce
+                ( epochNo
+                , nonce
+                , blockNo
+                , slotNo
+                , blockHeaderHash
+                ) VALUES (?, ?, ?, ?, ?)|]
+      insertEvent = [Core.SQLInsertPlan pure nonceInsertQuery]
+  Sync.mkSyncedSqliteIndexer
+    path
+    [createNonce]
+    [insertEvent]
+    [Core.SQLRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo]
+
+getLatestNonEmpty
+  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m)
+  => Maybe C.ChainPoint
+  -> EpochState
+  -> LedgerStateFileIndexer
+  -> m (Core.Timed C.ChainPoint EpochState)
+getLatestNonEmpty p firstEpochState indexer = do
+  let query = maybe Core.queryLatest Core.query
+      getLatest [] = Core.Timed Core.genesis firstEpochState
+      getLatest (x : _) = x
+  result <- runExceptT $ query p Core.latestEvent indexer
+
+  case result of
+    Right xs -> pure $ getLatest xs
+    Left (Core.AheadOfLastSync partialResult) -> case partialResult of
+      Nothing ->
+        throwError $
+          Core.IndexerQueryError $
+            "Cant resolve last epochState: No previous result: " <> Text.pack (show $ pretty p)
+      Just xs -> pure $ getLatest xs
+    Left (Core.IndexerQueryError err) ->
+      throwError $
+        Core.IndexerQueryError $
+          "Cant resolve last epochState: " <> Text.pack (show err)
+    Left Core.NotStoredAnymore ->
+      throwError $
+        Core.IndexerQueryError
+          "Cant resolve last epochState: Not stored anymore"
+    Left (Core.SlotNoBoundsInvalid _) ->
+      throwError $ Core.IndexerQueryError "Invalid bounds"
+
+getBlocksFrom
+  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m)
+  => C.ChainPoint
+  -> Maybe C.ChainPoint
+  -> BlockFileIndexer
+  -> m [C.BlockInMode C.CardanoMode]
+getBlocksFrom from to indexer = do
+  let query = maybe Core.queryLatest Core.query
+      extractResult = fmap $ Lens.view Core.event
+  result <- runExceptT $ query to (Core.EventsFromQuery from) indexer
+  case result of
+    Right xs -> pure $ extractResult xs
+    Left (Core.AheadOfLastSync partialResult) -> case partialResult of
+      Nothing -> do
+        lastSync <- Core.lastSyncPoint indexer
+        throwError $
+          Core.IndexerQueryError $
+            "Cant resolve last blocks: No result - ahead of sync - No previous result: "
+              <> Text.pack (show $ pretty to)
+              <> " head is: "
+              <> Text.pack (show $ pretty lastSync)
+      Just xs -> do
+        lastSync <- Core.lastSyncPoint indexer
+        throwError $
+          Core.IndexerQueryError $
+            "Cant resolve last blocks: No result - ahead of sync - Latest results: "
+              <> Text.pack (show (Lens.view Core.point <$> xs))
+              <> " Head is: "
+              <> Text.pack (show $ pretty lastSync)
+              <> " Expecting: "
+              <> Text.pack (show to)
+    Left (Core.IndexerQueryError err) ->
+      throwError $
+        Core.IndexerQueryError $
+          "Cant resolve last blocks: " <> Text.pack (show err)
+    Left Core.NotStoredAnymore ->
+      throwError $
+        Core.IndexerQueryError
+          "Cant resolve last blocks: Not stored anymore"
+    Left (Core.SlotNoBoundsInvalid _) ->
+      throwError $ Core.IndexerQueryError "Invalid bounds"
+
+restoreLedgerState
+  :: ( MonadIO m
+     , MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m
+     , Core.Point event ~ C.ChainPoint
+     )
+  => Maybe C.ChainPoint
+  -> EpochStateIndexer event
+  -> m EpochState
+restoreLedgerState p indexer = do
+  let applyBlocksUpToGivenSlot epochStatePoint closestLedgerState = do
+        blocks <- getBlocksFrom epochStatePoint p (indexer ^. blockIndexer)
+        liftIO $
+          foldM
+            (buildNextEpochState $ extLedgerConfig indexer)
+            closestLedgerState
+            blocks
+  Core.Timed epochStatePoint closestLedgerState <-
+    getLatestNonEmpty p (initialEpochState indexer) (indexer ^. epochStateIndexer)
+  mlast <- runExceptT $ Core.lastSyncPoint indexer
+  last' <- either (const $ throwError $ Core.IndexerQueryError "can't find lastpoint") pure mlast
+  if epochStatePoint == fromMaybe last' p
+    then pure closestLedgerState
+    else applyBlocksUpToGivenSlot epochStatePoint closestLedgerState
+
+instance
+  Core.IsIndex
+    (ExceptT Core.IndexerError IO)
+    (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
+    EpochStateIndexer
+  where
+  index (Core.Timed point Nothing) indexer =
+    Core.indexVia blockIndexer (Core.Timed point Nothing)
+      <=< Core.indexVia epochStateIndexer (Core.Timed point Nothing)
+      <=< Core.indexVia epochSDDIndexer (Core.Timed point Nothing)
+      <=< Core.indexVia epochNonceIndexer (Core.Timed point Nothing)
+      $ indexer
+  index (Core.Timed point (Just (WithDistance d (Nothing, block)))) indexer =
+    Core.indexVia blockIndexer (Core.Timed point (Just block))
+      <=< Core.indexVia epochStateIndexer (Core.Timed point Nothing)
+      <=< Core.indexVia epochSDDIndexer (Core.Timed point (Just (WithDistance d Nothing)))
+      <=< Core.indexVia epochNonceIndexer (Core.Timed point (Just (WithDistance d Nothing)))
+      $ indexer
+  index (Core.Timed point (Just (WithDistance d (Just ledgerState, block)))) indexer = do
+    let blockNo' = getBlockNo block
+        epochState = EpochState ledgerState blockNo'
+        epochStateWithDistance = WithDistance d epochState
+        addSnapshot = fmap (snapshots %~ (point :))
+    addSnapshot
+      $ Core.indexVia blockIndexer (Core.Timed point (Just block))
+        <=< Core.indexVia epochStateIndexer (Core.Timed point $ Just epochState)
+        <=< Core.indexVia epochSDDIndexer (Core.Timed point $ toEpochSDD epochStateWithDistance)
+        <=< Core.indexVia epochNonceIndexer (Core.Timed point $ toEpochNonce epochStateWithDistance)
+      $ indexer
+  rollback p =
+    epochStateIndexer (Core.rollback p)
+      <=< blockIndexer (Core.rollback p)
+      <=< epochSDDIndexer (Core.rollback p)
+      <=< epochNonceIndexer (Core.rollback p)
+
+  setLastStablePoint p indexer =
+    let (volatile, immutable) = span (> p) $ indexer ^. snapshots
+        p' = listToMaybe immutable
+        indexer' = indexer & snapshots .~ volatile
+        setStablePointOnIndexers point =
+          epochStateIndexer (Core.setLastStablePoint point)
+            <=< blockIndexer (Core.setLastStablePoint point)
+            <=< epochSDDIndexer (Core.setLastStablePoint point)
+            <=< epochNonceIndexer (Core.setLastStablePoint point)
+     in maybe pure setStablePointOnIndexers p' indexer'
+
+instance
+  (MonadIO m, Core.Point event ~ C.ChainPoint)
+  => Core.IsSync m event EpochStateIndexer
+  where
+  lastSyncPoint indexer = do
+    lastBlock <- Core.lastSyncPoint $ indexer ^. blockIndexer
+    lastEpoch <- Core.lastSyncPoint $ indexer ^. epochStateIndexer
+    lastSDD <- Core.lastSyncPoint $ indexer ^. epochSDDIndexer
+    lastNonce <- Core.lastSyncPoint $ indexer ^. epochNonceIndexer
+    pure $ minimum [lastBlock, lastEpoch, lastSDD, lastNonce]
+  lastStablePoint indexer = Core.lastStablePoint $ indexer ^. epochStateIndexer
+
+instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
+  close indexer = do
+    Core.close $ indexer ^. epochStateIndexer
+    Core.close $ indexer ^. blockIndexer
+    Core.close $ indexer ^. epochSDDIndexer
+    Core.close $ indexer ^. epochNonceIndexer
+
+newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
+  deriving newtype (FromJSON, ToJSON)
+
+type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
+
+instance
+  (MonadIO m, MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m)
+  => Core.Queryable m event ActiveSDDByEpochNoQuery Core.SQLiteIndexer
+  where
+  query = do
+    let epochSDDQuery =
+          [sql|SELECT epochNo, poolId, lovelace, blockNo, slotNo, blockHeaderHash
+            FROM epoch_sdd
+            WHERE epochNo == :epochNo
+          |]
+        -- See Note [Active stake pool delegation query] for why we do 'epochNo - 2' for the query.
+        getParams _ (ActiveSDDByEpochNoQuery epochNo) = [":epochNo" SQL.:= epochNo - 2]
+    Core.querySyncedOnlySQLiteIndexerWith
+      getParams
+      (const epochSDDQuery)
+      (const id)
+
+instance
+  ( MonadIO m
+  , MonadError (Core.QueryError ActiveSDDByEpochNoQuery) m
+  , Core.Point event ~ C.ChainPoint
+  )
+  => Core.Queryable m event ActiveSDDByEpochNoQuery EpochStateIndexer
+  where
+  query = Core.queryVia epochSDDIndexer
+
+instance
+  ( MonadIO m
+  , MonadError (Core.QueryError (Core.EventAtQuery EpochState)) m
+  , Core.Point event ~ C.ChainPoint
+  )
+  => Core.Queryable m event (Core.EventAtQuery EpochState) EpochStateIndexer
+  where
+  query cp _ = fmap Just . restoreLedgerState (Just cp)
+
+newtype NonceByEpochNoQuery = NonceByEpochNoQuery C.EpochNo
+  deriving newtype (FromJSON, ToJSON)
+
+type instance Core.Result NonceByEpochNoQuery = Maybe (Core.Timed C.ChainPoint EpochNonce)
+
+instance
+  (MonadIO m, MonadError (Core.QueryError NonceByEpochNoQuery) m)
+  => Core.Queryable m event NonceByEpochNoQuery Core.SQLiteIndexer
+  where
+  query = do
+    let epochSDDQuery =
+          [sql|SELECT epochNo, nonce, blockNo, slotNo, blockHeaderHash
+                 FROM epoch_nonce
+                 WHERE epochNo = :epochNo
+              |]
+        getParams _ (NonceByEpochNoQuery epochNo) = [":epochNo" SQL.:= epochNo]
+    Core.querySyncedOnlySQLiteIndexerWith
+      getParams
+      (const epochSDDQuery)
+      (const listToMaybe)
+
+instance
+  ( MonadIO m
+  , MonadError (Core.QueryError NonceByEpochNoQuery) m
+  , Core.Point event ~ C.ChainPoint
+  )
+  => Core.Queryable m event NonceByEpochNoQuery EpochStateIndexer
+  where
+  query = Core.queryVia epochNonceIndexer
 
 {- | From LedgerState, get epoch stake pool delegation: a mapping of pool ID to amount staked in
  lovelace. We do this by getting the 'ssStakeMark stake snapshot and then use 'ssDelegations' and
@@ -226,7 +882,7 @@ toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEvent
 getStakeMap
   :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
   -> Map C.PoolId C.Lovelace
-getStakeMap extLedgerState = case O.ledgerState extLedgerState of
+getStakeMap extLedgerState' = case O.ledgerState extLedgerState' of
   O.LedgerStateByron _ -> mempty
   O.LedgerStateShelley st -> getStakeMapFromShelleyBlock st
   O.LedgerStateAllegra st -> getStakeMapFromShelleyBlock st
@@ -237,100 +893,47 @@ getStakeMap extLedgerState = case O.ledgerState extLedgerState of
   where
     getStakeMapFromShelleyBlock
       :: forall proto era c
-       . (c ~ Ledger.EraCrypto era, c ~ O.StandardCrypto)
+       . (c ~ O.EraCrypto era, c ~ O.StandardCrypto)
       => O.LedgerState (O.ShelleyBlock proto era)
       -> Map C.PoolId C.Lovelace
-    getStakeMapFromShelleyBlock st = sdd
+    getStakeMapFromShelleyBlock st = sdd'
       where
-        nes = O.shelleyLedgerState st :: Ledger.NewEpochState era
+        newEpochState :: Ledger.NewEpochState era
+        newEpochState = O.shelleyLedgerState st
 
-        stakeSnapshot = Ledger.ssStakeMark . Ledger.esSnapshots . Ledger.nesEs $ nes :: Ledger.SnapShot c
+        stakeSnapshot :: Ledger.SnapShot c
+        stakeSnapshot = Ledger.ssStakeMark . Ledger.esSnapshots . Ledger.nesEs $ newEpochState
 
-        stakes =
-          Ledger.unStake $
-            Ledger.ssStake stakeSnapshot
+        stakes
+          :: VMap VMap.VB VMap.VP (Ledger.Credential 'Ledger.Staking c) (Ledger.CompactForm Ledger.Coin)
+        stakes = Ledger.unStake $ Ledger.ssStake stakeSnapshot
 
         delegations
-          :: VMap.VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
+          :: VMap VMap.VB VMap.VB (Ledger.Credential 'Ledger.Staking c) (Ledger.KeyHash 'Ledger.StakePool c)
         delegations = Ledger.ssDelegations stakeSnapshot
 
-        sdd :: Map C.PoolId C.Lovelace
-        sdd =
+        sdd' :: Map C.PoolId C.Lovelace
+        sdd' =
           Map.fromListWith (+) $
-            map swap $
-              catMaybes $
-                VMap.elems $
-                  VMap.mapWithKey
-                    ( \cred spkHash ->
-                        ( \c ->
-                            ( C.Lovelace $ coerce $ Ledger.fromCompact c
-                            , C.StakePoolKeyHash spkHash
-                            )
-                        )
-                          <$> VMap.lookup cred stakes
-                    )
-                    delegations
-
-getEpochNo
-  :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
-  -> Maybe EpochNo
-getEpochNo extLedgerState = case O.ledgerState extLedgerState of
-  O.LedgerStateByron _st -> Nothing
-  O.LedgerStateShelley st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateAllegra st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateMary st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateAlonzo st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateConway st -> getEpochNoFromShelleyBlock st
-  where
-    getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
-
-data EpochSDDRow = EpochSDDRow
-  { epochSDDRowEpochNo :: !C.EpochNo
-  , epochSDDRowPoolId :: !C.PoolId
-  , epochSDDRowLovelace :: !C.Lovelace
-  , epochSDDRowSlotNo :: !C.SlotNo
-  , epochSDDRowBlockHeaderHash :: !(C.Hash C.BlockHeader)
-  , epochSDDRowBlockNo :: !C.BlockNo
-  }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
-
-instance FromJSON EpochSDDRow where
-  parseJSON (Object v) =
-    EpochSDDRow
-      <$> (C.EpochNo <$> v .: "epochNo")
-      <*> v .: "poolId"
-      <*> v .: "lovelace"
-      <*> (C.SlotNo <$> v .: "slotNo")
-      <*> v .: "blockHeaderHash"
-      <*> (C.BlockNo <$> v .: "blockNo")
-  parseJSON _ = mempty
-
-instance ToJSON EpochSDDRow where
-  toJSON
-    ( EpochSDDRow
-        (C.EpochNo epochNo)
-        poolId
-        lovelace
-        (C.SlotNo slotNo)
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      object
-        [ "epochNo" .= epochNo
-        , "poolId" .= poolId
-        , "lovelace" .= lovelace
-        , "slotNo" .= slotNo
-        , "blockHeaderHash" .= blockHeaderHash
-        , "blockNo" .= blockNo
-        ]
+            catMaybes $
+              VMap.elems $
+                VMap.mapWithKey
+                  ( \cred spkHash ->
+                      ( \c ->
+                          ( C.StakePoolKeyHash spkHash
+                          , C.Lovelace $ coerce $ Ledger.fromCompact c
+                          )
+                      )
+                        <$> VMap.lookup cred stakes
+                  )
+                  delegations
 
 {- | Get Nonce per epoch given an extended ledger state. The Nonce is only available starting at
  Shelley era. Byron era has the neutral nonce.
 -}
 getEpochNonce :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto) -> Ledger.Nonce
-getEpochNonce extLedgerState =
-  case O.headerStateChainDep (O.headerState extLedgerState) of
+getEpochNonce extLedgerState' =
+  case O.headerStateChainDep (O.headerState extLedgerState') of
     O.ChainDepStateByron _ -> Ledger.NeutralNonce
     O.ChainDepStateShelley st -> extractNonce st
     O.ChainDepStateAllegra st -> extractNonce st
@@ -346,461 +949,44 @@ getEpochNonce extLedgerState =
     extractNoncePraos :: O.PraosState c -> Ledger.Nonce
     extractNoncePraos = O.praosStateEpochNonce
 
-data EpochNonceRow = EpochNonceRow
-  { epochNonceRowEpochNo :: !C.EpochNo
-  , epochNonceRowNonce :: !Ledger.Nonce
-  , epochNonceRowSlotNo :: !C.SlotNo
-  , epochNonceRowBlockHeaderHash :: !(C.Hash C.BlockHeader)
-  , epochNonceRowBlockNo :: !C.BlockNo
-  }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
-
-instance FromJSON EpochNonceRow where
-  parseJSON (Object v) =
-    EpochNonceRow
-      <$> (C.EpochNo <$> v .: "epochNo")
-      <*> (Ledger.Nonce <$> v .: "nonce")
-      <*> (C.SlotNo <$> v .: "slotNo")
-      <*> v .: "blockHeaderHash"
-      <*> (C.BlockNo <$> v .: "blockNo")
-  parseJSON _ = mempty
-
-instance ToJSON EpochNonceRow where
-  toJSON
-    ( EpochNonceRow
-        (C.EpochNo epochNo)
-        nonce
-        (C.SlotNo slotNo)
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      let nonceValue = case nonce of
-            Ledger.NeutralNonce -> Nothing
-            Ledger.Nonce n -> Just n
-       in object
-            [ "epochNo" .= epochNo
-            , "nonce" .= nonceValue
-            , "slotNo" .= slotNo
-            , "blockHeaderHash" .= blockHeaderHash
-            , "blockNo" .= blockNo
-            ]
-
-data LedgerStateFileMetadata = LedgerStateFileMetadata
-  { lsfMetaSlotNo :: !C.SlotNo
-  , lsfMetaBlockHeaderHash :: !(C.Hash C.BlockHeader)
-  , lsfMetaBlockNo :: !C.BlockNo
-  }
-  deriving (Show)
-
-instance Buffered EpochStateHandle where
-  -- We should only store on disk SDD from the last slot of each epoch.
-  persistToStorage
-    :: (Foldable f)
-    => f (StorableEvent EpochStateHandle)
-    -> EpochStateHandle
-    -> StorableMonad EpochStateHandle EpochStateHandle
-  persistToStorage events h@(EpochStateHandle topLevelConfig c ledgerStateDirPath securityParam _) =
-    liftSQLError CantInsertEvent $ do
-      let eventsList = toList events
-
-      SQL.withTransaction c $ do
-        forM_ (concatMap eventToEpochSDDRows $ filter epochStateEventIsFirstEventOfEpoch eventsList) $ \row ->
-          SQL.execute
-            c
-            [sql|INSERT INTO epoch_sdd
-                    ( epochNo
-                    , poolId
-                    , lovelace
-                    , slotNo
-                    , blockHeaderHash
-                    , blockNo
-                    ) VALUES (?, ?, ?, ?, ?, ?)|]
-            row
-
-        forM_ (mapMaybe eventToEpochNonceRow $ filter epochStateEventIsFirstEventOfEpoch eventsList) $ \row ->
-          SQL.execute
-            c
-            [sql|INSERT INTO epoch_nonce
-                    ( epochNo
-                    , nonce
-                    , slotNo
-                    , blockHeaderHash
-                    , blockNo
-                    ) VALUES (?, ?, ?, ?, ?)|]
-            row
-
-      -- We store the LedgerState if one of following conditions hold:
-      --   * the LedgerState cannot be rollbacked and is the last of an epoch
-      --   * the LedgerState can be rollbacked
-      let writeLedgerState ledgerState (C.SlotNo slotNo) blockHeaderHash (C.BlockNo blockNo) = do
-            let fname =
-                  ledgerStateDirPath
-                    </> "ledgerState_"
-                      <> show slotNo
-                      <> "_"
-                      <> Text.unpack (C.serialiseToRawBytesHexText blockHeaderHash)
-                      <> "_"
-                      <> show blockNo
-                      <> ".bin"
-            -- TODO We should delete the file is the write operation was interrumpted by the
-            -- user. Tried using something like `onException`, but it doesn't run the cleanup
-            -- function. Not sure how to do the cleanup here without restoring doing it outside
-            -- the thread where this indexer is running.
-            let codecConfig = O.configCodec topLevelConfig
-            BS.writeFile fname $
-              CBOR.toLazyByteString $
-                O.encodeExtLedgerState
-                  (O.encodeDisk codecConfig)
-                  (O.encodeDisk codecConfig)
-                  (O.encodeDisk codecConfig)
-                  ledgerState
-      forM_ eventsList $
-        \( EpochStateEvent
-            maybeLedgerState
-            maybeEpochNo
-            _
-            _
-            slotNo
-            blockHeaderHash
-            blockNo
-            chainTip
-            isFirstEventOfEpoch
-          ) -> do
-            case (maybeEpochNo, maybeLedgerState) of
-              (Just _, Just ledgerState) -> do
-                let isRollbackable =
-                      isBlockRollbackable securityParam blockNo (getBlockNoFromChainTip chainTip)
-                    isLastImmutableBeforeRollbackable =
-                      isBlockRollbackable securityParam (blockNo + 1) (getBlockNoFromChainTip chainTip)
-                when (isRollbackable || isLastImmutableBeforeRollbackable || isFirstEventOfEpoch) $ do
-                  writeLedgerState
-                    ledgerState
-                    slotNo
-                    blockHeaderHash
-                    blockNo
-              -- We don't store any 'LedgerState' if the era doesn't have epochs (Byron era) or if
-              -- we don't have access to the 'LedgerState'.
-              _noLedgerStateOrEpochNo -> pure ()
-
-      -- Remove all immutable LedgerStates from the filesystem expect the most recent immutable
-      -- one which is from the first slot of latest epoch.
-      -- A 'LedgerState' is considered immutable if its 'blockNo' is '< latestBlockNo - securityParam'.
-      case NE.nonEmpty eventsList of
-        Nothing -> pure ()
-        Just nonEmptyEvents -> do
-          let chainTip =
-                NE.head
-                  $ NE.sortWith
-                    ( \case
-                        C.ChainTipAtGenesis -> Down Nothing
-                        C.ChainTip _ _ bn -> Down (Just bn)
-                    )
-                  $ fmap epochStateEventChainTip nonEmptyEvents
-
-          ledgerStateFilePaths <-
-            mapMaybe (\fp -> fmap (fp,) $ readLedgerStateFileMetadata fp)
-              <$> listDirectory ledgerStateDirPath
-
-          -- Delete all immutable LedgerStates expect the latest one
-          let immutableLedgerStateFilePaths =
-                filter
-                  ( \(_, lsfm) ->
-                      not $
-                        isBlockRollbackable
-                          securityParam
-                          (lsfMetaBlockNo lsfm)
-                          (getBlockNoFromChainTip chainTip)
-                  )
-                  ledgerStateFilePaths
-          case NE.nonEmpty immutableLedgerStateFilePaths of
-            Nothing -> pure ()
-            Just nonEmptyLedgerStateFilePaths -> do
-              let annotatedLedgerStateFilePaths =
-                    fmap
-                      ( \(fp, lsfm@LedgerStateFileMetadata{lsfMetaBlockNo}) ->
-                          ( fp
-                          , lsfm
-                          , not $ isBlockRollbackable securityParam lsfMetaBlockNo (getBlockNoFromChainTip chainTip)
-                          )
-                      )
-                      nonEmptyLedgerStateFilePaths
-                  oldImmutableLedgerStateFilePaths =
-                    fmap (\(fp, _, _) -> fp) $
-                      filter (\(_, _, isImmutableBlock) -> isImmutableBlock) $
-                        NE.tail $
-                          NE.sortWith
-                            ( \(_, lsfm, isImmutableBlock) ->
-                                Down (lsfMetaBlockNo lsfm, isImmutableBlock)
-                            )
-                            annotatedLedgerStateFilePaths
-              forM_ oldImmutableLedgerStateFilePaths $
-                \fp -> removeFile $ ledgerStateDirPath </> fp
-
-      pure h
-
-  -- \| Buffering is not in use in this indexer and we don't need to retrieve stored events in our
-  -- implementation. Therefore, this function returns an empty list.
-  getStoredEvents
-    :: EpochStateHandle
-    -> StorableMonad EpochStateHandle [StorableEvent EpochStateHandle]
-  getStoredEvents EpochStateHandle{} = liftSQLError CantQueryIndexer $ pure []
-
-eventToEpochSDDRows
-  :: StorableEvent EpochStateHandle
-  -> [EpochSDDRow]
-eventToEpochSDDRows (EpochStateEvent _ maybeEpochNo _ m slotNo blockHeaderHash blockNo _ _) =
-  mapMaybe
-    ( \(keyHash, lovelace) ->
-        fmap
-          ( \epochNo ->
-              EpochSDDRow
-                epochNo
-                keyHash
-                lovelace
-                slotNo
-                blockHeaderHash
-                blockNo
-          )
-          maybeEpochNo
-    )
-    $ Map.toList m
-
-eventToEpochNonceRow
-  :: StorableEvent EpochStateHandle
-  -> Maybe EpochNonceRow
-eventToEpochNonceRow (EpochStateEvent _ maybeEpochNo nonce _ slotNo blockHeaderHash blockNo _ _) =
-  fmap
-    ( \epochNo ->
-        EpochNonceRow
-          epochNo
-          nonce
-          slotNo
-          blockHeaderHash
-          blockNo
-    )
-    maybeEpochNo
-
-instance Queryable EpochStateHandle where
-  queryStorage
-    :: (Foldable f)
-    => f (StorableEvent EpochStateHandle)
-    -> EpochStateHandle
-    -> StorableQuery EpochStateHandle
-    -> StorableMonad EpochStateHandle (StorableResult EpochStateHandle)
-  queryStorage events (EpochStateHandle{_epochStateHandleConnection = c}) (ActiveSDDByEpochNoQuery epochNo) =
-    liftSQLError CantQueryIndexer $ do
-      -- See Note [Active stake pool delegation query] for why we do 'epochNo - 2' for the query.
-      case List.find (\e -> epochStateEventEpochNo e == Just (epochNo - 2)) (toList events) of
-        Just e ->
-          pure $ ActiveSDDByEpochNoResult $ eventToEpochSDDRows e
-        Nothing -> do
-          res :: [EpochSDDRow] <-
-            SQL.query
-              c
-              [sql|SELECT epochNo, poolId, lovelace, slotNo, blockHeaderHash, blockNo
-                     FROM epoch_sdd
-                     WHERE epochNo = ?
-                  |]
-              (SQL.Only $ epochNo - 2)
-          pure $ ActiveSDDByEpochNoResult res
-  queryStorage events (EpochStateHandle{_epochStateHandleConnection = c}) (NonceByEpochNoQuery epochNo) =
-    liftSQLError CantQueryIndexer $ do
-      case List.find (\e -> epochStateEventEpochNo e == Just epochNo) (toList events) of
-        Just e ->
-          pure $ NonceByEpochNoResult $ eventToEpochNonceRow e
-        Nothing -> do
-          res :: [EpochNonceRow] <-
-            SQL.query
-              c
-              [sql|SELECT epochNo, nonce, slotNo, blockHeaderHash, blockNo
-                     FROM epoch_nonce
-                     WHERE epochNo = ?
-                  |]
-              (SQL.Only epochNo)
-          pure $ NonceByEpochNoResult $ listToMaybe res
-  queryStorage _ EpochStateHandle{} (LedgerStateAtPointQuery C.ChainPointAtGenesis) =
-    liftSQLError CantQueryIndexer $ pure $ LedgerStateAtPointResult Nothing
-  queryStorage
-    events
-    (EpochStateHandle{_epochStateHandleTopLevelCfg, _epochStateHandleLedgerStateDirPath})
-    (LedgerStateAtPointQuery (C.ChainPoint slotNo _)) =
-      liftSQLError CantQueryIndexer $ do
-        case List.find (\e -> epochStateEventSlotNo e == slotNo) (toList events) of
-          Nothing -> do
-            ledgerStateFilePaths <- listDirectory _epochStateHandleLedgerStateDirPath
-            let ledgerStateFilePath =
-                  List.find
-                    ( \fp -> fmap lsfMetaSlotNo (readLedgerStateFileMetadata fp) == Just slotNo
-                    )
-                    ledgerStateFilePaths
-            case ledgerStateFilePath of
-              Nothing -> pure $ LedgerStateAtPointResult Nothing
-              Just fp -> do
-                ledgerState <-
-                  readLedgerStateFromDisk (_epochStateHandleLedgerStateDirPath </> fp) _epochStateHandleTopLevelCfg
-                pure $ LedgerStateAtPointResult ledgerState
-          Just event -> pure $ LedgerStateAtPointResult $ epochStateEventLedgerState event
-
-instance Rewindable EpochStateHandle where
-  rewindStorage
-    :: C.ChainPoint
-    -> EpochStateHandle
-    -> StorableMonad EpochStateHandle EpochStateHandle
-  rewindStorage
-    C.ChainPointAtGenesis
-    h@( EpochStateHandle
-          { _epochStateHandleConnection = c
-          , _epochStateHandleLedgerStateDirPath = ledgerStateDirPath
-          }
-        ) =
-      liftSQLError CantRollback $ do
-        SQL.execute_ c "DELETE FROM epoch_sdd"
-        SQL.execute_ c "DELETE FROM epoch_nonce"
-
-        ledgerStateFilePaths <- listDirectory ledgerStateDirPath
-        forM_ ledgerStateFilePaths (\f -> removeFile $ ledgerStateDirPath </> f)
-        pure h
-  rewindStorage
-    (C.ChainPoint sn _)
-    h@( EpochStateHandle
-          { _epochStateHandleConnection = c
-          , _epochStateHandleLedgerStateDirPath = ledgerStateDirPath
-          }
-        ) =
-      liftSQLError CantRollback $ do
-        SQL.execute c "DELETE FROM epoch_sdd WHERE slotNo > ?" (SQL.Only sn)
-        SQL.execute c "DELETE FROM epoch_nonce WHERE slotNo > ?" (SQL.Only sn)
-
-        ledgerStateFilePaths <- listDirectory ledgerStateDirPath
-        forM_ ledgerStateFilePaths $ \fp -> do
-          case readLedgerStateFileMetadata fp of
-            Nothing -> pure ()
-            Just lsm | lsfMetaSlotNo lsm > sn -> removeFile $ ledgerStateDirPath </> fp
-            Just _ -> pure ()
-
-        pure h
-
-instance Resumable EpochStateHandle where
-  resumeFromStorage
-    :: EpochStateHandle
-    -> StorableMonad EpochStateHandle C.ChainPoint
-  resumeFromStorage (EpochStateHandle topLevelConfig _ ledgerStateDirPath securityParam currentNodeBlockNoAtStartup) =
-    liftSQLError CantQueryIndexer $ do
-      -- We only want (and support) resuming from immutable LedgerStates.
-      -- After identifying immutable LedgerStates, we try to deserialise them to ensure that
-      -- we correctly serialised it in a previous application run. If the file is not
-      -- deserialisable, we delete it.
-      ledgerStateFilepaths <- listDirectory ledgerStateDirPath
-      let immutableLedgerStateFilePathsWithMetadata =
-            filter (not . isLedgerStateFileRollbackable securityParam currentNodeBlockNoAtStartup . snd) $
-              mapMaybe (\fp -> fmap (fp,) $ readLedgerStateFileMetadata fp) ledgerStateFilepaths
-      readableLedgerStateFilePaths <- flip filterM immutableLedgerStateFilePathsWithMetadata $ \(ledgerStateFilePath, _) -> do
-        let ledgerStateFullPath = ledgerStateDirPath </> ledgerStateFilePath
-        lsM <- readLedgerStateFromDisk ledgerStateFullPath topLevelConfig
-        case lsM of
-          Nothing -> do
-            removeFile ledgerStateFullPath
-            pure False
-          Just _ ->
-            pure True
-      let ledgerStateChainPoints =
-            fmap
-              ( \(_, LedgerStateFileMetadata{lsfMetaSlotNo, lsfMetaBlockHeaderHash}) ->
-                  (lsfMetaSlotNo, lsfMetaBlockHeaderHash)
-              )
-              readableLedgerStateFilePaths
-
-      -- We return the latest resumable chain point.
-      let resumablePoints =
-            List.sortOn Down $
-              fmap (uncurry C.ChainPoint) ledgerStateChainPoints
-      pure $ chainPointOrGenesis resumablePoints
-
-isLedgerStateFileRollbackable :: SecurityParam -> C.BlockNo -> LedgerStateFileMetadata -> Bool
-isLedgerStateFileRollbackable
-  securityParam
-  currentNodeBlockNoAtStartup
-  LedgerStateFileMetadata{lsfMetaBlockNo} =
-    isBlockRollbackable securityParam lsfMetaBlockNo currentNodeBlockNoAtStartup
-
-readLedgerStateFileMetadata :: FilePath -> Maybe LedgerStateFileMetadata
-readLedgerStateFileMetadata ledgerStateFilepath =
-  case Text.splitOn "_" (Text.pack $ dropExtension ledgerStateFilepath) of
-    [_, slotNoStr, bhhStr, blockNoStr] -> do
-      LedgerStateFileMetadata
-        <$> parseSlotNo slotNoStr
-        <*> parseBlockHeaderHash bhhStr
-        <*> parseBlockNo blockNoStr
-    _anyOtherFailure -> Nothing
+getEpochNo
+  :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
+  -> Maybe C.EpochNo
+getEpochNo extLedgerState' = case O.ledgerState extLedgerState' of
+  O.LedgerStateByron _st -> Nothing
+  O.LedgerStateShelley st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateAllegra st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateMary st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateAlonzo st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateConway st -> getEpochNoFromShelleyBlock st
   where
-    parseSlotNo slotNoStr = C.SlotNo <$> readMaybe (Text.unpack slotNoStr)
-    parseBlockHeaderHash bhhStr = do
-      bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 bhhStr
-      either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
-    parseBlockNo blockNoStr = C.BlockNo <$> readMaybe (Text.unpack blockNoStr)
+    getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
 
-open
-  :: O.TopLevelConfig (O.CardanoBlock O.StandardCrypto)
-  -> FilePath
-  -- ^ SQLite database file path
-  -> FilePath
-  -- ^ Directory from which we will save the various 'LedgerState' as different points in time.
-  -> SecurityParam
-  -> C.BlockNo
-  -> StorableMonad EpochStateHandle (State EpochStateHandle)
-open topLevelConfig dbPath ledgerStateDirPath securityParam currentNodeBlockNoAtStartup = do
-  c <- liftSQLError CantStartIndexer $ SQL.open dbPath
-  lift $ SQL.execute_ c "PRAGMA journal_mode=WAL"
-  lift $
-    SQL.execute_
-      c
-      [sql|CREATE TABLE IF NOT EXISTS epoch_sdd
-            ( epochNo INT NOT NULL
-            , poolId BLOB NOT NULL
-            , lovelace INT NOT NULL
-            , slotNo INT NOT NULL
-            , blockHeaderHash BLOB NOT NULL
-            , blockNo INT NOT NULL
-            )|]
-  lift $
-    SQL.execute_
-      c
-      [sql|CREATE TABLE IF NOT EXISTS epoch_nonce
-            ( epochNo INT NOT NULL
-            , nonce BLOB NOT NULL
-            , slotNo INT NOT NULL
-            , blockHeaderHash BLOB NOT NULL
-            , blockNo INT NOT NULL
-            )|]
+readGenesisFile
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => FilePath
+  -> m C.GenesisConfig
+readGenesisFile nodeConfigPath = do
+  nodeCfgE <- liftIO $ runExceptT $ C.readNodeConfig (C.File nodeConfigPath)
+  nodeCfg <- case nodeCfgE of
+    Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
+    Right cfg -> pure cfg
+  genesisConfigE <- liftIO $ runExceptT $ C.readCardanoGenesisConfig nodeCfg
+  case genesisConfigE of
+    Left err -> throwError . Core.IndexerInternalError . Text.pack . show . C.renderGenesisConfigError $ err
+    Right cfg -> pure cfg
 
-  emptyState
-    1
-    (EpochStateHandle topLevelConfig c ledgerStateDirPath securityParam currentNodeBlockNoAtStartup)
+getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
+getBlockNo (C.BlockInMode block _eraInMode) =
+  case C.getBlockHeader block of C.BlockHeader _ _ b -> b
 
-readLedgerStateFromDisk
-  :: FilePath
-  -> O.TopLevelConfig (O.CardanoBlock O.StandardCrypto)
-  -> IO (Maybe (O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)))
-readLedgerStateFromDisk fp topLevelConfig = do
-  ledgerStateBs <- BS.readFile fp
-  let codecConfig = O.configCodec topLevelConfig
-  pure
-    $ either
-      (const Nothing)
-      (Just . snd)
-    $ CBOR.deserialiseFromBytes
-      ( O.decodeExtLedgerState
-          (O.decodeDisk codecConfig)
-          (O.decodeDisk codecConfig)
-          (O.decodeDisk codecConfig)
-      )
-      ledgerStateBs
-
-{- Note [Active stake pool delegation query]
-When processing the events, this indexer extracts and stores the 'mark' stake snapshot at the beginning of epoch 'n'.
-That 'mark' snapshot corresponds to the stake distribution of epoch 'n - 1'.
-Given current ledger rules, that snapshot (available at the beginning of epoch 'n') becomes *active* for computing the stake pool rewards at epoch 'n + 2'.
-
-In the 'ActiveSDDByEpochNoQuery', we are interested in the active stake pool delegation for a given epoch.
-Because we only store the 'mark' snapshot (not the active stake snapshot) of epoch 'n', we need to subtract '2' to the epoch provided as input.
--}
+buildNextEpochState
+  :: ExtLedgerConfig -> EpochState -> C.BlockInMode C.CardanoMode -> IO EpochState
+buildNextEpochState extLedgerCfg currentState block =
+  let currentLedgerState' = extLedgerState currentState
+      applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
+   in do
+        case applyBlock block currentLedgerState' of
+          Left err -> throw . Core.IndexerInternalError . Text.pack . show $ err
+          Right res -> pure $ EpochState res (getBlockNo block)

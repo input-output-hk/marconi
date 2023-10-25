@@ -47,10 +47,10 @@ import Cardano.Api qualified as C
 import Control.Concurrent.STM (TMVar, newEmptyTMVarIO)
 import Control.Lens (makeLenses)
 import Data.List.NonEmpty (NonEmpty)
-import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
-import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
-import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
-import Marconi.ChainIndex.Types (
+import Marconi.ChainIndex.Legacy.Indexers.EpochState (EpochStateHandle)
+import Marconi.ChainIndex.Legacy.Indexers.MintBurn (MintBurnHandle)
+import Marconi.ChainIndex.Legacy.Indexers.Utxo (UtxoHandle)
+import Marconi.ChainIndex.Legacy.Types (
   MarconiTrace,
   SecurityParam,
   TargetAddresses,

@@ -11,13 +11,13 @@ import Control.Monad.Except (runExceptT)
 import Control.Monad.STM (STM, atomically)
 import Data.Functor ((<&>))
 import Data.Word (Word64)
-import Marconi.ChainIndex.Error (IndexerError (InvalidIndexer))
-import Marconi.ChainIndex.Indexers.EpochState (
+import Marconi.ChainIndex.Legacy.Error (IndexerError (InvalidIndexer))
+import Marconi.ChainIndex.Legacy.Indexers.EpochState (
   EpochStateHandle,
   StorableQuery (ActiveSDDByEpochNoQuery, NonceByEpochNoQuery),
   StorableResult (ActiveSDDByEpochNoResult, NonceByEpochNoResult),
  )
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Legacy.Indexers.EpochState qualified as EpochState
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Routes (

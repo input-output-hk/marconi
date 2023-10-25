@@ -11,9 +11,9 @@ import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (ReaderT, ask, liftIO)
 import Data.Proxy (Proxy (Proxy))
-import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
+import Marconi.ChainIndex.Legacy.Indexers.MintBurn qualified as MintBurn
+import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Legacy.Types (SecurityParam (SecurityParam))
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MIQ
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as UIQ

@@ -10,10 +10,10 @@ import Control.Monad.Reader (runReaderT)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
-import Marconi.ChainIndex.Error (IndexerError)
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
-import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Legacy.Error (IndexerError)
+import Marconi.ChainIndex.Legacy.Logging (mkMarconiTrace)
+import Marconi.ChainIndex.Legacy.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Legacy.Utils qualified as Utils
 import Marconi.Sidechain.Api.HttpServer (runHttpServer)
 import Marconi.Sidechain.Bootstrap (runSidechainIndexers)
 import Marconi.Sidechain.CLI (
