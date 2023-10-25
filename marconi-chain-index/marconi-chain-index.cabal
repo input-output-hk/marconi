@@ -103,17 +103,6 @@ library
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
 
-  -- TODO: PLT-7727 remove commented modules if indeed not needed
-  --Marconi.ChainIndex.Extract.Datum
-  --Marconi.ChainIndex.Indexers
-  --Marconi.ChainIndex.Indexers.AddressDatum
-  --Marconi.ChainIndex.Indexers.EpochState
-  --Marconi.ChainIndex.Indexers.LastSync
-  --Marconi.ChainIndex.Indexers.MintBurn
-  --Marconi.ChainIndex.Indexers.ScriptTx
-  --Marconi.ChainIndex.Indexers.Utxo
-  --Marconi.ChainIndex.Run
-
   other-modules:   Paths_marconi_chain_index
   autogen-modules: Paths_marconi_chain_index
 
@@ -262,21 +251,6 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Logger
     Spec.Marconi.ChainIndex.Orphans
 
-  -- TODO: PLT-7727 remove commented lines if indeed not needed
-  --Spec.Marconi.ChainIndex.Coordinator
-  --Spec.Marconi.ChainIndex.Indexers.AddressDatum
-  --Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
-  --Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent
-  --Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators
-  --Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils
-  --Spec.Marconi.ChainIndex.Indexers.EpochState
-  --Spec.Marconi.ChainIndex.Indexers.MintBurn
-  --Spec.Marconi.ChainIndex.Indexers.ScriptTx
-  --Spec.Marconi.ChainIndex.Indexers.Utxo
-  --Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex
-  --Spec.Marconi.ChainIndex.Logging
-  --Spec.Marconi.ChainIndex.Orphans
-
   --------------------
   -- Local components
   --------------------
@@ -354,9 +328,6 @@ library marconi-chain-index-test-lib
     Gen.Marconi.ChainIndex.Types
     Helpers
 
-  -- TODO: PLT-7727 delete commented modules if unneeded
-  --Gen.Marconi.ChainIndex.Indexers.MintBurn
-  --Gen.Marconi.ChainIndex.Indexers.Utxo
   --------------------
   -- Local components
   --------------------
