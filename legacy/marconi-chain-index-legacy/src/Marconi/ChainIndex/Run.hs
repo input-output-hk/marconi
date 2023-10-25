@@ -30,7 +30,7 @@ noHook = const $ pure mempty
 run :: IO ()
 run = do
   traceConfig <- defaultConfigStdout
-  withTrace traceConfig "marconi-chain-index" $ \trace -> do
+  withTrace traceConfig "marconi-chain-index-legacy" $ \trace -> do
     let marconiTrace = mkMarconiTrace trace
     logInfo trace $ Text.pack $ "marconi-chain-index-" <> CLI.getVersion
 

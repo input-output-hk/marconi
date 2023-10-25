@@ -226,10 +226,10 @@ library cardano-api-extended
     , transformers
     , typed-protocols
 
-executable marconi-chain-index-experimental
+executable marconi-chain-index
   import:         lang
   hs-source-dirs: app
-  main-is:        Experimental.hs
+  main-is:        Main.hs
   ghc-options:    -threaded -rtsopts -with-rtsopts=-N
 
   --------------------
