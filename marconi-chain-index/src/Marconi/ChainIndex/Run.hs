@@ -28,7 +28,7 @@ import Marconi.ChainIndex.Indexers (buildIndexers)
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Logger (defaultStdOutLogger)
+import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (TargetAddresses)
@@ -47,7 +47,6 @@ import Control.Concurrent.MVar (
   tryPutMVar,
  )
 import Data.Functor (void)
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
 import System.Posix.Signals (
   Handler (CatchOnce),
   installHandler,

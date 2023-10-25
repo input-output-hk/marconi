@@ -96,7 +96,6 @@ library
     Marconi.ChainIndex.Indexers.UtxoQuery
     Marconi.ChainIndex.Indexers.Worker
     Marconi.ChainIndex.Logger
-    Marconi.ChainIndex.Logging
     Marconi.ChainIndex.Node.Client.Retry
     Marconi.ChainIndex.Orphans
     Marconi.ChainIndex.Run

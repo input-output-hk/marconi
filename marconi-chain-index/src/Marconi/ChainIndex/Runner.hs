@@ -51,7 +51,7 @@ import Data.Map qualified as Map
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Indexers.Orphans qualified ()
-import Marconi.ChainIndex.Logging (chainSyncEventStreamLogging)
+import Marconi.ChainIndex.Logger (chainSyncEventStreamLogging)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   BlockEvent (blockInMode),
