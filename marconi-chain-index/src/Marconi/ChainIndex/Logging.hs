@@ -8,9 +8,14 @@ module Marconi.ChainIndex.Logging (
   LastSyncStats (..),
   LastSyncLog (..),
   chainSyncEventStreamLogging,
+
+  -- * Logging infrastructure and utilities
   MarconiTrace,
   mkMarconiTrace,
   logMInfo,
+  logMError,
+  logMDebug,
+  logMWarning,
 
   -- * Exported for testing purposes
   marconiFormatting,
@@ -21,13 +26,11 @@ import Cardano.Api.Extended.Streaming (
   BlockEvent (BlockEvent),
   ChainSyncEvent (RollBackward, RollForward),
  )
-import Cardano.BM.Trace (Trace, logInfo)
+import Cardano.BM.Trace (Trace, logDebug, logError, logInfo, logWarning)
 import Cardano.BM.Tracing (contramap)
 import Control.Lens.Getter qualified as Lens
 import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Reader (asks)
-import Control.Monad.Trans (lift)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Time (
@@ -59,13 +62,27 @@ marconiFormatting =
   Pretty.renderStrict
     . Pretty.layoutPretty Pretty.defaultLayoutOptions
 
-logMInfo :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
-logMInfo msg = do
+logToLogM
+  :: MonadIO m
+  => (MarconiTrace IO -> Pretty.Doc () -> IO ())
+  -> Pretty.Doc ()
+  -> ChainIndexerT m ()
+logToLogM logf msg = do
   trace <- Lens.view runIndexerConfigTrace
-  lift $ logInfo trace msg
+  liftIO $ logf trace msg
 
--- TODO: this should also throw an exception
-logMError = undefined
+logMInfo :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMInfo = logToLogM logInfo
+
+-- TODO: investigate how to attach contexts with the underlying framework
+logMError :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMError = logToLogM logError
+
+logMWarning :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMWarning = logToLogM logWarning
+
+logMDebug :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMDebug = logToLogM logDebug
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats

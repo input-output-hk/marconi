@@ -61,6 +61,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
 import Cardano.BM.Data.Trace (Trace)
 import Control.Lens.TH qualified as Lens
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.Trans (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT))
@@ -74,13 +75,16 @@ import GHC.Generics (Generic)
 import Prettyprinter (Doc)
 
 newtype ChainIndexerT m a = ChainIndexerT
-  {getChainIndexerT :: ReaderT (RunIndexerConfig m) m a}
-  deriving newtype (Functor, Applicative, Monad, MonadReader (RunIndexerConfig m))
+  {getChainIndexerT :: ReaderT RunIndexerConfig m a}
+  deriving newtype (Functor, Applicative, Monad, MonadReader RunIndexerConfig)
 
 instance MonadTrans ChainIndexerT where
   lift = ChainIndexerT . lift
 
-runChainIndexerT :: ChainIndexerT m a -> RunIndexerConfig m -> m a
+instance MonadIO m => MonadIO (ChainIndexerT m) where
+  liftIO = lift . liftIO
+
+runChainIndexerT :: ChainIndexerT m a -> RunIndexerConfig -> m a
 runChainIndexerT (ChainIndexerT chainIndexerT) config =
   runReaderT chainIndexerT config
 
@@ -161,8 +165,8 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     )
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig m = RunIndexerConfig
-  { _runIndexerConfigTrace :: MarconiTrace m
+data RunIndexerConfig = RunIndexerConfig
+  { _runIndexerConfigTrace :: MarconiTrace IO
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
   , _runIndexerConfigNetworkId :: C.NetworkId
