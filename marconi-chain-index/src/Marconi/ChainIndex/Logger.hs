@@ -10,6 +10,9 @@ module Marconi.ChainIndex.Logger (
   defaultStdOutLogger,
   mkMarconiTrace,
   chainSyncEventStreamLogging,
+  LastSyncLog (..),
+  LastSyncStats (..),
+  marconiFormatting,
 ) where
 
 import Cardano.Api qualified as C
