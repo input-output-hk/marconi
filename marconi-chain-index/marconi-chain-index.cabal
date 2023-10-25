@@ -260,6 +260,7 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Indexers.Utxo
     Spec.Marconi.ChainIndex.Indexers.UtxoQuery
     Spec.Marconi.ChainIndex.Logger
+    Spec.Marconi.ChainIndex.Orphans
 
   -- TODO: PLT-7727 remove commented lines if indeed not needed
   --Spec.Marconi.ChainIndex.Coordinator
