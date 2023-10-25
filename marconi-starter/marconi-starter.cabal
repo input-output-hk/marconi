@@ -106,7 +106,7 @@ test-suite marconi-starter-test
   --------------------
   build-depends:
     , cardano-api
-    , marconi-chain-index-legacy:{marconi-chain-index-legacy, marconi-chain-index-legacy-test-lib}
+    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}
     , marconi-core
     , marconi-starter
 
