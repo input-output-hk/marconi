@@ -164,11 +164,11 @@ instance Pretty LastSyncLog where
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
 chainSyncEventStreamLogging
-  :: MarconiTrace IO
-  -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
-  -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
-chainSyncEventStreamLogging tracer s = effect $ do
-  stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
+  :: Stream (Of (ChainSyncEvent BlockEvent)) (ChainIndexerT IO) r
+  -> Stream (Of (ChainSyncEvent BlockEvent)) (ChainIndexerT IO) r
+chainSyncEventStreamLogging s = effect $ do
+  stats <-
+    liftIO $ newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
   return $ S.chain (update stats) s
   where
     minSecondsBetweenMsg :: NominalDiffTime
@@ -177,12 +177,12 @@ chainSyncEventStreamLogging tracer s = effect $ do
     update
       :: IORef LastSyncStats
       -> ChainSyncEvent BlockEvent
-      -> IO ()
+      -> ChainIndexerT IO ()
     update statsRef (RollForward (BlockEvent bim _epochNo _posixTime) ct) = do
       let cp = case bim of
             (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) ->
               C.ChainPoint slotNo hash
-      modifyIORef' statsRef $ \stats ->
+      liftIO $ modifyIORef' statsRef $ \stats ->
         stats
           { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
           , syncStatsChainSyncPoint = cp
@@ -190,7 +190,7 @@ chainSyncEventStreamLogging tracer s = effect $ do
           }
       printMessage statsRef
     update statsRef (RollBackward cp ct) = do
-      modifyIORef' statsRef $ \stats ->
+      liftIO $ modifyIORef' statsRef $ \stats ->
         stats
           { syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1
           , syncStatsChainSyncPoint = cp
@@ -198,11 +198,11 @@ chainSyncEventStreamLogging tracer s = effect $ do
           }
       printMessage statsRef
 
-    printMessage :: IORef LastSyncStats -> IO ()
+    printMessage :: IORef LastSyncStats -> ChainIndexerT IO ()
     printMessage statsRef = do
-      syncStats@LastSyncStats{syncStatsLastMessageTime} <- readIORef statsRef
+      syncStats@LastSyncStats{syncStatsLastMessageTime} <- liftIO $ readIORef statsRef
 
-      now <- getCurrentTime
+      now <- liftIO getCurrentTime
 
       let timeSinceLastMsg = diffUTCTime now <$> syncStatsLastMessageTime
 
@@ -215,10 +215,11 @@ chainSyncEventStreamLogging tracer s = effect $ do
               | otherwise -> False
 
       when shouldPrint $ do
-        logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
-        modifyIORef' statsRef $ \stats ->
-          stats
-            { syncStatsNumBlocks = 0
-            , syncStatsNumRollbacks = 0
-            , syncStatsLastMessageTime = Just now
-            }
+        logMInfo $ pretty (LastSyncLog syncStats timeSinceLastMsg)
+        liftIO $
+          modifyIORef' statsRef $ \stats ->
+            stats
+              { syncStatsNumBlocks = 0
+              , syncStatsNumRollbacks = 0
+              , syncStatsLastMessageTime = Just now
+              }

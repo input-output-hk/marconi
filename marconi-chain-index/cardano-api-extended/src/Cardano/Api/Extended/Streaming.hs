@@ -48,7 +48,7 @@ import Control.Exception (
   throw,
  )
 import Control.Monad (void)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Time.Clock.POSIX qualified as Time
 import Data.Word (Word32)
@@ -115,94 +115,96 @@ data BlockEvent = BlockEvent
     given starting point, along with their @EpochNo@ and creation time.
 -}
 withChainSyncBlockEventStream
-  :: FilePath
+  :: MonadIO m
+  => FilePath
   -- ^ Path to the node socket
   -> C.NetworkId
   -> [C.ChainPoint]
   -- ^ The point on the chain to start streaming from
-  -> (Stream (Of (ChainSyncEvent BlockEvent)) IO r -> IO b)
+  -> (Stream (Of (ChainSyncEvent BlockEvent)) m r -> m b)
   -- ^ The stream consumer
-  -> IO b
+  -> m b
 withChainSyncBlockEventStream socketPath networkId points consumer =
-  do
-    -- The chain-sync client runs in a different thread passing the blocks it
-    -- receives to the stream consumer through a MVar. The chain-sync client
-    -- thread and the stream consumer will each block on each other and stay
-    -- in lockstep.
-    --
-    -- NOTE: choosing a MVar is a tradeoff towards simplicity. In this case a
-    -- (bounded) queue could perform better. Indeed a properly-sized buffer
-    -- can reduce the time the two threads are blocked waiting for each
-    -- other. The problem here is "properly-sized". A bounded queue like
-    -- Control.Concurrent.STM.TBQueue allows us to specify a max queue length
-    -- but block size can vary a lot (TODO quantify this) depending on the
-    -- era. We have an alternative implementation with customizable queue
-    -- size (TBMQueue) but it needs to be extracted from the
-    -- plutus-chain-index-core package. Using a simple MVar doesn't seem to
-    -- slow down marconi's indexing, likely because the difference is
-    -- negligeable compared to existing network and IO latencies.  Therefore,
-    -- let's stick with a MVar now and revisit later.
-    nextChainSyncEventVar <- newEmptyMVar
+  liftIO $
+    do
+      -- The chain-sync client runs in a different thread passing the blocks it
+      -- receives to the stream consumer through a MVar. The chain-sync client
+      -- thread and the stream consumer will each block on each other and stay
+      -- in lockstep.
+      --
+      -- NOTE: choosing a MVar is a tradeoff towards simplicity. In this case a
+      -- (bounded) queue could perform better. Indeed a properly-sized buffer
+      -- can reduce the time the two threads are blocked waiting for each
+      -- other. The problem here is "properly-sized". A bounded queue like
+      -- Control.Concurrent.STM.TBQueue allows us to specify a max queue length
+      -- but block size can vary a lot (TODO quantify this) depending on the
+      -- era. We have an alternative implementation with customizable queue
+      -- size (TBMQueue) but it needs to be extracted from the
+      -- plutus-chain-index-core package. Using a simple MVar doesn't seem to
+      -- slow down marconi's indexing, likely because the difference is
+      -- negligeable compared to existing network and IO latencies.  Therefore,
+      -- let's stick with a MVar now and revisit later.
+      nextChainSyncEventVar <- newEmptyMVar
 
-    let localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
-        localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
+      let localNodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
+          localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPath
 
-    systemStart <-
-      C.queryNodeLocalState localNodeConnectInfo Nothing C.QuerySystemStart
-        >>= \case
-          Left err -> fail $ show err
-          Right systemStart -> pure systemStart
-
-    let queryHistoryInMode :: C.QueryInMode C.CardanoMode (C.EraHistory C.CardanoMode)
-        queryHistoryInMode = C.QueryEraHistory C.CardanoModeIsMultiEra
-
-        askHistory :: IO (C.EraHistory C.CardanoMode)
-        askHistory = do
-          res <- C.queryNodeLocalState localNodeConnectInfo Nothing queryHistoryInMode
-          case res of
+      systemStart <-
+        C.queryNodeLocalState localNodeConnectInfo Nothing C.QuerySystemStart
+          >>= \case
             Left err -> fail $ show err
-            Right h -> pure h
+            Right systemStart -> pure systemStart
 
-        attachEpochAndTime
-          :: C.EraHistory C.CardanoMode
-          -> ChainSyncEvent (C.BlockInMode C.CardanoMode)
-          -> IO (ChainSyncEvent BlockEvent, C.EraHistory C.CardanoMode)
-        attachEpochAndTime h (RollBackward cp ct) = pure (RollBackward cp ct, h)
-        attachEpochAndTime h evt@(RollForward (C.BlockInMode block _) _) =
-          let C.BlockHeader sn _ _ = C.getBlockHeader block
-              toEpochTime = Time.utcTimeToPOSIXSeconds . C.fromRelativeTime systemStart
-              epochAndTime history = do
-                (epoch, _, _) <- C.slotToEpoch sn history
-                (relativeTime, _) <- C.getProgress sn history
-                pure (epoch, toEpochTime relativeTime)
-              buildEpochAndTime
-                :: C.EraHistory C.CardanoMode
-                -> IO
-                    ( ChainSyncEvent BlockEvent
-                    , C.EraHistory C.CardanoMode
-                    )
-              buildEpochAndTime history = case epochAndTime history of
-                Left _ -> askHistory >>= buildEpochAndTime
-                Right (epoch, time) ->
-                  pure ((\b -> BlockEvent b epoch time) <$> evt, h)
-           in buildEpochAndTime h
-        client = chainSyncStreamingClient points nextChainSyncEventVar
+      let queryHistoryInMode :: C.QueryInMode C.CardanoMode (C.EraHistory C.CardanoMode)
+          queryHistoryInMode = C.QueryEraHistory C.CardanoModeIsMultiEra
 
-        -- Compute the next event and upgrade history if needed
-        eventLoop
-          :: C.EraHistory C.CardanoMode
-          -> IO (Either r (ChainSyncEvent BlockEvent, C.EraHistory C.CardanoMode))
-        eventLoop history = takeMVar nextChainSyncEventVar >>= fmap Right . attachEpochAndTime history
+          askHistory :: IO (C.EraHistory C.CardanoMode)
+          askHistory = do
+            res <- C.queryNodeLocalState localNodeConnectInfo Nothing queryHistoryInMode
+            case res of
+              Left err -> fail $ show err
+              Right h -> pure h
 
-    history <- askHistory
-    withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a -> do
-      -- Make sure all exceptions in the client thread are passed to the consumer thread
-      link a
-      -- Run the consumer
-      consumer $ S.unfoldr eventLoop history
-    -- Let's rethrow exceptions from the client thread unwrapped, so that the
-    -- consumer does not have to know anything about async
-    `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
+          attachEpochAndTime
+            :: C.EraHistory C.CardanoMode
+            -> ChainSyncEvent (C.BlockInMode C.CardanoMode)
+            -> IO (ChainSyncEvent BlockEvent, C.EraHistory C.CardanoMode)
+          attachEpochAndTime h (RollBackward cp ct) = pure (RollBackward cp ct, h)
+          attachEpochAndTime h evt@(RollForward (C.BlockInMode block _) _) =
+            let C.BlockHeader sn _ _ = C.getBlockHeader block
+                toEpochTime = Time.utcTimeToPOSIXSeconds . C.fromRelativeTime systemStart
+                epochAndTime history = do
+                  (epoch, _, _) <- C.slotToEpoch sn history
+                  (relativeTime, _) <- C.getProgress sn history
+                  pure (epoch, toEpochTime relativeTime)
+                buildEpochAndTime
+                  :: C.EraHistory C.CardanoMode
+                  -> IO
+                      ( ChainSyncEvent BlockEvent
+                      , C.EraHistory C.CardanoMode
+                      )
+                buildEpochAndTime history = case epochAndTime history of
+                  Left _ -> askHistory >>= buildEpochAndTime
+                  Right (epoch, time) ->
+                    pure ((\b -> BlockEvent b epoch time) <$> evt, h)
+             in buildEpochAndTime h
+          client = chainSyncStreamingClient points nextChainSyncEventVar
+
+          -- Compute the next event and upgrade history if needed
+          eventLoop
+            :: C.EraHistory C.CardanoMode
+            -> IO (Either r (ChainSyncEvent BlockEvent, C.EraHistory C.CardanoMode))
+          eventLoop history = takeMVar nextChainSyncEventVar >>= fmap Right . attachEpochAndTime history
+
+      history <- askHistory
+      withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a -> do
+        -- Make sure all exceptions in the client thread are passed to the consumer thread
+        link a
+        -- Run the consumer
+        consumer $ S.unfoldr eventLoop history
+      -- Let's rethrow exceptions from the client thread unwrapped, so that the
+      -- consumer does not have to know anything about async
+      `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
 
 connectToLocalNodeWithChainSyncClient
   :: C.LocalNodeConnectInfo C.CardanoMode
