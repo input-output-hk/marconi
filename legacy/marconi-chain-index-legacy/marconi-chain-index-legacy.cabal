@@ -81,7 +81,6 @@ library
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
 
-  -- TODO: PLT-7727 action needed here?
   other-modules:   Paths_marconi_chain_index_legacy
   autogen-modules: Paths_marconi_chain_index_legacy
 
@@ -93,8 +92,6 @@ library
     , marconi-core-json-rpc
     , marconi-core-legacy
 
-  -- TODO: PLT-7727 remove commented section
-  --, marconi-core
   --------------------------
   -- Other IOG dependencies
   --------------------------
@@ -210,23 +207,6 @@ executable marconi-chain-index-legacy
   -- Non-IOG dependencies
   ------------------------
   build-depends:  base >=4.9 && <5
-
--- TODO: PLT-7727 remove commented section
---executable marconi-chain-index-experimental
---  import:         lang
---  hs-source-dirs: app
---  main-is:        Experimental.hs
---  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
---
---  --------------------
---  -- Local components
---  --------------------
---  build-depends:  marconi-chain-index >=1.2.0
---
---  ------------------------
---  -- Non-IOG dependencies
---  ------------------------
---  build-depends:  base >=4.9 && <5
 
 library marconi-chain-index-legacy-test-lib
   import:          lang
@@ -356,9 +336,6 @@ test-suite marconi-chain-index-legacy-test
     , marconi-chain-index-legacy
     , marconi-chain-index-legacy-test-lib
     , marconi-core-legacy
-
-  -- TODO: PLT-7727 remove commented line
-  --, marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
   -- Other IOG dependencies
