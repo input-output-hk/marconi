@@ -250,6 +250,7 @@ test-suite marconi-chain-index-test
   other-modules:
     Spec.Marconi.ChainIndex.Api.Gen
     Spec.Marconi.ChainIndex.Api.Routes
+    Spec.Marconi.ChainIndex.CLI
     Spec.Marconi.ChainIndex.Indexers
     Spec.Marconi.ChainIndex.Indexers.BlockInfo
     Spec.Marconi.ChainIndex.Indexers.ChainTip
@@ -260,7 +261,6 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Indexers.UtxoQuery
 
   -- TODO: PLT-7727 remove commented lines if indeed not needed
-  --Spec.Marconi.ChainIndex.CLI
   --Spec.Marconi.ChainIndex.Coordinator
   --Spec.Marconi.ChainIndex.Indexers.AddressDatum
   --Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
