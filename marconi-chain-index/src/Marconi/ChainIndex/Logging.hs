@@ -8,8 +8,14 @@ module Marconi.ChainIndex.Logging (
   LastSyncStats (..),
   LastSyncLog (..),
   chainSyncEventStreamLogging,
+
+  -- * Logging infrastructure and utilities
   MarconiTrace,
   mkMarconiTrace,
+  logMInfo,
+  logMError,
+  logMDebug,
+  logMWarning,
 
   -- * Exported for testing purposes
   marconiFormatting,
@@ -20,9 +26,11 @@ import Cardano.Api.Extended.Streaming (
   BlockEvent (BlockEvent),
   ChainSyncEvent (RollBackward, RollForward),
  )
-import Cardano.BM.Trace (Trace, logInfo)
+import Cardano.BM.Trace (Trace, logDebug, logError, logInfo, logWarning)
 import Cardano.BM.Tracing (contramap)
+import Control.Lens.Getter qualified as Lens
 import Control.Monad (when)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Data.Time (
@@ -36,7 +44,7 @@ import Data.Time (
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (MarconiTrace)
+import Marconi.ChainIndex.Types (ChainIndexerT, MarconiTrace, runIndexerConfigTrace)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
@@ -53,6 +61,28 @@ marconiFormatting :: Pretty.Doc ann -> Text
 marconiFormatting =
   Pretty.renderStrict
     . Pretty.layoutPretty Pretty.defaultLayoutOptions
+
+logToLogM
+  :: MonadIO m
+  => (MarconiTrace IO -> Pretty.Doc () -> IO ())
+  -> Pretty.Doc ()
+  -> ChainIndexerT m ()
+logToLogM logf msg = do
+  trace <- Lens.view runIndexerConfigTrace
+  liftIO $ logf trace msg
+
+logMInfo :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMInfo = logToLogM logInfo
+
+-- TODO: investigate how to attach contexts with the underlying framework
+logMError :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMError = logToLogM logError
+
+logMWarning :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMWarning = logToLogM logWarning
+
+logMDebug :: MonadIO m => Pretty.Doc () -> ChainIndexerT m ()
+logMDebug = logToLogM logDebug
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats
@@ -87,7 +117,7 @@ instance Pretty LastSyncLog where
               <+> pretty cp
               <+> "and current node tip is"
               <+> pretty nt
-              <> "."
+                <> "."
 
           processingSummaryMsg timeSinceLastMsg =
             "Processed"
@@ -96,12 +126,12 @@ instance Pretty LastSyncLog where
               <+> pretty numRollBackwards
               <+> "rollbacks in the last"
               <+> pretty (formatTime defaultTimeLocale "%s" timeSinceLastMsg)
-              <> "s"
+                <> "s"
        in case (timeSinceLastMsgM, cp, nt) of
             (Nothing, _, _) ->
               "Starting from"
                 <+> pretty cp
-                <> "."
+                  <> "."
                 <+> currentTipMsg timeSinceLastMsgM
             (Just _, _, C.ChainTipAtGenesis) ->
               "Not syncing. Node tip is at Genesis"
@@ -110,7 +140,7 @@ instance Pretty LastSyncLog where
               "Synchronising (0%)."
                 <+> currentTipMsg timeSinceLastMsgM
                 <+> processingSummaryMsg timeSinceLastMsg
-                <> "."
+                  <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -119,7 +149,7 @@ instance Pretty LastSyncLog where
                     "Fully synchronised."
                       <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
-                      <> "."
+                        <> "."
             ( Just timeSinceLastMsg
               , C.ChainPoint (C.SlotNo chainSyncSlot) _
               , C.ChainTip (C.SlotNo nodeTipSlot) _ _
@@ -134,11 +164,11 @@ instance Pretty LastSyncLog where
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
 chainSyncEventStreamLogging
-  :: MarconiTrace IO
-  -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
-  -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
-chainSyncEventStreamLogging tracer s = effect $ do
-  stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
+  :: Stream (Of (ChainSyncEvent BlockEvent)) (ChainIndexerT IO) r
+  -> Stream (Of (ChainSyncEvent BlockEvent)) (ChainIndexerT IO) r
+chainSyncEventStreamLogging s = effect $ do
+  stats <-
+    liftIO $ newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
   return $ S.chain (update stats) s
   where
     minSecondsBetweenMsg :: NominalDiffTime
@@ -147,12 +177,12 @@ chainSyncEventStreamLogging tracer s = effect $ do
     update
       :: IORef LastSyncStats
       -> ChainSyncEvent BlockEvent
-      -> IO ()
+      -> ChainIndexerT IO ()
     update statsRef (RollForward (BlockEvent bim _epochNo _posixTime) ct) = do
       let cp = case bim of
             (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) ->
               C.ChainPoint slotNo hash
-      modifyIORef' statsRef $ \stats ->
+      liftIO $ modifyIORef' statsRef $ \stats ->
         stats
           { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
           , syncStatsChainSyncPoint = cp
@@ -160,7 +190,7 @@ chainSyncEventStreamLogging tracer s = effect $ do
           }
       printMessage statsRef
     update statsRef (RollBackward cp ct) = do
-      modifyIORef' statsRef $ \stats ->
+      liftIO $ modifyIORef' statsRef $ \stats ->
         stats
           { syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1
           , syncStatsChainSyncPoint = cp
@@ -168,11 +198,11 @@ chainSyncEventStreamLogging tracer s = effect $ do
           }
       printMessage statsRef
 
-    printMessage :: IORef LastSyncStats -> IO ()
+    printMessage :: IORef LastSyncStats -> ChainIndexerT IO ()
     printMessage statsRef = do
-      syncStats@LastSyncStats{syncStatsLastMessageTime} <- readIORef statsRef
+      syncStats@LastSyncStats{syncStatsLastMessageTime} <- liftIO $ readIORef statsRef
 
-      now <- getCurrentTime
+      now <- liftIO getCurrentTime
 
       let timeSinceLastMsg = diffUTCTime now <$> syncStatsLastMessageTime
 
@@ -185,10 +215,11 @@ chainSyncEventStreamLogging tracer s = effect $ do
               | otherwise -> False
 
       when shouldPrint $ do
-        logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
-        modifyIORef' statsRef $ \stats ->
-          stats
-            { syncStatsNumBlocks = 0
-            , syncStatsNumRollbacks = 0
-            , syncStatsLastMessageTime = Just now
-            }
+        logMInfo $ pretty (LastSyncLog syncStats timeSinceLastMsg)
+        liftIO $
+          modifyIORef' statsRef $ \stats ->
+            stats
+              { syncStatsNumBlocks = 0
+              , syncStatsNumRollbacks = 0
+              , syncStatsLastMessageTime = Just now
+              }

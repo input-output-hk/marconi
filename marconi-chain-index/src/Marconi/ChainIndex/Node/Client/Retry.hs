@@ -66,7 +66,7 @@ withNodeConnectRetry stdoutTrace retryConfig socketPath action = do
               <+> pretty socketPath
               <+> "does not exist. Retrying in"
               <+> pretty (secondsBeforeNextRetry retryState)
-              <> "s ..."
+                <> "s ..."
 
           threadDelay $ fromIntegral $ secondsBeforeNextRetry retryState * 1_000_000
           runActionWithRetries

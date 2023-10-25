@@ -101,7 +101,7 @@ runSidechainIndexers = do
           networkId
           (CLI.optionsChainPoint cliArgs)
           socketPath
+          (CLI.minIndexingDepth cliArgs)
+          (CLI.optionsFailsIfResync cliArgs)
       )
-      (CLI.minIndexingDepth cliArgs)
-      (CLI.optionsFailsIfResync cliArgs)
       indexers
