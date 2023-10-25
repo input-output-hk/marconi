@@ -1,5 +1,8 @@
 module Marconi.ChainIndex.Api.JsonRpc.Server (jsonRpcServer) where
 
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+  getCurrentSyncedBlockHandler,
+ )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo (echo)
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   getEpochNonceHandler,
@@ -24,3 +27,4 @@ jsonRpcServer =
     :<|> getEpochStakePoolDelegationHandler
     :<|> getEpochNonceHandler
     :<|> getBurnTokenEventsHandler
+    :<|> getCurrentSyncedBlockHandler

@@ -21,6 +21,7 @@ import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as Block
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
 import Marconi.ChainIndex.Indexers.Coordinator (coordinatorWorker, standardCoordinator)
+import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.ChainIndex.Indexers.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
@@ -50,18 +51,22 @@ type instance Core.Point [AnyTxBody] = C.ChainPoint
 
 -- Convenience aliases for indexers
 type Coordinator = Core.WithTrace IO Core.Coordinator TipOrBlock
+type ChainTipIndexer = ChainTip.ChainTipIndexer IO
 type EpochStateIndexer =
   EpochState.EpochStateIndexer
     (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
 type MintTokenEventIndexer =
   StandardIndexer IO Core.SQLiteIndexer MintTokenEvent.MintTokenBlockEvents
+type BlockInfoIndexer = StandardIndexer IO Core.SQLiteIndexer Block.BlockInfo
 type UtxoIndexer = UtxoQuery.UtxoQueryIndexer IO
+type CurrentSyncPointIndexer = CurrentSyncPoint.CurrentSyncPointQueryIndexer TipOrBlock
 
 -- | Container for all the queryable indexers of marconi-chain-index.
 data MarconiChainIndexQueryables = MarconiChainIndexQueryables
   { _queryableEpochState :: !(MVar EpochStateIndexer)
   , _queryableMintToken :: !(MVar MintTokenEventIndexer)
   , _queryableUtxo :: !UtxoIndexer
+  , _queryableCurrentSyncPoint :: !CurrentSyncPointIndexer
   }
 
 makeLenses 'MarconiChainIndexQueryables
@@ -119,16 +124,10 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
       (pure . Just . fmap toTxBodys)
       [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
-  queryIndexer <-
+  utxoQueryIndexer <-
     lift $
       UtxoQuery.mkUtxoSQLiteQuery $
         UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
-
-  let queryables =
-        MarconiChainIndexQueryables
-          epochStateMVar
-          mintTokenMVar
-          queryIndexer
 
   blockCoordinator <-
     lift $
@@ -136,9 +135,21 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
         blockEventLogger
         [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-  Core.WorkerIndexer _chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
+  Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
 
   mainCoordinator <- lift $ standardCoordinator mainLogger [blockCoordinator, chainTipWorker]
+
+  let currentSyncPointIndexer =
+        CurrentSyncPoint.CurrentSyncPointQueryIndexer
+          mainCoordinator
+          blockInfoMVar
+          chainTipMVar
+      queryables =
+        MarconiChainIndexQueryables
+          epochStateMVar
+          mintTokenMVar
+          utxoQueryIndexer
+          currentSyncPointIndexer
 
   resumePoint <- Core.lastStablePoint mainCoordinator
 

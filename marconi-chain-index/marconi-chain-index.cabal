@@ -63,6 +63,8 @@ library
   c-sources:       cbits/rev.c
   exposed-modules:
     Marconi.ChainIndex.Api.HttpServer
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
@@ -86,6 +88,7 @@ library
     Marconi.ChainIndex.Indexers.BlockInfo
     Marconi.ChainIndex.Indexers.ChainTip
     Marconi.ChainIndex.Indexers.Coordinator
+    Marconi.ChainIndex.Indexers.CurrentSyncPointQuery
     Marconi.ChainIndex.Indexers.Datum
     Marconi.ChainIndex.Indexers.EpochState
     Marconi.ChainIndex.Indexers.MintTokenEvent
