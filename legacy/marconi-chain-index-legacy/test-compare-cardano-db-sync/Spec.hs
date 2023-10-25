@@ -55,12 +55,12 @@ import Database.PostgreSQL.Simple.FromField qualified as PG
 import Database.PostgreSQL.Simple.ToField qualified as PG
 import Hedgehog ((===))
 import Hedgehog qualified as H
-import Marconi.ChainIndex.Error qualified as Marconi
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
-import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo), blockInfoBlockNo)
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Types (epochStateDbName, utxoDbName)
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Legacy.Error qualified as Marconi
+import Marconi.ChainIndex.Legacy.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Legacy.Indexers.Utxo (BlockInfo (BlockInfo), blockInfoBlockNo)
+import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Legacy.Types (epochStateDbName, utxoDbName)
+import Marconi.ChainIndex.Legacy.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O

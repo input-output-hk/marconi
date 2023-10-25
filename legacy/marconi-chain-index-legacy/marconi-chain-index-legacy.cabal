@@ -62,24 +62,24 @@ library
   hs-source-dirs:  src
   c-sources:       cbits/rev.c
   exposed-modules:
-    Marconi.ChainIndex.CLI
-    Marconi.ChainIndex.Error
-    Marconi.ChainIndex.Extract.Datum
-    Marconi.ChainIndex.Git.Rev
-    Marconi.ChainIndex.Git.RevFromGit
-    Marconi.ChainIndex.Indexers
-    Marconi.ChainIndex.Indexers.AddressDatum
-    Marconi.ChainIndex.Indexers.EpochState
-    Marconi.ChainIndex.Indexers.LastSync
-    Marconi.ChainIndex.Indexers.MintBurn
-    Marconi.ChainIndex.Indexers.ScriptTx
-    Marconi.ChainIndex.Indexers.Utxo
-    Marconi.ChainIndex.Logging
-    Marconi.ChainIndex.Node.Client.Retry
-    Marconi.ChainIndex.Orphans
-    Marconi.ChainIndex.Run
-    Marconi.ChainIndex.Types
-    Marconi.ChainIndex.Utils
+    Marconi.ChainIndex.Legacy.CLI
+    Marconi.ChainIndex.Legacy.Error
+    Marconi.ChainIndex.Legacy.Extract.Datum
+    Marconi.ChainIndex.Legacy.Git.Rev
+    Marconi.ChainIndex.Legacy.Git.RevFromGit
+    Marconi.ChainIndex.Legacy.Indexers
+    Marconi.ChainIndex.Legacy.Indexers.AddressDatum
+    Marconi.ChainIndex.Legacy.Indexers.EpochState
+    Marconi.ChainIndex.Legacy.Indexers.LastSync
+    Marconi.ChainIndex.Legacy.Indexers.MintBurn
+    Marconi.ChainIndex.Legacy.Indexers.ScriptTx
+    Marconi.ChainIndex.Legacy.Indexers.Utxo
+    Marconi.ChainIndex.Legacy.Logging
+    Marconi.ChainIndex.Legacy.Node.Client.Retry
+    Marconi.ChainIndex.Legacy.Orphans
+    Marconi.ChainIndex.Legacy.Run
+    Marconi.ChainIndex.Legacy.Types
+    Marconi.ChainIndex.Legacy.Utils
 
   other-modules:   Paths_marconi_chain_index_legacy
   autogen-modules: Paths_marconi_chain_index_legacy
@@ -213,10 +213,10 @@ library marconi-chain-index-legacy-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
-    Gen.Marconi.ChainIndex.Indexers.MintBurn
-    Gen.Marconi.ChainIndex.Indexers.Utxo
-    Gen.Marconi.ChainIndex.Mockchain
-    Gen.Marconi.ChainIndex.Types
+    Gen.Marconi.ChainIndex.Legacy.Indexers.MintBurn
+    Gen.Marconi.ChainIndex.Legacy.Indexers.Utxo
+    Gen.Marconi.ChainIndex.Legacy.Mockchain
+    Gen.Marconi.ChainIndex.Legacy.Types
     Helpers
 
   --------------------
@@ -308,20 +308,20 @@ test-suite marconi-chain-index-legacy-test
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
-    Spec.Marconi.ChainIndex.CLI
-    Spec.Marconi.ChainIndex.Coordinator
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils
-    Spec.Marconi.ChainIndex.Indexers.EpochState
-    Spec.Marconi.ChainIndex.Indexers.MintBurn
-    Spec.Marconi.ChainIndex.Indexers.ScriptTx
-    Spec.Marconi.ChainIndex.Indexers.Utxo
-    Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex
-    Spec.Marconi.ChainIndex.Logging
-    Spec.Marconi.ChainIndex.Orphans
+    Spec.Marconi.ChainIndex.Legacy.CLI
+    Spec.Marconi.ChainIndex.Legacy.Coordinator
+    Spec.Marconi.ChainIndex.Legacy.Indexers.AddressDatum
+    Spec.Marconi.ChainIndex.Legacy.Indexers.AddressDatum.AddressDatumIndex
+    Spec.Marconi.ChainIndex.Legacy.Indexers.AddressDatum.AddressDatumIndexEvent
+    Spec.Marconi.ChainIndex.Legacy.Indexers.AddressDatum.Generators
+    Spec.Marconi.ChainIndex.Legacy.Indexers.AddressDatum.Utils
+    Spec.Marconi.ChainIndex.Legacy.Indexers.EpochState
+    Spec.Marconi.ChainIndex.Legacy.Indexers.MintBurn
+    Spec.Marconi.ChainIndex.Legacy.Indexers.ScriptTx
+    Spec.Marconi.ChainIndex.Legacy.Indexers.Utxo
+    Spec.Marconi.ChainIndex.Legacy.Indexers.Utxo.UtxoIndex
+    Spec.Marconi.ChainIndex.Legacy.Logging
+    Spec.Marconi.ChainIndex.Legacy.Orphans
 
   --------------------
   -- Local components

@@ -57,9 +57,9 @@ import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
 import Database.SQLite.Simple.ToRow (ToRow)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Error (raiseException)
-import Marconi.ChainIndex.Indexers (runIndexers, utxoWorker)
-import Marconi.ChainIndex.Indexers.Utxo (
+import Marconi.ChainIndex.Legacy.Error (raiseException)
+import Marconi.ChainIndex.Legacy.Indexers (runIndexers, utxoWorker)
+import Marconi.ChainIndex.Legacy.Indexers.Utxo (
   QueryUtxoByAddress (QueryUtxoByAddress),
   StorableQuery (QueryUtxoByAddressWrapper),
   StorableResult (UtxoByAddressResult, getUtxoByAddressResult),
@@ -67,9 +67,9 @@ import Marconi.ChainIndex.Indexers.Utxo (
   UtxoIndexer,
   lessThanOrEqual,
  )
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
-import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Types (
+import Marconi.ChainIndex.Legacy.Logging (mkMarconiTrace)
+import Marconi.ChainIndex.Legacy.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Legacy.Types (
   IndexingDepth (MinIndexingDepth),
   MarconiTrace,
   RetryConfig (RetryConfig),
@@ -79,7 +79,7 @@ import Marconi.ChainIndex.Types (
   ucEnableUtxoTxOutRef,
   ucTargetAddresses,
  )
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Legacy.Utils qualified as Utils
 import Marconi.Core.Storable qualified as Storable
 import System.Environment (getEnv)
 import System.FilePath ((</>))
