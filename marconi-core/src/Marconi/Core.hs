@@ -217,7 +217,18 @@ module Marconi.Core (
 
   -- ** Errors
   IndexerError (..),
+  _RollbackBehindHistory,
+  _IndexerInternalError,
+  _InvalidIndexer,
+  _StopIndexer,
+  _ResumingFailed,
+  _IndexerCloseTimeoutError,
+  _OtherIndexError,
   QueryError (..),
+  _AheadOfLastSync,
+  _NotStoredAnymore,
+  _IndexerQueryError,
+  _SlotNoBoundsInvalid,
 
   -- * Core Indexers
 
@@ -713,6 +724,17 @@ import Marconi.Core.Type (
   Timed (..),
   event,
   point,
+  _AheadOfLastSync,
+  _IndexerCloseTimeoutError,
+  _IndexerInternalError,
+  _IndexerQueryError,
+  _InvalidIndexer,
+  _NotStoredAnymore,
+  _OtherIndexError,
+  _ResumingFailed,
+  _RollbackBehindHistory,
+  _SlotNoBoundsInvalid,
+  _StopIndexer,
  )
 import Marconi.Core.Worker (
   Worker,

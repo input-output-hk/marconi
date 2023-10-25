@@ -7,6 +7,7 @@ import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
 import Control.Concurrent.Async (race_)
+import Control.Exception (finally)
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
@@ -159,6 +160,7 @@ run appName = withGracefulTermination_ $ do
   race_
     runIndexer'
     runHttpServer'
+    `finally` BM.shutdown sb
 
 shelleyAddressesToAddressAny :: Maybe TargetAddresses -> [C.AddressAny]
 shelleyAddressesToAddressAny Nothing = []

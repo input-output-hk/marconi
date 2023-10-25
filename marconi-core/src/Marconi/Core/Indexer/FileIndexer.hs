@@ -37,14 +37,14 @@ import Control.Concurrent.QSem qualified as Con
 import Control.Exception (Exception (displayException), bracket_, handle)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((.~), (^.))
-import Control.Monad (forM_, join, void, when)
+import Control.Monad (forM_, join, unless, void, when)
 import Control.Monad.Except (ExceptT (ExceptT), MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Function ((&))
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Core.Class (
@@ -54,7 +54,7 @@ import Marconi.Core.Class (
   IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Type (
-  IndexerError (IndexerInternalError),
+  IndexerError (IndexerCloseTimeoutError, IndexerInternalError),
   Point,
   QueryError (IndexerQueryError),
   Timed (Timed),
@@ -394,18 +394,19 @@ writeStable p indexer = do
   writeIndexer indexer filename $ serialise p
   pure indexer
 
-instance (MonadIO m) => Closeable m (FileIndexer meta) where
+instance (MonadIO m, MonadError IndexerError m) => Closeable m (FileIndexer meta) where
   {- If we've got a write token it means a write is occurring asynchronously.
      We need to wait for it to finish before closing. -}
   close :: FileIndexer meta event -> m ()
-  close indexer = liftIO $
+  close indexer =
     case indexer ^. fileIndexerWriteEnv of
       Just fileWriteEnv -> do
-        -- TODO https://input-output.atlassian.net/browse/PLT-7811
-        void $
-          timeout
-            (fileWriteEnv ^. fileWriteEnvTimeout)
-            (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+        res <-
+          liftIO $
+            timeout
+              (fileWriteEnv ^. fileWriteEnvTimeout)
+              (Con.waitQSem (fileWriteEnv ^. fileWriteEnvSem))
+        unless (isJust res) (throwError IndexerCloseTimeoutError)
       Nothing -> pure ()
 
 -- * File writing | TODO https://input-output.atlassian.net/browse/PLT-7809
