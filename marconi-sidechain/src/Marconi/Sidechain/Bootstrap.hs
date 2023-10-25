@@ -10,12 +10,17 @@ import Control.Concurrent.STM (atomically)
 import Control.Lens (view, (^.))
 import Control.Monad.Reader (ReaderT, lift)
 import Data.Void (Void)
-import Marconi.ChainIndex.Indexers (epochStateWorker, mintBurnWorker, runIndexers, utxoWorker)
-import Marconi.ChainIndex.Indexers.EpochState (EpochStateHandle)
-import Marconi.ChainIndex.Indexers.MintBurn (MintBurnHandle)
-import Marconi.ChainIndex.Indexers.Utxo (UtxoHandle)
-import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Types (
+import Marconi.ChainIndex.Legacy.Indexers (
+  epochStateWorker,
+  mintBurnWorker,
+  runIndexers,
+  utxoWorker,
+ )
+import Marconi.ChainIndex.Legacy.Indexers.EpochState (EpochStateHandle)
+import Marconi.ChainIndex.Legacy.Indexers.MintBurn (MintBurnHandle)
+import Marconi.ChainIndex.Legacy.Indexers.Utxo (UtxoHandle)
+import Marconi.ChainIndex.Legacy.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Legacy.Types (
   RunIndexerConfig (RunIndexerConfig),
   UtxoIndexerConfig (UtxoIndexerConfig),
   epochStateDbName,
@@ -24,7 +29,7 @@ import Marconi.ChainIndex.Types (
   ucTargetAddresses,
   utxoDbName,
  )
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Legacy.Utils qualified as Utils
 import Marconi.Core.Storable (State)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurn

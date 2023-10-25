@@ -5,7 +5,7 @@ module Main (main) where
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Tracing (defaultConfigTesting)
 import Control.Monad.Reader (runReaderT)
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
+import Marconi.ChainIndex.Legacy.Logging (mkMarconiTrace)
 import Marconi.Sidechain.Api.HttpServer (marconiApp)
 import Marconi.Sidechain.CLI (parseCliArgs)
 import Marconi.Sidechain.CLI qualified as CLI

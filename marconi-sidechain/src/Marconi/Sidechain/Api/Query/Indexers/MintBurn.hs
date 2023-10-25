@@ -12,15 +12,15 @@ import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Error qualified as CI
-import Marconi.ChainIndex.Indexers.MintBurn (
+import Marconi.ChainIndex.Legacy.Error qualified as CI
+import Marconi.ChainIndex.Legacy.Indexers.MintBurn (
   MintBurnHandle,
   StorableResult (MintBurnResult),
   TxMintRow,
  )
-import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
-import Marconi.ChainIndex.Types (SecurityParam)
-import Marconi.ChainIndex.Utils qualified as Utils
+import Marconi.ChainIndex.Legacy.Indexers.MintBurn qualified as MintBurn
+import Marconi.ChainIndex.Legacy.Types (SecurityParam)
+import Marconi.ChainIndex.Legacy.Utils qualified as Utils
 import Marconi.Core.Storable (State)
 import Marconi.Core.Storable qualified as Storable
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Utxo

@@ -14,13 +14,15 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.Traversable (for)
-import Gen.Marconi.ChainIndex.Indexers.MintBurn (genMintEvents)
-import Gen.Marconi.ChainIndex.Indexers.MintBurn qualified as Gen
-import Gen.Marconi.ChainIndex.Types qualified as Gen
+import Gen.Marconi.ChainIndex.Legacy.Indexers.MintBurn (genMintEvents)
+import Gen.Marconi.ChainIndex.Legacy.Indexers.MintBurn qualified as Gen
+import Gen.Marconi.ChainIndex.Legacy.Types qualified as Gen
 import Hedgehog (Property, forAll, property, (===))
 import Hedgehog qualified
-import Marconi.ChainIndex.Indexers.MintBurn (MintAsset (mintAssetAssetName, mintAssetPolicyId))
-import Marconi.ChainIndex.Indexers.MintBurn qualified as MintBurn
+import Marconi.ChainIndex.Legacy.Indexers.MintBurn (
+  MintAsset (mintAssetAssetName, mintAssetPolicyId),
+ )
+import Marconi.ChainIndex.Legacy.Indexers.MintBurn qualified as MintBurn
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn (queryByPolicyAndAssetId)
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as MintBurnIndexer
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Utxo

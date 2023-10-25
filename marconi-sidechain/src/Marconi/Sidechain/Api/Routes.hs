@@ -31,10 +31,10 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (TxIndexInBlock)
+import Marconi.ChainIndex.Legacy.Indexers.Utxo (BlockInfo (BlockInfo))
+import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Legacy.Orphans ()
+import Marconi.ChainIndex.Legacy.Types (TxIndexInBlock)
 import Marconi.Sidechain.CLI (CliArgs)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc, UnusedRequestParams)
 import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
