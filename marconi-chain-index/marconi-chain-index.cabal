@@ -151,7 +151,6 @@ library
     , filepath
     , lens
     , mtl
-    , mwc-random
     , nonempty-containers
     , optparse-applicative
     , pretty-simple

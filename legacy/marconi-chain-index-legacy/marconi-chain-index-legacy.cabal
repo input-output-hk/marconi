@@ -89,7 +89,6 @@ library
   --------------------
   build-depends:
     , cardano-api-extended-legacy
-    , marconi-core-json-rpc
     , marconi-core-legacy
 
   --------------------------
@@ -123,7 +122,6 @@ library
     , base16-bytestring
     , bytestring
     , cborg
-    , comonad
     , containers
     , directory
     , filepath
@@ -137,8 +135,6 @@ library
     , process
     , prometheus-client
     , serialise
-    , servant
-    , servant-server
     , sop-core
     , sqlite-simple
     , stm
@@ -149,7 +145,6 @@ library
     , time
     , transformers
     , vector-map
-    , warp
 
 library cardano-api-extended-legacy
   import:          lang

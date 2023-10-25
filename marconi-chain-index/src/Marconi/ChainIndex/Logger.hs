@@ -24,7 +24,7 @@ import Cardano.BM.Backend.Switchboard qualified as BM
 import Cardano.BM.Configuration qualified as BM
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Setup qualified as BM
-import Cardano.BM.Trace (Trace, logInfo)
+import Cardano.BM.Trace (logInfo)
 import Cardano.BM.Tracing (contramap)
 import Cardano.BM.Tracing qualified as BM
 import Control.Monad (when)
