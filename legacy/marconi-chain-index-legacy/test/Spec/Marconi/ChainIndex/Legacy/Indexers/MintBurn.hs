@@ -416,10 +416,10 @@ endToEnd = H.withShrinks 0 $ H.propertyOnce $ (liftIO Help.setDarwinTmpdir >>) $
   -- Receive event from the indexer, compare the mint that we submitted above with the one we got
   -- from the indexer.
   --
-  -- We assume the minted token will be part of 5 first events (ad-hoc number).
+  -- We assume the minted token will be part of 20 first events (ad-hoc number).
   -- Ugly solution, but it will be changed once indexers support notifications which will replace
   -- callbacks.
-  indexer <- fmap (last . take 5) <$> liftIO $ IO.getChanContents indexerChan
+  indexer <- fmap (last . take 20) <$> liftIO $ IO.getChanContents indexerChan
   MintBurnResult txMintRows :: RI.StorableResult MintBurnHandle <-
     liftIO $ raiseException $ RI.query indexer $ QueryAllMintBurn Nothing
 

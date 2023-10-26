@@ -5,10 +5,8 @@
 module Helpers where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Extended.IPC qualified as C
 import Cardano.Api.Extended.Streaming qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.Node.Socket.Emulator qualified as E
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
 import Control.Monad (void, when)
@@ -22,7 +20,6 @@ import Hedgehog qualified as H
 import Hedgehog.Extras.Stock.CallStack qualified as H
 import Hedgehog.Extras.Test qualified as HE
 import Hedgehog.Extras.Test.Base qualified as H
-import Ledger.Test (testnet)
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
@@ -39,19 +36,6 @@ it will be updated. Thus, we prefer to always be in the latest version of `carda
 the near future we're planning to replace cardano-testnet with cardano-node-emulator, so the
 cardano-testnet related code should change anyway.
 -}
-
--- | Start a testnet.
-startTestnet
-  :: FilePath
-  -> H.Integration (C.LocalNodeConnectInfo C.CardanoMode, C.NetworkId, FilePath)
-startTestnet tempAbsBasePath = do
-  let socketPathAbs = tempAbsBasePath <> "/node-server.sock"
-      networkId = testnet -- TODO: any other networkId doesn't work
-      slotLength = 10 -- in milliseconds, shorter than the default to make the tests go faster
-      localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPathAbs
-  liftIO $ E.startTestnet socketPathAbs slotLength networkId
-  pure (localNodeConnectInfo, networkId, socketPathAbs)
-
 readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
 readAs as path = do
   path' <- H.note path
