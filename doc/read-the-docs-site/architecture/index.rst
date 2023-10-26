@@ -7,7 +7,7 @@ Core architecture
 
    system-context
    building-blocks-view
-   sequence-diagram
+   runtime-view
    local-node-communication
    marconi-as-a-node
    ../adr/index

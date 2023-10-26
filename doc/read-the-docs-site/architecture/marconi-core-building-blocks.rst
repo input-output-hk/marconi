@@ -1,3 +1,5 @@
+.. _core-building-blocks:
+
 Core building blocks view
 =========================
 
