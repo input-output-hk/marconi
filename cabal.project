@@ -47,3 +47,26 @@ package cardano-api
   optimization: False
 package cardano-crypto-praos
   flags: -external-libsodium-vrf
+
+-- TODO: remove once this version is on CHaP
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/quickcheck-contractmodel
+    tag: 6b0e3e3259fcf522df33dfc21138a41837b9ac16
+    --sha256: sha256-k7waj5qbAcbsyRvkKKdkKLu21GqRWv679QYTFGjV0bQ=
+    subdir:
+      quickcheck-contractmodel
+      quickcheck-threatmodel
+
+-- TODO: remove once this version is on CHaP
+source-repository-package
+    type: git
+    location: https://github.com/input-output-hk/cardano-node-emulator
+    tag: 28de5cc1754937ba07bd35120e47e12c609f130b
+    --sha256: sha256-/6W/KUN3vFHQ5ah/XUiGvm7z1Vn/9wpI/1mucvgRwwk=
+    subdir:
+      plutus-ledger
+      plutus-script-utils
+      cardano-node-emulator
+      cardano-node-socket-emulator
+      freer-extras

@@ -250,13 +250,12 @@ registerStakeAddress networkId con ledgerPP payerAddress payerSKey stakeCredenti
   -- cardano-cli transaction sign
   -- cardano-cli transaction submit
   (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
-  let apiPP = C.fromLedgerPParams C.shelleyBasedEra $ C.unLedgerProtocolParameters ledgerPP
-      keyWitnesses = [C.WitnessGenesisUTxOKey payerSKey]
+  let keyWitnesses = [C.WitnessGenesisUTxOKey payerSKey]
       mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
       validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
   (feeLovelace, tx) <-
     TN.calculateAndUpdateTxFee
-      apiPP
+      ledgerPP
       networkId
       (length txIns)
       (length keyWitnesses)
@@ -335,12 +334,11 @@ registerPool con networkId ledgerPP tempAbsPath keyWitnesses stakeCredentials pa
   -- Create transaction
   do
     (txIns, totalLovelace) <- TN.getAddressTxInsValue @C.BabbageEra con payerAddress
-    let apiPP = C.fromLedgerPParams C.shelleyBasedEra $ C.unLedgerProtocolParameters ledgerPP
-        mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
+    let mkTxOuts lovelace = [TN.mkAddressAdaTxOut payerAddress lovelace]
         validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
     (feeLovelace, txbc) <-
       TN.calculateAndUpdateTxFee
-        apiPP
+        ledgerPP
         networkId
         (length txIns)
         (length keyWitnesses)
