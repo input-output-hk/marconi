@@ -499,7 +499,7 @@ logError
   -> e'
   -> m ()
 logError fromErr exclusionList tr err =
-  ( when (any (\(SomePrism p) -> isn't p err) exclusionList) $
+  ( unless (any (\(SomePrism p) -> is p err) exclusionList) $
       Trace.logError tr (fromErr err)
   )
     $> ()
