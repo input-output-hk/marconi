@@ -31,9 +31,9 @@ import Cardano.BM.Trace qualified as Trace
 import Cardano.BM.Tracing (Trace, Tracer)
 import Cardano.BM.Tracing qualified as Tracing
 import Control.Lens (APrism', Lens', makeLenses, view)
+import Control.Lens.Extras (is)
 import Control.Lens.Operators ((^.))
-import Control.Lens.Prism (isn't)
-import Control.Monad (when)
+import Control.Monad (unless)
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError (catchError, throwError))
 import Control.Monad.Trans.Class (MonadTrans (lift))
@@ -481,11 +481,13 @@ instance
 -- | A wrapper to hide the focus of a prism
 data SomePrism e = forall a. SomePrism (APrism' e a)
 
--- | A helper for logging `IndexerError`s in an `IndexerEvent` trace
+-- | A helper for logging 'IndexerError's in an 'IndexerEvent' trace
 logIndexerError
   :: (MonadIO m)
   => Trace m (IndexerEvent point)
+  -- ^ The 'Trace' for an 'IndexerEvent'
   -> IndexerError
+  -- ^ The error to be potentially logged
   -> m ()
 logIndexerError = logError IndexerFailed [SomePrism _StopIndexer]
 
@@ -494,9 +496,13 @@ logError
   :: forall m e' e
    . (MonadIO m)
   => (e' -> e)
+  -- ^ A function to transform the error into the loggable @e@
   -> [SomePrism e']
+  -- ^ A list of 'Prism's representing the constructors we want to ignore
   -> Trace m e
+  -- ^ The 'Trace' for the loggable @e@
   -> e'
+  -- ^ The error to be processed
   -> m ()
 logError fromErr exclusionList tr err =
   ( unless (any (\(SomePrism p) -> is p err) exclusionList) $
