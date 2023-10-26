@@ -16,6 +16,7 @@ index-state:
   , hackage.haskell.org 2023-10-02T00:00:00Z
   , cardano-haskell-packages 2023-10-02T00:00:00Z
 packages: legacy/marconi-core-legacy
+          legacy/marconi-chain-index-legacy
           marconi-chain-index
           marconi-core
           marconi-core-json-rpc

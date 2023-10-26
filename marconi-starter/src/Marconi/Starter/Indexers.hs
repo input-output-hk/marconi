@@ -8,12 +8,12 @@ import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader (ask), ReaderT)
 import Marconi.ChainIndex.CLI qualified as CommonCLI
-import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
-import Marconi.ChainIndex.Experimental.Runner (
+import Marconi.ChainIndex.Indexers.Worker qualified as Core
+import Marconi.ChainIndex.Runner (
   RunIndexerConfig (RunIndexerConfig),
   withDistancePreprocessor,
  )
-import Marconi.ChainIndex.Experimental.Runner qualified as Runner
+import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
 import Marconi.Starter.CLI qualified as CLI

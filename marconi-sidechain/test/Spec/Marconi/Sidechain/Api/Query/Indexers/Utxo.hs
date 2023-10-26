@@ -15,12 +15,12 @@ import Data.Maybe (mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (unpack)
 import Data.Traversable (for)
-import Gen.Marconi.ChainIndex.Indexers.Utxo (genShelleyEraUtxoEvents)
+import Gen.Marconi.ChainIndex.Legacy.Indexers.Utxo (genShelleyEraUtxoEvents)
 import Hedgehog (Property, assert, forAll, property, (===))
 import Hedgehog qualified
 import Helpers (addressAnyToShelley)
-import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo, _blockInfoSlotNo))
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Legacy.Indexers.Utxo (BlockInfo (BlockInfo, _blockInfoSlotNo))
+import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as AddressUtxoIndexer
 import Marconi.Sidechain.Api.Routes (
   AddressUtxoResult,

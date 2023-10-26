@@ -32,10 +32,10 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Experimental.Extract.WithDistance (WithDistance)
-import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
-import Marconi.ChainIndex.Experimental.Indexers.SyncHelper (mkSyncedSqliteIndexer)
-import Marconi.ChainIndex.Experimental.Indexers.Worker qualified as Core
+import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
+import Marconi.ChainIndex.Indexers.Orphans ()
+import Marconi.ChainIndex.Indexers.SyncHelper (mkSyncedSqliteIndexer)
+import Marconi.ChainIndex.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.ChainIndex.Utils qualified as Utils

@@ -62,57 +62,47 @@ library
   hs-source-dirs:  src
   c-sources:       cbits/rev.c
   exposed-modules:
+    Marconi.ChainIndex.Api.HttpServer
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Api.JsonRpc.Routes
+    Marconi.ChainIndex.Api.JsonRpc.Server
+    Marconi.ChainIndex.Api.Rest.Endpoint.Metrics
+    Marconi.ChainIndex.Api.Rest.Endpoint.Params
+    Marconi.ChainIndex.Api.Rest.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Api.Rest.Endpoint.Time
+    Marconi.ChainIndex.Api.Rest.Routes
+    Marconi.ChainIndex.Api.Rest.Server
+    Marconi.ChainIndex.Api.Routes
+    Marconi.ChainIndex.Api.Types
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
-    Marconi.ChainIndex.Experimental.Api.HttpServer
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.Echo
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.EpochState
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.MintBurnToken
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Endpoint.TargetAddresses
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Routes
-    Marconi.ChainIndex.Experimental.Api.JsonRpc.Server
-    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Metrics
-    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Params
-    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.TargetAddresses
-    Marconi.ChainIndex.Experimental.Api.Rest.Endpoint.Time
-    Marconi.ChainIndex.Experimental.Api.Rest.Routes
-    Marconi.ChainIndex.Experimental.Api.Rest.Server
-    Marconi.ChainIndex.Experimental.Api.Routes
-    Marconi.ChainIndex.Experimental.Api.Types
-    Marconi.ChainIndex.Experimental.Extract.WithDistance
-    Marconi.ChainIndex.Experimental.Indexers
-    Marconi.ChainIndex.Experimental.Indexers.BlockInfo
-    Marconi.ChainIndex.Experimental.Indexers.ChainTip
-    Marconi.ChainIndex.Experimental.Indexers.Coordinator
-    Marconi.ChainIndex.Experimental.Indexers.CurrentSyncPointQuery
-    Marconi.ChainIndex.Experimental.Indexers.Datum
-    Marconi.ChainIndex.Experimental.Indexers.EpochState
-    Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent
-    Marconi.ChainIndex.Experimental.Indexers.Orphans
-    Marconi.ChainIndex.Experimental.Indexers.Spent
-    Marconi.ChainIndex.Experimental.Indexers.SyncHelper
-    Marconi.ChainIndex.Experimental.Indexers.Utxo
-    Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
-    Marconi.ChainIndex.Experimental.Indexers.Worker
-    Marconi.ChainIndex.Experimental.Logger
-    Marconi.ChainIndex.Experimental.Run
-    Marconi.ChainIndex.Experimental.Runner
-    Marconi.ChainIndex.Extract.Datum
+    Marconi.ChainIndex.Extract.WithDistance
     Marconi.ChainIndex.Git.Rev
     Marconi.ChainIndex.Git.RevFromGit
     Marconi.ChainIndex.Indexers
-    Marconi.ChainIndex.Indexers.AddressDatum
+    Marconi.ChainIndex.Indexers.BlockInfo
+    Marconi.ChainIndex.Indexers.ChainTip
+    Marconi.ChainIndex.Indexers.Coordinator
+    Marconi.ChainIndex.Indexers.CurrentSyncPointQuery
+    Marconi.ChainIndex.Indexers.Datum
     Marconi.ChainIndex.Indexers.EpochState
-    Marconi.ChainIndex.Indexers.LastSync
-    Marconi.ChainIndex.Indexers.MintBurn
-    Marconi.ChainIndex.Indexers.ScriptTx
+    Marconi.ChainIndex.Indexers.MintTokenEvent
+    Marconi.ChainIndex.Indexers.Orphans
+    Marconi.ChainIndex.Indexers.Spent
+    Marconi.ChainIndex.Indexers.SyncHelper
     Marconi.ChainIndex.Indexers.Utxo
-    Marconi.ChainIndex.Logging
+    Marconi.ChainIndex.Indexers.UtxoQuery
+    Marconi.ChainIndex.Indexers.Worker
+    Marconi.ChainIndex.Logger
     Marconi.ChainIndex.Node.Client.Retry
     Marconi.ChainIndex.Orphans
     Marconi.ChainIndex.Run
+    Marconi.ChainIndex.Runner
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
 
@@ -126,7 +116,6 @@ library
     , cardano-api-extended
     , marconi-core
     , marconi-core-json-rpc
-    , marconi-core-legacy
 
   --------------------------
   -- Other IOG dependencies
@@ -165,7 +154,6 @@ library
     , filepath
     , lens
     , mtl
-    , mwc-random
     , nonempty-containers
     , optparse-applicative
     , pretty-simple
@@ -244,120 +232,6 @@ executable marconi-chain-index
   ------------------------
   build-depends:  base >=4.9 && <5
 
-executable marconi-chain-index-experimental
-  import:         lang
-  hs-source-dirs: app
-  main-is:        Experimental.hs
-  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:  marconi-chain-index >=1.2.0
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:  base >=4.9 && <5
-
-library marconi-chain-index-test-lib
-  import:          lang
-
-  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
-  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
-  -- components that depend on this library like `marconi-sidechain`.
-  ghc-options:     -Wno-unused-packages
-  visibility:      public
-  hs-source-dirs:  test-lib
-  exposed-modules:
-    Gen.Marconi.ChainIndex.Indexers.MintBurn
-    Gen.Marconi.ChainIndex.Indexers.Utxo
-    Gen.Marconi.ChainIndex.Mockchain
-    Gen.Marconi.ChainIndex.Types
-    Helpers
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:
-    , cardano-api-extended
-    , marconi-chain-index
-    , marconi-core-legacy
-
-  --------------------------
-  -- Other IOG dependencies
-  --------------------------
-  build-depends:
-    , cardano-api                  ^>=8.20
-    , cardano-api-gen              ^>=8.2
-    , cardano-binary
-    , cardano-crypto-class
-    , cardano-ledger-core
-    , hedgehog-extras
-    , ouroboros-network-protocols
-    , plutus-core
-    , plutus-ledger-api            ^>=1.9
-    , plutus-tx
-    , plutus-tx-plugin
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , async
-    , base        >=4.9 && <5
-    , bytestring
-    , containers
-    , directory
-    , filepath
-    , hedgehog
-    , lens
-    , mtl
-    , streaming
-    , temporary
-    , time
-
-benchmark marconi-chain-index-bench
-  import:         lang
-  main-is:        BenchQueries.hs
-  hs-source-dirs: bench
-  type:           exitcode-stdio-1.0
-
-  if impl(ghc >=8.10)
-    ghc-options: "-with-rtsopts=-A32m --nonmoving-gc"
-
-  else
-    ghc-options: -with-rtsopts=-A32m
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:
-    , marconi-chain-index
-    , marconi-core-legacy
-
-  --------------------------
-  -- Other IOG dependencies
-  --------------------------
-  build-depends:
-    , cardano-api           ^>=8.20
-    , cardano-ledger-byron
-    , iohk-monitoring
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , aeson
-    , async
-    , base           >=4.9 && <5
-    , bytestring
-    , filepath
-    , sqlite-simple
-    , stm
-    , tasty-bench
-    , text
-
 test-suite marconi-chain-index-test
   import:         lang
   ghc-options:    -Wno-unused-packages
@@ -365,29 +239,18 @@ test-suite marconi-chain-index-test
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
+    Spec.Marconi.ChainIndex.Api.Gen
+    Spec.Marconi.ChainIndex.Api.Routes
     Spec.Marconi.ChainIndex.CLI
-    Spec.Marconi.ChainIndex.Coordinator
-    Spec.Marconi.ChainIndex.Experimental.Api.Gen
-    Spec.Marconi.ChainIndex.Experimental.Api.Routes
-    Spec.Marconi.ChainIndex.Experimental.Indexers
-    Spec.Marconi.ChainIndex.Experimental.Indexers.BlockInfo
-    Spec.Marconi.ChainIndex.Experimental.Indexers.ChainTip
-    Spec.Marconi.ChainIndex.Experimental.Indexers.Datum
-    Spec.Marconi.ChainIndex.Experimental.Indexers.MintTokenEvent
-    Spec.Marconi.ChainIndex.Experimental.Indexers.Spent
-    Spec.Marconi.ChainIndex.Experimental.Indexers.Utxo
-    Spec.Marconi.ChainIndex.Experimental.Indexers.UtxoQuery
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndex
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.AddressDatumIndexEvent
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.Generators
-    Spec.Marconi.ChainIndex.Indexers.AddressDatum.Utils
-    Spec.Marconi.ChainIndex.Indexers.EpochState
-    Spec.Marconi.ChainIndex.Indexers.MintBurn
-    Spec.Marconi.ChainIndex.Indexers.ScriptTx
+    Spec.Marconi.ChainIndex.Indexers
+    Spec.Marconi.ChainIndex.Indexers.BlockInfo
+    Spec.Marconi.ChainIndex.Indexers.ChainTip
+    Spec.Marconi.ChainIndex.Indexers.Datum
+    Spec.Marconi.ChainIndex.Indexers.MintTokenEvent
+    Spec.Marconi.ChainIndex.Indexers.Spent
     Spec.Marconi.ChainIndex.Indexers.Utxo
-    Spec.Marconi.ChainIndex.Indexers.Utxo.UtxoIndex
-    Spec.Marconi.ChainIndex.Logging
+    Spec.Marconi.ChainIndex.Indexers.UtxoQuery
+    Spec.Marconi.ChainIndex.Logger
     Spec.Marconi.ChainIndex.Orphans
 
   --------------------
@@ -397,7 +260,6 @@ test-suite marconi-chain-index-test
     , cardano-api-extended
     , marconi-chain-index
     , marconi-chain-index-test-lib
-    , marconi-core-legacy
     , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
@@ -454,40 +316,41 @@ test-suite marconi-chain-index-test
     , time
     , transformers
 
-test-suite marconi-chain-index-test-compare-cardano-db-sync
-  import:         lang
-  ghc-options:    -Wno-unused-packages
-  type:           exitcode-stdio-1.0
-  main-is:        Spec.hs
-  hs-source-dirs: test-compare-cardano-db-sync
+library marconi-chain-index-test-lib
+  import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
+  visibility:      public
+  hs-source-dirs:  test-lib
+  exposed-modules:
+    Gen.Marconi.ChainIndex.Mockchain
+    Gen.Marconi.ChainIndex.Types
+    Helpers
 
   --------------------
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index           >=1.2.0
-    , marconi-chain-index-test-lib  >=1.2.0
-    , marconi-core-legacy           >=1.2.0
+    , cardano-api-extended
+    , marconi-chain-index
+    , marconi-core
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                    ^>=8.20
-    , cardano-api-gen                ^>=8.2
+    , cardano-api                  ^>=8.20
+    , cardano-api-gen              ^>=8.2
     , cardano-binary
     , cardano-crypto-class
     , cardano-ledger-core
-    , cardano-ledger-shelley
-    , cardano-slotting
     , hedgehog-extras
-    , iohk-monitoring
-    , ouroboros-consensus
-    , ouroboros-consensus-cardano
-    , ouroboros-consensus-diffusion
-    , ouroboros-network
+    , ouroboros-network-protocols
     , plutus-core
-    , plutus-ledger-api              ^>=1.9
+    , plutus-ledger-api            ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
 
@@ -495,29 +358,15 @@ test-suite marconi-chain-index-test-compare-cardano-db-sync
   -- Non-IOG dependencies
   ------------------------
   build-depends:
-    , aeson
     , async
-    , base                    >=4.9 && <5
-    , base16-bytestring
+    , base        >=4.9 && <5
     , bytestring
-    , cborg
     , containers
     , directory
     , filepath
     , hedgehog
     , lens
     , mtl
-    , optparse-applicative
-    , postgresql-simple
-    , prettyprinter
-    , serialise
-    , sqlite-simple
-    , stm
     , streaming
-    , tasty
-    , tasty-expected-failure
-    , tasty-golden
-    , tasty-hedgehog
-    , text
+    , temporary
     , time
-    , transformers

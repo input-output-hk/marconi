@@ -14,7 +14,7 @@ import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
 import Data.String (fromString)
-import Gen.Marconi.ChainIndex.Types qualified as Gen
+import Gen.Marconi.ChainIndex.Legacy.Types qualified as Gen
 import Hedgehog (
   Gen,
   Property,
@@ -24,9 +24,9 @@ import Hedgehog (
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Marconi.ChainIndex.Indexers.Utxo (BlockInfo (BlockInfo))
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
+import Marconi.ChainIndex.Legacy.Indexers.Utxo (BlockInfo (BlockInfo))
+import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Legacy.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Sidechain.Api.Routes (
   ActiveSDDResult (ActiveSDDResult),
   AddressUtxoResult (AddressUtxoResult),

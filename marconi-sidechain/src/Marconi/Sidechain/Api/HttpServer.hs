@@ -24,7 +24,7 @@ import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding qualified as Text
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Types (MarconiTrace)
+import Marconi.ChainIndex.Legacy.Types (MarconiTrace)
 import Marconi.Sidechain.Api.Query.Indexers.EpochState qualified as EpochState
 import Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Q.Mint
 import Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Q.Utxo

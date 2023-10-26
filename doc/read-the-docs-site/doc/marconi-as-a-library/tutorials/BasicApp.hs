@@ -40,12 +40,12 @@ import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as Trace
 import Cardano.BM.Tracing qualified as Trace
 import Data.Void (Void)
-import Marconi.ChainIndex.Experimental.Indexers.Orphans ()
-import Marconi.ChainIndex.Experimental.Indexers.SyncHelper qualified as Core
-import Marconi.ChainIndex.Experimental.Runner qualified as Core
-import Marconi.ChainIndex.Logging (mkMarconiTrace)
+import Marconi.ChainIndex.Indexers.Orphans ()
+import Marconi.ChainIndex.Indexers.SyncHelper qualified as Core
+import Marconi.ChainIndex.Logger (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry qualified as Core
 import Marconi.ChainIndex.Orphans ()
+import Marconi.ChainIndex.Runner qualified as Core
 import Marconi.ChainIndex.Types (
   BlockEvent (BlockEvent),
   MarconiTrace,
@@ -194,7 +194,7 @@ runBlockInfoSqliteIndexerHttp = do
 -- BLOCKSTART event
 
 -- Marconi reads the blocks from the local node through the chain-sync protocol in
--- 'Marconi.ChainIndex.Experimental.Runner.runIndexer' (in `marconi-chain-index`).
+-- 'Marconi.ChainIndex.Runner.runIndexer' (in `marconi-chain-index`).
 --
 -- These blocks are forwarded to each indexer, and each indexer defines how a
 -- block gets translated to an event (which is what we are defining below).

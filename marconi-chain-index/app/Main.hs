@@ -1,6 +1,6 @@
-module Main where
+{-# LANGUAGE OverloadedStrings #-}
 
 import Marconi.ChainIndex.Run (run)
 
 main :: IO ()
-main = run
+main = run "marconi-chain-index"
