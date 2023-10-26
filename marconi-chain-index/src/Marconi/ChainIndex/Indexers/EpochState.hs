@@ -184,9 +184,10 @@ type instance Core.Point EpochSDD = C.ChainPoint
 
 Lens.makeLenses ''EpochSDD
 
-type LedgerStateFileIndexer = Core.FileIndexer EpochMetadata EpochState
+type LedgerStateFileIndexer = Core.WithTrace IO (Core.FileIndexer EpochMetadata) EpochState
 
-type BlockFileIndexer = Core.FileIndexer EpochMetadata (C.BlockInMode C.CardanoMode)
+type BlockFileIndexer =
+  Core.WithTrace IO (Core.FileIndexer EpochMetadata) (C.BlockInMode C.CardanoMode)
 
 type NonceIndexer = StandardSQLiteIndexer IO EpochNonce
 
@@ -300,15 +301,17 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
   epochNonceIndexer' <-
     mkStandardIndexer epochNonceConfig <$> buildEpochNonceIndexer (rootDir </> "epochNonce.db")
   epochStateIndexer' <-
-    buildEpochStateIndexer
-      configCodec
-      securityParam'
-      (rootDir </> "epochState")
+    Core.withTrace (logger workerCfg)
+      <$> buildEpochStateIndexer
+        configCodec
+        securityParam'
+        (rootDir </> "epochState")
   epochBlocksIndexer <-
-    buildBlockIndexer
-      configCodec
-      securityParam'
-      (rootDir </> "epochBlocks")
+    Core.withTrace (logger workerCfg)
+      <$> buildBlockIndexer
+        configCodec
+        securityParam'
+        (rootDir </> "epochBlocks")
   let state =
         EpochStateIndexerState
           epochStateIndexer'

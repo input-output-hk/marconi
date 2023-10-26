@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 {- |
@@ -18,11 +19,22 @@ module Marconi.Core.Type (
 
   -- * Error types
   IndexerError (..),
+  _RollbackBehindHistory,
+  _IndexerInternalError,
+  _InvalidIndexer,
+  _StopIndexer,
+  _ResumingFailed,
+  _IndexerCloseTimeoutError,
+  _OtherIndexError,
   QueryError (..),
+  _AheadOfLastSync,
+  _NotStoredAnymore,
+  _IndexerQueryError,
+  _SlotNoBoundsInvalid,
 ) where
 
 import Control.Exception (Exception)
-import Control.Lens (Lens, Lens')
+import Control.Lens (Lens, Lens', makePrisms)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Data (Typeable)
 import Data.List.NonEmpty (NonEmpty)
@@ -105,8 +117,12 @@ data IndexerError
     StopIndexer (Maybe Text)
   | -- | The indexer failed at resuming (likely due to a bug)
     ResumingFailed Text
+  | -- | The indexer timed out while attempting to write a file before closing
+    IndexerCloseTimeoutError
   | -- | Any other cause of failure
     OtherIndexError Text
+
+makePrisms ''IndexerError
 
 instance Exception IndexerError
 
@@ -128,6 +144,8 @@ data QueryError query
   | -- | Upper or lower SlotNo bounds provided in the query are not consistent. For example,
     -- the requested point is too early to answer the query completely.
     SlotNoBoundsInvalid Text
+
+makePrisms ''QueryError
 
 deriving stock instance (Show (Result query)) => Show (QueryError query)
 deriving instance (Typeable query, Show (Result query)) => Exception (QueryError query)

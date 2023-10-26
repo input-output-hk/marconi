@@ -30,12 +30,15 @@ module Marconi.Core.Transformer.WithTracer (
 import Cardano.BM.Trace qualified as Trace
 import Cardano.BM.Tracing (Trace, Tracer)
 import Cardano.BM.Tracing qualified as Tracing
-import Control.Lens (Lens', makeLenses, view)
+import Control.Lens (APrism', Lens', makeLenses, view)
+import Control.Lens.Extras (is)
 import Control.Lens.Operators ((^.))
-import Control.Monad.Trans.Class (MonadTrans (lift))
-
+import Control.Monad (unless)
 import Control.Monad.Cont (MonadIO)
+import Control.Monad.Except (MonadError (catchError, throwError))
+import Control.Monad.Trans.Class (MonadTrans (lift))
 import Data.Foldable (Foldable (toList))
+import Data.Functor (($>))
 import Data.Maybe (listToMaybe)
 import Marconi.Core.Class (
   Closeable (close),
@@ -64,11 +67,17 @@ import Marconi.Core.Transformer.IndexTransformer (
   setLastStablePointVia,
   wrapperConfig,
  )
-import Marconi.Core.Type (Point, point)
+import Marconi.Core.Type (
+  IndexerError,
+  Point,
+  point,
+  _StopIndexer,
+ )
 
 -- | Event available for the tracer
 data IndexerEvent point
   = IndexerIsStarting
+  | IndexerFailed IndexerError
   | IndexerStarted
   | IndexerIndexes point
   | IndexerHasIndexed
@@ -320,13 +329,18 @@ instance (MonadIO m, Closeable m indexer) => Closeable m (WithTrace m indexer) w
     pure res
 
 instance
-  (MonadTrans t, MonadIO (t m), MonadIO m, Closeable (t m) indexer)
+  ( MonadTrans t
+  , MonadIO (t m)
+  , MonadIO m
+  , MonadError IndexerError (t m)
+  , Closeable (t m) indexer
+  )
   => Closeable (t m) (WithTrace m indexer)
   where
   close indexer = do
     let tr = indexer ^. trace
     lift $ Trace.logDebug tr IndexerIsClosing
-    res <- closeVia unwrap indexer
+    res <- closeVia unwrap indexer `catchError` (\e -> (lift $ logIndexerError tr e) *> throwError e)
     lift $ Trace.logInfo tr IndexerClosed
     pure res
 
@@ -463,3 +477,35 @@ instance
   => Resetable (t m) event (WithTrace m indexer)
   where
   reset = resetVia unwrap
+
+-- | A wrapper to hide the focus of a prism
+data SomePrism e = forall a. SomePrism (APrism' e a)
+
+-- | A helper for logging 'IndexerError's in an 'IndexerEvent' trace
+logIndexerError
+  :: (MonadIO m)
+  => Trace m (IndexerEvent point)
+  -- ^ The 'Trace' for an 'IndexerEvent'
+  -> IndexerError
+  -- ^ The error to be potentially logged
+  -> m ()
+logIndexerError = logError IndexerFailed [SomePrism _StopIndexer]
+
+-- | A helper that allows us to add an exclusion list of error constructors
+logError
+  :: forall m e' e
+   . (MonadIO m)
+  => (e' -> e)
+  -- ^ A function to transform the error into the loggable @e@
+  -> [SomePrism e']
+  -- ^ A list of 'Prism's representing the constructors we want to ignore
+  -> Trace m e
+  -- ^ The 'Trace' for the loggable @e@
+  -> e'
+  -- ^ The error to be processed
+  -> m ()
+logError fromErr exclusionList tr err =
+  ( unless (any (\(SomePrism p) -> is p err) exclusionList) $
+      Trace.logError tr (fromErr err)
+  )
+    $> ()
