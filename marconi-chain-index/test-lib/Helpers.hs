@@ -36,59 +36,10 @@ it will be updated. Thus, we prefer to always be in the latest version of `carda
 the near future we're planning to replace cardano-testnet with cardano-node-emulator, so the
 cardano-testnet related code should change anyway.
 -}
-
-{- | Start a testnet.
- startTestnet
-   :: TN.TestnetOptions
-   -> FilePath
-   -> FilePath
-   -> H.Integration (C.LocalNodeConnectInfo C.CardanoMode, TC.Conf, TN.TestnetRuntime)
- startTestnet testnetOptions base tempAbsBasePath' = do
-   configurationTemplate <- H.noteShow $ base </> "configuration/defaults/byron-mainnet/configuration.yaml"
-   conf :: TC.Conf <-
-     HE.noteShowM $
-       TC.mkConf
-         (TC.ProjectBase base)
-         (TC.YamlFilePath configurationTemplate)
-         (tempAbsBasePath' <> "/")
-         Nothing
-   tn <- TN.testnet testnetOptions conf
--}
-
---   -- Boilerplate codecs used for protocol serialisation.  The number
---   -- of epochSlots is specific to each blockchain instance. This value
---   -- what the cardano main and testnet uses. Only applies to the Byron
---   -- era.
---   socketPathAbs <- getPoolSocketPathAbs conf tn
---   let epochSlots = C.EpochSlots 21600
---       localNodeConnectInfo =
---         C.LocalNodeConnectInfo
---           { C.localConsensusModeParams = C.CardanoModeParams epochSlots
---           , C.localNodeNetworkId = getNetworkId tn
---           , C.localNodeSocketPath = socketPathAbs
---           }
-
---   pure (localNodeConnectInfo, conf, tn)
-
--- getNetworkId :: TN.TestnetRuntime -> C.NetworkId
--- getNetworkId tn = C.Testnet $ C.NetworkMagic $ fromIntegral (TN.testnetMagic tn)
-
--- getSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
--- getSocketPathAbs conf tn = do
---   let tempAbsPath = TC.tempAbsPath conf
---   socketPath <- IO.sprocketArgumentName <$> H.headM (TN.nodeSprocket <$> TN.bftNodes tn)
---   H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
-
--- getPoolSocketPathAbs :: (MonadTest m, MonadIO m) => TC.Conf -> TN.TestnetRuntime -> m FilePath
--- getPoolSocketPathAbs conf tn = do
---   let tempAbsPath = TC.tempAbsPath conf
---   socketPath <- IO.sprocketArgumentName <$> H.headM (TN.poolSprockets tn)
---   H.note =<< (liftIO $ IO.canonicalizePath $ tempAbsPath </> socketPath)
-
--- readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
--- readAs as path = do
---   path' <- H.note path
---   H.leftFailM . liftIO $ C.readFileTextEnvelope as path'
+readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
+readAs as path = do
+  path' <- H.note path
+  H.leftFailM . liftIO $ C.readFileTextEnvelope as (C.File path')
 
 -- | An empty transaction
 emptyTxBodyContent
@@ -96,7 +47,7 @@ emptyTxBodyContent
   => (C.TxValidityLowerBound era, C.TxValidityUpperBound era)
   -> C.LedgerProtocolParameters era
   -> C.TxBodyContent C.BuildTx era
-emptyTxBodyContent validityRange pparams =
+emptyTxBodyContent validityRange ledgerPP =
   C.TxBodyContent
     { C.txIns = []
     , C.txInsCollateral = C.TxInsCollateralNone
@@ -109,7 +60,7 @@ emptyTxBodyContent validityRange pparams =
     , C.txMetadata = C.TxMetadataNone
     , C.txAuxScripts = C.TxAuxScriptsNone
     , C.txExtraKeyWits = C.TxExtraKeyWitnessesNone
-    , C.txProtocolParams = C.BuildTxWith $ Just pparams
+    , C.txProtocolParams = C.BuildTxWith $ Just ledgerPP
     , C.txWithdrawals = C.TxWithdrawalsNone
     , C.txCertificates = C.TxCertificatesNone
     , C.txUpdateProposal = C.TxUpdateProposalNone
@@ -220,7 +171,6 @@ mkTransferTx
   -> m (C.Tx era, C.TxBody era)
 mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
   ledgerPP <- getLedgerProtocolParams @era con
-  let apiPP = C.fromLedgerPParams C.shelleyBasedEra $ C.unLedgerProtocolParameters ledgerPP
   (txIns, totalLovelace) <- getAddressTxInsValue @era con from
   let tx0 =
         (emptyTxBodyContent validityRange ledgerPP)
@@ -230,7 +180,7 @@ mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
   txBody0 :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx0
   let fee =
         calculateFee
-          apiPP
+          ledgerPP
           (length $ C.txIns tx0)
           (length $ C.txOuts tx0)
           0
@@ -281,7 +231,7 @@ mkAddressAdaTxOut address lovelace =
 -}
 calculateFee
   :: (C.IsShelleyBasedEra era)
-  => C.ProtocolParameters
+  => C.LedgerProtocolParameters era
   -> Int
   -> Int
   -> Int
@@ -289,32 +239,33 @@ calculateFee
   -> C.NetworkId
   -> C.TxBody era
   -> C.Lovelace
-calculateFee pparams nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses networkId txBody =
-  C.estimateTransactionFee
-    networkId
-    (C.protocolParamTxFeeFixed pparams)
-    (C.protocolParamTxFeePerByte pparams)
-    (C.makeSignedTransaction [] txBody)
-    nInputs
-    nOutputs
-    nByronKeyWitnesses
-    nShelleyKeyWitnesses
+calculateFee ledgerPP nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses networkId txBody =
+  let apiPP = C.fromLedgerPParams C.shelleyBasedEra $ C.unLedgerProtocolParameters ledgerPP
+   in C.estimateTransactionFee
+        networkId
+        (C.protocolParamTxFeeFixed apiPP)
+        (C.protocolParamTxFeePerByte apiPP)
+        (C.makeSignedTransaction [] txBody)
+        nInputs
+        nOutputs
+        nByronKeyWitnesses
+        nShelleyKeyWitnesses
 
 {- | Add fee to transaction body, return transaction with the fee
  applied, and also the fee in lovelace.
 -}
 calculateAndUpdateTxFee
   :: (H.MonadTest m)
-  => C.ProtocolParameters
+  => C.LedgerProtocolParameters C.BabbageEra
   -> C.NetworkId
   -> Int
   -> Int
   -> C.TxBodyContent C.BuildTx C.BabbageEra
   -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.BabbageEra)
-calculateAndUpdateTxFee pparams networkId lengthTxIns lengthKeyWitnesses txbc = do
+calculateAndUpdateTxFee ledgerPP networkId lengthTxIns lengthKeyWitnesses txbc = do
   txb <- HE.leftFail $ C.createAndValidateTransactionBody txbc
   let feeLovelace =
-        calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb
+        calculateFee ledgerPP lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb
           :: C.Lovelace
       fee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra feeLovelace
       txbc' = txbc{C.txFee = fee}
