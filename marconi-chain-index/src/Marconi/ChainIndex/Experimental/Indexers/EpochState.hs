@@ -301,19 +301,21 @@ mkEpochStateIndexer workerCfg cfg rootDir = do
   epochNonceIndexer' <-
     mkStandardIndexer epochNonceConfig <$> buildEpochNonceIndexer (rootDir </> "epochNonce.db")
   epochStateIndexer' <-
-    buildEpochStateIndexer
-      configCodec
-      securityParam'
-      (rootDir </> "epochState")
+    Core.withTrace (logger workerCfg)
+      <$> buildEpochStateIndexer
+        configCodec
+        securityParam'
+        (rootDir </> "epochState")
   epochBlocksIndexer <-
-    buildBlockIndexer
-      configCodec
-      securityParam'
-      (rootDir </> "epochBlocks")
+    Core.withTrace (logger workerCfg)
+      <$> buildBlockIndexer
+        configCodec
+        securityParam'
+        (rootDir </> "epochBlocks")
   let state =
         EpochStateIndexerState
-          (Core.withTrace (logger workerCfg) epochStateIndexer')
-          (Core.withTrace (logger workerCfg) epochBlocksIndexer)
+          epochStateIndexer'
+          epochBlocksIndexer
           epochNonceIndexer'
           epochSDDIndexer'
           []
