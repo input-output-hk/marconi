@@ -12,9 +12,9 @@ import Cardano.Api qualified as C
 import Data.Aeson (FromJSON, ToJSON)
 import Data.List.NonEmpty (NonEmpty)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.CLI qualified as Cli
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (
+import Marconi.ChainIndex.Legacy.CLI qualified as Cli
+import Marconi.ChainIndex.Legacy.Orphans ()
+import Marconi.ChainIndex.Legacy.Types (
   IndexingDepth,
   RetryConfig,
   ShouldFailIfResync,

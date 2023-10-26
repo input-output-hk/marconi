@@ -38,6 +38,9 @@ let
           marconi-core-legacy.doHaddock = false;
           marconi-core-legacy.flags.defer-plugin-errors = false;
 
+          marconi-chain-index-legacy.doHaddock = false;
+          marconi-chain-index-legacy.flags.defer-plugin-errors = false;
+
           # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
           # is necessary to prevent the error
           # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
@@ -73,8 +76,8 @@ let
   cabalProject = cabalProject'.appendOverlays [
     (_: prev: {
       hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
+        "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
         "marconi-chain-index.components.exes.marconi-chain-index"
-        "marconi-chain-index.components.exes.marconi-chain-index-experimental"
         "marconi-sidechain.components.exes.marconi-sidechain"
       ]
         prev.hsPkgs;
