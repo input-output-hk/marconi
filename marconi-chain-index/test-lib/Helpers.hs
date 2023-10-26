@@ -5,6 +5,7 @@
 module Helpers where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.IPC qualified as C
 import Cardano.Api.Extended.Streaming qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Node.Socket.Emulator qualified as E
@@ -46,15 +47,9 @@ startTestnet
 startTestnet tempAbsBasePath = do
   let socketPathAbs = tempAbsBasePath <> "/node-server.sock"
       networkId = testnet -- TODO: any other networkId doesn't work
-      epochSlots :: (Num a) => a
-      epochSlots = 216
-      localNodeConnectInfo =
-        C.LocalNodeConnectInfo
-          { C.localConsensusModeParams = C.CardanoModeParams (C.EpochSlots epochSlots)
-          , C.localNodeNetworkId = networkId
-          , C.localNodeSocketPath = C.File socketPathAbs
-          }
-  liftIO $ E.startTestnet socketPathAbs epochSlots networkId
+      slotLength = 10 -- in milliseconds, shorter than the default to make the tests go faster
+      localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPathAbs
+  liftIO $ E.startTestnet socketPathAbs slotLength networkId
   pure (localNodeConnectInfo, networkId, socketPathAbs)
 
 readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
@@ -68,7 +63,7 @@ emptyTxBodyContent
   => (C.TxValidityLowerBound era, C.TxValidityUpperBound era)
   -> C.LedgerProtocolParameters era
   -> C.TxBodyContent C.BuildTx era
-emptyTxBodyContent validityRange pparams =
+emptyTxBodyContent validityRange ledgerPP =
   C.TxBodyContent
     { C.txIns = []
     , C.txInsCollateral = C.TxInsCollateralNone
@@ -81,7 +76,7 @@ emptyTxBodyContent validityRange pparams =
     , C.txMetadata = C.TxMetadataNone
     , C.txAuxScripts = C.TxAuxScriptsNone
     , C.txExtraKeyWits = C.TxExtraKeyWitnessesNone
-    , C.txProtocolParams = C.BuildTxWith $ Just pparams
+    , C.txProtocolParams = C.BuildTxWith $ Just ledgerPP
     , C.txWithdrawals = C.TxWithdrawalsNone
     , C.txCertificates = C.TxCertificatesNone
     , C.txUpdateProposal = C.TxUpdateProposalNone
@@ -283,10 +278,10 @@ calculateAndUpdateTxFee
   -> Int
   -> C.TxBodyContent C.BuildTx C.BabbageEra
   -> m (C.Lovelace, C.TxBodyContent C.BuildTx C.BabbageEra)
-calculateAndUpdateTxFee pparams networkId lengthTxIns lengthKeyWitnesses txbc = do
+calculateAndUpdateTxFee ledgerPP networkId lengthTxIns lengthKeyWitnesses txbc = do
   txb <- HE.leftFail $ C.createAndValidateTransactionBody txbc
   let feeLovelace =
-        calculateFee pparams lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb
+        calculateFee ledgerPP lengthTxIns (length $ C.txOuts txbc) 0 lengthKeyWitnesses networkId txb
           :: C.Lovelace
       fee = C.TxFeeExplicit C.TxFeesExplicitInBabbageEra feeLovelace
       txbc' = txbc{C.txFee = fee}

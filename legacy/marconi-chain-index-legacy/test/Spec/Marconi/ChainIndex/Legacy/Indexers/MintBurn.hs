@@ -372,18 +372,18 @@ endToEnd = H.withShrinks 0 $ H.propertyOnce $ (liftIO Help.setDarwinTmpdir >>) $
          in indexerWorker `catch` handleException :: IO ()
 
   let address :: C.Address C.ShelleyAddr
-      address = case knownAddresses !! 0 of
-        C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr -> addr
+      address = case take 1 knownAddresses of
+        [C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr] -> addr
         _ -> error "Invalid known address"
 
   -- Create & submit transaction
-  pparams <- Help.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
+  ledgerPP <- Help.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
   txMintValue <- forAll Gen.genTxMintValue
 
   value <- maybe (fail "no value") pure $ Gen.getValue txMintValue
   (txIns, lovelace) <- Help.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
 
-  let keyWitnesses = [C.WitnessPaymentExtendedKey (C.PaymentExtendedSigningKey (knownXPrvs !! 0))]
+  let keyWitnesses = C.WitnessPaymentExtendedKey . C.PaymentExtendedSigningKey <$> take 1 knownXPrvs
       mkTxOuts lovelace' =
         [ Help.mkAddressValueTxOut address $
             C.TxOutValue C.MultiAssetInBabbageEra $
@@ -392,11 +392,11 @@ endToEnd = H.withShrinks 0 $ H.propertyOnce $ (liftIO Help.setDarwinTmpdir >>) $
       validityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
   (feeLovelace, txbc) <-
     Help.calculateAndUpdateTxFee
-      pparams
+      ledgerPP
       networkId
       (length txIns)
       (length keyWitnesses)
-      (Help.emptyTxBodyContent validityRange pparams)
+      (Help.emptyTxBodyContent validityRange ledgerPP)
         { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
         , C.txOuts = mkTxOuts 0
         , C.txMintValue = txMintValue
