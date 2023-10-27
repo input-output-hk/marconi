@@ -30,16 +30,17 @@ module Marconi.Core.Transformer.WithTracer (
 import Cardano.BM.Trace qualified as Trace
 import Cardano.BM.Tracing (Trace, Tracer)
 import Cardano.BM.Tracing qualified as Tracing
-import Control.Lens (APrism', Lens', makeLenses, view)
+import Control.Lens (APrism', Lens', contramap, makeLenses, view)
 import Control.Lens.Extras (is)
 import Control.Lens.Operators ((^.))
 import Control.Monad (unless)
-import Control.Monad.Cont (MonadIO)
+import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (MonadError (catchError, throwError))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Data.Foldable (Foldable (toList))
 import Data.Functor (($>))
 import Data.Maybe (listToMaybe)
+import Data.Text (Text, pack)
 import Marconi.Core.Class (
   Closeable (close),
   HasGenesis,
@@ -70,7 +71,11 @@ import Marconi.Core.Transformer.IndexTransformer (
 import Marconi.Core.Type (
   IndexerError,
   Point,
+  QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore, SlotNoBoundsInvalid),
   point,
+  _AheadOfLastSync,
+  _NotStoredAnymore,
+  _SlotNoBoundsInvalid,
   _StopIndexer,
  )
 
@@ -78,6 +83,7 @@ import Marconi.Core.Type (
 data IndexerEvent point
   = IndexerIsStarting
   | IndexerFailed IndexerError
+  | IndexerQueryFailed Text
   | IndexerStarted
   | IndexerIndexes point
   | IndexerHasIndexed
@@ -344,8 +350,16 @@ instance
     lift $ Trace.logInfo tr IndexerClosed
     pure res
 
-instance (Queryable m event query indexer) => Queryable m event query (WithTrace n indexer) where
-  query = queryVia unwrap
+instance
+  ( Queryable m event query indexer
+  , MonadIO m
+  , MonadError (QueryError e) m
+  )
+  => Queryable m event query (WithTrace IO indexer)
+  where
+  query p q indexer = do
+    queryVia unwrap p q indexer
+      `catchError` (\e -> (liftIO $ logQueryError (indexer ^. trace) e) *> throwError e)
 
 instance IndexerTrans (WithTrace m) where
   unwrap = traceWrapper . unwrap
@@ -489,23 +503,41 @@ logIndexerError
   -> IndexerError
   -- ^ The error to be potentially logged
   -> m ()
-logIndexerError = logError IndexerFailed [SomePrism _StopIndexer]
+logIndexerError = logError [SomePrism _StopIndexer] . contramap (fmap (fmap IndexerFailed))
+
+-- | A helper for logging 'IndexerError's in an 'IndexerEvent' trace
+logQueryError
+  :: (MonadIO m)
+  => Trace m (IndexerEvent point)
+  -- ^ The 'Trace' for an 'IndexerEvent'
+  -> QueryError event
+  -- ^ The error to be potentially logged
+  -> m ()
+logQueryError =
+  logError
+    [SomePrism _AheadOfLastSync, SomePrism _NotStoredAnymore, SomePrism _SlotNoBoundsInvalid]
+    . contramap (fmap (fmap mapQueryError))
+  where
+    mapQueryError :: QueryError event -> IndexerEvent point
+    mapQueryError err = case err of
+      AheadOfLastSync _ -> IndexerQueryFailed "Ahead of last sync"
+      NotStoredAnymore -> IndexerQueryFailed "Not stored anymore"
+      IndexerQueryError txt -> IndexerQueryFailed txt
+      SlotNoBoundsInvalid txt -> IndexerQueryFailed (pack "Slot bounds invalid: " <> txt)
 
 -- | A helper that allows us to add an exclusion list of error constructors
 logError
-  :: forall m e' e
+  :: forall m e
    . (MonadIO m)
-  => (e' -> e)
-  -- ^ A function to transform the error into the loggable @e@
-  -> [SomePrism e']
+  => [SomePrism e]
   -- ^ A list of 'Prism's representing the constructors we want to ignore
   -> Trace m e
   -- ^ The 'Trace' for the loggable @e@
-  -> e'
+  -> e
   -- ^ The error to be processed
   -> m ()
-logError fromErr exclusionList tr err =
+logError exclusionList tr err =
   ( unless (any (\(SomePrism p) -> is p err) exclusionList) $
-      Trace.logError tr (fromErr err)
+      Trace.logError tr err
   )
     $> ()
