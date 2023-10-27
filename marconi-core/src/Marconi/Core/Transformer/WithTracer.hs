@@ -387,12 +387,17 @@ instance
   where
   trace = unwrapMap . trace
 
-instance (MonadIO m, IsIndex m event index) => IsIndex m event (WithTrace m index) where
+instance
+  (MonadIO m, MonadError IndexerError m, IsIndex m event index)
+  => IsIndex m event (WithTrace m index)
+  where
   index timedEvent indexer = do
     let tr = indexer ^. trace
         point' = timedEvent ^. point
     Trace.logDebug tr $ IndexerIndexes point'
-    res <- indexVia unwrap timedEvent indexer
+    res <-
+      indexVia unwrap timedEvent indexer
+        `catchError` (\e -> logIndexerError tr e *> throwError e)
     Trace.logDebug tr IndexerHasIndexed
     pure res
 
@@ -402,7 +407,9 @@ instance (MonadIO m, IsIndex m event index) => IsIndex m event (WithTrace m inde
         firstPoint = fmap (view point) . listToMaybe $ events
         lastPoint = fmap (view point) . listToMaybe $ reverse events
     maybe (pure ()) (Trace.logDebug tr . IndexerIndexes) firstPoint
-    res <- indexAllVia unwrap timedEvents indexer
+    res <-
+      indexAllVia unwrap timedEvents indexer
+        `catchError` (\e -> logIndexerError tr e *> throwError e)
     maybe (pure ()) (const $ Trace.logDebug tr IndexerHasIndexed) lastPoint
     pure res
 
@@ -412,7 +419,9 @@ instance (MonadIO m, IsIndex m event index) => IsIndex m event (WithTrace m inde
         firstPoint = fmap (view point) . listToMaybe $ reverse events
         lastPoint = fmap (view point) . listToMaybe $ events
     maybe (pure ()) (Trace.logDebug tr . IndexerIndexes) firstPoint
-    res <- indexAllDescendingVia unwrap timedEvents indexer
+    res <-
+      indexAllDescendingVia unwrap timedEvents indexer
+        `catchError` (\e -> logIndexerError tr e *> throwError e)
     maybe (pure ()) (const $ Trace.logDebug tr IndexerHasIndexed) lastPoint
     pure res
 
@@ -422,21 +431,25 @@ instance (MonadIO m, IsIndex m event index) => IsIndex m event (WithTrace m inde
      in do
           -- Warn about the rollback first
           Trace.logDebug tr $ IndexerRollbackTo p
-          res <- rollbackWrappedIndexer p
+          res <-
+            rollbackWrappedIndexer p
+              `catchError` (\e -> logIndexerError tr e *> throwError e)
           Trace.logDebug tr IndexerHasRollbackedTo
           pure res
 
   setLastStablePoint = setLastStablePointVia unwrap
 
 instance
-  (MonadTrans t, MonadIO m, MonadIO (t m), IsIndex (t m) event index)
+  (MonadTrans t, MonadIO m, MonadIO (t m), MonadError IndexerError (t m), IsIndex (t m) event index)
   => IsIndex (t m) event (WithTrace m index)
   where
   index timedEvent indexer = do
     let tr = indexer ^. trace
         point' = timedEvent ^. point
     lift $ Trace.logDebug tr $ IndexerIndexes point'
-    res <- indexVia unwrap timedEvent indexer
+    res <-
+      indexVia unwrap timedEvent indexer
+        `catchError` (\e -> (lift $ logIndexerError tr e) *> throwError e)
     lift $ Trace.logDebug tr IndexerHasIndexed
     pure res
 
@@ -446,7 +459,9 @@ instance
         firstPoint = fmap (view point) . listToMaybe $ events
         lastPoint = fmap (view point) . listToMaybe $ reverse events
     maybe (pure ()) (lift . Trace.logDebug tr . IndexerIndexes) firstPoint
-    res <- indexAllVia unwrap timedEvents indexer
+    res <-
+      indexAllVia unwrap timedEvents indexer
+        `catchError` (\e -> (lift $ logIndexerError tr e) *> throwError e)
     maybe (pure ()) (const $ lift $ Trace.logDebug tr IndexerHasIndexed) lastPoint
     pure res
 
@@ -456,7 +471,9 @@ instance
         firstPoint = fmap (view point) . listToMaybe $ reverse events
         lastPoint = fmap (view point) . listToMaybe $ events
     maybe (pure ()) (lift . Trace.logDebug tr . IndexerIndexes) firstPoint
-    res <- indexAllDescendingVia unwrap timedEvents indexer
+    res <-
+      indexAllDescendingVia unwrap timedEvents indexer
+        `catchError` (\e -> (lift $ logIndexerError tr e) *> throwError e)
     maybe (pure ()) (const $ lift $ Trace.logDebug tr IndexerHasIndexed) lastPoint
     pure res
 
@@ -466,7 +483,9 @@ instance
      in do
           -- Warn about the rollback first
           lift . Trace.logDebug tr $ IndexerRollbackTo p
-          res <- rollbackWrappedIndexer p
+          res <-
+            rollbackWrappedIndexer p
+              `catchError` (\e -> (lift $ logIndexerError tr e) *> throwError e)
           lift $ Trace.logDebug tr IndexerHasRollbackedTo
           pure res
 

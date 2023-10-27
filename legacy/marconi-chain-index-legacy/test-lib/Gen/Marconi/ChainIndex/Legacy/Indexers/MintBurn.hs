@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-}
 
 module Gen.Marconi.ChainIndex.Legacy.Indexers.MintBurn (
   genIndexerWithEvents,
@@ -14,6 +15,8 @@ module Gen.Marconi.ChainIndex.Legacy.Indexers.MintBurn (
   genTxMintValue,
   genAssetName,
   commonMintingPolicyId,
+  getValue,
+  mintsToPolicyAssets,
 ) where
 
 import Cardano.Api qualified as C
