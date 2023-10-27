@@ -827,9 +827,9 @@ instance
   query = do
     let epochSDDQuery =
           [sql|SELECT epochNo, poolId, lovelace, blockNo, slotNo, blockHeaderHash
-            FROM epoch_sdd
-            WHERE epochNo == :epochNo
-          |]
+                FROM epoch_sdd
+                WHERE epochNo == :epochNo
+              |]
         -- See Note [Active stake pool delegation query] for why we do 'epochNo - 2' for the query.
         getParams _ (ActiveSDDByEpochNoQuery epochNo) = [":epochNo" SQL.:= epochNo - 2]
     Core.querySyncedOnlySQLiteIndexerWith
