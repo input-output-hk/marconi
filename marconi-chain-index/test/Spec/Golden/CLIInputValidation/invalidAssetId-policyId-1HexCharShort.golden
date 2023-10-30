@@ -1,0 +1,20 @@
+option --match-asset-id: Expected Base16-encoded bytestring, but got 1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f; invalid bytestring size
+
+Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH) 
+                           (--mainnet | --testnet-magic NATURAL) 
+                           [(-n|--slot-no SLOT-NO)
+                             (-b|--block-header-hash BLOCK-HEADER-HASH)] 
+                           [--max-indexing-depth | --min-indexing-depth NATURAL]
+                           [--initial-retry-time NATURAL] 
+                           [--no-max-retry-time | --max-retry-time NATURAL]
+                           (-d|--db-dir DIR) [--enable-txoutref] 
+                           [--disable-utxo] [--disable-address-datum] 
+                           [--disable-script-tx] 
+                           [--disable-epoch-stakepool-size] [--disable-mintburn]
+                           [--http-port INT] 
+                           [(-a|--addresses-to-index BECH32-ADDRESS)] 
+                           [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
+                           [--node-config-path ARG] 
+                           [--fail-if-resyncing-from-genesis]
+
+  marconi
