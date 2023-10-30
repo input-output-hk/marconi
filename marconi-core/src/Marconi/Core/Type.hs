@@ -35,6 +35,7 @@ module Marconi.Core.Type (
 
 import Control.Exception (Exception)
 import Control.Lens (Lens, Lens', makePrisms)
+import Control.Lens.Prism (APrism', prism')
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Data (Typeable)
 import Data.List.NonEmpty (NonEmpty)
@@ -122,7 +123,54 @@ data IndexerError
   | -- | Any other cause of failure
     OtherIndexError Text
 
-makePrisms ''IndexerError
+_RollbackBehindHistory :: APrism' IndexerError ()
+_RollbackBehindHistory = prism' f g
+  where
+    f = const RollbackBehindHistory
+    g RollbackBehindHistory = Just ()
+    g _ = Nothing
+
+_IndexerInternalError :: APrism' IndexerError Text
+_IndexerInternalError = prism' f g
+  where
+    f = IndexerInternalError
+    g (IndexerInternalError mt) = Just mt
+    g _ = Nothing
+
+_InvalidIndexer :: APrism' IndexerError Text
+_InvalidIndexer = prism' f g
+  where
+    f = InvalidIndexer
+    g (InvalidIndexer mt) = Just mt
+    g _ = Nothing
+
+_StopIndexer :: APrism' IndexerError (Maybe Text)
+_StopIndexer = prism' f g
+  where
+    f = StopIndexer
+    g (StopIndexer mt) = Just mt
+    g _ = Nothing
+
+_ResumingFailed :: APrism' IndexerError Text
+_ResumingFailed = prism' f g
+  where
+    f = ResumingFailed
+    g (ResumingFailed mt) = Just mt
+    g _ = Nothing
+
+_IndexerCloseTimeoutError :: APrism' IndexerError ()
+_IndexerCloseTimeoutError = prism' f g
+  where
+    f = const IndexerCloseTimeoutError
+    g IndexerCloseTimeoutError = Just ()
+    g _ = Nothing
+
+_OtherIndexError :: APrism' IndexerError Text
+_OtherIndexError = prism' f g
+  where
+    f = OtherIndexError
+    g (OtherIndexError mt) = Just mt
+    g _ = Nothing
 
 instance Exception IndexerError
 
