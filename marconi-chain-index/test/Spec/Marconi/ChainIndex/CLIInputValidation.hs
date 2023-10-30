@@ -23,7 +23,7 @@ tests =
                   goldenVsString
                     (testDescription testInput)
                     (goldenFile testInput)
-                    (invalidCliArgWhenStartIngMarconiSideChainTest testInput)
+                    (invalidCliArgWhenStartIngMarconiChainIndexTest testInput)
               )
     ]
 
@@ -113,8 +113,8 @@ invalidOptionalCliFlagsWithExpectedErrors =
       (goldenFileDir </> "invalidAssetId-assetName-invalidBase16Format.golden")
   ]
 
-invalidCliArgWhenStartIngMarconiSideChainTest :: InvalidArgTestInput -> IO BSL.ByteString
-invalidCliArgWhenStartIngMarconiSideChainTest InvalidArgTestInput{..} = do
+invalidCliArgWhenStartIngMarconiChainIndexTest :: InvalidArgTestInput -> IO BSL.ByteString
+invalidCliArgWhenStartIngMarconiChainIndexTest InvalidArgTestInput{..} = do
   (_mStdin, _mStdout, mStderr, _processHandle) <-
     IO.createProcess
       . ( \cp ->
