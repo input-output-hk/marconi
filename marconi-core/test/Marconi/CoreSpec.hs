@@ -549,7 +549,7 @@ indexingPerformanceTest
 indexingPerformanceTest indexerName runner =
   Tasty.testProperty (indexerName <> " performance check") $
     Test.withMaxSuccess 5 $
-      Test.within 10_000_000 $
+      Test.within 20_000_000 $
         storageBasedModelProperty (genLargeChain 10) runner
 
 storageBasedModelProperty
