@@ -278,7 +278,6 @@ test-suite marconi-chain-index-test
     , cardano-node-emulator
     , cardano-slotting             ^>=0.1.1.1
     , hedgehog-extras
-    , http-client
     , iohk-monitoring
     , ouroboros-consensus
     , ouroboros-consensus-cardano
@@ -288,9 +287,6 @@ test-suite marconi-chain-index-test
     , plutus-tx
     , plutus-tx-plugin
     , process
-    , servant
-    , servant-client
-    , warp
 
   ------------------------
   -- Non-IOG dependencies
