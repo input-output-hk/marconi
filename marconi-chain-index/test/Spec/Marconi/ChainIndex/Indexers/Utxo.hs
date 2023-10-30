@@ -18,7 +18,6 @@ import Data.List ((\\))
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
-import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
@@ -34,6 +33,7 @@ import Marconi.ChainIndex.Logger (nullTracer)
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

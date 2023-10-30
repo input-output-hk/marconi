@@ -27,8 +27,6 @@ import Control.Monad (void)
 import Data.Aeson qualified as Aeson
 import Data.List qualified as List
 import Data.Maybe (fromMaybe)
-import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
-import Gen.Marconi.ChainIndex.Types qualified as CGen
 import Hedgehog (Property)
 import Hedgehog qualified
 import Hedgehog.Gen qualified
@@ -39,6 +37,8 @@ import Spec.Marconi.ChainIndex.Indexers.Datum qualified as Test.Datum
 import Spec.Marconi.ChainIndex.Indexers.Spent qualified as Test.Spent
 import Spec.Marconi.ChainIndex.Indexers.Utxo qualified as Test.Utxo
 import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
+import Test.Gen.Marconi.ChainIndex.Types qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

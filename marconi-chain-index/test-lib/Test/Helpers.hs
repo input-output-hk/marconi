@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
-module Helpers where
+module Test.Helpers where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming qualified as C

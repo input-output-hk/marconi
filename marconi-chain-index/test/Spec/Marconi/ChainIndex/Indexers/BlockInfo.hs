@@ -13,8 +13,6 @@ import Control.Lens ((^.))
 import Data.Aeson qualified as Aeson
 import Data.Maybe (mapMaybe)
 import Data.Time qualified as Time
-import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
-import Gen.Marconi.ChainIndex.Types qualified as CGen
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
@@ -22,6 +20,8 @@ import Hedgehog.Range qualified
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
+import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
+import Test.Gen.Marconi.ChainIndex.Types qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

@@ -332,9 +332,10 @@ library marconi-chain-index-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
-    Gen.Marconi.ChainIndex.Mockchain
-    Gen.Marconi.ChainIndex.Types
-    Helpers
+    Test.Gen.Marconi.ChainIndex.Mockchain
+    Test.Gen.Marconi.ChainIndex.Types
+    Test.Helpers
+    Test.Integration
 
   --------------------
   -- Local components
