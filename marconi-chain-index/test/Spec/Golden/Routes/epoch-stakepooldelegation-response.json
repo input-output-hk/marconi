@@ -1,0 +1,41 @@
+[
+    {
+        "_event": {
+            "_sddBlockNo": 64903,
+            "_sddEpochNo": 6,
+            "_sddLovelace": 100000000000000,
+            "_sddPoolId": "pool1z22x50lqsrwent6en0llzzs9e577rx7n3mv9kfw7udwa2rf42fa"
+        },
+        "_point": {
+            "blockHash": "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6",
+            "slot": 1382422,
+            "tag": "ChainPoint"
+        }
+    },
+    {
+        "_event": {
+            "_sddBlockNo": 64903,
+            "_sddEpochNo": 6,
+            "_sddLovelace": 100000000000000,
+            "_sddPoolId": "pool1547tew8vmuj0g6vj3k5jfddudextcw6hsk2hwgg6pkhk7lwphe6"
+        },
+        "_point": {
+            "blockHash": "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6",
+            "slot": 1382422,
+            "tag": "ChainPoint"
+        }
+    },
+    {
+        "_event": {
+            "_sddBlockNo": 64903,
+            "_sddEpochNo": 6,
+            "_sddLovelace": 100000000000000,
+            "_sddPoolId": "pool174mw7e20768e8vj4fn8y6p536n8rkzswsapwtwn354dckpjqzr8"
+        },
+        "_point": {
+            "blockHash": "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6",
+            "slot": 1382422,
+            "tag": "ChainPoint"
+        }
+    }
+]
