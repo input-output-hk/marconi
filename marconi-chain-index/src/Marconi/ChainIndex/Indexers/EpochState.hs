@@ -35,7 +35,7 @@ module Marconi.ChainIndex.Indexers.EpochState (
   mkEpochStateWorker,
 
   -- * Queries
-  ActiveSDDByEpochNoQuery,
+  ActiveSDDByEpochNoQuery (..),
   NonceByEpochNoQuery,
 ) where
 
