@@ -134,28 +134,28 @@ _IndexerInternalError :: APrism' IndexerError Text
 _IndexerInternalError = prism' f g
   where
     f = IndexerInternalError
-    g (IndexerInternalError mt) = Just mt
+    g (IndexerInternalError txt) = Just txt
     g _ = Nothing
 
 _InvalidIndexer :: APrism' IndexerError Text
 _InvalidIndexer = prism' f g
   where
     f = InvalidIndexer
-    g (InvalidIndexer mt) = Just mt
+    g (InvalidIndexer txt) = Just txt
     g _ = Nothing
 
 _StopIndexer :: APrism' IndexerError (Maybe Text)
 _StopIndexer = prism' f g
   where
     f = StopIndexer
-    g (StopIndexer mt) = Just mt
+    g (StopIndexer mtxt) = Just mtxt
     g _ = Nothing
 
 _ResumingFailed :: APrism' IndexerError Text
 _ResumingFailed = prism' f g
   where
     f = ResumingFailed
-    g (ResumingFailed mt) = Just mt
+    g (ResumingFailed txt) = Just txt
     g _ = Nothing
 
 _IndexerCloseTimeoutError :: APrism' IndexerError ()
@@ -169,7 +169,7 @@ _OtherIndexError :: APrism' IndexerError Text
 _OtherIndexError = prism' f g
   where
     f = OtherIndexError
-    g (OtherIndexError mt) = Just mt
+    g (OtherIndexError txt) = Just txt
     g _ = Nothing
 
 instance Exception IndexerError
