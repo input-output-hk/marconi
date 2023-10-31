@@ -12,6 +12,7 @@ import Cardano.Binary qualified as CBOR
 import Cardano.Ledger.Shelley.API qualified as Ledger
 import Codec.CBOR.Read qualified as CBOR
 import Codec.Serialise (Serialise (decode, encode))
+import Control.Exception (throw)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy (toStrict)
@@ -66,7 +67,22 @@ instance SQL.FromRow C.ChainPoint where
       (Just f1, Just f2) ->
         return $ C.ChainPoint f1 f2
       (Nothing, Nothing) -> return C.ChainPointAtGenesis
-      (_, _) -> error "TODO: return an error type"
+      -- There doesn't seem to be a way to return errors
+      -- in 'RowParser', so we have to throw exceptions here
+      (Nothing, _) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "SQLInteger"
+            , SQL.errMessage = "Unexpected NULL value in first field of C.ChainPoint"
+            , SQL.errHaskellType = "C.SlotNo"
+            }
+      (_, Nothing) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "SQLBlob"
+            , SQL.errMessage = "Unexpected NULL value in second field of C.ChainPoint"
+            , SQL.errHaskellType = "C.Hash C.BlockHeader"
+            }
 
 instance ToRow C.ChainPoint where
   toRow C.ChainPointAtGenesis = [SQL.SQLNull]
