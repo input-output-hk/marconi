@@ -43,10 +43,61 @@ instance Pretty C.ChainTip where
   pretty (C.ChainTip sn ha bn) = "ChainTip(" <> pretty sn <> "," <+> pretty ha <> "," <+> pretty bn <> ")"
 
 instance SQL.FromRow C.ChainTip where
-  fromRow = C.ChainTip <$> SQL.field <*> SQL.field <*> SQL.field
+  fromRow = do
+    mF1 <- SQL.field
+    mF2 <- SQL.field
+    mF3 <- SQL.field
+    case (mF1, mF2, mF3) of
+      (Just f1, Just f2, Just f3) ->
+        return $ C.ChainTip f1 f2 f3
+      (Nothing, Nothing, Nothing) -> return C.ChainTipAtGenesis
+      -- There doesn't seem to be a way to return errors
+      -- in 'RowParser', so we have to throw exceptions here
+      (Nothing, Just _, Just _) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "SQLInteger"
+            , SQL.errMessage = "Unexpected NULL value in first field of C.ChainTip"
+            , SQL.errHaskellType = "C.SlotNo"
+            }
+      (Just _, Nothing, Just _) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "SQLBlob"
+            , SQL.errMessage = "Unexpected NULL value in second field of C.ChainTip"
+            , SQL.errHaskellType = "C.Hash C.BlockHeader"
+            }
+      (Just _, Just _, Nothing) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "SQLInteger"
+            , SQL.errMessage = "Unexpected NULL value in third field of C.ChainTip"
+            , SQL.errHaskellType = "C.BlockNo"
+            }
+      (Nothing, Nothing, _) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "(SQLInteger, SQLBlob)"
+            , SQL.errMessage = "Unexpected NULL values in first and second fields of C.ChainTip"
+            , SQL.errHaskellType = "(C.SlotNo, C.Hash C.BlockHeader)"
+            }
+      (Nothing, _, Nothing) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "(SQLInteger, SQLInteger)"
+            , SQL.errMessage = "Unexpected NULL values in first and third fields of C.ChainTip"
+            , SQL.errHaskellType = "(C.SlotNo, C.BlockNo)"
+            }
+      (_, Nothing, Nothing) ->
+        throw
+          SQL.UnexpectedNull
+            { SQL.errSQLType = "(SQLBlob, SQLInteger)"
+            , SQL.errMessage = "Unexpected NULL values in second and third fields of C.ChainTip"
+            , SQL.errHaskellType = "(C.Hash C.BlockHeader, C.BlockNo)"
+            }
 
 instance ToRow C.ChainTip where
-  toRow C.ChainTipAtGenesis = [SQL.SQLNull]
+  toRow C.ChainTipAtGenesis = [SQL.SQLNull, SQL.SQLNull]
   toRow (C.ChainTip sn bh bno) = [toField sn, toField bh, toField bno]
 
 instance Ord C.ChainTip where
@@ -85,7 +136,7 @@ instance SQL.FromRow C.ChainPoint where
             }
 
 instance ToRow C.ChainPoint where
-  toRow C.ChainPointAtGenesis = [SQL.SQLNull]
+  toRow C.ChainPointAtGenesis = [SQL.SQLNull, SQL.SQLNull]
   toRow (C.ChainPoint sn bh) = [toField sn, toField bh]
 
 -- * C.Hash C.BlockHeader
