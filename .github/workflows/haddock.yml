@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - will/PLT-5743/deploy-haddock-github-page
     tags:
       - '[0-9]+.[0-9]+.[0-9]+.[0-9]+'
 jobs:
