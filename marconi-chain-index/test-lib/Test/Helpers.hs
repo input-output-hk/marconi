@@ -28,19 +28,6 @@ import System.IO qualified as IO
 import System.IO.Temp qualified as IO
 import System.Info qualified as IO
 
-{- | Note [cardano-testnet update] }
-
-Everything related to `cardano-testnet` has been commented after we updated to the CHaP release of
-`cardano-api-8.8`. The reason is that `cardano-tesnet` still wasn't updated, and we don't know when
-it will be updated. Thus, we prefer to always be in the latest version of `cardano-api`. However, in
-the near future we're planning to replace cardano-testnet with cardano-node-emulator, so the
-cardano-testnet related code should change anyway.
--}
-readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
-readAs as path = do
-  path' <- H.note path
-  H.leftFailM . liftIO $ C.readFileTextEnvelope as (C.File path')
-
 -- | An empty transaction
 emptyTxBodyContent
   :: (C.IsShelleyBasedEra era)
@@ -133,6 +120,8 @@ submitTx localNodeConnectInfo tx = do
       SubmitFail reason -> H.failMessage GHC.callStack $ "Transaction failed: " <> show reason
       SubmitSuccess -> pure ()
 
+-- TODO: PLT-8098 delete this if unused
+
 -- | Block until a transaction with @txId@ is sent over the local chainsync protocol.
 awaitTxId :: C.LocalNodeConnectInfo C.CardanoMode -> C.TxId -> IO ()
 awaitTxId con txId = do
@@ -147,6 +136,8 @@ awaitTxId con txId = do
         txIds <- IO.readChan chan
         when (txId `notElem` txIds) loop
   loop
+
+-- TODO: PLT-8098 delete this if unused
 
 -- | Submit the argument transaction and await for it to be accepted into the blockhain.
 submitAwaitTx
@@ -224,6 +215,10 @@ mkAddressAdaTxOut address lovelace =
           Left adaOnlyInEra -> C.TxOutAdaOnly adaOnlyInEra lovelace
           Right multiAssetInEra -> C.TxOutValue multiAssetInEra $ C.lovelaceToValue lovelace
    in mkAddressValueTxOut address txOutValue
+
+-- | Create a single @C.'TxOut'@ from a Babbage-era @C.'TxOutValue'@.
+mkTxOut :: C.Address C.ShelleyAddr -> C.Value -> C.TxOut ctx C.BabbageEra
+mkTxOut address' = mkAddressValueTxOut address' . C.TxOutValue C.MultiAssetInBabbageEra
 
 {- | Adapted from:
  https://github.com/input-output-hk/cardano-node/blob/d15ff2b736452857612dd533c1ddeea2405a2630/cardano-cli/src/Cardano/CLI/Shelley/Run/Transaction.hs#L1105-L1112
@@ -328,3 +323,11 @@ addressAnyToShelley
   -> Maybe (C.Address C.ShelleyAddr)
 addressAnyToShelley (C.AddressShelley a) = Just a
 addressAnyToShelley _ = Nothing
+
+-- TODO: PLT-8098 check whether these are already provided (or almost) in cardano-api
+-- if not, they might be better put in cardano-api-extended
+
+-- | Get the @Cardano.Api.TxBody.'Value'@ from the @Cardano.Api.TxBody.'TxMintValue'@.
+getValueFromTxMintValue :: C.TxMintValue build era -> C.Value
+getValueFromTxMintValue (C.TxMintValue _ v _) = v
+getValueFromTxMintValue _ = mempty

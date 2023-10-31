@@ -23,6 +23,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
 import Hedgehog (Gen, PropertyT, (===))
 import Hedgehog qualified as H
+import Hedgehog.Extras qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as H.Range
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
@@ -37,6 +38,7 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   QueryByAssetId (QueryByAssetId),
   StandardMintTokenEventIndexer,
   mintAssetAssetId,
+  mintAssetAssetName,
   mintAssetPolicyId,
   mintAssetQuantity,
   mintTokenEventAsset,
@@ -47,10 +49,13 @@ import Marconi.ChainIndex.Indexers.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
+import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
+import Test.Helpers qualified as Helpers
+import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -122,6 +127,13 @@ tests =
             "Don't find anything at untrack AssetId"
             "propRunnerDoesntTrackUnselectedAssetId"
             propRunnerDoesntTrackUnselectedAssetId
+        ]
+    , testGroup
+        "End-to-end indexer tests with cardano-node-emulator"
+        [ testPropertyNamed
+            "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
+            "endToEndMintTokenEvent"
+            endToEndMintTokenEvent
         ]
     ]
 
@@ -574,6 +586,81 @@ queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
         Nothing -> MintTokenEvent.AllEvents
   H.evalExceptT $ Core.queryLatest query indexer
 
+{- | TODO: PLT-8098 evaluate the hedgehog boilerplate here and revise as needed.
+might be worth a wrapper "endToEndIndexerTest" that does the boilerplate for you. put in
+test-lib.
+-}
+endToEndMintTokenEvent :: H.Property
+endToEndMintTokenEvent = H.withShrinks 0 $
+  H.propertyOnce $
+    (liftIO Helpers.setDarwinTmpdir >>) $
+      H.runFinallies $
+        H.workspace "." $ \tempPath -> do
+          -- Local blockchain
+
+          -- Start the node emulator
+          (localNodeConnectInfo, networkId, socketPath) <- Integration.startTestnet tempPath
+          ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
+
+          -- Transaction-builder inputs
+          txMintValue <- H.forAll Integration.genTxMintValue
+          address <- H.nothingFail Integration.knownShelleyAddress
+          keyWitness <- H.nothingFail Integration.knownKeyWitness
+          (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+          let validityRange = Integration.unboundedValidityRange
+
+          -- TODO: PLT-8098 make a note about the fee calcs and TxOut stuff here being simplified
+          -- Create "unbalanced" transaction
+          let txbody =
+                Integration.mkUnbalancedTxBodyContentFromTxMintValue
+                  validityRange
+                  ledgerPP
+                  address
+                  txIns
+                  txMintValue
+
+          -- Calculate fee and validate transaction with single witness
+          txbodyValid <-
+            H.leftFail $
+              Integration.mkValidatedTxBodyWithFee ledgerPP address txbody lovelace 1
+
+          -- TODO: PLT-9098 need to convert keyWitness types appropriately
+          -- Submit to the local network
+          Integration.signAndSubmitTx localNodeConnectInfo [undefined] txbodyValid
+
+          -- Indexer
+
+          -- TODO: PLT-8098 fill holes, incl trace context
+          -- Setup
+          let config =
+                Runner.RunIndexerConfig
+                  undefined
+                  undefined
+                  undefined
+                  undefined
+                  networkId
+                  undefined
+                  socketPath
+
+          indexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:"
+          liftIO $ Runner.runIndexer config indexer
+
+          -- Query
+          let query = QueryByAssetId undefined Nothing Nothing Nothing undefined
+
+          -- TODO: PLT-8098 write listener to query for node emulator events. confirm that startTestNet is
+          -- run on another thread. ensure runIndexer is run on a separate thread.
+          (queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
+            H.evalExceptT $ Core.queryLatest query indexer
+
+          -- Test
+          let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents queryEvents
+              inputPolicyAssets = List.sort $ getPolicyAssetsFromTxMintValue txMintValue
+
+          queryPolicyAssets === inputPolicyAssets
+
+{- Utilities -}
+
 getPolicyIdFromAssetId :: C.AssetId -> C.PolicyId
 getPolicyIdFromAssetId C.AdaAssetId = ""
 getPolicyIdFromAssetId (C.AssetId pid _) = pid
@@ -629,6 +716,31 @@ getFlattenedTimedEvent timedEvent =
         Core.Timed (timedEvent ^. Core.point) e
     )
     $ timedEvent ^. Core.event . mintTokenEvents
+
+getPolicyAssetsFromTimedEvents
+  :: [Core.Timed C.ChainPoint MintTokenBlockEvents]
+  -> [(C.PolicyId, C.AssetName, C.Quantity)]
+getPolicyAssetsFromTimedEvents = map (op . (^. Core.event . mintTokenEventAsset)) . getFlattenedTimedEvents
+  where
+    op e = (e ^. mintAssetPolicyId, e ^. mintAssetAssetName, e ^. mintAssetQuantity)
+
+-- TODO: PLT-8098 check whether these are already provided (or almost) in cardano-api
+-- if not, they might be better put in cardano-api-extended
+
+-- | Unpack a TxMintValue into its id, name and quantity. Note there can be multiple assets.
+getPolicyAssetsFromTxMintValue
+  :: C.TxMintValue C.BuildTx C.BabbageEra -> [(C.PolicyId, C.AssetName, C.Quantity)]
+getPolicyAssetsFromTxMintValue txMintValue = case txMintValue of
+  (C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith _policyIdToWitnessMap)) ->
+    mapMaybe
+      ( \(assetId, quantity) -> case assetId of
+          C.AssetId policyId assetName -> Just (policyId, assetName, quantity)
+          C.AdaAssetId -> Nothing
+      )
+      $ C.valueToList mintedValues
+  _ -> []
+
+{- Generators -}
 
 genTimedEvents :: Gen [Core.Timed C.ChainPoint (Maybe MintTokenBlockEvents)]
 genTimedEvents = do

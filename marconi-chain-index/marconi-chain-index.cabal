@@ -349,15 +349,18 @@ library marconi-chain-index-test-lib
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                  ^>=8.20
-    , cardano-api-gen              ^>=8.2
+    , cardano-api                   ^>=8.20
+    , cardano-api-gen               ^>=8.2
     , cardano-binary
     , cardano-crypto-class
     , cardano-ledger-core
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
     , hedgehog-extras
     , ouroboros-network-protocols
     , plutus-core
-    , plutus-ledger-api            ^>=1.9
+    , plutus-ledger
+    , plutus-ledger-api             ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
 
