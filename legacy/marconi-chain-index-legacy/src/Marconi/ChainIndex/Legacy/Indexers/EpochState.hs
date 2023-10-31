@@ -293,41 +293,12 @@ data EpochSDDRow = EpochSDDRow
   { epochSDDRowEpochNo :: !C.EpochNo
   , epochSDDRowPoolId :: !C.PoolId
   , epochSDDRowLovelace :: !C.Lovelace
-  , epochSDDRowSlotNo :: !C.SlotNo
-  , epochSDDRowBlockHeaderHash :: !(C.Hash C.BlockHeader)
+  , epochSDDRowSlotNo :: !(Maybe C.SlotNo)
+  , epochSDDRowBlockHeaderHash :: !(Maybe (C.Hash C.BlockHeader))
   , epochSDDRowBlockNo :: !C.BlockNo
   }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
-
-instance FromJSON EpochSDDRow where
-  parseJSON (Object v) =
-    EpochSDDRow
-      <$> (C.EpochNo <$> v .: "epochNo")
-      <*> v .: "poolId"
-      <*> v .: "lovelace"
-      <*> (C.SlotNo <$> v .: "slotNo")
-      <*> v .: "blockHeaderHash"
-      <*> (C.BlockNo <$> v .: "blockNo")
-  parseJSON _ = mempty
-
-instance ToJSON EpochSDDRow where
-  toJSON
-    ( EpochSDDRow
-        (C.EpochNo epochNo)
-        poolId
-        lovelace
-        (C.SlotNo slotNo)
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      object
-        [ "epochNo" .= epochNo
-        , "poolId" .= poolId
-        , "lovelace" .= lovelace
-        , "slotNo" .= slotNo
-        , "blockHeaderHash" .= blockHeaderHash
-        , "blockNo" .= blockNo
-        ]
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (SQL.FromRow, SQL.ToRow, ToJSON, FromJSON)
 
 {- | Get Nonce per epoch given an extended ledger state. The Nonce is only available starting at
  Shelley era. Byron era has the neutral nonce.
@@ -365,7 +336,8 @@ instance FromJSON EpochNonceRow where
       <$> (C.EpochNo <$> v .: "epochNo")
       <*> (Ledger.Nonce <$> v .: "nonce")
       <*> (C.SlotNo <$> v .: "slotNo")
-      <*> v .: "blockHeaderHash"
+      <*> v
+        .: "blockHeaderHash"
       <*> (C.BlockNo <$> v .: "blockNo")
   parseJSON _ = mempty
 

@@ -68,8 +68,8 @@ queryActiveSDDByEpochNo env epochNo = do
                   ActiveSDDResult
                     (EpochState.epochSDDRowPoolId row)
                     (EpochState.epochSDDRowLovelace row)
-                    (EpochState.epochSDDRowSlotNo row)
-                    (EpochState.epochSDDRowBlockHeaderHash row)
+                    (Just $ EpochState.epochSDDRowSlotNo row)
+                    (Just $ EpochState.epochSDDRowBlockHeaderHash row)
                     (EpochState.epochSDDRowBlockNo row)
         _other -> pure $ Left $ QueryError "Query failed"
 

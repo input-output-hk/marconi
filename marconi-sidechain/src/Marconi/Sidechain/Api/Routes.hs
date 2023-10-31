@@ -1,4 +1,6 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
@@ -109,7 +111,7 @@ type RpcEpochNonceMethod =
 --------------------------
 
 newtype SidechainTip = SidechainTip {getTip :: C.ChainTip}
-  deriving (Eq, Ord, Generic, Show)
+  deriving stock (Eq, Ord, Generic, Show)
 
 instance ToJSON SidechainTip where
   toJSON (SidechainTip C.ChainTipAtGenesis) = Aeson.Null
@@ -132,7 +134,7 @@ instance FromJSON SidechainTip where
 
 data GetCurrentSyncedBlockResult
   = GetCurrentSyncedBlockResult (WithOrigin BlockInfo) SidechainTip
-  deriving (Eq, Ord, Generic, Show)
+  deriving stock (Eq, Ord, Generic, Show)
 
 instance ToJSON GetCurrentSyncedBlockResult where
   toJSON (GetCurrentSyncedBlockResult blockInfoM tip) =
@@ -171,7 +173,7 @@ data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   , querySearchInterval :: !(Utxo.Interval Ledger.SlotNo)
   -- ^ Query interval
   }
-  deriving (Show, Eq)
+  deriving stock (Show, Eq)
 
 instance FromJSON GetUtxosFromAddressParams where
   parseJSON =
@@ -202,13 +204,14 @@ instance ToJSON GetUtxosFromAddressParams where
 
 newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult
   {unAddressUtxosResult :: [AddressUtxoResult]}
-  deriving (Eq, Show, Generic, ToJSON, FromJSON)
+  deriving stock (Eq, Show, Generic)
+  deriving newtype (ToJSON, FromJSON)
 
 data SpentInfoResult
   = SpentInfoResult
       !C.SlotNo
       !C.TxId
-  deriving (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic)
 
 instance ToJSON SpentInfoResult where
   toJSON (SpentInfoResult sn txid) = Aeson.object ["slotNo" .= sn, "txId" .= txid]
@@ -220,7 +223,7 @@ instance FromJSON SpentInfoResult where
 
 -- | Wrapper around Cardano.Api,Value to provide a custom JSON serialisation/deserialisation
 newtype SidechainValue = SidechainValue {getSidechainValue :: C.Value}
-  deriving (Eq, Show, Generic)
+  deriving stock (Eq, Show, Generic)
 
 instance ToJSON SidechainValue where
   toJSON =
@@ -287,7 +290,7 @@ data AddressUtxoResult = AddressUtxoResult
   , utxoResultSpentInfo :: !(Maybe SpentInfoResult)
   , utxoResultInputs :: ![UtxoTxInput] -- List of inputs that were used in the transaction that created this UTxO.
   }
-  deriving (Eq, Show, Generic)
+  deriving stock (Eq, Show, Generic)
 
 instance ToJSON AddressUtxoResult where
   toJSON (AddressUtxoResult slotNo bhh en bn txIndexInBlock txIn dath dat value spentBy txInputs) =
@@ -311,21 +314,30 @@ instance FromJSON AddressUtxoResult where
   parseJSON =
     let parseAddressUtxoResult v = do
           AddressUtxoResult
-            <$> v .: "slotNo"
-            <*> v .: "blockHeaderHash"
-            <*> v .: "epochNo"
-            <*> v .: "blockNo"
-            <*> v .: "txIndexInBlock"
+            <$> v
+              .: "slotNo"
+            <*> v
+              .: "blockHeaderHash"
+            <*> v
+              .: "epochNo"
+            <*> v
+              .: "blockNo"
+            <*> v
+              .: "txIndexInBlock"
             <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
-            <*> v .: "datumHash"
-            <*> v .: "datum"
+            <*> v
+              .: "datumHash"
+            <*> v
+              .: "datum"
             <*> (getSidechainValue <$> v .: "value")
-            <*> v .: "spentBy"
-            <*> v .: "txInputs"
+            <*> v
+              .: "spentBy"
+            <*> v
+              .: "txInputs"
      in Aeson.withObject "AddressUtxoResult" parseAddressUtxoResult
 
 newtype UtxoTxInput = UtxoTxInput C.TxIn
-  deriving (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic)
 
 instance ToJSON UtxoTxInput where
   toJSON (UtxoTxInput (C.TxIn txId txIx)) =
@@ -347,7 +359,7 @@ data GetBurnTokenEventsParams = GetBurnTokenEventsParams
   , beforeSlotNo :: !(Maybe Word64)
   , afterTx :: !(Maybe C.TxId)
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 instance FromJSON GetBurnTokenEventsParams where
   parseJSON =
@@ -371,7 +383,8 @@ instance ToJSON GetBurnTokenEventsParams where
 
 newtype GetBurnTokenEventsResult
   = GetBurnTokenEventsResult [BurnTokenEventResult]
-  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (ToJSON, FromJSON)
 
 -- | The quantity represents a burn amount only, so this is always a positive number.
 data BurnTokenEventResult
@@ -385,7 +398,7 @@ data BurnTokenEventResult
       !C.AssetName
       !C.Quantity
       !Bool
-  deriving (Eq, Ord, Show, Generic)
+  deriving stock (Eq, Ord, Show, Generic)
 
 instance ToJSON BurnTokenEventResult where
   toJSON (BurnTokenEventResult slotNo bhh bn txId redh red an qty isStable) =
@@ -405,61 +418,45 @@ instance FromJSON BurnTokenEventResult where
   parseJSON =
     let parseAssetIdTxResult v =
           BurnTokenEventResult
-            <$> v .: "slotNo"
-            <*> v .: "blockHeaderHash"
-            <*> v .: "blockNo"
-            <*> v .: "txId"
-            <*> v .: "redeemerHash"
-            <*> v .: "redeemer"
-            <*> v .: "assetName"
-            <*> v .: "burnAmount"
-            <*> v .: "isStable"
+            <$> v
+              .: "slotNo"
+            <*> v
+              .: "blockHeaderHash"
+            <*> v
+              .: "blockNo"
+            <*> v
+              .: "txId"
+            <*> v
+              .: "redeemerHash"
+            <*> v
+              .: "redeemer"
+            <*> v
+              .: "assetName"
+            <*> v
+              .: "burnAmount"
+            <*> v
+              .: "isStable"
      in Aeson.withObject "AssetIdTxResult" parseAssetIdTxResult
 
 newtype GetEpochActiveStakePoolDelegationResult
   = GetEpochActiveStakePoolDelegationResult [ActiveSDDResult]
-  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (ToJSON, FromJSON)
 
 data ActiveSDDResult
   = ActiveSDDResult
       !C.PoolId
       !C.Lovelace
-      !C.SlotNo
-      !(C.Hash C.BlockHeader)
+      !(Maybe C.SlotNo)
+      !(Maybe (C.Hash C.BlockHeader))
       !C.BlockNo
-  deriving (Eq, Ord, Show)
-
-instance FromJSON ActiveSDDResult where
-  parseJSON =
-    let parseResult v = do
-          ActiveSDDResult
-            <$> v .: "poolId"
-            <*> v .: "lovelace"
-            <*> (C.SlotNo <$> v .: "slotNo")
-            <*> v .: "blockHeaderHash"
-            <*> (C.BlockNo <$> v .: "blockNo")
-     in Aeson.withObject "ActiveSDDResult" parseResult
-
-instance ToJSON ActiveSDDResult where
-  toJSON
-    ( ActiveSDDResult
-        poolId
-        lovelace
-        (C.SlotNo slotNo)
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      Aeson.object
-        [ "poolId" .= poolId
-        , "lovelace" .= lovelace
-        , "slotNo" .= slotNo
-        , "blockHeaderHash" .= blockHeaderHash
-        , "blockNo" .= blockNo
-        ]
+  deriving stock (Eq, Ord, Generic, Show)
+  deriving anyclass (ToJSON, FromJSON)
 
 newtype GetEpochNonceResult
   = GetEpochNonceResult (Maybe NonceResult)
-  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving newtype (ToJSON, FromJSON)
 
 data NonceResult
   = NonceResult
@@ -467,7 +464,7 @@ data NonceResult
       !C.SlotNo
       !(C.Hash C.BlockHeader)
       !C.BlockNo
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 instance FromJSON NonceResult where
   parseJSON =
@@ -475,7 +472,8 @@ instance FromJSON NonceResult where
           NonceResult
             <$> (Ledger.Nonce <$> v .: "nonce")
             <*> (C.SlotNo <$> v .: "slotNo")
-            <*> v .: "blockHeaderHash"
+            <*> v
+              .: "blockHeaderHash"
             <*> (C.BlockNo <$> v .: "blockNo")
      in Aeson.withObject "NonceResult" parseResult
 
