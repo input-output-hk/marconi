@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+  GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
   RpcGetCurrentSyncedBlock,
   getCurrentSyncedBlockHandler,
 ) where
