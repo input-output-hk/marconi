@@ -24,7 +24,6 @@ jobs:
         run: |
           ghcup nuke
           nix develop --command bash -c '
-              which cabal
               cabal update
               cabal haddock marconi-core
               cabal haddock marconi-chain-index
@@ -36,7 +35,7 @@ jobs:
           mkdir dist/marconi-core-json-rpc
           cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-core-1.2.0.0/doc/html/marconi-core/* ./dist/marconi-core
           cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-chain-index-1.2.0.0/doc/html/marconi-chain-index/* ./dist/marconi-chain-index
-          cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-core-json-rpc-1.2.0.0/doc/marconi-core-json-rpc/* ./dist/marconi-core-json-rpc
+          cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-core-json-rpc-1.2.0.0/doc/html/marconi-core-json-rpc/* ./dist/marconi-core-json-rpc
       - uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: dist
