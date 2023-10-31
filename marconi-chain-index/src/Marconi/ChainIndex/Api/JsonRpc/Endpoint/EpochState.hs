@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   RpcEpochActiveStakePoolDelegationMethod,
@@ -11,14 +10,15 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Lens.Getter qualified as Lens
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), (.:), (.=))
-import Data.Aeson qualified as Aeson
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics qualified as GHC
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.ChainIndex.Indexers (
   queryableEpochState,
  )
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Utils qualified as Util
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, queryHttpReaderHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
@@ -34,45 +34,14 @@ type RpcEpochActiveStakePoolDelegationMethod =
     String
     [ActiveSDDResult]
 
-data ActiveSDDResult
-  = ActiveSDDResult
-      !C.PoolId
-      !C.Lovelace
-      !C.SlotNo
-      !(C.Hash C.BlockHeader)
-      !C.BlockNo
-  deriving (Eq, Ord, Show)
-
-instance FromJSON ActiveSDDResult where
-  parseJSON =
-    let parseResult v = do
-          ActiveSDDResult
-            <$> v
-              .: "poolId"
-            <*> v
-              .: "lovelace"
-            <*> (C.SlotNo <$> v .: "slotNo")
-            <*> v
-              .: "blockHeaderHash"
-            <*> (C.BlockNo <$> v .: "blockNo")
-     in Aeson.withObject "ActiveSDDResult" parseResult
-
-instance ToJSON ActiveSDDResult where
-  toJSON
-    ( ActiveSDDResult
-        poolId
-        lovelace
-        (C.SlotNo slotNo)
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      Aeson.object
-        [ "poolId" .= poolId
-        , "lovelace" .= lovelace
-        , "slotNo" .= slotNo
-        , "blockHeaderHash" .= blockHeaderHash
-        , "blockNo" .= blockNo
-        ]
+data ActiveSDDResult = ActiveSDDResult
+  { activeSDDResultPoolId :: !C.PoolId
+  , activeSDDResultLovelace :: !C.Lovelace
+  , activeSDDResultSlotNo :: !(Maybe C.SlotNo)
+  , activeSDDResultHash :: !(Maybe (C.Hash C.BlockHeader))
+  , activeSDDResultBlockNo :: !C.BlockNo
+  }
+  deriving (Eq, Ord, Show, GHC.Generic, FromJSON, ToJSON)
 
 type RpcEpochNonceMethod =
   JsonRpc
@@ -92,30 +61,23 @@ getEpochStakePoolDelegationHandler
       HttpServerConfig
       (Either (JsonRpcErr String) [ActiveSDDResult])
 getEpochStakePoolDelegationHandler =
-  dimapHandler f g $ queryHttpReaderHandler (configQueryables . queryableEpochState)
+  dimapHandler toActiveSDDByEpochNoQuery toActiveSDDResults $
+    queryHttpReaderHandler (configQueryables . queryableEpochState)
   where
-    f :: Word64 -> EpochState.ActiveSDDByEpochNoQuery
-    f = EpochState.ActiveSDDByEpochNoQuery . C.EpochNo
-    g :: Core.Result EpochState.ActiveSDDByEpochNoQuery -> [ActiveSDDResult]
-    g =
-      let
-        x :: Core.Timed C.ChainPoint EpochState.EpochSDD -> ActiveSDDResult
-        x (Core.Timed chainPoint epochSDD) =
-          case chainPoint of
-            C.ChainPoint slotNo hash ->
-              ActiveSDDResult
-                (Lens.view EpochState.sddPoolId epochSDD)
-                (Lens.view EpochState.sddLovelace epochSDD)
-                slotNo
-                hash
-                (Lens.view EpochState.sddBlockNo epochSDD)
-            C.ChainPointAtGenesis ->
-              -- TODO: I believe this is actually impossible, the types are too loose,
-              -- a solution would be to change the implementation of the query to construct
-              -- an 'ActiveSDDResult' directly (not sure yet if feasible)
-              undefined
-       in
-        fmap x
+    toActiveSDDByEpochNoQuery :: Word64 -> EpochState.ActiveSDDByEpochNoQuery
+    toActiveSDDByEpochNoQuery = EpochState.ActiveSDDByEpochNoQuery . C.EpochNo
+
+    toActiveSDDResults :: Core.Result EpochState.ActiveSDDByEpochNoQuery -> [ActiveSDDResult]
+    toActiveSDDResults = fmap toActiveSDDResult
+
+    toActiveSDDResult :: Core.Timed C.ChainPoint EpochState.EpochSDD -> ActiveSDDResult
+    toActiveSDDResult (Core.Timed chainPoint epochSDD) =
+      ActiveSDDResult
+        (Lens.view EpochState.sddPoolId epochSDD)
+        (Lens.view EpochState.sddLovelace epochSDD)
+        (Util.chainPointToSlotNo chainPoint)
+        (Util.chainPointToHash chainPoint)
+        (Lens.view EpochState.sddBlockNo epochSDD)
 
 -- | Return an epoch nonce
 getEpochNonceHandler
