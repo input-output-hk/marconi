@@ -59,7 +59,14 @@ instance Pretty C.ChainPoint where
   pretty (C.ChainPoint sn ha) = "ChainPoint(" <> pretty sn <> "," <+> pretty ha <> ")"
 
 instance SQL.FromRow C.ChainPoint where
-  fromRow = C.ChainPoint <$> SQL.field <*> SQL.field
+  fromRow = do
+    mF1 <- SQL.field
+    mF2 <- SQL.field
+    case (mF1, mF2) of
+      (Just f1, Just f2) ->
+        return $ C.ChainPoint f1 f2
+      (Nothing, Nothing) -> return C.ChainPointAtGenesis
+      (_, _) -> error "TODO: return an error type"
 
 instance ToRow C.ChainPoint where
   toRow C.ChainPointAtGenesis = [SQL.SQLNull]
