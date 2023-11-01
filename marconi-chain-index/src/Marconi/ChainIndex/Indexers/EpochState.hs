@@ -229,7 +229,12 @@ data WorkerState = WorkerState
   { _lastEpochState :: EpochState
   -- ^ The last computed ledger state
   , _accessToIndexer
-      :: Con.MVar (EpochStateIndexer (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode)))
+      :: Con.MVar
+          ( Core.WithTrace
+              IO
+              EpochStateIndexer
+              (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
+          )
   -- ^ allow query to the indexer
   , _blocksToNextSnapshot :: Word
   -- ^ Number of blocks until the next snapshot
@@ -340,17 +345,19 @@ mkEpochStateWorker
           IO
           (WithDistance input)
           (WithDistance (Maybe ExtLedgerState, C.BlockInMode C.CardanoMode))
-          EpochStateIndexer
+          (Core.WithTrace IO EpochStateIndexer)
       )
 mkEpochStateWorker workerConfig epochStateConfig rootDir = do
-  indexer <- mkEpochStateIndexer workerConfig (indexerConfig epochStateConfig) rootDir
+  indexer <-
+    Core.withTrace (logger workerConfig)
+      <$> mkEpochStateIndexer workerConfig (indexerConfig epochStateConfig) rootDir
   workerState <- liftIO $ Con.newMVar indexer
   lastStable <- Core.lastStablePoint indexer
-  ledgerStateE <- runExceptT $ restoreLedgerState (Just lastStable) indexer
+  ledgerStateE <- runExceptT $ restoreLedgerState (Just lastStable) (indexer ^. Core.unwrap)
   epochState <- case ledgerStateE of
     Left _err -> throwError $ Core.IndexerInternalError "can't restore ledger state"
     Right res -> pure res
-  let extLedgerCfg = extLedgerConfig indexer
+  let extLedgerCfg = extLedgerConfig $ indexer ^. Core.unwrap
 
       snapshotInterval = epochSnapshotInterval epochStateConfig
       initialState = pure $ WorkerState epochState workerState snapshotInterval
@@ -860,9 +867,9 @@ instance
   query = do
     let epochSDDQuery =
           [sql|SELECT epochNo, nonce, blockNo, slotNo, blockHeaderHash
-                 FROM epoch_nonce
-                 WHERE epochNo = :epochNo
-              |]
+                FROM epoch_nonce
+                WHERE epochNo = :epochNo
+            |]
         getParams _ (NonceByEpochNoQuery epochNo) = [":epochNo" SQL.:= epochNo]
     Core.querySyncedOnlySQLiteIndexerWith
       getParams

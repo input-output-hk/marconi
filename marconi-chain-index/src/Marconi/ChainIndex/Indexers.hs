@@ -53,7 +53,9 @@ type instance Core.Point [AnyTxBody] = C.ChainPoint
 type Coordinator = Core.WithTrace IO Core.Coordinator TipOrBlock
 type ChainTipIndexer = ChainTip.ChainTipIndexer IO
 type EpochStateIndexer =
-  EpochState.EpochStateIndexer
+  Core.WithTrace
+    IO
+    EpochState.EpochStateIndexer
     (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
 type MintTokenEventIndexer =
   StandardIndexer IO Core.SQLiteIndexer MintTokenEvent.MintTokenBlockEvents
@@ -334,7 +336,7 @@ epochStateBuilder
           IO
           (WithDistance BlockEvent)
           (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
-          EpochState.EpochStateIndexer
+          (Core.WithTrace IO EpochState.EpochStateIndexer)
       )
 epochStateBuilder securityParam catchupConfig epochStateConfig textLogger path =
   let indexerName = "EpochState"

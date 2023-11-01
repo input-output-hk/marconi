@@ -242,6 +242,7 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Api.Gen
     Spec.Marconi.ChainIndex.Api.Routes
     Spec.Marconi.ChainIndex.CLI
+    Spec.Marconi.ChainIndex.CLIInputValidation
     Spec.Marconi.ChainIndex.Indexers
     Spec.Marconi.ChainIndex.Indexers.BlockInfo
     Spec.Marconi.ChainIndex.Indexers.ChainTip
@@ -252,6 +253,7 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Indexers.UtxoQuery
     Spec.Marconi.ChainIndex.Logger
     Spec.Marconi.ChainIndex.Orphans
+    Spec.Marconi.ChainIndex.Utils
 
   --------------------
   -- Local components
@@ -284,12 +286,14 @@ test-suite marconi-chain-index-test
     , plutus-ledger-api            ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
+    , process
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
   build-depends:
     , aeson
+    , aeson-pretty
     , async
     , base                  >=4.9 && <5
     , base16-bytestring
