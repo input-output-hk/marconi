@@ -9,6 +9,7 @@ module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
+import Cardano.Api.Extended.Streaming (BlockEvent (..), ChainSyncEvent (..))
 import Control.Concurrent qualified as Concurrent
 import Control.Lens (over, toListOf, view, (^.))
 import Control.Lens.Fold qualified as Lens
@@ -21,6 +22,7 @@ import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
+import Data.Void (Void)
 import Hedgehog (Gen, PropertyT, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
@@ -49,8 +51,11 @@ import Marconi.ChainIndex.Indexers.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
+import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Runner qualified as Runner
-import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
+import Marconi.ChainIndex.Types (RetryConfig (RetryConfig), TxIndexInBlock (TxIndexInBlock))
+import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
@@ -630,26 +635,76 @@ endToEndMintTokenEvent = H.withShrinks 0 $
 
           -- Indexer
 
-          -- TODO: PLT-8098 fill holes, incl trace context
           -- Setup
+          -- TODO: PLT-8098 make a endToEndIndexerRunner or something in the test-lib
+          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
+          let marconiTrace = mkMarconiTrace trace
+
+          -- TODO: PLT-8098 this should be elsewhere. these are copy-pasted from other locations in
+          -- code (local defs), which feels bad.
+          let
+            -- TODO: PLT-8098 adapt this to your needs. but see note above. ripped/adapted
+            -- from Runner or Indexers
+            toMintTokenEvents :: BlockEvent -> Maybe MintTokenEvent.MintTokenBlockEvents
+            toMintTokenEvents (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+              fmap MintTokenEvent.MintTokenBlockEvents . NonEmpty.nonEmpty $
+                concatMap (\(ix, tx) -> MintTokenEvent.extractEventsFromTx bn ix (C.getTxBody tx)) $
+                  zip [0 ..] txs
+
+            blockEventPreprocessorModifier
+              :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint BlockEvent])
+              -> ChainSyncEvent BlockEvent
+              -> [Core.ProcessedInput C.ChainPoint MintTokenBlockEvents]
+            blockEventPreprocessorModifier f = mapMaybe (traverse toMintTokenEvents) . f
+
+            -- This assumes the blocknumber is the same for all, which it is in this usage.
+            blockNoGetter =
+              mintTokenEvents
+                . Lens.folded
+                . MintTokenEvent.mintTokenEventLocation
+                . MintTokenEvent.mintTokenEventBlockNo
+
+            blockNoFromMintTokenBlockEvents :: MintTokenBlockEvents -> Maybe C.BlockNo
+            blockNoFromMintTokenBlockEvents = Lens.firstOf blockNoGetter
+
+            mintEventPreprocessor :: Runner.RunIndexerEventPreprocessing MintTokenEvent.MintTokenBlockEvents
+            mintEventPreprocessor =
+              let eventToProcessedInput = Runner.withNoPreprocessor ^. Runner.runIndexerPreprocessEvent
+               in Runner.RunIndexerEventPreprocessing
+                    (blockEventPreprocessorModifier eventToProcessedInput)
+                    blockNoFromMintTokenBlockEvents
+                    (const Nothing)
+
+          -- Default from the cli
+          let retryConfig = RetryConfig 30 Nothing
+
+          -- Taken from 'Run.run'
+          securityParam <-
+            liftIO $
+              withNodeConnectRetry marconiTrace retryConfig socketPath $
+                Utils.toException $
+                  Utils.querySecurityParam @Void networkId socketPath
+
           let config =
                 Runner.RunIndexerConfig
-                  undefined
-                  undefined
-                  undefined
-                  undefined
+                  marconiTrace
+                  mintEventPreprocessor
+                  retryConfig
+                  securityParam
                   networkId
-                  undefined
+                  C.ChainPointAtGenesis
                   socketPath
 
           indexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:"
+
           liftIO $ Runner.runIndexer config indexer
 
           -- Query
           let query = QueryByAssetId undefined Nothing Nothing Nothing undefined
 
           -- TODO: PLT-8098 write listener to query for node emulator events. confirm that startTestNet is
-          -- run on another thread. ensure runIndexer is run on a separate thread.
+          -- run on another thread. ensure runIndexer is run on a separate thread. Need to shutdown?
+          -- see Run.
           (queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
             H.evalExceptT $ Core.queryLatest query indexer
 
