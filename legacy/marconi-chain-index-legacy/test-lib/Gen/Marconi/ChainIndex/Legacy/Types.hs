@@ -5,6 +5,7 @@ module Gen.Marconi.ChainIndex.Legacy.Types (
   nonEmptySubset,
   genBlockHeader,
   genHashBlockHeader,
+  genMaybeHashBlockHeader,
   genBlockNo,
   genChainSyncEvents,
   genChainPoints,
@@ -12,6 +13,7 @@ module Gen.Marconi.ChainIndex.Legacy.Types (
   genChainPoint',
   genExecutionUnits,
   genSlotNo,
+  genMaybeSlotNo,
   genTxBodyContentWithTxInsCollateral,
   genTxBodyContentForPlutusScripts,
   genTxBodyWithTxIns,
@@ -70,6 +72,13 @@ nonEmptySubset s = do
 
 genSlotNo :: (Hedgehog.MonadGen m) => m C.SlotNo
 genSlotNo = C.SlotNo <$> Gen.word64 (Range.linear 10 1000)
+
+genMaybeSlotNo :: (Hedgehog.MonadGen m) => m (Maybe C.SlotNo)
+genMaybeSlotNo =
+  Gen.frequency
+    [ (95, Just <$> genSlotNo)
+    , (5, pure Nothing)
+    ]
 
 genBlockNo :: (Hedgehog.MonadGen m) => m C.BlockNo
 genBlockNo = C.BlockNo <$> Gen.word64 (Range.linear 100 1000)
@@ -142,6 +151,13 @@ genBlockHeader genB genS = do
 
 genHashBlockHeader :: (MonadGen m) => m (C.Hash C.BlockHeader)
 genHashBlockHeader = C.HeaderHash . BSS.toShort <$> Gen.bytes (Range.singleton 32)
+
+genMaybeHashBlockHeader :: (Hedgehog.MonadGen m) => m (Maybe (C.Hash C.BlockHeader))
+genMaybeHashBlockHeader =
+  Gen.frequency
+    [ (95, Just <$> genHashBlockHeader)
+    , (5, pure Nothing)
+    ]
 
 genChainPoints :: (MonadGen m) => Word64 -> Word64 -> m [C.ChainPoint]
 genChainPoints b e = do

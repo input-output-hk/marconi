@@ -91,7 +91,7 @@ import Control.Monad (filterM, forM_, when)
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Trans (MonadTrans (lift))
 
-import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), Value (Object), object, (.:), (.=))
+import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as BS
 import Data.Coerce (coerce)
@@ -124,6 +124,7 @@ import Marconi.ChainIndex.Legacy.Utils (
   getBlockNoFromChainTip,
   isBlockRollbackable,
  )
+import Marconi.ChainIndex.Legacy.Utils qualified as Util
 import Marconi.Core.Storable (
   Buffered (persistToStorage),
   HasPoint (getPoint),
@@ -169,8 +170,7 @@ data instance StorableEvent EpochStateHandle = EpochStateEvent
   , epochStateEventEpochNo :: Maybe C.EpochNo
   , epochStateEventNonce :: Ledger.Nonce
   , epochStateEventSDD :: Map C.PoolId C.Lovelace
-  , epochStateEventSlotNo :: C.SlotNo
-  , epochStateEventBlockHeaderHash :: C.Hash C.BlockHeader
+  , epochStateEventChainPoint :: C.ChainPoint
   , epochStateEventBlockNo :: C.BlockNo
   , epochStateEventChainTip :: C.ChainTip
   -- ^ Actual tip of the chain
@@ -181,7 +181,7 @@ data instance StorableEvent EpochStateHandle = EpochStateEvent
 type instance StorablePoint EpochStateHandle = C.ChainPoint
 
 instance HasPoint (StorableEvent EpochStateHandle) C.ChainPoint where
-  getPoint (EpochStateEvent _ _ _ _ s bhh _ _ _) = C.ChainPoint s bhh
+  getPoint (EpochStateEvent _ _ _ _ chainPoint _ _ _) = chainPoint
 
 data instance StorableQuery EpochStateHandle
   = -- See Note [Active stake pool delegation query]
@@ -208,7 +208,8 @@ toStorableEvent
   -- ^ Is the first event of the current epoch
   -> StorableEvent EpochStateHandle
 toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEventOfEpoch = do
-  let doesStoreLedgerState =
+  let chainPoint = C.ChainPoint slotNo bhh
+      doesStoreLedgerState =
         isBlockRollbackable securityParam bn (getBlockNoFromChainTip chainTip)
           || isBlockRollbackable securityParam (bn + 1) (getBlockNoFromChainTip chainTip)
           || isFirstEventOfEpoch
@@ -217,8 +218,7 @@ toStorableEvent extLedgerState slotNo bhh bn chainTip securityParam isFirstEvent
     (getEpochNo extLedgerState)
     (getEpochNonce extLedgerState)
     (getStakeMap extLedgerState)
-    slotNo
-    bhh
+    chainPoint
     bn
     chainTip
     isFirstEventOfEpoch
@@ -324,42 +324,11 @@ getEpochNonce extLedgerState =
 data EpochNonceRow = EpochNonceRow
   { epochNonceRowEpochNo :: !C.EpochNo
   , epochNonceRowNonce :: !Ledger.Nonce
-  , epochNonceRowSlotNo :: !C.SlotNo
-  , epochNonceRowBlockHeaderHash :: !(C.Hash C.BlockHeader)
+  , epochNonceRowSlotNo :: !(Maybe C.SlotNo)
+  , epochNonceRowBlockHeaderHash :: !(Maybe (C.Hash C.BlockHeader))
   , epochNonceRowBlockNo :: !C.BlockNo
   }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow)
-
-instance FromJSON EpochNonceRow where
-  parseJSON (Object v) =
-    EpochNonceRow
-      <$> (C.EpochNo <$> v .: "epochNo")
-      <*> (Ledger.Nonce <$> v .: "nonce")
-      <*> (C.SlotNo <$> v .: "slotNo")
-      <*> v
-        .: "blockHeaderHash"
-      <*> (C.BlockNo <$> v .: "blockNo")
-  parseJSON _ = mempty
-
-instance ToJSON EpochNonceRow where
-  toJSON
-    ( EpochNonceRow
-        (C.EpochNo epochNo)
-        nonce
-        (C.SlotNo slotNo)
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      let nonceValue = case nonce of
-            Ledger.NeutralNonce -> Nothing
-            Ledger.Nonce n -> Just n
-       in object
-            [ "epochNo" .= epochNo
-            , "nonce" .= nonceValue
-            , "slotNo" .= slotNo
-            , "blockHeaderHash" .= blockHeaderHash
-            , "blockNo" .= blockNo
-            ]
+  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow, FromJSON, ToJSON)
 
 data LedgerStateFileMetadata = LedgerStateFileMetadata
   { lsfMetaSlotNo :: !C.SlotNo
@@ -436,8 +405,7 @@ instance Buffered EpochStateHandle where
             maybeEpochNo
             _
             _
-            slotNo
-            blockHeaderHash
+            chainPoint
             blockNo
             chainTip
             isFirstEventOfEpoch
@@ -449,6 +417,9 @@ instance Buffered EpochStateHandle where
                     isLastImmutableBeforeRollbackable =
                       isBlockRollbackable securityParam (blockNo + 1) (getBlockNoFromChainTip chainTip)
                 when (isRollbackable || isLastImmutableBeforeRollbackable || isFirstEventOfEpoch) $ do
+                  -- The conditions above make it impossible for the ChainPoint to be at genesis,
+                  -- so we should be able to extract the slot and the hash safely.
+                  let (slotNo, blockHeaderHash) = Util.extractSlotNoAndHash chainPoint
                   writeLedgerState
                     ledgerState
                     slotNo
@@ -524,37 +495,39 @@ instance Buffered EpochStateHandle where
 eventToEpochSDDRows
   :: StorableEvent EpochStateHandle
   -> [EpochSDDRow]
-eventToEpochSDDRows (EpochStateEvent _ maybeEpochNo _ m slotNo blockHeaderHash blockNo _ _) =
-  mapMaybe
-    ( \(keyHash, lovelace) ->
-        fmap
-          ( \epochNo ->
-              EpochSDDRow
-                epochNo
-                keyHash
-                lovelace
-                slotNo
-                blockHeaderHash
-                blockNo
-          )
-          maybeEpochNo
-    )
-    $ Map.toList m
+eventToEpochSDDRows (EpochStateEvent _ maybeEpochNo _ m chainPoint blockNo _ _) =
+  let (slotNo, blockHeaderHash) = Util.chainPointToMaybes chainPoint
+   in mapMaybe
+        ( \(keyHash, lovelace) ->
+            fmap
+              ( \epochNo ->
+                  EpochSDDRow
+                    epochNo
+                    keyHash
+                    lovelace
+                    slotNo
+                    blockHeaderHash
+                    blockNo
+              )
+              maybeEpochNo
+        )
+        $ Map.toList m
 
 eventToEpochNonceRow
   :: StorableEvent EpochStateHandle
   -> Maybe EpochNonceRow
-eventToEpochNonceRow (EpochStateEvent _ maybeEpochNo nonce _ slotNo blockHeaderHash blockNo _ _) =
-  fmap
-    ( \epochNo ->
-        EpochNonceRow
-          epochNo
-          nonce
-          slotNo
-          blockHeaderHash
-          blockNo
-    )
-    maybeEpochNo
+eventToEpochNonceRow (EpochStateEvent _ maybeEpochNo nonce _ chainPoint blockNo _ _) =
+  let (slotNo, blockHeaderHash) = Util.chainPointToMaybes chainPoint
+   in fmap
+        ( \epochNo ->
+            EpochNonceRow
+              epochNo
+              nonce
+              slotNo
+              blockHeaderHash
+              blockNo
+        )
+        maybeEpochNo
 
 instance Queryable EpochStateHandle where
   queryStorage
@@ -601,7 +574,8 @@ instance Queryable EpochStateHandle where
     (EpochStateHandle{_epochStateHandleTopLevelCfg, _epochStateHandleLedgerStateDirPath})
     (LedgerStateAtPointQuery (C.ChainPoint slotNo _)) =
       liftSQLError CantQueryIndexer $ do
-        case List.find (\e -> epochStateEventSlotNo e == slotNo) (toList events) of
+        let extractSlotNo = fst . Util.extractSlotNoAndHash . epochStateEventChainPoint
+        case List.find (\e -> extractSlotNo e == slotNo) (toList events) of
           Nothing -> do
             ledgerStateFilePaths <- listDirectory _epochStateHandleLedgerStateDirPath
             let ledgerStateFilePath =

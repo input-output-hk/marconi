@@ -461,39 +461,11 @@ newtype GetEpochNonceResult
 data NonceResult
   = NonceResult
       !Ledger.Nonce
-      !C.SlotNo
-      !(C.Hash C.BlockHeader)
+      !(Maybe C.SlotNo)
+      !(Maybe (C.Hash C.BlockHeader))
       !C.BlockNo
-  deriving stock (Eq, Ord, Show)
-
-instance FromJSON NonceResult where
-  parseJSON =
-    let parseResult v = do
-          NonceResult
-            <$> (Ledger.Nonce <$> v .: "nonce")
-            <*> (C.SlotNo <$> v .: "slotNo")
-            <*> v
-              .: "blockHeaderHash"
-            <*> (C.BlockNo <$> v .: "blockNo")
-     in Aeson.withObject "NonceResult" parseResult
-
-instance ToJSON NonceResult where
-  toJSON
-    ( NonceResult
-        nonce
-        (C.SlotNo slotNo)
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      let nonceValue = case nonce of
-            Ledger.NeutralNonce -> Nothing
-            Ledger.Nonce n -> Just n
-       in Aeson.object
-            [ "nonce" .= nonceValue
-            , "slotNo" .= slotNo
-            , "blockHeaderHash" .= blockHeaderHash
-            , "blockNo" .= blockNo
-            ]
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 ------------------------
 -- REST API endpoints --
