@@ -91,7 +91,7 @@ import Control.Monad (filterM, forM_, when)
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Trans (MonadTrans (lift))
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON, ToJSON, Value (Object), object, (.:), (.:?), (.=))
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as BS
 import Data.Coerce (coerce)
@@ -112,6 +112,7 @@ import Database.SQLite.Simple.QQ (sql)
 
 import GHC.Generics (Generic)
 
+import Data.Aeson.Types (FromJSON (parseJSON), ToJSON (toJSON))
 import Data.Void (Void)
 import Marconi.ChainIndex.Legacy.Error (
   IndexerError (CantInsertEvent, CantQueryIndexer, CantRollback, CantStartIndexer),
@@ -176,7 +177,7 @@ data instance StorableEvent EpochStateHandle = EpochStateEvent
   -- ^ Actual tip of the chain
   , epochStateEventIsFirstEventOfEpoch :: Bool
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 type instance StorablePoint EpochStateHandle = C.ChainPoint
 
@@ -193,7 +194,7 @@ data instance StorableResult EpochStateHandle
   = ActiveSDDByEpochNoResult [EpochSDDRow]
   | NonceByEpochNoResult (Maybe EpochNonceRow)
   | LedgerStateAtPointResult (Maybe (O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)))
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 type EpochStateIndex = State EpochStateHandle
 
@@ -298,7 +299,40 @@ data EpochSDDRow = EpochSDDRow
   , epochSDDRowBlockNo :: !C.BlockNo
   }
   deriving stock (Eq, Ord, Show, Generic)
-  deriving anyclass (SQL.FromRow, SQL.ToRow, ToJSON, FromJSON)
+  deriving anyclass (SQL.FromRow, SQL.ToRow)
+
+instance FromJSON EpochSDDRow where
+  parseJSON (Object v) =
+    EpochSDDRow
+      <$> (C.EpochNo <$> v .: "epochNo")
+      <*> v
+        .: "poolId"
+      <*> v
+        .: "lovelace"
+      <*> (fmap C.SlotNo <$> v .:? "slotNo")
+      <*> v
+        .: "blockHeaderHash"
+      <*> (C.BlockNo <$> v .: "blockNo")
+  parseJSON _ = mempty
+
+instance ToJSON EpochSDDRow where
+  toJSON
+    ( EpochSDDRow
+        (C.EpochNo epochNo)
+        poolId
+        lovelace
+        slotNo
+        blockHeaderHash
+        (C.BlockNo blockNo)
+      ) =
+      object
+        [ "epochNo" .= epochNo
+        , "poolId" .= poolId
+        , "lovelace" .= lovelace
+        , "slotNo" .= fmap C.unSlotNo slotNo
+        , "blockHeaderHash" .= blockHeaderHash
+        , "blockNo" .= blockNo
+        ]
 
 {- | Get Nonce per epoch given an extended ledger state. The Nonce is only available starting at
  Shelley era. Byron era has the neutral nonce.
@@ -328,14 +362,46 @@ data EpochNonceRow = EpochNonceRow
   , epochNonceRowBlockHeaderHash :: !(Maybe (C.Hash C.BlockHeader))
   , epochNonceRowBlockNo :: !C.BlockNo
   }
-  deriving (Eq, Ord, Show, Generic, SQL.FromRow, SQL.ToRow, FromJSON, ToJSON)
+  deriving stock (Eq, Ord, Show, Generic)
+  deriving anyclass (SQL.FromRow, SQL.ToRow)
+
+instance FromJSON EpochNonceRow where
+  parseJSON (Object v) =
+    EpochNonceRow
+      <$> (C.EpochNo <$> v .: "epochNo")
+      <*> (Ledger.Nonce <$> v .: "nonce")
+      <*> (fmap C.SlotNo <$> v .:? "slotNo")
+      <*> v
+        .: "blockHeaderHash"
+      <*> (C.BlockNo <$> v .: "blockNo")
+  parseJSON _ = mempty
+
+instance ToJSON EpochNonceRow where
+  toJSON
+    ( EpochNonceRow
+        (C.EpochNo epochNo)
+        nonce
+        slotNo
+        blockHeaderHash
+        (C.BlockNo blockNo)
+      ) =
+      let nonceValue = case nonce of
+            Ledger.NeutralNonce -> Nothing
+            Ledger.Nonce n -> Just n
+       in object
+            [ "epochNo" .= epochNo
+            , "nonce" .= nonceValue
+            , "slotNo" .= fmap C.unSlotNo slotNo
+            , "blockHeaderHash" .= blockHeaderHash
+            , "blockNo" .= blockNo
+            ]
 
 data LedgerStateFileMetadata = LedgerStateFileMetadata
   { lsfMetaSlotNo :: !C.SlotNo
   , lsfMetaBlockHeaderHash :: !(C.Hash C.BlockHeader)
   , lsfMetaBlockNo :: !C.BlockNo
   }
-  deriving (Show)
+  deriving stock (Show)
 
 instance Buffered EpochStateHandle where
   -- We should only store on disk SDD from the last slot of each epoch.
