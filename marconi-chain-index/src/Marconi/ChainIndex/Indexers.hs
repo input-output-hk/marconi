@@ -127,9 +127,11 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
       [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
   utxoQueryIndexer <-
-    lift $
-      UtxoQuery.mkUtxoSQLiteQuery $
-        UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
+    Core.withTrace mainLogger
+      <$> ( lift $
+              UtxoQuery.mkUtxoSQLiteQuery $
+                UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
+          )
 
   blockCoordinator <-
     lift $
