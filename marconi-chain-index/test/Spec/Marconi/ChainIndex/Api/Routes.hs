@@ -31,8 +31,7 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-import Marconi.ChainIndex.Indexers.EpochState (EpochNonce (EpochNonce), EpochSDD (EpochSDD))
-import Marconi.Core (Timed (Timed))
+import Marconi.ChainIndex.Indexers.EpochState (EpochNonce (EpochNonce))
 import Spec.Marconi.ChainIndex.Api.Gen (
   genBurnTokenEventResult,
   genGetBurnTokenEventsParams,
