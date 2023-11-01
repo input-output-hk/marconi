@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
@@ -451,7 +450,36 @@ data ActiveSDDResult
       !(Maybe (C.Hash C.BlockHeader))
       !C.BlockNo
   deriving stock (Eq, Ord, Generic, Show)
-  deriving anyclass (ToJSON, FromJSON)
+instance FromJSON ActiveSDDResult where
+  parseJSON =
+    let parseResult v = do
+          ActiveSDDResult
+            <$> v
+              .: "poolId"
+            <*> v
+              .: "lovelace"
+            <*> (fmap C.SlotNo <$> v .:? "slotNo")
+            <*> v
+              .: "blockHeaderHash"
+            <*> (C.BlockNo <$> v .: "blockNo")
+     in Aeson.withObject "ActiveSDDResult" parseResult
+
+instance ToJSON ActiveSDDResult where
+  toJSON
+    ( ActiveSDDResult
+        poolId
+        lovelace
+        slotNo
+        blockHeaderHash
+        (C.BlockNo blockNo)
+      ) =
+      Aeson.object
+        [ "poolId" .= poolId
+        , "lovelace" .= lovelace
+        , "slotNo" .= fmap C.unSlotNo slotNo
+        , "blockHeaderHash" .= blockHeaderHash
+        , "blockNo" .= blockNo
+        ]
 
 newtype GetEpochNonceResult
   = GetEpochNonceResult (Maybe NonceResult)
@@ -464,8 +492,36 @@ data NonceResult
       !(Maybe C.SlotNo)
       !(Maybe (C.Hash C.BlockHeader))
       !C.BlockNo
-  deriving stock (Eq, Ord, Show, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving stock (Eq, Ord, Show)
+
+instance FromJSON NonceResult where
+  parseJSON =
+    let parseResult v = do
+          NonceResult
+            <$> (Ledger.Nonce <$> v .: "nonce")
+            <*> (fmap C.SlotNo <$> v .:? "slotNo")
+            <*> v
+              .: "blockHeaderHash"
+            <*> (C.BlockNo <$> v .: "blockNo")
+     in Aeson.withObject "NonceResult" parseResult
+
+instance ToJSON NonceResult where
+  toJSON
+    ( NonceResult
+        nonce
+        slotNo
+        blockHeaderHash
+        (C.BlockNo blockNo)
+      ) =
+      let nonceValue = case nonce of
+            Ledger.NeutralNonce -> Nothing
+            Ledger.Nonce n -> Just n
+       in Aeson.object
+            [ "nonce" .= nonceValue
+            , "slotNo" .= fmap C.unSlotNo slotNo
+            , "blockHeaderHash" .= blockHeaderHash
+            , "blockNo" .= blockNo
+            ]
 
 ------------------------
 -- REST API endpoints --
