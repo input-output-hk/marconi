@@ -24,6 +24,9 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
  )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (Tip (Tip))
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
+  ActiveSDDResult (ActiveSDDResult),
+ )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
@@ -177,18 +180,11 @@ goldenEpochStakePoolDelegationResult = do
       $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
 
   let lovelace = C.Lovelace 100000000000000
-      slotNo = C.SlotNo 1382422
-      epochNo = C.EpochNo 6
+      slotNo = Just $ C.SlotNo 1382422
       blockNo = C.BlockNo 64903
 
-  let result =
-        fmap
-          ( \poolId ->
-              Timed
-                (C.ChainPoint slotNo blockHeaderHash)
-                (EpochSDD epochNo poolId lovelace blockNo)
-          )
-          poolIds
+  let sdds = fmap (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo) poolIds
+      result = sdds
   pure $ Aeson.encodePretty result
 
 goldenEpochNonceResult :: IO ByteString

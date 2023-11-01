@@ -1,8 +1,11 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   RpcEpochActiveStakePoolDelegationMethod,
   RpcEpochNonceMethod,
+  ActiveSDDResult (..),
   getEpochNonceHandler,
   getEpochStakePoolDelegationHandler,
 ) where
@@ -10,8 +13,9 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Lens.Getter qualified as Lens
-import Data.Aeson (FromJSON, ToJSON)
-import GHC.Generics qualified as GHC
+import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
+import Data.Aeson qualified as Aeson
+import Data.Aeson.Types (FromJSON (parseJSON))
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.ChainIndex.Indexers (
@@ -41,7 +45,38 @@ data ActiveSDDResult = ActiveSDDResult
   , activeSDDResultHash :: !(Maybe (C.Hash C.BlockHeader))
   , activeSDDResultBlockNo :: !C.BlockNo
   }
-  deriving (Eq, Ord, Show, GHC.Generic, FromJSON, ToJSON)
+  deriving stock (Eq, Ord, Show)
+
+instance FromJSON ActiveSDDResult where
+  parseJSON =
+    let parseResult v = do
+          ActiveSDDResult
+            <$> v
+              .: "poolId"
+            <*> v
+              .: "lovelace"
+            <*> (fmap C.SlotNo <$> v .:? "slotNo")
+            <*> v
+              .: "blockHeaderHash"
+            <*> (C.BlockNo <$> v .: "blockNo")
+     in Aeson.withObject "ActiveSDDResult" parseResult
+
+instance ToJSON ActiveSDDResult where
+  toJSON
+    ( ActiveSDDResult
+        poolId
+        lovelace
+        slotNo
+        blockHeaderHash
+        (C.BlockNo blockNo)
+      ) =
+      Aeson.object
+        [ "poolId" .= poolId
+        , "lovelace" .= lovelace
+        , "slotNo" .= fmap C.unSlotNo slotNo
+        , "blockHeaderHash" .= blockHeaderHash
+        , "blockNo" .= blockNo
+        ]
 
 type RpcEpochNonceMethod =
   JsonRpc

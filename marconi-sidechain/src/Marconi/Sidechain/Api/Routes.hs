@@ -450,6 +450,7 @@ data ActiveSDDResult
       !(Maybe (C.Hash C.BlockHeader))
       !C.BlockNo
   deriving stock (Eq, Ord, Generic, Show)
+
 instance FromJSON ActiveSDDResult where
   parseJSON =
     let parseResult v = do
