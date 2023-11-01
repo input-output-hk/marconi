@@ -1,4 +1,7 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-}
 
 -- | Utilities for integration tests using tools from the `cardano-node-emulator` project.
 module Test.Integration where
@@ -7,11 +10,19 @@ import Cardano.Api.Extended.IPC qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Node.Emulator.Generators (knownAddresses, knownXPrvs)
 import Cardano.Node.Socket.Emulator qualified as E
+import Control.Monad (replicateM)
 import Control.Monad.IO.Class (liftIO)
+import Data.Bifunctor (first)
+import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test.Base qualified as H
+import Hedgehog.Gen qualified as H.Gen
+import Hedgehog.Range qualified as Range
 import Ledger.Test (testnet)
+import PlutusLedgerApi.V1 qualified as PlutusV1
+import PlutusLedgerApi.V2 qualified as PlutusV2
+import PlutusTx qualified
 import Test.Helpers qualified as Helpers
 
 -- | Start a testnet using the node emulator, within the @H.'Integration'@ context.
@@ -28,13 +39,19 @@ startTestnet tempAbsBasePath = do
   liftIO $ E.startTestnet socketPathAbs slotLength networkId
   pure (localNodeConnectInfo, networkId, socketPathAbs)
 
+-- TODO: PLT-8098 check cardano-node-emulator to see if this already exists.
+
 -- | Take the first @C.'ShelleyAddr'@ of @Cardano.Node.Emulator.Generators.'knownAddresses'@.
 knownShelleyAddress :: Maybe (C.Address C.ShelleyAddr)
-knownShelleyAddress = undefined
+knownShelleyAddress = listToMaybe knownAddresses >>= getShelleyAddr
+  where
+    getShelleyAddr :: C.AddressInEra C.BabbageEra -> Maybe (C.Address C.ShelleyAddr)
+    getShelleyAddr (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr) = Just addr
+    getShelleyAddr _ = Nothing
 
 -- | Take the first @C.'WitnessPaymentExtendedKey'@ from 'knownXPrvs'.
-knownKeyWitness :: Maybe C.ShelleyWitnessSigningKey
-knownKeyWitness = C.WitnessPaymentExtendedKey . C.PaymentExtendedSigningKey <$> listToMaybe knownXPrvs
+knownWitnessSigningKey :: Maybe C.ShelleyWitnessSigningKey
+knownWitnessSigningKey = C.WitnessPaymentExtendedKey . C.PaymentExtendedSigningKey <$> listToMaybe knownXPrvs
 
 -- | Unbounded validity range for transaction validation in the Babbage era.
 unboundedValidityRange :: (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra)
@@ -116,6 +133,57 @@ signAndSubmitTx
   -> H.Integration ()
 signAndSubmitTx info witnesses = Helpers.submitTx info . C.makeSignedTransaction witnesses
 
--- | TODO: PLT-8098 put generators in a Gen submodule as with legacy
+-- TODO: PLT-8098 All below copied from legacy. Reevaluate if needed.
+-- They should go in a different module.
+
+-- | TODO: PLT-8098
 genTxMintValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
-genTxMintValue = undefined
+genTxMintValue = genTxMintValueRange 1 100
+
+genTxMintValueRange :: Integer -> Integer -> H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
+genTxMintValueRange min' max' = do
+  n :: Int <- H.Gen.integral (Range.constant 1 5)
+  policyAssets <- replicateM n genAsset
+  let (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy policyAssets
+      buildInfo = C.BuildTxWith $ Map.singleton policyId policyWitness
+  pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues buildInfo
+  where
+    genAsset :: H.Gen (C.AssetName, C.Quantity)
+    genAsset = (,) <$> genAssetName <*> genQuantity
+    genQuantity = C.Quantity <$> H.Gen.integral (Range.constant min' max')
+
+genAssetName :: H.Gen C.AssetName
+genAssetName = C.AssetName <$> H.Gen.bytes (Range.constant 1 5)
+
+mkMintValue
+  :: MintingPolicy
+  -> [(C.AssetName, C.Quantity)]
+  -> (C.PolicyId, C.ScriptWitness C.WitCtxMint C.BabbageEra, C.Value)
+mkMintValue policy policyAssets = (policyId, policyWitness, mintedValues)
+  where
+    serialisedPolicyScript :: C.PlutusScript C.PlutusScriptV1
+    serialisedPolicyScript = C.PlutusScriptSerialised $ PlutusV2.serialiseCompiledCode policy
+
+    policyId :: C.PolicyId
+    policyId = C.scriptPolicyId $ C.PlutusScript C.PlutusScriptV1 serialisedPolicyScript :: C.PolicyId
+
+    executionUnits :: C.ExecutionUnits
+    executionUnits = C.ExecutionUnits{C.executionSteps = 300000, C.executionMemory = 1000}
+    redeemer :: C.ScriptRedeemer
+    redeemer = C.unsafeHashableScriptData $ C.fromPlutusData $ PlutusV1.toData ()
+    policyWitness :: C.ScriptWitness C.WitCtxMint C.BabbageEra
+    policyWitness =
+      C.PlutusScriptWitness
+        C.PlutusScriptV1InBabbage
+        C.PlutusScriptV1
+        (C.PScript serialisedPolicyScript)
+        C.NoScriptDatumForMint
+        redeemer
+        executionUnits
+
+    mintedValues :: C.Value
+    mintedValues = C.valueFromList $ map (first (C.AssetId policyId)) policyAssets
+
+type MintingPolicy = PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.BuiltinData -> ())
+commonMintingPolicy :: MintingPolicy
+commonMintingPolicy = $$(PlutusTx.compile [||\_ _ -> ()||])

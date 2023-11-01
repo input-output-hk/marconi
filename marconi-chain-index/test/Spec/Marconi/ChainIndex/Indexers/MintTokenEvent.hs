@@ -610,7 +610,7 @@ endToEndMintTokenEvent = H.withShrinks 0 $
           -- Transaction-builder inputs
           txMintValue <- H.forAll Integration.genTxMintValue
           address <- H.nothingFail Integration.knownShelleyAddress
-          keyWitness <- H.nothingFail Integration.knownKeyWitness
+          witnessSigningKey <- H.nothingFail Integration.knownWitnessSigningKey
           (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
           let validityRange = Integration.unboundedValidityRange
 
@@ -629,9 +629,9 @@ endToEndMintTokenEvent = H.withShrinks 0 $
             H.leftFail $
               Integration.mkValidatedTxBodyWithFee ledgerPP address txbody lovelace 1
 
-          -- TODO: PLT-9098 need to convert keyWitness types appropriately
-          -- Submit to the local network
-          Integration.signAndSubmitTx localNodeConnectInfo [undefined] txbodyValid
+          -- Sign and submit
+          let keyWitness = C.makeShelleyKeyWitness txbodyValid witnessSigningKey
+          Integration.signAndSubmitTx localNodeConnectInfo [keyWitness] txbodyValid
 
           -- Indexer
 
@@ -700,13 +700,10 @@ endToEndMintTokenEvent = H.withShrinks 0 $
           liftIO $ Runner.runIndexer config indexer
 
           -- Query
-          let query = QueryByAssetId undefined Nothing Nothing Nothing undefined
-
           -- TODO: PLT-8098 write listener to query for node emulator events. confirm that startTestNet is
-          -- run on another thread. ensure runIndexer is run on a separate thread. Need to shutdown?
-          -- see Run.
+          -- run on another thread. ensure runIndexer is run on a separate thread.
           (queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-            H.evalExceptT $ Core.queryLatest query indexer
+            H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents indexer
 
           -- Test
           let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents queryEvents
