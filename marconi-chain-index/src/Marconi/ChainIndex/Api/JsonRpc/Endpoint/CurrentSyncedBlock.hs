@@ -13,9 +13,10 @@ import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
 import Control.Monad.Reader (ReaderT (ReaderT))
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (ToJSON (toJSON), (.=))
+import Data.Aeson qualified as Aeson
 import Data.Bifunctor (first)
-import GHC.Generics (Generic)
+import Data.Word (Word64)
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
   Tip,
   fromChainTip,
@@ -42,8 +43,30 @@ data GetCurrentSyncedBlockResult = GetCurrentSyncedBlockResult
   , blockHeaderHash :: Maybe (C.Hash C.BlockHeader)
   , slotNo :: Maybe C.SlotNo
   , nodeTip :: Maybe Tip
+  , blockTimestamp :: Maybe Word64
+  , blockEpochNo :: Maybe C.EpochNo
   }
-  deriving (Eq, Ord, Generic, Show, FromJSON, ToJSON)
+  deriving (Eq, Ord, Show)
+
+instance ToJSON GetCurrentSyncedBlockResult where
+  toJSON (GetCurrentSyncedBlockResult (Just bn) (Just bh) (Just sn) tip (Just ts) (Just en)) =
+    let jsonNodeTip =
+          case tip of
+            Nothing -> []
+            Just tip' -> ["nodeTip" .= toJSON tip']
+     in Aeson.object $
+          [ "blockNo" .= bn
+          , "blockTimestamp" .= ts
+          , "blockHeaderHash" .= bh
+          , "slotNo" .= sn
+          , "epochNo" .= en
+          ]
+            <> jsonNodeTip
+  toJSON (GetCurrentSyncedBlockResult _ _ _ tip _ _) =
+    Aeson.object $
+      case tip of
+        Nothing -> []
+        Just tip' -> ["nodeTip" .= toJSON tip']
 
 getCurrentSyncPointHandler
   :: ReaderHandler
@@ -77,9 +100,16 @@ getCurrentSyncedBlockHandler
       )
 getCurrentSyncedBlockHandler =
   let processCurrentSync :: C.ChainPoint -> BlockInfo -> Maybe Tip -> GetCurrentSyncedBlockResult
-      processCurrentSync C.ChainPointAtGenesis _blockInfo tip = GetCurrentSyncedBlockResult Nothing Nothing Nothing tip
+      processCurrentSync C.ChainPointAtGenesis _blockInfo tip =
+        GetCurrentSyncedBlockResult Nothing Nothing Nothing tip Nothing Nothing
       processCurrentSync (C.ChainPoint slotNo' hash) blockInfo tip =
-        GetCurrentSyncedBlockResult (Just $ blockInfo ^. BlockInfo.blockNo) (Just hash) (Just slotNo') tip
+        GetCurrentSyncedBlockResult
+          (Just $ blockInfo ^. BlockInfo.blockNo)
+          (Just hash)
+          (Just slotNo')
+          tip
+          (Just $ blockInfo ^. BlockInfo.timestamp)
+          (Just $ blockInfo ^. BlockInfo.epochNo)
       mapResult :: Core.Result CurrentSyncPoint.CurrentSyncPointQuery -> GetCurrentSyncedBlockResult
       mapResult (Core.Timed point (CurrentSyncPoint.CurrentSyncPointResult blockInfo tip)) =
         processCurrentSync point blockInfo $ fromChainTip tip
