@@ -102,6 +102,7 @@ getAddressTxInsValue con address = do
       values = map (\case C.TxOut _ v _ _ -> C.txOutValueToLovelace v) txOuts
   pure (txIns, sum values)
 
+-- TODO: PLT-8098 use MarconiTrace IO for consistent messages?
 submitTx
   :: (C.IsCardanoEra era, MonadIO m, MonadTest m)
   => C.LocalNodeConnectInfo C.CardanoMode
@@ -115,10 +116,11 @@ submitTx localNodeConnectInfo tx = do
     liftIO $ C.submitTxToNodeLocal localNodeConnectInfo $ C.TxInMode tx eraInMode
   failOnTxSubmitFail submitResult
   where
-    failOnTxSubmitFail :: (Show a, MonadTest m) => SubmitResult a -> m ()
+    failOnTxSubmitFail :: (Show a, MonadTest m, MonadIO m) => SubmitResult a -> m ()
     failOnTxSubmitFail = \case
       SubmitFail reason -> H.failMessage GHC.callStack $ "Transaction failed: " <> show reason
-      SubmitSuccess -> pure ()
+      -- TODO: PLT-8098 convert to logInfo
+      SubmitSuccess -> liftIO $ putStrLn "Transaction submitted successfully"
 
 -- TODO: PLT-8098 delete this if unused
 

@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
@@ -9,8 +10,10 @@ module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
-import Cardano.Api.Extended.Streaming (BlockEvent (..), ChainSyncEvent (..))
+import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent), ChainSyncEvent)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent qualified as Concurrent
+import Control.Concurrent.Async qualified as Async
 import Control.Lens (over, toListOf, view, (^.))
 import Control.Lens.Fold qualified as Lens
 import Control.Lens.Traversal qualified as Lens
@@ -624,14 +627,14 @@ endToEndMintTokenEvent = H.withShrinks 0 $
                   txIns
                   txMintValue
 
-          -- Calculate fee and validate transaction with single witness
-          txbodyValid <-
-            H.leftFail $
-              Integration.mkValidatedTxBodyWithFee ledgerPP address txbody lovelace 1
-
-          -- Sign and submit
-          let keyWitness = C.makeShelleyKeyWitness txbodyValid witnessSigningKey
-          Integration.signAndSubmitTx localNodeConnectInfo [keyWitness] txbodyValid
+          Integration.validateAndSubmitTx
+            localNodeConnectInfo
+            ledgerPP
+            networkId
+            address
+            witnessSigningKey
+            txbody
+            lovelace
 
           -- Indexer
 
@@ -675,38 +678,49 @@ endToEndMintTokenEvent = H.withShrinks 0 $
                     blockNoFromMintTokenBlockEvents
                     (const Nothing)
 
-          -- Default from the cli
-          let retryConfig = RetryConfig 30 Nothing
+          -- Wait at most two minutes for a connection to the node
+          let retryConfig = RetryConfig 30 (Just 120)
+
+          -- TODO: PLT-8098 this fails to connect even though the indexer seems to sync fine. Why?
+          -- could hard-code param from cardano-node (currently 100) but not ideal.
 
           -- Taken from 'Run.run'
-          securityParam <-
-            liftIO $
-              withNodeConnectRetry marconiTrace retryConfig socketPath $
-                Utils.toException $
-                  Utils.querySecurityParam @Void networkId socketPath
+          -- securityParam <-
+          -- liftIO $
+          --   withNodeConnectRetry marconiTrace retryConfig socketPath $
+          --     Utils.toException $
+          --       Utils.querySecurityParam @Void networkId socketPath
 
           let config =
                 Runner.RunIndexerConfig
                   marconiTrace
                   mintEventPreprocessor
                   retryConfig
-                  securityParam
+                  -- TODO: PLT-8098 see todo about security param
+                  100
                   networkId
                   C.ChainPointAtGenesis
                   socketPath
 
           indexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:"
 
-          liftIO $ Runner.runIndexer config indexer
+          -- TODO: PLT-8098 revisit
+          _ <- liftIO $ Async.async (Runner.runIndexer config indexer)
+
+          -- TODO: PLT-8098 indexer is running fine, e.g. as shown with this message
+          -- Are no events coming through?
+          -- [endToEndMintTokenEvent:Info:45855] [2023-11-01 20:42:47.34 UTC] Fully synchronised. Current synced point is ChainPoint(Slot 10281227632, BlockHash b5dd92310e2a53209bc2695c9c28509b3633525842077cfdc4dbb1ee281f94c8) and current node tip is ChainTip(S
+          -- lot 10281227632, BlockHash 76be8b528d0075f7aae98d6fa57a6d3c83ae480a8469e668d7b0af968995ac71, BlockNo 10281227632). Processed 1005 blocks and 0 rollbacks in the last 10s.
 
           -- Query
-          -- TODO: PLT-8098 write listener to query for node emulator events. confirm that startTestNet is
-          -- run on another thread. ensure runIndexer is run on a separate thread.
-          (queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
-            H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents indexer
+          (queryEvent :: Core.Timed C.ChainPoint MintTokenBlockEvents) <-
+            Integration.queryFirstResultWithRetry
+              5
+              10_000_000
+              (H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents indexer)
 
           -- Test
-          let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents queryEvents
+          let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents [queryEvent]
               inputPolicyAssets = List.sort $ getPolicyAssetsFromTxMintValue txMintValue
 
           queryPolicyAssets === inputPolicyAssets

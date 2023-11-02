@@ -357,6 +357,7 @@ library marconi-chain-index-test-lib
     , cardano-node-emulator
     , cardano-node-socket-emulator
     , hedgehog-extras
+    , iohk-monitoring
     , ouroboros-network-protocols
     , plutus-core
     , plutus-ledger
