@@ -127,7 +127,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
       [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
   utxoQueryIndexer <-
-    Core.withTrace mainLogger
+    Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
       <$> ( lift $
               UtxoQuery.mkUtxoSQLiteQuery $
                 UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
