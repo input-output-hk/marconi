@@ -61,7 +61,11 @@ type MintTokenEventIndexer =
   StandardIndexer IO Core.SQLiteIndexer MintTokenEvent.MintTokenBlockEvents
 type BlockInfoIndexer = StandardIndexer IO Core.SQLiteIndexer Block.BlockInfo
 type UtxoIndexer = UtxoQuery.UtxoQueryIndexer IO
-type CurrentSyncPointIndexer = CurrentSyncPoint.CurrentSyncPointQueryIndexer TipOrBlock
+type CurrentSyncPointIndexer =
+  Core.WithTrace
+    IO
+    CurrentSyncPoint.CurrentSyncPointQueryIndexer
+    TipOrBlock
 
 -- | Container for all the queryable indexers of marconi-chain-index.
 data MarconiChainIndexQueryables = MarconiChainIndexQueryables
@@ -144,10 +148,11 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
   mainCoordinator <- lift $ standardCoordinator mainLogger [blockCoordinator, chainTipWorker]
 
   let currentSyncPointIndexer =
-        CurrentSyncPoint.CurrentSyncPointQueryIndexer
-          mainCoordinator
-          blockInfoMVar
-          chainTipMVar
+        Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
+          CurrentSyncPoint.CurrentSyncPointQueryIndexer
+            mainCoordinator
+            blockInfoMVar
+            chainTipMVar
       queryables =
         MarconiChainIndexQueryables
           epochStateMVar
