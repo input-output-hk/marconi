@@ -11,6 +11,7 @@ module Spec.Marconi.ChainIndex.Indexers.BlockInfo (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
+import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent.Async qualified as Async
 import Control.Lens ((^.))
 import Control.Monad.IO.Class (liftIO)
@@ -22,8 +23,11 @@ import Hedgehog qualified
 import Hedgehog.Extras.Test.Base qualified as Hedgehog
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
+import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.ChainIndex.Indexers (blockInfoBuilder)
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.ChainIndex.Indexers.Worker (StandardWorker (StandardWorker))
 import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (RetryConfig (RetryConfig))
@@ -148,7 +152,7 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
 
           -- Setup
           -- TODO: PLT-8098 make a endToEndIndexerRunner or something in the test-lib
-          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
+          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
           let marconiTrace = mkMarconiTrace trace
 
           let
@@ -166,32 +170,58 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
                     (Just . (^. BlockInfo.blockNo))
                     (const Nothing)
 
+            -- No rollbacks so this is arbitrary
+            securityParam = 1
+            startingPoint = C.ChainPointAtGenesis
             retryConfig = RetryConfig 30 (Just 120)
-            config =
-              Runner.RunIndexerConfig
-                marconiTrace
-                blockInfoPreprocessor
-                retryConfig
-                -- No rollbacks, so security parameter is arbitrary
-                1
-                networkId
-                C.ChainPointAtGenesis
-                socketPath
+            -- Same as for Marconi.ChainIndex.Run
+            catchupConfig = Core.mkCatchupConfig 5_000 100
 
-          let indexer = Core.mkListIndexer
+          let config =
+                Runner.RunIndexerConfig
+                  marconiTrace
+                  Runner.withDistancePreprocessor
+                  -- TODO: PLT-8098
+                  -- blockInfoPreprocessor
+                  retryConfig
+                  securityParam
+                  networkId
+                  startingPoint
+                  socketPath
+
+          -- TODO: PLT-8098 delete this experiment if unused
+
           -- indexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer ":memory:"
-          _ <- liftIO $ Async.async (Runner.runIndexer config indexer)
+          ---- TODO: PLT-8098 this should not be needed and should be set to genesis
+          -- startingPoint <- Core.lastStablePoint indexer
+
+          StandardWorker mvar worker <-
+            Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
+
+          coordinator <- liftIO $ Core.mkCoordinator [worker]
+
+          liftIO $ threadDelay 10_000_000
+          _ <- liftIO $ Async.async (Runner.runIndexer config coordinator)
+
+          indexer <- liftIO $ readMVar mvar
+
+          liftIO $ threadDelay 30_000_000
+          (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
+            Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
+
+          -- (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
+          --  Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
 
           -- Query
-          (queryEvent :: Core.Timed C.ChainPoint BlockInfo) <-
-            Integration.queryFirstResultWithRetry
-              5
-              10_000_000
-              (Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer)
+          -- (queryEvent :: Core.Timed C.ChainPoint BlockInfo) <-
+          --  Integration.queryFirstResultWithRetry
+          --    5
+          --    10_000_000
+          --    (Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer)
 
           -- TODO: PLT-8098 revise queryFirstResultWithRetry to return maybe, where
           -- nothing says you didn't get anything
-          Hedgehog.assert $ seq queryEvent True
+          Hedgehog.assert $ not (null queryEvents)
 
 -- | Generate a list of events from a mock chain
 getBlockInfoEvents

@@ -293,6 +293,8 @@ workspace prefixPath f = GHC.withFrozenCallStack $ do
 setDarwinTmpdir :: IO ()
 setDarwinTmpdir = when (IO.os == "darwin") $ IO.setEnv "TMPDIR" "/tmp"
 
+-- TODO: PLT-8098 clean up and move/delete duplicates as needed
+
 -- * Accessors
 
 bimTxIds :: C.BlockInMode mode -> [C.TxId]
