@@ -7,4 +7,7 @@ in
   (
     project.flake
   )
+  {
+    devShells.profiled = project.variants.profiled.devShell;
+  }
 ]
