@@ -146,7 +146,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
   mainCoordinator <- lift $ standardCoordinator mainLogger [blockCoordinator, chainTipWorker]
 
   let currentSyncPointIndexer =
-        Core.withTrace mainLogger $
+        Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
           CurrentSyncPoint.CurrentSyncPointQueryIndexer
             mainCoordinator
             blockInfoMVar
