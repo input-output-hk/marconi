@@ -28,7 +28,11 @@ The more in-depth user documentation is available in our http://example.com/TODO
 
 === Haddock documentation
 
-The Haskell API documentation (Haddock) for the Marconi libraries are hosted http://example.com/TODO[here].
+The Haskell API documentation (Haddock) for the Marconi libraries is hosted here:
+
+* https://input-output-hk.github.io/marconi/main/marconi-core[marconi-core]
+* https://input-output-hk.github.io/marconi/main/marconi-chain-index[marconi-chain-index]
+* https://input-output-hk.github.io/marconi/main/marconi-core-json-rpc[marconi-core-json-rpc]
 
 You may generate them directly with `Cabal` for each component:
 
