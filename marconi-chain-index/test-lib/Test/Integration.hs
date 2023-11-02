@@ -33,6 +33,7 @@ import Test.Helpers qualified as Helpers
 -- TODO: PLT-8098 suppress logging in node emulator? generates lots of noise.
 -- TODO: PLT-8098 keep getting could not connect with node-server.sock does not exist
 -- TODO: PLT-8098 want to run only certain number of slots in emulator
+-- TODO: PLT-8098 need to shut down the node emulator properly when the test is done.
 
 {- Node emulator setup and helpers -}
 

@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -9,19 +10,28 @@ module Spec.Marconi.ChainIndex.Indexers.BlockInfo (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
+import Control.Concurrent.Async qualified as Async
 import Control.Lens ((^.))
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Maybe (mapMaybe)
 import Data.Time qualified as Time
 import Hedgehog ((===))
 import Hedgehog qualified
+import Hedgehog.Extras.Test.Base qualified as Hedgehog
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.ChainIndex.Runner qualified as Runner
+import Marconi.ChainIndex.Types (RetryConfig (RetryConfig))
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Test.Gen.Marconi.ChainIndex.Types qualified as CGen
+import Test.Helpers qualified as Helpers
+import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -48,6 +58,14 @@ tests =
         "JSON event tripping test"
         "propTrippingBlockInfoJSON"
         propTrippingBlockInfoJSON
+    , testGroup
+        "End-to-end indexer tests with cardano-node-emulator"
+        [ testPropertyNamed
+            -- TODO: PLT-8098
+            "Indexing a testnet and then submitting a transaction has the indexer receive a block"
+            "endToEndBlockInfo"
+            endToEndBlockInfo
+        ]
     ]
 
 -- | We can retrieve the event at a given slot
@@ -87,6 +105,93 @@ propTrippingBlockInfoJSON :: Hedgehog.Property
 propTrippingBlockInfoJSON = Hedgehog.property $ do
   event <- Hedgehog.forAll genBlockInfo
   Hedgehog.tripping event Aeson.encode Aeson.eitherDecode
+
+-- | Integration test for block info using cardano-node-emulator
+endToEndBlockInfo :: Hedgehog.Property
+endToEndBlockInfo = Hedgehog.withShrinks 0 $
+  Hedgehog.propertyOnce $
+    (liftIO Helpers.setDarwinTmpdir >>) $
+      Hedgehog.runFinallies $
+        Hedgehog.workspace "." $ \tempPath -> do
+          -- Local blockchain
+          -- Start the node emulator
+          (localNodeConnectInfo, networkId, socketPath) <- Integration.startTestnet tempPath
+          ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
+
+          -- Transaction-builder inputs
+          txMintValue <- Hedgehog.forAll Integration.genTxMintValue
+          address <- Hedgehog.nothingFail Integration.knownShelleyAddress
+          witnessSigningKey <- Hedgehog.nothingFail Integration.knownWitnessSigningKey
+          (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+          let validityRange = Integration.unboundedValidityRange
+
+          -- TODO: PLT-8098 make a note about the fee calcs and TxOut stuff here being simplified
+          -- Create "unbalanced" transaction
+          let txbody =
+                Integration.mkUnbalancedTxBodyContentFromTxMintValue
+                  validityRange
+                  ledgerPP
+                  address
+                  txIns
+                  txMintValue
+
+          Integration.validateAndSubmitTx
+            localNodeConnectInfo
+            ledgerPP
+            networkId
+            address
+            witnessSigningKey
+            txbody
+            lovelace
+
+          -- Indexer
+
+          -- Setup
+          -- TODO: PLT-8098 make a endToEndIndexerRunner or something in the test-lib
+          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
+          let marconiTrace = mkMarconiTrace trace
+
+          let
+            toBlockInfo :: BlockEvent -> BlockInfo
+            toBlockInfo (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) _) _) _ t) =
+              -- TODO: PLT-8098 check whether it is inteded to convert posix to seconds here
+              -- TODO: PLT-8098 get epochno from slotno
+              BlockInfo bn (fst . properFraction $ Time.nominalDiffTimeToSeconds t) 0
+
+            blockInfoPreprocessor :: Runner.RunIndexerEventPreprocessing BlockInfo
+            blockInfoPreprocessor =
+              let eventToProcessedInput = Runner.withNoPreprocessor ^. Runner.runIndexerPreprocessEvent
+               in Runner.RunIndexerEventPreprocessing
+                    (map (fmap toBlockInfo) . eventToProcessedInput)
+                    (Just . (^. BlockInfo.blockNo))
+                    (const Nothing)
+
+            retryConfig = RetryConfig 30 (Just 120)
+            config =
+              Runner.RunIndexerConfig
+                marconiTrace
+                blockInfoPreprocessor
+                retryConfig
+                -- No rollbacks, so security parameter is arbitrary
+                1
+                networkId
+                C.ChainPointAtGenesis
+                socketPath
+
+          let indexer = Core.mkListIndexer
+          -- indexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer ":memory:"
+          _ <- liftIO $ Async.async (Runner.runIndexer config indexer)
+
+          -- Query
+          (queryEvent :: Core.Timed C.ChainPoint BlockInfo) <-
+            Integration.queryFirstResultWithRetry
+              5
+              10_000_000
+              (Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer)
+
+          -- TODO: PLT-8098 revise queryFirstResultWithRetry to return maybe, where
+          -- nothing says you didn't get anything
+          Hedgehog.assert $ seq queryEvent True
 
 -- | Generate a list of events from a mock chain
 getBlockInfoEvents

@@ -11,7 +11,6 @@ module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent), ChainSyncEvent)
-import Control.Concurrent (threadDelay)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async qualified as Async
 import Control.Lens (over, toListOf, view, (^.))
@@ -25,7 +24,6 @@ import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
-import Data.Void (Void)
 import Hedgehog (Gen, PropertyT, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
@@ -55,10 +53,8 @@ import Marconi.ChainIndex.Indexers.Worker (
   StandardWorkerConfig (StandardWorkerConfig),
  )
 import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
-import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (RetryConfig (RetryConfig), TxIndexInBlock (TxIndexInBlock))
-import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
@@ -683,6 +679,7 @@ endToEndMintTokenEvent = H.withShrinks 0 $
 
           -- TODO: PLT-8098 this fails to connect even though the indexer seems to sync fine. Why?
           -- could hard-code param from cardano-node (currently 100) but not ideal.
+          -- it is not actually needed here but is puzzling
 
           -- Taken from 'Run.run'
           -- securityParam <-
@@ -696,7 +693,7 @@ endToEndMintTokenEvent = H.withShrinks 0 $
                   marconiTrace
                   mintEventPreprocessor
                   retryConfig
-                  -- TODO: PLT-8098 see todo about security param
+                  -- No rollbacks, so security parameter is arbitrary
                   100
                   networkId
                   C.ChainPointAtGenesis
