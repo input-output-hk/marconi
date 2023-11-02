@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-}
@@ -9,13 +10,17 @@ module Test.Integration where
 import Cardano.Api.Extended.IPC qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Node.Emulator.Generators (knownAddresses, knownXPrvs)
+import Cardano.Node.Emulator.Internal.Node.TimeSlot qualified as E.TimeSlot
 import Cardano.Node.Socket.Emulator qualified as E
+import Cardano.Node.Socket.Emulator.Types qualified as E.Types
 import Control.Concurrent (threadDelay)
 import Control.Monad (replicateM)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (first)
+import Data.Default (def)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Word (Word64)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Test.Base qualified as H
@@ -45,11 +50,30 @@ startTestnet tempAbsBasePath = do
   let socketPathAbs = tempAbsBasePath <> "/node-server.sock"
       -- TODO: PLT-8098 leftover from legacy code: "any other networkId doesn't work"
       networkId = testnet
+      -- TODO: PLT-8098 revise after investigating
       -- In milliseconds, shorter than the default to make the tests go faster
-      slotLength = 10
+      -- slotLength = 10
+      slotLength = 100
       localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPathAbs
-  liftIO $ E.startTestnet socketPathAbs slotLength networkId
+  liftIO $ startTestnetIntegration socketPathAbs slotLength networkId
   pure (localNodeConnectInfo, networkId, socketPathAbs)
+
+-- | TODO: PLT-8098 added to start addressing a few issues in node start
+startTestnetIntegration :: FilePath -> Integer -> C.NetworkId -> IO ()
+startTestnetIntegration socketPath slotLength networkId = do
+  now <- getPOSIXTime
+  let
+    config =
+      def
+        { E.Types.nscSlotConfig =
+            def
+              { E.TimeSlot.scSlotLength = slotLength
+              , E.TimeSlot.scSlotZeroTime = E.TimeSlot.nominalDiffTimeToPOSIXTime now
+              }
+        , E.Types.nscSocketPath = socketPath
+        , E.Types.nscNetworkId = networkId
+        }
+  E.main E.prettyTrace config
 
 -- TODO: PLT-8098 check cardano-node-emulator to see if this already exists.
 

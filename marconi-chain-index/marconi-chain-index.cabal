@@ -356,6 +356,7 @@ library marconi-chain-index-test-lib
     , cardano-ledger-core
     , cardano-node-emulator
     , cardano-node-socket-emulator
+    , data-default
     , hedgehog-extras
     , iohk-monitoring
     , ouroboros-network-protocols
