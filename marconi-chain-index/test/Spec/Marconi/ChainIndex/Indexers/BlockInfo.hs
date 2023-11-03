@@ -14,6 +14,7 @@ import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent.Async qualified as Async
 import Control.Lens ((^.))
+import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.Maybe (mapMaybe)
@@ -23,7 +24,6 @@ import Hedgehog qualified
 import Hedgehog.Extras.Test.Base qualified as Hedgehog
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.ChainIndex.Indexers (blockInfoBuilder)
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
@@ -32,7 +32,6 @@ import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (RetryConfig (RetryConfig))
 import Marconi.Core qualified as Core
-import System.Directory (getDirectoryContents)
 import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Test.Gen.Marconi.ChainIndex.Types qualified as CGen
 import Test.Helpers qualified as Helpers
@@ -162,6 +161,7 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
             blockInfoPreprocessor =
               let eventToProcessedInput = Runner.withNoPreprocessor ^. Runner.runIndexerPreprocessEvent
                in Runner.RunIndexerEventPreprocessing
+                    -- (map (fmap toBlockInfo) . (\e -> Debug.Trace.trace (show e) $ eventToProcessedInput e))
                     (map (fmap toBlockInfo) . eventToProcessedInput)
                     (Just . (^. BlockInfo.blockNo))
                     (const Nothing)
@@ -177,8 +177,8 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
               Runner.RunIndexerConfig
                 marconiTrace
                 -- TODO: PLT-8098
-                -- Runner.withDistancePreprocessor
-                blockInfoPreprocessor
+                -- blockInfoPreprocessor
+                Runner.withDistancePreprocessor
                 retryConfig
                 securityParam
                 (Integration.nscNetworkId nscConfig)
@@ -195,32 +195,18 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
             txbody
             lovelace
 
-          -- TODO: PLT-8098 delete the experiments if unused
-          utxo :: C.UTxO C.BabbageEra <- Helpers.findUTxOByAddress localNodeConnectInfo address
-          liftIO $ putStrLn "Got this UTxO from the target address"
-          liftIO $ print utxo
+          StandardWorker mindexer worker <-
+            Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
 
-          -- CASE 1: Raw indexer
-          indexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer (tempPath <> "blockInfo.db")
+          coordinator <- liftIO $ Core.mkCoordinator [worker]
 
-          -- TODO: PLT-8098 indexer not shut down when test is over
-          liftIO $ Async.async (Runner.runIndexer config indexer) >>= Async.link
+          void $ liftIO $ Async.async (Runner.runIndexer config coordinator) >>= Async.link
 
-          -- CASE 2: Indexer with superfluous coordinator, to emulate more closely what the http server sees
-          -- Note the config must change.
-          -- This example also has a bad interaction with the Integration environment, sending it
-          -- into an infinite loop where the test is re-run.
+          -- TODO: PLT-8098 use the retry
+          liftIO $ threadDelay 5_000_000
 
-          -- StandardWorker mindexer worker <-
-          -- Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
+          indexer <- liftIO $ readMVar mindexer
 
-          -- coordinator <- liftIO $ Core.mkCoordinator [worker]
-
-          -- _ <- liftIO $ Async.async (Runner.runIndexer config coordinator)
-
-          -- indexer <- liftIO $ readMVar mindexer
-
-          liftIO $ threadDelay 30_000_000
           (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
             Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
 
