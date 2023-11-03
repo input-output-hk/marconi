@@ -4,6 +4,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- | An Indexer that stores BlockInfo
 module Marconi.ChainIndex.Indexers.BlockInfo (
@@ -18,18 +19,30 @@ module Marconi.ChainIndex.Indexers.BlockInfo (
   mkBlockInfoIndexer,
   blockInfoWorker,
   StandardBlockInfoIndexer,
+  catchupConfigEventHook,
 
   -- * Extractor
   fromBlockEratoBlockInfo,
+
+  -- * Query
+  BlockInfoBySlotNoQuery (..),
+
+  -- * SQL helpers
+  dbName,
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Data.Trace (Trace)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad (when)
 import Control.Monad.Cont (MonadIO)
-import Control.Monad.Except (MonadError)
+import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
+import Data.String (fromString)
+import Data.Text (Text)
 import Data.Time qualified as Time
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
@@ -86,6 +99,9 @@ instance SQL.FromRow (Core.Timed C.ChainPoint BlockInfo) where
     point <- SQL.fromRow
     pure $ Core.Timed point blockInfo
 
+dbName :: String
+dbName = "blockInfo.db"
+
 -- | A smart constructor for BlockInfoIndexer
 mkBlockInfoIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -113,6 +129,16 @@ mkBlockInfoIndexer path = do
     blockInfoInsertQuery
     (Core.SQLRollbackPlan "blockInfo" "slotNo" C.chainPointToSlotNo)
 
+catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
+catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
+  SQL.withConnection dbPath $ \c -> do
+    let slotNoIndexName = "blockInfo__slotNo"
+        createSlotNoIndexStatement =
+          "CREATE INDEX IF NOT EXISTS "
+            <> fromString slotNoIndexName
+            <> " ON blockInfo (slotNo)"
+    Core.createIndexTable indexerName stdoutTrace c slotNoIndexName createSlotNoIndexStatement
+
 -- | Create a worker for 'BlockInfoIndexer' with catchup
 blockInfoWorker
   :: ( MonadIO n
@@ -127,6 +153,48 @@ blockInfoWorker
 blockInfoWorker config path = do
   indexer <- mkBlockInfoIndexer path
   mkStandardWorker config indexer
+
+type instance Core.Result (BlockInfoBySlotNoQuery event) = Maybe event
+
+newtype BlockInfoBySlotNoQuery event = BlockInfoBySlotNoQuery C.SlotNo
+
+instance
+  (MonadIO m, MonadError (Core.QueryError (BlockInfoBySlotNoQuery BlockInfo)) m)
+  => Core.Queryable m BlockInfo (BlockInfoBySlotNoQuery BlockInfo) Core.SQLiteIndexer
+  where
+  query p q@(BlockInfoBySlotNoQuery sn) =
+    let blockInfoBySlotNoQuery :: SQL.Query
+        blockInfoBySlotNoQuery =
+          [sql|
+          SELECT blockNo, blockTimestamp, epochNo
+          FROM blockInfo
+          WHERE slotNo == :slotNo
+          LIMIT 1
+          |]
+     in querySyncedOnlySQLiteIndexerBySlotNoWith
+          (\cp -> pure [":slotNo" := cp])
+          (const blockInfoBySlotNoQuery)
+          (const listToMaybe)
+          sn
+    where
+      -- This isn't in core because we don't want to encourage this operation in the general case
+      querySyncedOnlySQLiteIndexerBySlotNoWith
+        :: (C.SlotNo -> BlockInfoBySlotNoQuery BlockInfo -> [NamedParam])
+        -> (BlockInfoBySlotNoQuery BlockInfo -> SQL.Query)
+        -> ( BlockInfoBySlotNoQuery BlockInfo
+             -> [BlockInfo]
+             -> Maybe BlockInfo
+           )
+        -> C.SlotNo
+        -> Core.SQLiteIndexer BlockInfo
+        -> m (Maybe BlockInfo)
+      querySyncedOnlySQLiteIndexerBySlotNoWith toNamedParam sqlQuery fromRows slotNo indexer =
+        do
+          let c = indexer ^. Core.connection
+          when (p > indexer ^. Core.dbLastSync) $
+            throwError (Core.AheadOfLastSync Nothing)
+          res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam slotNo q)
+          pure $ fromRows q res
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery BlockInfo)) m)

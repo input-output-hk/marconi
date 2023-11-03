@@ -1,10 +1,12 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 {- |
@@ -48,6 +50,7 @@ module Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintAssetRedeemerHash,
 
   -- * Indexer and worker
+  MintTokenEventIndexerCombine (..),
   MintTokenEventIndexer,
   StandardMintTokenEventIndexer,
   MintTokenEventConfig (..),
@@ -88,10 +91,11 @@ import Cardano.Ledger.Mary.Value (
   PolicyID (PolicyID),
   flattenMultiAsset,
  )
-import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
+import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?), _2)
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
+import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Short qualified as Short
 import Data.Foldable (foldlM)
 import Data.Function (on, (&))
@@ -109,9 +113,13 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
+import GHC.MVar qualified as Con
+import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
+import Marconi.ChainIndex.Indexers.BlockInfo qualified as BI
 import Marconi.ChainIndex.Indexers.Orphans ()
 import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
 import Marconi.ChainIndex.Indexers.Worker (
+  StandardIndexer,
   StandardSQLiteIndexer,
   StandardWorker,
   StandardWorkerConfig,
@@ -120,12 +128,21 @@ import Marconi.ChainIndex.Indexers.Worker (
  )
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (
+  SecurityParam,
   TxIndexInBlock,
  )
+import Marconi.Core (QueryError (IndexerQueryError))
 import Marconi.Core qualified as Core
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
 type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenBlockEvents
+
+-- | The inner state of the 'EpochStateIndexer'
+data MintTokenEventIndexerCombine event = MintTokenEventIndexerCombine
+  { _mintTokenEventIndexerSecurityParam :: !SecurityParam
+  , _mintTokenEventIndexerCombineIndexer :: Con.MVar (StandardIndexer IO Core.SQLiteIndexer event)
+  , _mintTokenEventIndexerCombineBlockInfo :: Con.MVar (StandardIndexer IO Core.SQLiteIndexer BlockInfo)
+  }
 
 -- | A SQLite 'MintTokenBlockEvents' indexer with Catchup
 type StandardMintTokenEventIndexer m = StandardSQLiteIndexer m MintTokenBlockEvents
@@ -601,7 +618,7 @@ instance
       (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
       Core.ListIndexer
   where
-  query = Core.queryWithStability
+  query = Core.queryWithCalcStabilityLsp (view Core.point)
 
 {- | Helper for ListIndexer query.
  Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
@@ -725,6 +742,43 @@ instance
       ix
 
 instance
+  (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
+  => Core.IsSync m event MintTokenEventIndexerCombine
+  where
+  lastSyncPoint idx = do
+    mintTokenIdx <- getMintTokenIndexer idx
+    mRes <- liftIO $ runExceptT @Core.IndexerError $ Core.lastSyncPoint mintTokenIdx
+    case mRes of
+      Left _err -> throwError $ Core.IndexerQueryError "Can't get last synced point from the coordinator"
+      Right r -> pure r
+  lastStablePoint idx = do
+    mintTokenIdx <- getMintTokenIndexer idx
+    mRes <- liftIO $ runExceptT @Core.IndexerError $ Core.lastStablePoint mintTokenIdx
+    case mRes of
+      Left _err -> throwError $ Core.IndexerQueryError "Can't get last stable point from the coordinator"
+      Right r -> pure r
+
+-- | Helper to get the MintTokenEventIndexer from the combined indexer
+getMintTokenIndexer
+  :: (MonadIO m) => MintTokenEventIndexerCombine event -> m (Core.SQLiteIndexer event)
+getMintTokenIndexer = fmap (view _2) . unwrapCombineIndexer
+
+-- | Helper to get the values (including reading from the @MVar@s) from the combined indexer
+unwrapCombineIndexer
+  :: (MonadIO m)
+  => MintTokenEventIndexerCombine event
+  -> m (SecurityParam, Core.SQLiteIndexer event, Core.SQLiteIndexer BlockInfo)
+unwrapCombineIndexer (MintTokenEventIndexerCombine sp _mintTokenIndexerMv _blockInfoIndexerMv) =
+  liftIO $ do
+    mintTokenIdxTrans <- Con.readMVar _mintTokenIndexerMv
+    blockInfoIdxTrans <- Con.readMVar _blockInfoIndexerMv
+    pure
+      ( sp
+      , mintTokenIdxTrans ^. Core.unwrap . Core.unwrap . Core.unwrapMap
+      , blockInfoIdxTrans ^. Core.unwrap . Core.unwrap . Core.unwrapMap
+      )
+
+instance
   ( MonadIO m
   , MonadError (Core.QueryError (Core.WithStability (QueryByAssetId MintTokenBlockEvents))) m
   )
@@ -732,9 +786,40 @@ instance
       m
       MintTokenBlockEvents
       (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
-      Core.SQLiteIndexer
+      MintTokenEventIndexerCombine
   where
-  query = Core.queryWithStability
+  query p q@(Core.WithStability (QueryByAssetId _ _ _ upperSlotNo _)) idx = do
+    (securityParam, mintTokenIdx, blockInfoIdx) <- unwrapCombineIndexer idx
+
+    let fromError :: QueryError a -> QueryError b
+        fromError = \case
+          Core.NotStoredAnymore -> Core.NotStoredAnymore
+          (Core.IndexerQueryError t) -> Core.IndexerQueryError t
+          (Core.AheadOfLastSync _) -> Core.IndexerQueryError "Upper slot no. ahead of last sync"
+          (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
+
+    withStab <-
+      case upperSlotNo of
+        Nothing -> do
+          lsp <- Core.lastStablePoint mintTokenIdx
+          pure (Core.calcStability (view Core.point) lsp)
+        Just slot -> do
+          res <- runExceptT $ Core.queryLatest (BI.BlockInfoBySlotNoQuery slot) blockInfoIdx
+          case res of
+            Right (Just blockInfo) -> do
+              let getBlockNo =
+                    view (mintTokenEventLocation . mintTokenEventBlockNo)
+                      . NonEmpty.head
+                      . view (Core.event . mintTokenEvents)
+                  lsp = blockInfo ^. BI.blockNo - fromIntegral securityParam
+              pure (Core.calcStability getBlockNo lsp)
+            Right Nothing ->
+              throwError $
+                IndexerQueryError $
+                  Text.pack $
+                    "BlockInfo at slot " <> show slot <> " not found!"
+            Left e -> throwError $ fromError e
+    Core.queryWithStability withStab p q mintTokenIdx
 
 {- | Helper for MintTokenEventIndexer in the case where a 'lowerTxId' is provided.
 Query to look up the earliest SlotNo matching a TxId. This is implemented as a separate query so

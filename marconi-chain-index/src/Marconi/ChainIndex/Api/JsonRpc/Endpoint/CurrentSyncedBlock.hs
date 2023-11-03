@@ -11,8 +11,7 @@ import Cardano.Api qualified as C
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO (liftIO))
-import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
-import Control.Monad.Reader (ReaderT (ReaderT))
+import Control.Monad.Except (runExceptT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Bifunctor (first)
 import GHC.Generics (Generic)
@@ -26,9 +25,8 @@ import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.Core qualified as Core
-import Marconi.Core.JsonRpc (ReaderHandler, queryErrToRpcErr)
+import Marconi.Core.JsonRpc (ReaderHandler, hoistHttpHandler, queryErrToRpcErr)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, UnusedRequestParams, mkJsonRpcInternalErr)
-import Servant (Handler, runHandler)
 
 type RpcGetCurrentSyncedBlock =
   JsonRpc
@@ -84,6 +82,3 @@ getCurrentSyncedBlockHandler =
       mapResult (Core.Timed point (CurrentSyncPoint.CurrentSyncPointResult blockInfo tip)) =
         processCurrentSync point blockInfo $ fromChainTip tip
    in const $ fmap mapResult <$> getCurrentSyncPointHandler
-
-hoistHttpHandler :: Handler a -> ReaderHandler env a
-hoistHttpHandler = ExceptT . ReaderT . const . runHandler

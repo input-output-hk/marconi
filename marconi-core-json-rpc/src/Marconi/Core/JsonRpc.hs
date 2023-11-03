@@ -12,6 +12,7 @@ module Marconi.Core.JsonRpc (
   ReaderServer,
   catchHttpHandlerExceptions,
   dimapHandler,
+  hoistHttpHandler,
   hoistReaderHandler,
   mkHttpRequestTracer,
   queryHttpHandler,
