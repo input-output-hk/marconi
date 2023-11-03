@@ -134,32 +134,13 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
           let marconiTrace = mkMarconiTrace trace
 
           -- Local node config and connect info, with slots of length 100ms
-          (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
+          (nscConfig, _) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
 
           -- Start the testnet
 
           -- TODO: PLT-8098 the testnet is not being shut down properly and keeps running
           -- after the test completes
           liftIO $ Integration.startTestnet nscConfig
-
-          ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
-
-          -- Transaction-builder inputs
-          txMintValue <- Hedgehog.forAll Integration.genTxMintValue
-          address <- Hedgehog.nothingFail Integration.knownShelleyAddress
-          witnessSigningKey <- Hedgehog.nothingFail Integration.knownWitnessSigningKey
-          (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
-          let validityRange = Integration.unboundedValidityRange
-
-          -- TODO: PLT-8098 make a note about the fee calcs and TxOut stuff here being simplified
-          -- Create "unbalanced" transaction
-          let txbody =
-                Integration.mkUnbalancedTxBodyContentFromTxMintValue
-                  validityRange
-                  ledgerPP
-                  address
-                  txIns
-                  txMintValue
 
           -- Indexer preprocessor and configuration
           let
@@ -179,16 +160,6 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
                 (Integration.nscNetworkId nscConfig)
                 startingPoint
                 (Integration.nscSocketPath nscConfig)
-
-          -- Submit the transaction, wait for it to appear, and run the test
-          Integration.validateAndSubmitTx
-            localNodeConnectInfo
-            ledgerPP
-            (Integration.nscNetworkId nscConfig)
-            address
-            witnessSigningKey
-            txbody
-            lovelace
 
           StandardWorker mindexer worker <-
             Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
