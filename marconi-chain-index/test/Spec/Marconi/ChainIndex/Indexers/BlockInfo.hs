@@ -13,9 +13,10 @@ module Spec.Marconi.ChainIndex.Indexers.BlockInfo (
 import Cardano.Api qualified as C
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent.Async qualified as Async
+import Control.Exception (throwIO)
 import Control.Lens ((^.))
-import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Except (runExceptT)
 import Data.Aeson qualified as Aeson
 import Data.Maybe (mapMaybe)
 import Data.Time qualified as Time
@@ -134,13 +135,7 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
           let marconiTrace = mkMarconiTrace trace
 
           -- Local node config and connect info, with slots of length 100ms
-          (nscConfig, _) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
-
-          -- Start the testnet
-
-          -- TODO: PLT-8098 the testnet is not being shut down properly and keeps running
-          -- after the test completes
-          liftIO $ Integration.startTestnet nscConfig
+          (nscConfig, _) <- Hedgehog.evalIO $ Integration.mkLocalNodeInfo tempPath 100
 
           -- Indexer preprocessor and configuration
           let
@@ -162,21 +157,34 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
                 (Integration.nscSocketPath nscConfig)
 
           StandardWorker mindexer worker <-
-            Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
+            Hedgehog.evalIO $
+              either throwIO pure =<< runExceptT (blockInfoBuilder securityParam catchupConfig trace tempPath)
+          coordinator <- Hedgehog.evalIO $ Core.mkCoordinator [worker]
 
-          coordinator <- liftIO $ Core.mkCoordinator [worker]
+          -- Start the testnet and indexer, and run the query.
 
-          void $ liftIO $ Async.async (Runner.runIndexer config coordinator) >>= Async.link
+          {- NOTE: PLT-8098
+           startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
+           race and leftFail below. startTestnet does not shutdown when the test is done.
+           See Cardano.Node.Socket.Emulator.Server.runServerNode.
+           As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
+           SlotAdd log messages.
+           -}
+          res <- Hedgehog.evalIO $
+            Async.race (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator) $
+              do
+                threadDelay 5_000_000
 
-          -- TODO: PLT-8098 use the retry
-          liftIO $ threadDelay 5_000_000
+                indexer <- readMVar mindexer
 
-          indexer <- liftIO $ readMVar mindexer
+                (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
+                  either throwIO pure
+                    =<< runExceptT (Core.queryLatest Core.allEvents indexer)
 
-          (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
-            Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
+                pure $ not (null queryEvents)
 
-          Hedgehog.assert $ not (null queryEvents)
+          assertion <- Hedgehog.leftFail res
+          Hedgehog.assert assertion
 
 -- | Generate a list of events from a mock chain
 getBlockInfoEvents

@@ -15,6 +15,7 @@ module Test.Integration (
 import Cardano.Api.Extended.IPC qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.LogItem (LOContent (LogMessage), loContent)
+import Cardano.BM.Tracing qualified as BM
 import Cardano.Node.Emulator.Generators (knownAddresses, knownXPrvs)
 import Cardano.Node.Emulator.Internal.Node.Chain (ChainEvent (SlotAdd))
 import Cardano.Node.Emulator.Internal.Node.TimeSlot qualified as E.TimeSlot
@@ -23,6 +24,7 @@ import Cardano.Node.Socket.Emulator qualified as E
 import Cardano.Node.Socket.Emulator.Types qualified as E.Types
 import Control.Concurrent (threadDelay)
 import Control.Monad (replicateM)
+import Control.Monad.Error.Class (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Tracer (condTracing)
 import Data.Bifunctor (first)
@@ -36,20 +38,19 @@ import Hedgehog.Extras.Test.Base qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as Range
 import Ledger.Test (testnet)
+import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.Core qualified as Core
 import PlutusLedgerApi.V1 qualified as PlutusV1
 import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
 import System.Exit (exitFailure)
 import Test.Helpers qualified as Helpers
 
--- TODO: PLT-8098 suppress logging in node emulator? generates lots of noise.
--- TODO: PLT-8098 keep getting could not connect with node-server.sock does not exist
--- TODO: PLT-8098 want to run only certain number of slots in emulator
 -- TODO: PLT-8098 need to shut down the node emulator properly when the test is done.
 
 {- Node emulator setup and helpers -}
 
--- | Start a testnet using the node emulator.
+-- | Start a testnet using the node emulator, omitting 'SlotAdd' messages.
 startTestnet
   :: E.Types.NodeServerConfig
   -> IO ()
@@ -67,14 +68,14 @@ length parameter, for use in integration tests.
 -}
 mkLocalNodeInfo
   :: FilePath
-  -- ^ Absolute path of temporary directory for integration test.
+  -- ^ Absolute path of temporary directory for test.
   -> Integer
   -- ^ Slot length.
   -> IO (E.Types.NodeServerConfig, C.LocalNodeConnectInfo C.CardanoMode)
 mkLocalNodeInfo tempAbsBasePath slotLength = do
   now <- getPOSIXTime
   let socketPathAbs = tempAbsBasePath <> "/node-server.sock"
-      -- TODO: PLT-8098 leftover from legacy code: "any other networkId doesn't work"
+      -- Testnet is the only one that works
       networkId = testnet
       localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPathAbs
       config =
@@ -86,8 +87,6 @@ mkLocalNodeInfo tempAbsBasePath slotLength = do
                 }
           , E.Types.nscSocketPath = socketPathAbs
           , E.Types.nscNetworkId = networkId
-          , -- TODO: PLT-8098 default is 100. this is for evaluating interaction with catchup
-            E.Types.nscKeptBlocks = 1_000
           }
   pure (config, localNodeConnectInfo)
 
