@@ -11,25 +11,30 @@ module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent), ChainSyncEvent)
+import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async qualified as Async
+import Control.Exception (throwIO)
 import Control.Lens (over, toListOf, view, (^.))
 import Control.Lens.Fold qualified as Lens
 import Control.Lens.Traversal qualified as Lens
 import Control.Monad (forM, forM_, void, when)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Except (runExceptT)
 import Control.Tracer (nullTracer)
 import Data.List ((\\))
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (mapMaybe)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Hedgehog (Gen, PropertyT, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as H.Range
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
+import Marconi.ChainIndex.Indexers (AnyTxBody (AnyTxBody), mintBuilder)
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
   EventType (BurnEventType, MintEventType),
   MintAsset (MintAsset),
@@ -601,64 +606,26 @@ endToEndMintTokenEvent = H.withShrinks 0 $
       H.runFinallies $
         H.workspace "." $ \tempPath -> do
           -- Setup
-          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
+          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
           let marconiTrace = mkMarconiTrace trace
 
           -- Local node config and connect info, with slots of length 100ms
           (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
 
-          -- TODO: PLT-8098 the testnet is not being shut down properly and keeps running
-          -- after the test completes
-          liftIO $ Integration.startTestnet nscConfig
-
-          ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
-
-          -- Transaction-builder inputs
-          txMintValue <- H.forAll Integration.genTxMintValue
-          address <- H.nothingFail Integration.knownShelleyAddress
-          witnessSigningKey <- H.nothingFail Integration.knownWitnessSigningKey
-          (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
-          let validityRange = Integration.unboundedValidityRange
-
-          let txbody =
-                Integration.mkUnbalancedTxBodyContentFromTxMintValue
-                  validityRange
-                  ledgerPP
-                  address
-                  txIns
-                  txMintValue
-
-          -- TODO: PLT-8098 would seem these should exist elsewhere
           let
-            toMintTokenEvents :: BlockEvent -> Maybe MintTokenEvent.MintTokenBlockEvents
-            toMintTokenEvents (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
-              fmap MintTokenEvent.MintTokenBlockEvents . NonEmpty.nonEmpty $
-                concatMap (\(ix, tx) -> MintTokenEvent.extractEventsFromTx bn ix (C.getTxBody tx)) $
-                  zip [0 ..] txs
-
-            blockEventPreprocessorModifier
-              :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint BlockEvent])
-              -> ChainSyncEvent BlockEvent
-              -> [Core.ProcessedInput C.ChainPoint MintTokenBlockEvents]
-            blockEventPreprocessorModifier f = mapMaybe (traverse toMintTokenEvents) . f
-
-            -- This assumes the blocknumber is the same for all, which it is in this usage.
-            blockNoGetter =
-              mintTokenEvents
-                . Lens.folded
-                . MintTokenEvent.mintTokenEventLocation
-                . MintTokenEvent.mintTokenEventBlockNo
-
-            blockNoFromMintTokenBlockEvents :: MintTokenBlockEvents -> Maybe C.BlockNo
-            blockNoFromMintTokenBlockEvents = Lens.firstOf blockNoGetter
-
-            mintEventPreprocessor :: Runner.RunIndexerEventPreprocessing MintTokenEvent.MintTokenBlockEvents
-            mintEventPreprocessor =
-              let eventToProcessedInput = Runner.withNoPreprocessor ^. Runner.runIndexerPreprocessEvent
-               in Runner.RunIndexerEventPreprocessing
-                    (blockEventPreprocessorModifier eventToProcessedInput)
-                    blockNoFromMintTokenBlockEvents
-                    (const Nothing)
+            -- Taken from 'buildIndexers'
+            getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+            getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+            toTxBodys :: BlockEvent -> [AnyTxBody]
+            toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+              zipWith (getTxBody bn) [0 ..] txs
+            basePreprocessor = Runner.withDistancePreprocessor ^. Runner.runIndexerPreprocessEvent
+            getDistance = Just . fromIntegral . Distance.chainDistance
+            anyTxBodyPreprocessor =
+              Runner.RunIndexerEventPreprocessing
+                (map (fmap (fmap toTxBodys)) . basePreprocessor)
+                (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
+                getDistance
 
             -- No rollbacks so this is arbitrary
             securityParam = 1
@@ -666,49 +633,79 @@ endToEndMintTokenEvent = H.withShrinks 0 $
             retryConfig = RetryConfig 30 (Just 120)
             -- Same as for Marconi.ChainIndex.Run
             catchupConfig = Core.mkCatchupConfig 5_000 100
-
+            -- Do no filtering
+            mintTokenConfig = MintTokenEvent.MintTokenEventConfig Nothing
             config =
               Runner.RunIndexerConfig
                 marconiTrace
-                -- TODO: PLT-8098
-                -- Runner.withDistancePreprocessor
-                mintEventPreprocessor
+                anyTxBodyPreprocessor
                 retryConfig
                 securityParam
                 (Integration.nscNetworkId nscConfig)
                 startingPoint
                 (Integration.nscSocketPath nscConfig)
 
-          -- Submit the transaction and run the test
+          -- Create the worker/coordinator
+          StandardWorker mindexer worker <-
+            H.evalIO $
+              either throwIO pure
+                =<< runExceptT (mintBuilder securityParam catchupConfig mintTokenConfig trace tempPath)
+          coordinator <- H.evalIO $ Core.mkCoordinator [worker]
 
-          Integration.validateAndSubmitTx
-            localNodeConnectInfo
-            ledgerPP
-            (Integration.nscNetworkId nscConfig)
-            address
-            witnessSigningKey
-            txbody
-            lovelace
+          -- Generate a random MintValue to submit to the local network
+          txMintValue <- H.forAll Integration.genTxMintValue
 
-          indexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:"
+          {- NOTE: PLT-8098
+           startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
+           race and leftFail below. startTestnet does not shutdown when the test is done.
+           See Cardano.Node.Socket.Emulator.Server.runServerNode.
+           As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
+           SlotAdd log messages.
+           -}
 
-          -- TODO: PLT-8098 revisit
-          _ <- liftIO $ Async.async (Runner.runIndexer config indexer)
+          -- TODO: PLT-8098 convert this and the blockinfo one to use the corresponding functions from lifted-async, which
+          -- propertyT implements. that way you can do everything with hedgehog in the race as well
+          -- and clean some things up by putting the tests in there and using race_.
+          res <- H.evalIO $
+            Async.race (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator) $
+              do
+                threadDelay 5_000_000
 
-          -- TODO: PLT-8098 indexer is running fine, e.g. as shown with this message
-          -- Are no events coming through?
-          -- [endToEndMintTokenEvent:Info:45855] [2023-11-01 20:42:47.34 UTC] Fully synchronised. Current synced point is ChainPoint(Slot 10281227632, BlockHash b5dd92310e2a53209bc2695c9c28509b3633525842077cfdc4dbb1ee281f94c8) and current node tip is ChainTip(S
-          -- lot 10281227632, BlockHash 76be8b528d0075f7aae98d6fa57a6d3c83ae480a8469e668d7b0af968995ac71, BlockNo 10281227632). Processed 1005 blocks and 0 rollbacks in the last 10s.
+                ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 
-          -- Query
-          (queryEvent :: Core.Timed C.ChainPoint MintTokenBlockEvents) <-
-            Integration.queryFirstResultWithRetry
-              5
-              10_000_000
-              (H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents indexer)
+                -- Transaction-builder inputs
+                address <- H.nothingFail Integration.knownShelleyAddress
+                witnessSigningKey <- H.nothingFail Integration.knownWitnessSigningKey
+                (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+                let validityRange = Integration.unboundedValidityRange
+
+                let txbody =
+                      Integration.mkUnbalancedTxBodyContentFromTxMintValue
+                        validityRange
+                        ledgerPP
+                        address
+                        txIns
+                        txMintValue
+                --
+                -- Submit the transaction and run the test
+                Integration.validateAndSubmitTx
+                  localNodeConnectInfo
+                  ledgerPP
+                  (Integration.nscNetworkId nscConfig)
+                  address
+                  witnessSigningKey
+                  txbody
+                  lovelace
+
+                indexer <- readMVar mindexer
+
+                runExceptT (Core.queryLatest MintTokenEvent.AllEvents indexer)
+                  >>= either throwIO pure
+
+          queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
 
           -- Test
-          let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents [queryEvent]
+          let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents queryEvents
               inputPolicyAssets = List.sort $ getPolicyAssetsFromTxMintValue txMintValue
 
           queryPolicyAssets === inputPolicyAssets

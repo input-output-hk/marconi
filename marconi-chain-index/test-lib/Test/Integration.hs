@@ -191,6 +191,7 @@ mkUnbalancedTxBodyContentFromTxMintValue validityRange ledgerPP address txIns tx
     }
 
 {- Indexers and queries -}
+-- H.failMessage GHC.callStack
 
 -- | TODO: PLT-8098 blocks until you get one. use the MarconiTrace and provide a better message.
 queryFirstResultWithRetry :: Int -> Word64 -> H.Integration [a] -> H.Integration a
