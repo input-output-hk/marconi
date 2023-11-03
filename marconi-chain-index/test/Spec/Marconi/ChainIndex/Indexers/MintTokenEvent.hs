@@ -600,10 +600,17 @@ endToEndMintTokenEvent = H.withShrinks 0 $
     (liftIO Helpers.setDarwinTmpdir >>) $
       H.runFinallies $
         H.workspace "." $ \tempPath -> do
-          -- Local blockchain
+          -- Setup
+          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
+          let marconiTrace = mkMarconiTrace trace
 
-          -- Start the node emulator
-          (localNodeConnectInfo, networkId, socketPath) <- Integration.startTestnet tempPath
+          -- Local node config and connect info, with slots of length 100ms
+          (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
+
+          -- TODO: PLT-8098 the testnet is not being shut down properly and keeps running
+          -- after the test completes
+          liftIO $ Integration.startTestnet nscConfig
+
           ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 
           -- Transaction-builder inputs
@@ -613,8 +620,6 @@ endToEndMintTokenEvent = H.withShrinks 0 $
           (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
           let validityRange = Integration.unboundedValidityRange
 
-          -- TODO: PLT-8098 make a note about the fee calcs and TxOut stuff here being simplified
-          -- Create "unbalanced" transaction
           let txbody =
                 Integration.mkUnbalancedTxBodyContentFromTxMintValue
                   validityRange
@@ -623,27 +628,8 @@ endToEndMintTokenEvent = H.withShrinks 0 $
                   txIns
                   txMintValue
 
-          Integration.validateAndSubmitTx
-            localNodeConnectInfo
-            ledgerPP
-            networkId
-            address
-            witnessSigningKey
-            txbody
-            lovelace
-
-          -- Indexer
-
-          -- Setup
-          -- TODO: PLT-8098 make a endToEndIndexerRunner or something in the test-lib
-          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
-          let marconiTrace = mkMarconiTrace trace
-
-          -- TODO: PLT-8098 this should be elsewhere. these are copy-pasted from other locations in
-          -- code (local defs), which feels bad.
+          -- TODO: PLT-8098 would seem these should exist elsewhere
           let
-            -- TODO: PLT-8098 adapt this to your needs. but see note above. ripped/adapted
-            -- from Runner or Indexers
             toMintTokenEvents :: BlockEvent -> Maybe MintTokenEvent.MintTokenBlockEvents
             toMintTokenEvents (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
               fmap MintTokenEvent.MintTokenBlockEvents . NonEmpty.nonEmpty $
@@ -674,30 +660,35 @@ endToEndMintTokenEvent = H.withShrinks 0 $
                     blockNoFromMintTokenBlockEvents
                     (const Nothing)
 
-          -- Wait at most two minutes for a connection to the node
-          let retryConfig = RetryConfig 30 (Just 120)
+            -- No rollbacks so this is arbitrary
+            securityParam = 1
+            startingPoint = C.ChainPointAtGenesis
+            retryConfig = RetryConfig 30 (Just 120)
+            -- Same as for Marconi.ChainIndex.Run
+            catchupConfig = Core.mkCatchupConfig 5_000 100
 
-          -- TODO: PLT-8098 this fails to connect even though the indexer seems to sync fine. Why?
-          -- could hard-code param from cardano-node (currently 100) but not ideal.
-          -- it is not actually needed here but is puzzling
+            config =
+              Runner.RunIndexerConfig
+                marconiTrace
+                -- TODO: PLT-8098
+                -- Runner.withDistancePreprocessor
+                mintEventPreprocessor
+                retryConfig
+                securityParam
+                (Integration.nscNetworkId nscConfig)
+                startingPoint
+                (Integration.nscSocketPath nscConfig)
 
-          -- Taken from 'Run.run'
-          -- securityParam <-
-          -- liftIO $
-          --   withNodeConnectRetry marconiTrace retryConfig socketPath $
-          --     Utils.toException $
-          --       Utils.querySecurityParam @Void networkId socketPath
+          -- Submit the transaction and run the test
 
-          let config =
-                Runner.RunIndexerConfig
-                  marconiTrace
-                  mintEventPreprocessor
-                  retryConfig
-                  -- No rollbacks, so security parameter is arbitrary
-                  100
-                  networkId
-                  C.ChainPointAtGenesis
-                  socketPath
+          Integration.validateAndSubmitTx
+            localNodeConnectInfo
+            ledgerPP
+            (Integration.nscNetworkId nscConfig)
+            address
+            witnessSigningKey
+            txbody
+            lovelace
 
           indexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:"
 

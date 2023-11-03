@@ -1,21 +1,30 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-}
 
 -- | Utilities for integration tests using tools from the `cardano-node-emulator` project.
-module Test.Integration where
+module Test.Integration (
+  module Test.Integration,
+  E.Types.nscSocketPath,
+  E.Types.nscNetworkId,
+) where
 
 import Cardano.Api.Extended.IPC qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.BM.Data.LogItem (LOContent (LogMessage), loContent)
 import Cardano.Node.Emulator.Generators (knownAddresses, knownXPrvs)
+import Cardano.Node.Emulator.Internal.Node.Chain (ChainEvent (SlotAdd))
 import Cardano.Node.Emulator.Internal.Node.TimeSlot qualified as E.TimeSlot
+import Cardano.Node.Emulator.LogMessages (EmulatorMsg (ChainEvent))
 import Cardano.Node.Socket.Emulator qualified as E
 import Cardano.Node.Socket.Emulator.Types qualified as E.Types
 import Control.Concurrent (threadDelay)
 import Control.Monad (replicateM)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Tracer (condTracing)
 import Data.Bifunctor (first)
 import Data.Default (def)
 import Data.Map qualified as Map
@@ -27,8 +36,6 @@ import Hedgehog.Extras.Test.Base qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as Range
 import Ledger.Test (testnet)
-import Marconi.ChainIndex.Types (MarconiTrace)
-import Marconi.Core qualified as Core
 import PlutusLedgerApi.V1 qualified as PlutusV1
 import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
@@ -42,38 +49,45 @@ import Test.Helpers qualified as Helpers
 
 {- Node emulator setup and helpers -}
 
--- | Start a testnet using the node emulator, within the @H.'Integration'@ context.
+-- | Start a testnet using the node emulator.
 startTestnet
+  :: E.Types.NodeServerConfig
+  -> IO ()
+startTestnet = E.main (condTracing (not . isSlotAddLogObject . snd) E.prettyTrace)
+  where
+    isSlotAddLogObject = isSlotAddMsg . loContent
+
+-- | Predicate used to suppress 'SlotAdd' messages in the logger.
+isSlotAddMsg :: LOContent E.Types.CNSEServerLogMsg -> Bool
+isSlotAddMsg (LogMessage (E.Types.ProcessingEmulatorMsg (ChainEvent (SlotAdd _)))) = True
+isSlotAddMsg _ = False
+
+{- | Construct local node configuration for node emulator from a temporary directory path and slot
+length parameter, for use in integration tests.
+-}
+mkLocalNodeInfo
   :: FilePath
-  -> H.Integration (C.LocalNodeConnectInfo C.CardanoMode, C.NetworkId, FilePath)
-startTestnet tempAbsBasePath = do
+  -- ^ Absolute path of temporary directory for integration test.
+  -> Integer
+  -- ^ Slot length.
+  -> IO (E.Types.NodeServerConfig, C.LocalNodeConnectInfo C.CardanoMode)
+mkLocalNodeInfo tempAbsBasePath slotLength = do
+  now <- getPOSIXTime
   let socketPathAbs = tempAbsBasePath <> "/node-server.sock"
       -- TODO: PLT-8098 leftover from legacy code: "any other networkId doesn't work"
       networkId = testnet
-      -- TODO: PLT-8098 revise after investigating
-      -- In milliseconds, shorter than the default to make the tests go faster
-      -- slotLength = 10
-      slotLength = 100
       localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPathAbs
-  liftIO $ startTestnetIntegration socketPathAbs slotLength networkId
-  pure (localNodeConnectInfo, networkId, socketPathAbs)
-
--- | TODO: PLT-8098 added to start addressing a few issues in node start
-startTestnetIntegration :: FilePath -> Integer -> C.NetworkId -> IO ()
-startTestnetIntegration socketPath slotLength networkId = do
-  now <- getPOSIXTime
-  let
-    config =
-      def
-        { E.Types.nscSlotConfig =
-            def
-              { E.TimeSlot.scSlotLength = slotLength
-              , E.TimeSlot.scSlotZeroTime = E.TimeSlot.nominalDiffTimeToPOSIXTime now
-              }
-        , E.Types.nscSocketPath = socketPath
-        , E.Types.nscNetworkId = networkId
-        }
-  E.main E.prettyTrace config
+      config =
+        def
+          { E.Types.nscSlotConfig =
+              def
+                { E.TimeSlot.scSlotLength = slotLength
+                , E.TimeSlot.scSlotZeroTime = E.TimeSlot.nominalDiffTimeToPOSIXTime now
+                }
+          , E.Types.nscSocketPath = socketPathAbs
+          , E.Types.nscNetworkId = networkId
+          }
+  pure (config, localNodeConnectInfo)
 
 -- TODO: PLT-8098 check cardano-node-emulator to see if this already exists.
 
@@ -96,7 +110,8 @@ unboundedValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.V
 {- Transaction operations -}
 
 validateAndSubmitTx
-  :: C.LocalNodeConnectInfo C.CardanoMode
+  :: (H.MonadTest m, MonadIO m)
+  => C.LocalNodeConnectInfo C.CardanoMode
   -> C.LedgerProtocolParameters C.BabbageEra
   -> C.NetworkId
   -> C.Address C.ShelleyAddr
@@ -104,7 +119,7 @@ validateAndSubmitTx
   -> C.TxBodyContent C.BuildTx C.BabbageEra
   -> C.Lovelace
   -- ^ Lovelace before applying fees
-  -> H.Integration ()
+  -> m ()
 validateAndSubmitTx localNodeConnectInfo ledgerPP networkId address witnessSigningKey txbodyc lovelace = do
   txbodyValid <-
     H.leftFail $
@@ -174,6 +189,8 @@ mkUnbalancedTxBodyContentFromTxMintValue validityRange ledgerPP address txIns tx
     , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra txIns
     }
 
+{- Indexers and queries -}
+
 -- | TODO: PLT-8098 blocks until you get one. use the MarconiTrace and provide a better message.
 queryFirstResultWithRetry :: Int -> Word64 -> H.Integration [a] -> H.Integration a
 queryFirstResultWithRetry ntries _ _
@@ -219,10 +236,11 @@ calculateFee ledgerPP nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses n
 context, and wait for it to be submitted over the protocol.
 -}
 signAndSubmitTx
-  :: C.LocalNodeConnectInfo C.CardanoMode
+  :: (H.MonadTest m, MonadIO m)
+  => C.LocalNodeConnectInfo C.CardanoMode
   -> [C.KeyWitness C.BabbageEra]
   -> C.TxBody C.BabbageEra
-  -> H.Integration ()
+  -> m ()
 signAndSubmitTx info witnesses txbody = Helpers.submitAwaitTx info (tx, txbody)
   where
     tx = C.makeSignedTransaction witnesses txbody

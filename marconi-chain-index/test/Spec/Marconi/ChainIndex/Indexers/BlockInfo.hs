@@ -117,9 +117,19 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
     (liftIO Helpers.setDarwinTmpdir >>) $
       Hedgehog.runFinallies $
         Hedgehog.workspace "." $ \tempPath -> do
-          -- Local blockchain
-          -- Start the node emulator
-          (localNodeConnectInfo, networkId, socketPath) <- Integration.startTestnet tempPath
+          -- Setup
+          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
+          let marconiTrace = mkMarconiTrace trace
+
+          -- Local node config and connect info, with slots of length 100ms
+          (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
+
+          -- Start the testnet
+
+          -- TODO: PLT-8098 the testnet is not being shut down properly and keeps running
+          -- after the test completes
+          liftIO $ Integration.startTestnet nscConfig
+
           ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 
           -- Transaction-builder inputs
@@ -139,22 +149,7 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
                   txIns
                   txMintValue
 
-          Integration.validateAndSubmitTx
-            localNodeConnectInfo
-            ledgerPP
-            networkId
-            address
-            witnessSigningKey
-            txbody
-            lovelace
-
-          -- Indexer
-
-          -- Setup
-          -- TODO: PLT-8098 make a endToEndIndexerRunner or something in the test-lib
-          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
-          let marconiTrace = mkMarconiTrace trace
-
+          -- Indexer preprocessor and configuration
           let
             toBlockInfo :: BlockEvent -> BlockInfo
             toBlockInfo (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) _) _) _ t) =
@@ -177,50 +172,52 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
             -- Same as for Marconi.ChainIndex.Run
             catchupConfig = Core.mkCatchupConfig 5_000 100
 
-          let config =
-                Runner.RunIndexerConfig
-                  marconiTrace
-                  Runner.withDistancePreprocessor
-                  -- TODO: PLT-8098
-                  -- blockInfoPreprocessor
-                  retryConfig
-                  securityParam
-                  networkId
-                  startingPoint
-                  socketPath
+            config =
+              Runner.RunIndexerConfig
+                marconiTrace
+                -- TODO: PLT-8098
+                -- Runner.withDistancePreprocessor
+                blockInfoPreprocessor
+                retryConfig
+                securityParam
+                (Integration.nscNetworkId nscConfig)
+                startingPoint
+                (Integration.nscSocketPath nscConfig)
 
-          -- TODO: PLT-8098 delete this experiment if unused
+          -- Submit the transaction and run the test
+          Integration.validateAndSubmitTx
+            localNodeConnectInfo
+            ledgerPP
+            (Integration.nscNetworkId nscConfig)
+            address
+            witnessSigningKey
+            txbody
+            lovelace
 
-          -- indexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer ":memory:"
-          ---- TODO: PLT-8098 this should not be needed and should be set to genesis
-          -- startingPoint <- Core.lastStablePoint indexer
+          -- TODO: PLT-8098 delete the experiments if unused
 
-          StandardWorker mvar worker <-
-            Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
+          -- Raw indexer
+          indexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer (tempPath <> "mint.db")
 
-          coordinator <- liftIO $ Core.mkCoordinator [worker]
+          -- TODO: PLT-8098 indexer not shut down when test is over
+          liftIO $ Async.async (Runner.runIndexer config indexer) >>= Async.link
 
-          liftIO $ threadDelay 10_000_000
-          _ <- liftIO $ Async.async (Runner.runIndexer config coordinator)
+          -- Indexer with superfluous coordinator, to emulate more closely what the http server sees
+          -- StandardWorker mvar worker <-
+          --  Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
 
-          indexer <- liftIO $ readMVar mvar
+          -- coordinator <- liftIO $ Core.mkCoordinator [worker]
+
+          -- liftIO $ threadDelay 10_000_000
+          -- _ <- liftIO $ Async.async (Runner.runIndexer config coordinator)
+
+          -- indexer <- liftIO $ readMVar mvar
 
           liftIO $ threadDelay 30_000_000
+
           (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
             Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
 
-          -- (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
-          --  Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
-
-          -- Query
-          -- (queryEvent :: Core.Timed C.ChainPoint BlockInfo) <-
-          --  Integration.queryFirstResultWithRetry
-          --    5
-          --    10_000_000
-          --    (Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer)
-
-          -- TODO: PLT-8098 revise queryFirstResultWithRetry to return maybe, where
-          -- nothing says you didn't get anything
           Hedgehog.assert $ not (null queryEvents)
 
 -- | Generate a list of events from a mock chain
