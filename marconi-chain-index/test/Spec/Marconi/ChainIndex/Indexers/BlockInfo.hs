@@ -4,13 +4,13 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Spec.Marconi.ChainIndex.Indexers.BlockInfo (
-  tests,
+  propTests,
+  unitTests,
   getBlockInfoEvents,
   genBlockInfo,
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent.Async qualified as Async
 import Control.Lens ((^.))
@@ -39,8 +39,11 @@ import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
-tests :: TestTree
-tests =
+{- | Genuine property tests, in which more than one test can be run and
+ - options on the number of tests might be configured by the caller.
+-}
+propTests :: TestTree
+propTests =
   testGroup
     "Spec.Marconi.ChainIndex.Indexers.BlockInfo"
     [ testGroup
@@ -62,11 +65,20 @@ tests =
         "JSON event tripping test"
         "propTrippingBlockInfoJSON"
         propTrippingBlockInfoJSON
-    , testGroup
+    ]
+
+{- | Unit tests, defined with the Hedgehog API.
+ - Tests defined @Hedgehog.'propertyOnce'@ or otherwise with
+   a fixed number of test runs that should not be changed.
+-}
+unitTests :: TestTree
+unitTests =
+  testGroup
+    "Spec.Marconi.ChainIndex.Indexers.BlockInfo"
+    [ testGroup
         "End-to-end indexer tests with cardano-node-emulator"
         [ testPropertyNamed
-            -- TODO: PLT-8098
-            "Indexing a testnet and then submitting a transaction has the indexer receive a block"
+            "Indexing a testnet and then submitting a transaction has the indexer receive at least one block"
             "endToEndBlockInfo"
             endToEndBlockInfo
         ]
@@ -151,21 +163,6 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
 
           -- Indexer preprocessor and configuration
           let
-            toBlockInfo :: BlockEvent -> BlockInfo
-            toBlockInfo (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) _) _) _ t) =
-              -- TODO: PLT-8098 check whether it is inteded to convert posix to seconds here
-              -- TODO: PLT-8098 get epochno from slotno
-              BlockInfo bn (fst . properFraction $ Time.nominalDiffTimeToSeconds t) 0
-
-            blockInfoPreprocessor :: Runner.RunIndexerEventPreprocessing BlockInfo
-            blockInfoPreprocessor =
-              let eventToProcessedInput = Runner.withNoPreprocessor ^. Runner.runIndexerPreprocessEvent
-               in Runner.RunIndexerEventPreprocessing
-                    -- (map (fmap toBlockInfo) . (\e -> Debug.Trace.trace (show e) $ eventToProcessedInput e))
-                    (map (fmap toBlockInfo) . eventToProcessedInput)
-                    (Just . (^. BlockInfo.blockNo))
-                    (const Nothing)
-
             -- No rollbacks so this is arbitrary
             securityParam = 1
             startingPoint = C.ChainPointAtGenesis
@@ -176,8 +173,6 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
             config =
               Runner.RunIndexerConfig
                 marconiTrace
-                -- TODO: PLT-8098
-                -- blockInfoPreprocessor
                 Runner.withDistancePreprocessor
                 retryConfig
                 securityParam
@@ -240,5 +235,5 @@ genBlockInfo :: Hedgehog.Gen BlockInfo
 genBlockInfo = do
   BlockInfo
     <$> CGen.genBlockNo
-    <*> (fromIntegral <$> Hedgehog.Gen.word (Hedgehog.Range.constant 10000 10000000))
+    <*> (fromIntegral <$> Hedgehog.Gen.word (Hedgehog.Range.constant 10_000 10_000_000))
     <*> CGen.genEpochNo

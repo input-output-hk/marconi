@@ -13,14 +13,31 @@ import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 
 tests :: TestTree
 tests =
+  testGroup
+    "Spec.Marconi.ChainIndex.Indexer"
+    [ unitTests
+    , propTests
+    ]
+
+-- | Genuine property tests, with an arbitrary number of test runs.
+propTests :: TestTree
+propTests =
   localOption (HedgehogTestLimit $ Just 200) $
     testGroup
-      "Spec.Marconi.ChainIndex.Indexer"
+      "Spec.Marconi.ChainIndex.Indexer.propTests"
       [ Utxo.tests
       , Spent.tests
       , Datum.tests
-      , BlockInfo.tests
+      , BlockInfo.propTests
       , ChainTip.tests
       , UtxoQuery.tests
       , MintTokenEvent.tests
       ]
+
+-- | Tests whose number of runs is set in the test definition, e.g. to 1.
+unitTests :: TestTree
+unitTests =
+  testGroup
+    "Spec.Marconi.ChainIndex.Indexer.unitTests"
+    [ BlockInfo.unitTests
+    ]
