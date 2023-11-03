@@ -158,24 +158,25 @@ type instance Core.Result (BlockInfoBySlotNoQuery event) = Maybe event
 
 newtype BlockInfoBySlotNoQuery event = BlockInfoBySlotNoQuery C.SlotNo
 
+blockInfoBySlotNoQuery :: SQL.Query
+blockInfoBySlotNoQuery =
+  [sql|
+  SELECT blockNo, blockTimestamp, epochNo
+  FROM blockInfo
+  WHERE slotNo == :slotNo
+  LIMIT 1
+  |]
+
 instance
   (MonadIO m, MonadError (Core.QueryError (BlockInfoBySlotNoQuery BlockInfo)) m)
   => Core.Queryable m BlockInfo (BlockInfoBySlotNoQuery BlockInfo) Core.SQLiteIndexer
   where
   query p q@(BlockInfoBySlotNoQuery sn) =
-    let blockInfoBySlotNoQuery :: SQL.Query
-        blockInfoBySlotNoQuery =
-          [sql|
-          SELECT blockNo, blockTimestamp, epochNo
-          FROM blockInfo
-          WHERE slotNo == :slotNo
-          LIMIT 1
-          |]
-     in querySyncedOnlySQLiteIndexerBySlotNoWith
-          (\cp -> pure [":slotNo" := cp])
-          (const blockInfoBySlotNoQuery)
-          (const listToMaybe)
-          sn
+    querySyncedOnlySQLiteIndexerBySlotNoWith
+      (\cp -> pure [":slotNo" := cp])
+      (const blockInfoBySlotNoQuery)
+      (const listToMaybe)
+      sn
     where
       -- This isn't in core because we don't want to encourage this operation in the general case
       querySyncedOnlySQLiteIndexerBySlotNoWith
@@ -201,18 +202,10 @@ instance
   => Core.Queryable m BlockInfo (Core.EventAtQuery BlockInfo) Core.SQLiteIndexer
   where
   query =
-    let blockInfoBySlotNoQuery :: SQL.Query
-        blockInfoBySlotNoQuery =
-          [sql|
-          SELECT blockNo, blockTimestamp, epochNo
-          FROM blockInfo
-          WHERE slotNo == :slotNo
-          LIMIT 1
-          |]
-     in Core.querySyncedOnlySQLiteIndexerWith
-          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const blockInfoBySlotNoQuery)
-          (const listToMaybe)
+    Core.querySyncedOnlySQLiteIndexerWith
+      (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
+      (const blockInfoBySlotNoQuery)
+      (const listToMaybe)
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery BlockInfo)) m)
