@@ -32,6 +32,7 @@ import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (RetryConfig (RetryConfig))
 import Marconi.Core qualified as Core
+import System.Directory (getDirectoryContents)
 import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Test.Gen.Marconi.ChainIndex.Types qualified as CGen
 import Test.Helpers qualified as Helpers
@@ -184,7 +185,7 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
                 startingPoint
                 (Integration.nscSocketPath nscConfig)
 
-          -- Submit the transaction and run the test
+          -- Submit the transaction, wait for it to appear, and run the test
           Integration.validateAndSubmitTx
             localNodeConnectInfo
             ledgerPP
@@ -195,26 +196,31 @@ endToEndBlockInfo = Hedgehog.withShrinks 0 $
             lovelace
 
           -- TODO: PLT-8098 delete the experiments if unused
+          utxo :: C.UTxO C.BabbageEra <- Helpers.findUTxOByAddress localNodeConnectInfo address
+          liftIO $ putStrLn "Got this UTxO from the target address"
+          liftIO $ print utxo
 
-          -- Raw indexer
-          indexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer (tempPath <> "mint.db")
+          -- CASE 1: Raw indexer
+          indexer <- Hedgehog.evalExceptT $ BlockInfo.mkBlockInfoIndexer (tempPath <> "blockInfo.db")
 
           -- TODO: PLT-8098 indexer not shut down when test is over
           liftIO $ Async.async (Runner.runIndexer config indexer) >>= Async.link
 
-          -- Indexer with superfluous coordinator, to emulate more closely what the http server sees
-          -- StandardWorker mvar worker <-
-          --  Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
+          -- CASE 2: Indexer with superfluous coordinator, to emulate more closely what the http server sees
+          -- Note the config must change.
+          -- This example also has a bad interaction with the Integration environment, sending it
+          -- into an infinite loop where the test is re-run.
+
+          -- StandardWorker mindexer worker <-
+          -- Hedgehog.evalExceptT $ blockInfoBuilder securityParam catchupConfig trace tempPath
 
           -- coordinator <- liftIO $ Core.mkCoordinator [worker]
 
-          -- liftIO $ threadDelay 10_000_000
           -- _ <- liftIO $ Async.async (Runner.runIndexer config coordinator)
 
-          -- indexer <- liftIO $ readMVar mvar
+          -- indexer <- liftIO $ readMVar mindexer
 
           liftIO $ threadDelay 30_000_000
-
           (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
             Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
 

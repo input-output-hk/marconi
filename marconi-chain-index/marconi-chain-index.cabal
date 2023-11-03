@@ -358,6 +358,7 @@ library marconi-chain-index-test-lib
     , cardano-node-socket-emulator
     , contra-tracer
     , data-default
+    , directory
     , hedgehog-extras
     , iohk-monitoring
     , ouroboros-network-protocols

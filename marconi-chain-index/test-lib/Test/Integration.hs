@@ -86,6 +86,8 @@ mkLocalNodeInfo tempAbsBasePath slotLength = do
                 }
           , E.Types.nscSocketPath = socketPathAbs
           , E.Types.nscNetworkId = networkId
+          , -- TODO: PLT-8098 default is 100. this is for evaluating interaction with catchup
+            E.Types.nscKeptBlocks = 1_000
           }
   pure (config, localNodeConnectInfo)
 
