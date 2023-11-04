@@ -25,7 +25,7 @@ import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Utils qualified as Util
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, queryHttpReaderHandler)
-import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
+import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, mkJsonRpcInvalidParamsErr)
 
 ------------------
 -- Method types --
@@ -75,9 +75,16 @@ getEpochStakePoolDelegationHandler
   -> ReaderHandler
       HttpServerConfig
       (Either (JsonRpcErr String) [ActiveSDDResult])
-getEpochStakePoolDelegationHandler =
-  dimapHandler toActiveSDDByEpochNoQuery toActiveSDDResults $
-    queryHttpReaderHandler (configQueryables . queryableEpochState)
+getEpochStakePoolDelegationHandler epochNo
+  | epochNo < 0 =
+      return . Left . mkJsonRpcInvalidParamsErr . Just $
+        "The 'epochNo' param value must be a natural number."
+  | otherwise =
+      dimapHandler
+        toActiveSDDByEpochNoQuery
+        toActiveSDDResults
+        (queryHttpReaderHandler (configQueryables . queryableEpochState))
+        epochNo
   where
     toActiveSDDByEpochNoQuery :: Word64 -> EpochState.ActiveSDDByEpochNoQuery
     toActiveSDDByEpochNoQuery = EpochState.ActiveSDDByEpochNoQuery . C.EpochNo

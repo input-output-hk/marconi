@@ -227,8 +227,8 @@ propJSONRountripEpochStakePoolDelegationResult = property $ do
     ActiveSDDResult
       <$> Gen.genPoolId
       <*> CGen.genLovelace
-      <*> Gen.genMaybeSlotNo
-      <*> Gen.genMaybeHashBlockHeader
+      <*> fmap Just Gen.genSlotNo
+      <*> fmap Just Gen.genHashBlockHeader
       <*> Gen.genBlockNo
   tripping sdds Aeson.encode Aeson.eitherDecode
 
@@ -237,8 +237,8 @@ propJSONRountripEpochNonceResult = property $ do
   nonce <- fmap GetEpochNonceResult $ forAll $ Gen.maybe $ do
     NonceResult
       <$> (Ledger.Nonce . Crypto.castHash . Crypto.hashWith id <$> Gen.bytes (Range.linear 0 32))
-      <*> Gen.genMaybeSlotNo
-      <*> Gen.genMaybeHashBlockHeader
+      <*> fmap Just Gen.genSlotNo
+      <*> fmap Just Gen.genHashBlockHeader
       <*> Gen.genBlockNo
   tripping nonce Aeson.encode Aeson.eitherDecode
 
