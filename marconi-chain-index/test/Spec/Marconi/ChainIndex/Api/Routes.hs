@@ -79,6 +79,11 @@ tests =
             "test/Spec/Golden/Routes/epoch-stakepooldelegation-response.json"
             goldenEpochStakePoolDelegationResult
         , goldenVsStringDiff
+            "Golden test for EpochStakePoolDelegationAtGenesisResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-stakepooldelegation-at-genesis-response.json"
+            goldenEpochStakePoolDelegationAtGenesisResult
+        , goldenVsStringDiff
             "Golden test for EpochNonResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/epoch-nonce-response.json"
@@ -186,6 +191,29 @@ goldenEpochStakePoolDelegationResult = do
   let result =
         fmap
           (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo epochNo)
+          poolIds
+  pure $ Aeson.encodePretty result
+
+goldenEpochStakePoolDelegationAtGenesisResult :: IO ByteString
+goldenEpochStakePoolDelegationAtGenesisResult = do
+  let poolIdsBech32 =
+        [ "pool1z22x50lqsrwent6en0llzzs9e577rx7n3mv9kfw7udwa2rf42fa"
+        ]
+  poolIds <- forM poolIdsBech32 $ \poolIdBech32 -> do
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
+
+  let lovelace = C.Lovelace 100000000000000
+      slotNo = Nothing
+      blockHeaderHash = Nothing
+      blockNo = C.BlockNo 0
+      epochNo = C.EpochNo 0
+
+  let result =
+        fmap
+          (\poolId -> ActiveSDDResult poolId lovelace slotNo blockHeaderHash blockNo epochNo)
           poolIds
   pure $ Aeson.encodePretty result
 
