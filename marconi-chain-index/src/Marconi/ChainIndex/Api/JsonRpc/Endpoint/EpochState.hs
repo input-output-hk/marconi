@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   RpcEpochActiveStakePoolDelegationMethod,
@@ -13,9 +14,8 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Lens.Getter qualified as Lens
-import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
-import Data.Aeson qualified as Aeson
-import Data.Aeson.Types (FromJSON (parseJSON))
+import Data.Aeson.TH (defaultOptions, deriveJSON, fieldLabelModifier)
+import Data.Char (toLower)
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.ChainIndex.Indexers (
@@ -42,41 +42,21 @@ data ActiveSDDResult = ActiveSDDResult
   { activeSDDResultPoolId :: !C.PoolId
   , activeSDDResultLovelace :: !C.Lovelace
   , activeSDDResultSlotNo :: !(Maybe C.SlotNo)
-  , activeSDDResultHash :: !(Maybe (C.Hash C.BlockHeader))
+  , activeSDDResultBlockHeaderHash :: !(Maybe (C.Hash C.BlockHeader))
   , activeSDDResultBlockNo :: !C.BlockNo
+  , activeSDDResultEpochNo :: !C.EpochNo
   }
   deriving stock (Eq, Ord, Show)
 
-instance FromJSON ActiveSDDResult where
-  parseJSON =
-    let parseResult v = do
-          ActiveSDDResult
-            <$> v
-              .: "poolId"
-            <*> v
-              .: "lovelace"
-            <*> (fmap C.SlotNo <$> v .:? "slotNo")
-            <*> v
-              .: "blockHeaderHash"
-            <*> (C.BlockNo <$> v .: "blockNo")
-     in Aeson.withObject "ActiveSDDResult" parseResult
-
-instance ToJSON ActiveSDDResult where
-  toJSON
-    ( ActiveSDDResult
-        poolId
-        lovelace
-        slotNo
-        blockHeaderHash
-        (C.BlockNo blockNo)
-      ) =
-      Aeson.object
-        [ "poolId" .= poolId
-        , "lovelace" .= lovelace
-        , "slotNo" .= fmap C.unSlotNo slotNo
-        , "blockHeaderHash" .= blockHeaderHash
-        , "blockNo" .= blockNo
-        ]
+$( deriveJSON
+    defaultOptions
+      { fieldLabelModifier = \str ->
+          case drop 15 str of
+            c : rest -> toLower c : rest
+            _ -> error "Malformed label in JSON type ActiveSDDResult."
+      }
+    ''ActiveSDDResult
+ )
 
 type RpcEpochNonceMethod =
   JsonRpc
@@ -113,6 +93,7 @@ getEpochStakePoolDelegationHandler =
         (Util.chainPointToSlotNo chainPoint)
         (Util.chainPointToHash chainPoint)
         (Lens.view EpochState.sddBlockNo epochSDD)
+        (Lens.view EpochState.sddEpochNo epochSDD)
 
 -- | Return an epoch nonce
 getEpochNonceHandler

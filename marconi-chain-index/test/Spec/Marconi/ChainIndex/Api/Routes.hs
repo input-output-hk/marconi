@@ -181,9 +181,12 @@ goldenEpochStakePoolDelegationResult = do
   let lovelace = C.Lovelace 100000000000000
       slotNo = Just $ C.SlotNo 1382422
       blockNo = C.BlockNo 64903
+      epochNo = C.EpochNo 123
 
-  let sdds = fmap (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo) poolIds
-      result = sdds
+  let result =
+        fmap
+          (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo epochNo)
+          poolIds
   pure $ Aeson.encodePretty result
 
 goldenEpochNonceResult :: IO ByteString
