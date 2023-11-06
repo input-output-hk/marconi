@@ -29,6 +29,8 @@ import System.IO qualified as IO
 import System.IO.Temp qualified as IO
 import System.Info qualified as IO
 
+{- Protocol / transaction helpers -}
+
 -- | An empty transaction
 emptyTxBodyContent
   :: (C.IsShelleyBasedEra era)
@@ -267,6 +269,8 @@ calculateAndUpdateTxFee ledgerPP networkId lengthTxIns lengthKeyWitnesses txbc =
       txbc' = txbc{C.txFee = fee}
   return (feeLovelace, txbc')
 
+{- Hedgehog helpers -}
+
 {- | This is a copy of the workspace from
  hedgehog-extras:Hedgehog.Extras.Test.Base, which for darwin sets
  the systemTemp folder to /tmp.
@@ -292,9 +296,37 @@ workspace prefixPath f = GHC.withFrozenCallStack $ do
 setDarwinTmpdir :: IO ()
 setDarwinTmpdir = when (IO.os == "darwin") $ IO.setEnv "TMPDIR" "/tmp"
 
--- TODO: PLT-8098 clean up and move/delete duplicates as needed
+{- | Run a unit test with the hedgehog API in the @HE.'Integration'@ context,
+with a temporary working directory.
+-}
+unitTestWithTmpDir
+  :: (GHC.HasCallStack)
+  => FilePath
+  -- ^ Prefix path
+  -> (FilePath -> HE.Integration ())
+  -- ^ Test to run with temporary working directory
+  -> H.Property
+unitTestWithTmpDir prefixPath =
+  H.withShrinks 0
+    . HE.propertyOnce
+    . (liftIO setDarwinTmpdir >>)
+    . HE.runFinallies
+    . workspace prefixPath
 
--- * Accessors
+{- Failure-wrapping functions analogous to those of hedgehog-extras but in MonadIO
+ - for easier use of actions in Helpers with async. -}
+nothingFail :: (MonadIO m) => String -> Maybe a -> m a
+nothingFail err Nothing = liftIO $ throwIO $ errorCallException err
+nothingFail _ (Just x) = pure x
+
+leftFail :: (MonadIO m, Show e) => Either e a -> m a
+leftFail (Left err) = liftIO $ throwIO $ errorCallException $ show err
+leftFail (Right x) = pure x
+
+leftFailM :: (MonadIO m, Show e) => m (Either e a) -> m a
+leftFailM f = f >>= leftFail
+
+{- Miscellaneous accessors -}
 
 bimTxIds :: C.BlockInMode mode -> [C.TxId]
 bimTxIds (C.BlockInMode block _) = blockTxIds block
@@ -326,24 +358,3 @@ addressAnyToShelley
   -> Maybe (C.Address C.ShelleyAddr)
 addressAnyToShelley (C.AddressShelley a) = Just a
 addressAnyToShelley _ = Nothing
-
--- TODO: PLT-8098 check whether these are already provided (or almost) in cardano-api
--- if not, they might be better put in cardano-api-extended
-
--- | Get the @Cardano.Api.TxBody.'Value'@ from the @Cardano.Api.TxBody.'TxMintValue'@.
-getValueFromTxMintValue :: C.TxMintValue build era -> C.Value
-getValueFromTxMintValue (C.TxMintValue _ v _) = v
-getValueFromTxMintValue _ = mempty
-
-{- Failure-wrapping functions analogous to those of hedgehog-extras but in MonadIO
- - for easier use of actions in Helpers with async. -}
-nothingFail :: (MonadIO m) => String -> Maybe a -> m a
-nothingFail err Nothing = liftIO $ throwIO $ errorCallException err
-nothingFail _ (Just x) = pure x
-
-leftFail :: (MonadIO m, Show e) => Either e a -> m a
-leftFail (Left err) = liftIO $ throwIO $ errorCallException $ show err
-leftFail (Right x) = pure x
-
-leftFailM :: (MonadIO m, Show e) => m (Either e a) -> m a
-leftFailM f = f >>= leftFail

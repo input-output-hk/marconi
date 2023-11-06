@@ -332,6 +332,7 @@ library marconi-chain-index-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
+    Test.Gen.Marconi.ChainIndex.MintTokenEvent
     Test.Gen.Marconi.ChainIndex.Mockchain
     Test.Gen.Marconi.ChainIndex.Types
     Test.Helpers

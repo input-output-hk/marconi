@@ -123,68 +123,64 @@ propTrippingBlockInfoJSON = Hedgehog.property $ do
   event <- Hedgehog.forAll genBlockInfo
   Hedgehog.tripping event Aeson.encode Aeson.eitherDecode
 
--- | Integration test for block info using cardano-node-emulator
+-- | Test for block info using cardano-node-emulator
 endToEndBlockInfo :: Hedgehog.Property
-endToEndBlockInfo = Hedgehog.withShrinks 0 $
-  Hedgehog.propertyOnce $
-    (liftIO Helpers.setDarwinTmpdir >>) $
-      Hedgehog.runFinallies $
-        Hedgehog.workspace "." $ \tempPath -> do
-          -- Setup
-          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
-          let marconiTrace = mkMarconiTrace trace
+endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
+  -- Setup
+  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
+  let marconiTrace = mkMarconiTrace trace
 
-          -- Local node config and connect info, with slots of length 100ms
-          (nscConfig, _) <- Hedgehog.evalIO $ Integration.mkLocalNodeInfo tempPath 100
+  -- Local node config and connect info, with slots of length 100ms
+  (nscConfig, _) <- Hedgehog.evalIO $ Integration.mkLocalNodeInfo tempPath 100
 
-          -- Indexer preprocessor and configuration
-          let
-            -- No rollbacks so this is arbitrary
-            securityParam = 1
-            startingPoint = C.ChainPointAtGenesis
-            retryConfig = RetryConfig 30 (Just 120)
-            -- Same as for Marconi.ChainIndex.Run
-            catchupConfig = Core.mkCatchupConfig 5_000 100
+  -- Indexer preprocessor and configuration
+  let
+    -- No rollbacks so this is arbitrary
+    securityParam = 1
+    startingPoint = C.ChainPointAtGenesis
+    retryConfig = RetryConfig 30 (Just 120)
+    -- Same as for Marconi.ChainIndex.Run
+    catchupConfig = Core.mkCatchupConfig 5_000 100
 
-            config =
-              Runner.RunIndexerConfig
-                marconiTrace
-                Runner.withDistancePreprocessor
-                retryConfig
-                securityParam
-                (Integration.nscNetworkId nscConfig)
-                startingPoint
-                (Integration.nscSocketPath nscConfig)
+    config =
+      Runner.RunIndexerConfig
+        marconiTrace
+        Runner.withDistancePreprocessor
+        retryConfig
+        securityParam
+        (Integration.nscNetworkId nscConfig)
+        startingPoint
+        (Integration.nscSocketPath nscConfig)
 
-          StandardWorker mindexer worker <-
-            Hedgehog.evalIO $
-              either throwIO pure =<< runExceptT (blockInfoBuilder securityParam catchupConfig trace tempPath)
-          coordinator <- Hedgehog.evalIO $ Core.mkCoordinator [worker]
+  StandardWorker mindexer worker <-
+    Hedgehog.evalIO $
+      either throwIO pure =<< runExceptT (blockInfoBuilder securityParam catchupConfig trace tempPath)
+  coordinator <- Hedgehog.evalIO $ Core.mkCoordinator [worker]
 
-          -- Start the testnet and indexer, and run the query.
+  -- Start the testnet and indexer, and run the query.
 
-          {- NOTE: PLT-8098
-           startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
-           race and leftFail below. startTestnet does not shutdown when the test is done.
-           See Cardano.Node.Socket.Emulator.Server.runServerNode.
-           As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
-           SlotAdd log messages.
-           -}
-          res <- Hedgehog.evalIO $
-            Async.race (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator) $
-              do
-                threadDelay 5_000_000
+  {- NOTE: PLT-8098
+   startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
+   race and leftFail below. startTestnet does not shutdown when the test is done.
+   See Cardano.Node.Socket.Emulator.Server.runServerNode.
+   As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
+   SlotAdd log messages.
+   -}
+  res <- Hedgehog.evalIO $
+    Async.race (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator) $
+      do
+        threadDelay 5_000_000
 
-                indexer <- readMVar mindexer
+        indexer <- readMVar mindexer
 
-                (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
-                  either throwIO pure
-                    =<< runExceptT (Core.queryLatest Core.allEvents indexer)
+        (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
+          either throwIO pure
+            =<< runExceptT (Core.queryLatest Core.allEvents indexer)
 
-                pure $ not (null queryEvents)
+        pure $ not (null queryEvents)
 
-          assertion <- Hedgehog.leftFail res
-          Hedgehog.assert assertion
+  assertion <- Hedgehog.leftFail res
+  Hedgehog.assert assertion
 
 -- | Generate a list of events from a mock chain
 getBlockInfoEvents

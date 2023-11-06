@@ -63,6 +63,7 @@ import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (RetryConfig (RetryConfig), TxIndexInBlock (TxIndexInBlock))
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen
 import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration
@@ -609,119 +610,114 @@ queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
         Nothing -> MintTokenEvent.AllEvents
   H.evalExceptT $ Core.queryLatest query indexer
 
-{- | TODO: PLT-8098 evaluate the hedgehog boilerplate here and revise as needed.
-might be worth a wrapper "endToEndIndexerTest" that does the boilerplate for you. put in
-test-lib.
+{- | End-to-end test that a single mint event sent over a local network
+ - via cardano-node-emulator is received by the indexer.
 -}
 endToEndMintTokenEvent :: H.Property
-endToEndMintTokenEvent = H.withShrinks 0 $
-  H.propertyOnce $
-    (liftIO Helpers.setDarwinTmpdir >>) $
-      H.runFinallies $
-        H.workspace "." $ \tempPath -> do
-          -- Setup
-          (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
-          let marconiTrace = mkMarconiTrace trace
+endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
+  -- Setup
+  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
+  let marconiTrace = mkMarconiTrace trace
 
-          -- Local node config and connect info, with slots of length 100ms
-          (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
+  -- Local node config and connect info, with slots of length 100ms
+  (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
 
-          let
-            -- Taken from 'buildIndexers'
-            getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
-            getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
-            toTxBodys :: BlockEvent -> [AnyTxBody]
-            toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
-              zipWith (getTxBody bn) [0 ..] txs
-            basePreprocessor = Runner.withDistancePreprocessor ^. Runner.runIndexerPreprocessEvent
-            getDistance = Just . fromIntegral . Distance.chainDistance
-            anyTxBodyPreprocessor =
-              Runner.RunIndexerEventPreprocessing
-                (map (fmap (fmap toTxBodys)) . basePreprocessor)
-                (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
-                getDistance
+  let
+    -- Taken from 'buildIndexers'
+    getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+    getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+    toTxBodys :: BlockEvent -> [AnyTxBody]
+    toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+      zipWith (getTxBody bn) [0 ..] txs
+    basePreprocessor = Runner.withDistancePreprocessor ^. Runner.runIndexerPreprocessEvent
+    getDistance = Just . fromIntegral . Distance.chainDistance
+    anyTxBodyPreprocessor =
+      Runner.RunIndexerEventPreprocessing
+        (map (fmap (fmap toTxBodys)) . basePreprocessor)
+        (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
+        getDistance
 
-            -- No rollbacks so this is arbitrary
-            securityParam = 1
-            startingPoint = C.ChainPointAtGenesis
-            retryConfig = RetryConfig 30 (Just 120)
-            -- Same as for Marconi.ChainIndex.Run
-            catchupConfig = Core.mkCatchupConfig 5_000 100
-            -- Do no filtering
-            mintTokenConfig = MintTokenEvent.MintTokenEventConfig Nothing
-            config =
-              Runner.RunIndexerConfig
-                marconiTrace
-                anyTxBodyPreprocessor
-                retryConfig
-                securityParam
-                (Integration.nscNetworkId nscConfig)
-                startingPoint
-                (Integration.nscSocketPath nscConfig)
+    -- No rollbacks so this is arbitrary
+    securityParam = 1
+    startingPoint = C.ChainPointAtGenesis
+    retryConfig = RetryConfig 30 (Just 120)
+    -- Same as for Marconi.ChainIndex.Run
+    catchupConfig = Core.mkCatchupConfig 5_000 100
+    -- Do no filtering
+    mintTokenConfig = MintTokenEvent.MintTokenEventConfig Nothing
+    config =
+      Runner.RunIndexerConfig
+        marconiTrace
+        anyTxBodyPreprocessor
+        retryConfig
+        securityParam
+        (Integration.nscNetworkId nscConfig)
+        startingPoint
+        (Integration.nscSocketPath nscConfig)
 
-          -- Create the worker/coordinator
-          StandardWorker mindexer worker <-
-            H.evalIO $
-              either throwIO pure
-                =<< runExceptT (mintBuilder securityParam catchupConfig mintTokenConfig trace tempPath)
-          coordinator <- H.evalIO $ Core.mkCoordinator [worker]
+  -- Create the worker/coordinator
+  StandardWorker mindexer worker <-
+    H.evalIO $
+      either throwIO pure
+        =<< runExceptT (mintBuilder securityParam catchupConfig mintTokenConfig trace tempPath)
+  coordinator <- H.evalIO $ Core.mkCoordinator [worker]
 
-          -- Generate a random MintValue to submit to the local network
-          txMintValue <- H.forAll Integration.genTxMintValue
+  -- Generate a random MintValue to submit to the local network
+  txMintValue <- H.forAll Gen.genTxMintValue
 
-          {- NOTE: PLT-8098
-           startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
-           race and leftFail below. startTestnet does not shutdown when the test is done.
-           See Cardano.Node.Socket.Emulator.Server.runServerNode.
-           As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
-           SlotAdd log messages.
-           -}
+  {- NOTE: PLT-8098
+   startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
+   race and leftFail below. startTestnet does not shutdown when the test is done.
+   See Cardano.Node.Socket.Emulator.Server.runServerNode.
+   As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
+   SlotAdd log messages.
+   -}
 
-          res <- H.evalIO
-            $ Async.race
-              (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator)
-            $ do
-              threadDelay 5_000_000
+  res <- H.evalIO
+    $ Async.race
+      (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator)
+    $ do
+      threadDelay 10_000_000
 
-              ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
+      ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 
-              -- Transaction-builder inputs
-              address <- Helpers.nothingFail "Empty knownShelleyAddress" Integration.knownShelleyAddress
-              witnessSigningKey <-
-                Helpers.nothingFail "Empty knownWitnessSigningKey" Integration.knownWitnessSigningKey
-              (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
-              let validityRange = Integration.unboundedValidityRange
+      -- Transaction-builder inputs
+      address <- Helpers.nothingFail "Empty knownShelleyAddress" Integration.knownShelleyAddress
+      witnessSigningKey <-
+        Helpers.nothingFail "Empty knownWitnessSigningKey" Integration.knownWitnessSigningKey
+      (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+      let validityRange = Integration.unboundedValidityRange
 
-              let txbody =
-                    Integration.mkUnbalancedTxBodyContentFromTxMintValue
-                      validityRange
-                      ledgerPP
-                      address
-                      txIns
-                      txMintValue
-              --
-              -- Submit the transaction and run the test
-              Integration.validateAndSubmitTx
-                localNodeConnectInfo
-                ledgerPP
-                (Integration.nscNetworkId nscConfig)
-                address
-                witnessSigningKey
-                txbody
-                lovelace
+      let txbody =
+            Integration.mkUnbalancedTxBodyContentFromTxMintValue
+              validityRange
+              ledgerPP
+              address
+              txIns
+              txMintValue
 
-              indexer <- readMVar mindexer
+      -- Submit the transaction and wait for it to arrive on the network
+      Integration.validateAndSubmitTx
+        localNodeConnectInfo
+        ledgerPP
+        (Integration.nscNetworkId nscConfig)
+        address
+        witnessSigningKey
+        txbody
+        lovelace
 
-              runExceptT (Core.queryLatest MintTokenEvent.AllEvents indexer)
-                >>= either throwIO pure
+      indexer <- readMVar mindexer
 
-          queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
+      runExceptT (Core.queryLatest MintTokenEvent.AllEvents indexer)
+        >>= either throwIO pure
 
-          -- Test
-          let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents queryEvents
-              inputPolicyAssets = List.sort $ getPolicyAssetsFromTxMintValue txMintValue
+  queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
 
-          queryPolicyAssets === inputPolicyAssets
+  -- Test
+  let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents queryEvents
+      inputPolicyAssets = List.sort $ getPolicyAssetsFromTxMintValue txMintValue
+
+  queryPolicyAssets === inputPolicyAssets
 
 {- Utilities -}
 
