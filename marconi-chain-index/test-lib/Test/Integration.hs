@@ -18,19 +18,20 @@ import Cardano.Node.Emulator.Internal.Node.TimeSlot qualified as E.TimeSlot
 import Cardano.Node.Emulator.LogMessages (EmulatorMsg (ChainEvent))
 import Cardano.Node.Socket.Emulator qualified as E
 import Cardano.Node.Socket.Emulator.Types qualified as E.Types
+import Control.Lens ((^.))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Tracer (condTracing)
 import Data.Default (def)
 import Data.Maybe (listToMaybe)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Ledger.Test (testnet)
+import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
+import Marconi.ChainIndex.Indexers (AnyTxBody (AnyTxBody))
 import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types qualified as Types
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen.MintTokenEvent
 import Test.Helpers qualified as Helpers
-
--- TODO: PLT-8098 need to shut down the node emulator properly when the test is done.
 
 {- Node emulator setup and helpers -}
 
@@ -231,3 +232,19 @@ mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
     (E.Types.nscNetworkId nscConfig)
     C.ChainPointAtGenesis
     (E.Types.nscSocketPath nscConfig)
+
+anyTxBodyWithDistancePreprocessor
+  :: Runner.RunIndexerEventPreprocessing (Distance.WithDistance [AnyTxBody])
+anyTxBodyWithDistancePreprocessor =
+  Runner.RunIndexerEventPreprocessing
+    (map (fmap (fmap toTxBodys)) . basePreprocessor)
+    (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
+    (Just . fromIntegral . Distance.chainDistance)
+  where
+    -- Taken from 'buildIndexers'
+    getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> Types.TxIndexInBlock -> C.Tx era -> AnyTxBody
+    getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+    toTxBodys :: Types.BlockEvent -> [AnyTxBody]
+    toTxBodys (Types.BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+      zipWith (getTxBody bn) [0 ..] txs
+    basePreprocessor = Runner.withDistancePreprocessor ^. Runner.runIndexerPreprocessEvent

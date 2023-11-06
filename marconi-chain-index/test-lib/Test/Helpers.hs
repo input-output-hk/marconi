@@ -314,7 +314,7 @@ unitTestWithTmpDir prefixPath =
     . workspace prefixPath
 
 {- Failure-wrapping functions analogous to those of hedgehog-extras but in MonadIO
- - for easier use of actions in Helpers with async. -}
+ - for greater flexibility. -}
 nothingFail :: (MonadIO m) => String -> Maybe a -> m a
 nothingFail err Nothing = liftIO $ throwIO $ errorCallException err
 nothingFail _ (Just x) = pure x

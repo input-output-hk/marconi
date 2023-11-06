@@ -11,7 +11,6 @@ module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
-import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async qualified as Async
@@ -27,15 +26,14 @@ import Data.List ((\\))
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Hedgehog (Gen, PropertyT, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as H.Range
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
-import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
-import Marconi.ChainIndex.Indexers (AnyTxBody (AnyTxBody), mintBuilder)
+import Marconi.ChainIndex.Indexers (mintBuilder)
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
   EventType (BurnEventType, MintEventType),
   MintAsset (MintAsset),
@@ -623,25 +621,14 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
   (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
 
   let
-    -- Taken from 'buildIndexers'
-    getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
-    getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
-    toTxBodys :: BlockEvent -> [AnyTxBody]
-    toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
-      zipWith (getTxBody bn) [0 ..] txs
-    basePreprocessor = Runner.withDistancePreprocessor ^. Runner.runIndexerPreprocessEvent
-    getDistance = Just . fromIntegral . Distance.chainDistance
-    anyTxBodyPreprocessor =
-      Runner.RunIndexerEventPreprocessing
-        (map (fmap (fmap toTxBodys)) . basePreprocessor)
-        (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
-        getDistance
-
     -- Do no filtering
     mintTokenConfig = MintTokenEvent.MintTokenEventConfig Nothing
-
     catchupConfig = Integration.mkEndToEndCatchupConfig
-    config = Integration.mkEndToEndRunIndexerConfig marconiTrace nscConfig anyTxBodyPreprocessor
+    config =
+      Integration.mkEndToEndRunIndexerConfig
+        marconiTrace
+        nscConfig
+        Integration.anyTxBodyWithDistancePreprocessor
 
   -- Create the worker/coordinator
   StandardWorker mindexer worker <-
@@ -661,18 +648,18 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
   txMintValue <- H.forAll Gen.genTxMintValue
 
   {- NOTE: PLT-8098
-   startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
-   race and leftFail below. startTestnet does not shutdown when the test is done.
+   startTestnet does not shutdown when the test is done.
    See Cardano.Node.Socket.Emulator.Server.runServerNode.
    As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
    SlotAdd log messages.
    -}
+  H.evalIO $ Integration.startTestnet nscConfig
 
   res <- H.evalIO
     $ Async.race
-      (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator)
+      (Runner.runIndexer config coordinator)
     $ do
-      threadDelay 10_000_000
+      threadDelay 30_000_000
 
       ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 

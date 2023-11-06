@@ -147,14 +147,15 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
   -- Start the testnet and indexer, and run the query.
 
   {- NOTE: PLT-8098
-   startTestnet returns immediately but runIndexer runs indefinitely, hence the use of
-   race and leftFail below. startTestnet does not shutdown when the test is done.
+   startTestnet does not shutdown when the test is done.
    See Cardano.Node.Socket.Emulator.Server.runServerNode.
    As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
    SlotAdd log messages.
    -}
+  Hedgehog.evalIO $ Integration.startTestnet nscConfig
+
   res <- Hedgehog.evalIO $
-    Async.race (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator) $
+    Async.race (Runner.runIndexer config coordinator) $
       do
         threadDelay 5_000_000
 
