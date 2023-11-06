@@ -104,13 +104,18 @@ propJSONRountripGetBurnTokenEventsResult = property $ do
   tripping r Aeson.encode Aeson.eitherDecode
 
 goldenCurrentChainPointGenesisResult :: IO ByteString
-goldenCurrentChainPointGenesisResult = do
-  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing
+goldenCurrentChainPointGenesisResult =
+  do
+    pure
+    $ Aeson.encodePretty
+    $ GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing Nothing Nothing
 
 goldenCurrentChainPointResult :: IO ByteString
 goldenCurrentChainPointResult = do
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
+      epochNo = C.EpochNo 6
       blockNo = C.BlockNo 64903
+      blockTimestamp = 0
   blockHeaderHash <-
     either
       (error . show)
@@ -123,8 +128,10 @@ goldenCurrentChainPointResult = do
     Aeson.encodePretty $
       GetCurrentSyncedBlockResult
         (Just blockNo)
+        (Just blockTimestamp)
         (Just blockHeaderHash)
         (Just (C.SlotNo 1))
+        (Just epochNo)
         (Just $ Tip blockNo blockHeaderHash (C.SlotNo 1))
 
 goldenMintingPolicyHashTxResult :: IO ByteString
