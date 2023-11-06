@@ -31,7 +31,7 @@ propTests =
       , BlockInfo.propTests
       , ChainTip.tests
       , UtxoQuery.tests
-      , MintTokenEvent.tests
+      , MintTokenEvent.propTests
       ]
 
 -- | Tests whose number of runs is set in the test definition, e.g. to 1.
@@ -40,4 +40,5 @@ unitTests =
   testGroup
     "Spec.Marconi.ChainIndex.Indexer.unitTests"
     [ BlockInfo.unitTests
+    , MintTokenEvent.unitTests
     ]

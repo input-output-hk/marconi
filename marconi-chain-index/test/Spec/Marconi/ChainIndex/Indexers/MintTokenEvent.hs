@@ -5,7 +5,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
-  tests,
+  propTests,
+  unitTests,
 ) where
 
 import Cardano.Api qualified as C
@@ -68,8 +69,11 @@ import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
-tests :: TestTree
-tests =
+{- | Genuine property tests, in which more than one test can be run and
+ - options on the number of tests might be configured by the caller.
+-}
+propTests :: TestTree
+propTests =
   testGroup
     "Spec.Marconi.ChainIndex.Indexers.MintTokenEvent"
     [ testGroup
@@ -137,7 +141,17 @@ tests =
             "propRunnerDoesntTrackUnselectedAssetId"
             propRunnerDoesntTrackUnselectedAssetId
         ]
-    , testGroup
+    ]
+
+{- | Unit tests, defined with the Hedgehog API.
+ - Tests defined @Hedgehog.'propertyOnce'@ or otherwise with
+   a fixed number of test runs that should not be changed.
+-}
+unitTests :: TestTree
+unitTests =
+  testGroup
+    "Spec.Marconi.ChainIndex.Indexers.MintTokenEvent"
+    [ testGroup
         "End-to-end indexer tests with cardano-node-emulator"
         [ testPropertyNamed
             "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
@@ -663,9 +677,6 @@ endToEndMintTokenEvent = H.withShrinks 0 $
            SlotAdd log messages.
            -}
 
-          -- TODO: PLT-8098 convert this and the blockinfo one to use the corresponding functions from lifted-async, which
-          -- propertyT implements. that way you can do everything with hedgehog in the race as well
-          -- and clean some things up by putting the tests in there and using race_.
           res <- H.evalIO
             $ Async.race
               (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator)
