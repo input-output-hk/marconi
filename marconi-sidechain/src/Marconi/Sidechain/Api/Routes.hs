@@ -461,7 +461,7 @@ instance FromJSON ActiveSDDResult where
               .: "lovelace"
             <*> (fmap C.SlotNo <$> v .:? "slotNo")
             <*> v
-              .: "blockHeaderHash"
+              .:? "blockHeaderHash"
             <*> (C.BlockNo <$> v .: "blockNo")
      in Aeson.withObject "ActiveSDDResult" parseResult
 
@@ -502,7 +502,7 @@ instance FromJSON NonceResult where
             <$> (Ledger.Nonce <$> v .: "nonce")
             <*> (fmap C.SlotNo <$> v .:? "slotNo")
             <*> v
-              .: "blockHeaderHash"
+              .:? "blockHeaderHash"
             <*> (C.BlockNo <$> v .: "blockNo")
      in Aeson.withObject "NonceResult" parseResult
 
