@@ -12,6 +12,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
+import Data.Text (Text)
 import Hedgehog (
   Property,
   forAll,
@@ -122,13 +123,7 @@ goldenCurrentChainPointResult :: IO ByteString
 goldenCurrentChainPointResult = do
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
       blockNo = C.BlockNo 64903
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   pure $
     Aeson.encodePretty $
@@ -142,20 +137,10 @@ goldenMintingPolicyHashTxResult :: IO ByteString
 goldenMintingPolicyHashTxResult = do
   let redeemerData = C.ScriptDataNumber 34
   let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
-  txId <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex C.AsTxId txIdRawBytes
+  txId <- getTxIdHash txIdRawBytes
 
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   let mints =
         [ BurnTokenEventResult
@@ -174,24 +159,14 @@ goldenMintingPolicyHashTxResult = do
 goldenEpochStakePoolDelegationResult :: IO ByteString
 goldenEpochStakePoolDelegationResult = do
   let blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   let poolIdsBech32 =
         [ "pool1z22x50lqsrwent6en0llzzs9e577rx7n3mv9kfw7udwa2rf42fa"
         , "pool1547tew8vmuj0g6vj3k5jfddudextcw6hsk2hwgg6pkhk7lwphe6"
         , "pool174mw7e20768e8vj4fn8y6p536n8rkzswsapwtwn354dckpjqzr8"
         ]
-  poolIds <- forM poolIdsBech32 $ \poolIdBech32 -> do
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
+  poolIds <- getStakePoolHashes poolIdsBech32
 
   let lovelace = C.Lovelace 100000000000000
       slotNo = Just $ C.SlotNo 1382422
@@ -209,11 +184,7 @@ goldenEpochStakePoolDelegationAtGenesisResult = do
   let poolIdsBech32 =
         [ "pool1z22x50lqsrwent6en0llzzs9e577rx7n3mv9kfw7udwa2rf42fa"
         ]
-  poolIds <- forM poolIdsBech32 $ \poolIdBech32 -> do
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
+  poolIds <- getStakePoolHashes poolIdsBech32
 
   let lovelace = C.Lovelace 100000000000000
       slotNo = Nothing
@@ -237,13 +208,7 @@ goldenEpochNonceResult = do
       blockNo = Just $ C.BlockNo 21645
       slotNo = Just $ C.SlotNo 1382422
       blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   let result =
         EpochNonceResult (Just blockHeaderHash) blockNo epochNo slotNo (nonceToMaybe nonce)
@@ -255,13 +220,7 @@ goldenEpochNonceByronResult = do
       blockNo = Just $ C.BlockNo 21645
       slotNo = Just $ C.SlotNo 1382422
       blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   let result =
         EpochNonceResult (Just blockHeaderHash) blockNo epochNo slotNo (nonceToMaybe Ledger.NeutralNonce)
@@ -272,3 +231,27 @@ goldenEpochNonceAtGenesisResult = do
   let result =
         EpochNonceResult Nothing Nothing Nothing Nothing (nonceToMaybe Ledger.NeutralNonce)
   pure $ Aeson.encodePretty result
+
+getBlockHeaderHash :: (Applicative f) => Crypto.ByteString -> f (CS.Hash CS.BlockHeader)
+getBlockHeaderHash rawBytes =
+  either
+    (error . show)
+    pure
+    $ C.deserialiseFromRawBytesHex
+      (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+      rawBytes
+
+getTxIdHash :: (Applicative f) => Crypto.ByteString -> f CS.TxId
+getTxIdHash rawBytes =
+  either
+    (error . show)
+    pure
+    $ C.deserialiseFromRawBytesHex C.AsTxId rawBytes
+
+getStakePoolHashes :: (Traversable t, Monad m) => t Text -> m (t (CS.Hash CS.StakePoolKey))
+getStakePoolHashes poolIdsBech32 =
+  forM poolIdsBech32 $ \poolIdBech32 -> do
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
