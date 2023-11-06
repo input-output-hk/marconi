@@ -26,6 +26,7 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintAssetAssetName,
   mintAssetQuantity,
   mintAssetRedeemer,
+  mintAssetRedeemerData,
   mintAssetRedeemerHash,
   mintTokenEventAsset,
   mintTokenEventBlockNo,
@@ -93,7 +94,8 @@ data BurnTokenEventResult = BurnTokenEventResult
   , blockHeaderHash :: !(Maybe (C.Hash C.BlockHeader))
   , blockNo :: !C.BlockNo
   , txId :: !C.TxId
-  , redeemer :: !(Maybe (C.Hash C.ScriptData))
+  , redeemerHash :: !(Maybe (C.Hash C.ScriptData))
+  , redeemer :: !(Maybe C.ScriptData)
   , assetName :: !C.AssetName
   , burnAmount :: !C.Quantity
   , isStable :: !Bool
@@ -172,6 +174,7 @@ getBurnTokenEventsHandler =
             (event ^. mintTokenEventLocation . mintTokenEventBlockNo)
             (event ^. mintTokenEventLocation . mintTokenEventTxId)
             (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerHash)
+            (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerData)
             (event ^. mintTokenEventAsset . mintAssetAssetName)
             (abs $ event ^. mintTokenEventAsset . mintAssetQuantity)
             stable

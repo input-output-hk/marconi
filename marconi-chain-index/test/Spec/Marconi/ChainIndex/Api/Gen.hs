@@ -22,6 +22,7 @@ genBurnTokenEventResult hsd =
     <*> Gen.genBlockNo
     <*> CGen.genTxId
     <*> pure (fmap C.hashScriptDataBytes hsd)
+    <*> pure (fmap C.getScriptData hsd)
     <*> CGen.genAssetName
     <*> Gen.genQuantity (Range.linear 0 10)
     <*> pure True
