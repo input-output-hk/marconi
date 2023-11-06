@@ -153,7 +153,6 @@ goldenMintingPolicyHashTxResult = do
             (C.BlockNo 1047)
             txId
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
-            (Just redeemerData)
             (C.AssetName "")
             (C.Quantity 10)
             True
