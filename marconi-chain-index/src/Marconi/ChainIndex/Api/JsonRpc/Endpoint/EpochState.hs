@@ -7,12 +7,16 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   RpcEpochActiveStakePoolDelegationMethod,
   RpcEpochNonceMethod,
   ActiveSDDResult (..),
+  EpochNonceResult (..),
   getEpochNonceHandler,
   getEpochStakePoolDelegationHandler,
+  nonceToMaybe,
 ) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.Crypto.Hash qualified as Crypto
+import Cardano.Ledger.Shelley.API qualified as Ledger
 import Control.Lens.Getter qualified as Lens
 import Data.Aeson.TH (defaultOptions, deriveJSON, fieldLabelModifier)
 import Data.Char (toLower)
@@ -61,9 +65,28 @@ $( deriveJSON
 type RpcEpochNonceMethod =
   JsonRpc
     "getNonceByEpoch"
-    EpochState.NonceByEpochNoQuery
+    Word64
     String
-    (Core.Result EpochState.NonceByEpochNoQuery)
+    EpochNonceResult
+
+data EpochNonceResult = EpochNonceResult
+  { epochNonceBlockHeaderHash :: !(Maybe (C.Hash C.BlockHeader))
+  , epochNonceBlockNo :: !(Maybe C.BlockNo)
+  , epochNonceEpochNo :: !(Maybe C.EpochNo)
+  , epochNonceSlotNo :: !(Maybe C.SlotNo)
+  , epochNonceNonce :: !(Maybe (Crypto.Hash Crypto.Blake2b_256 Ledger.Nonce))
+  }
+  deriving stock (Eq, Ord, Show)
+
+$( deriveJSON
+    defaultOptions
+      { fieldLabelModifier = \str ->
+          case drop 10 str of
+            c : rest -> toLower c : rest
+            _ -> error "Malformed label in JSON type EpochNonceResult."
+      }
+    ''EpochNonceResult
+ )
 
 --------------
 -- Handlers --
@@ -104,8 +127,34 @@ getEpochStakePoolDelegationHandler epochNo
 
 -- | Return an epoch nonce
 getEpochNonceHandler
-  :: EpochState.NonceByEpochNoQuery
+  :: Word64
   -> ReaderHandler
       HttpServerConfig
-      (Either (JsonRpcErr String) (Core.Result EpochState.NonceByEpochNoQuery))
-getEpochNonceHandler = queryHttpReaderHandler (configQueryables . queryableEpochState)
+      (Either (JsonRpcErr String) EpochNonceResult)
+getEpochNonceHandler epochNo
+  | epochNo < 0 =
+      return . Left . mkJsonRpcInvalidParamsErr . Just $
+        "The 'epochNo' param value must be a natural number."
+  | otherwise =
+      dimapHandler
+        toNonceByEpochNoQuery
+        toEpochNonceResult
+        (queryHttpReaderHandler (configQueryables . queryableEpochState))
+        epochNo
+  where
+    toNonceByEpochNoQuery :: Word64 -> EpochState.NonceByEpochNoQuery
+    toNonceByEpochNoQuery = EpochState.NonceByEpochNoQuery . C.EpochNo
+
+    toEpochNonceResult :: Core.Result EpochState.NonceByEpochNoQuery -> EpochNonceResult
+    toEpochNonceResult Nothing = EpochNonceResult Nothing Nothing Nothing Nothing Nothing
+    toEpochNonceResult (Just (Core.Timed chainPoint epochNonce)) =
+      EpochNonceResult
+        (Util.chainPointToHash chainPoint)
+        (Just $ Lens.view EpochState.nonceBlockNo epochNonce)
+        (Just $ Lens.view EpochState.nonceEpochNo epochNonce)
+        (Util.chainPointToSlotNo chainPoint)
+        (nonceToMaybe $ Lens.view EpochState.nonceNonce epochNonce)
+
+nonceToMaybe :: Ledger.Nonce -> Maybe (Crypto.Hash Crypto.Blake2b_256 Ledger.Nonce)
+nonceToMaybe Ledger.NeutralNonce = Nothing
+nonceToMaybe (Ledger.Nonce hash) = Just hash

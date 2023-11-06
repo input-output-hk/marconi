@@ -36,7 +36,7 @@ module Marconi.ChainIndex.Indexers.EpochState (
 
   -- * Queries
   ActiveSDDByEpochNoQuery (..),
-  NonceByEpochNoQuery,
+  NonceByEpochNoQuery (..),
 ) where
 
 import Cardano.Api qualified as C
