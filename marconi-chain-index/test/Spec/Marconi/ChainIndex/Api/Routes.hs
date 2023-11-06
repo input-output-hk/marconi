@@ -121,11 +121,11 @@ goldenCurrentChainPointResult = do
     Aeson.encodePretty $
       GetCurrentSyncedBlockResult
         (Just blockNo)
+        (Just blockTimestamp)
         (Just blockHeaderHash)
         (Just (C.SlotNo 1))
-        (Just $ Tip blockNo blockHeaderHash (C.SlotNo 1))
-        (Just blockTimestamp)
         (Just epochNo)
+        (Just $ Tip blockNo blockHeaderHash (C.SlotNo 1))
 
 goldenMintingPolicyHashTxResult :: IO ByteString
 goldenMintingPolicyHashTxResult = do

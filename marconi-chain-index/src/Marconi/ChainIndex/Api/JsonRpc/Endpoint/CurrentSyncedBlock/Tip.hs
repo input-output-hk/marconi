@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
   Tip (..),
@@ -7,15 +8,16 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
 ) where
 
 import Cardano.Api qualified as C
-import Data.Aeson (FromJSON, ToJSON)
-import GHC.Generics (Generic)
+import Data.Aeson.TH (defaultOptions, deriveJSON)
 
 data Tip = Tip
   { blockNo :: C.BlockNo
   , blockHeaderHash :: C.Hash C.BlockHeader
   , slotNo :: C.SlotNo
   }
-  deriving (Eq, Ord, Generic, Show, FromJSON, ToJSON)
+  deriving (Eq, Ord, Show)
+
+$(deriveJSON defaultOptions ''Tip)
 
 fromChainTip :: C.ChainTip -> Maybe Tip
 fromChainTip C.ChainTipAtGenesis = Nothing
