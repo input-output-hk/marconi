@@ -227,8 +227,8 @@ propJSONRountripEpochStakePoolDelegationResult = property $ do
     ActiveSDDResult
       <$> Gen.genPoolId
       <*> CGen.genLovelace
-      <*> Gen.genSlotNo
-      <*> Gen.genHashBlockHeader
+      <*> fmap Just Gen.genSlotNo
+      <*> fmap Just Gen.genHashBlockHeader
       <*> Gen.genBlockNo
   tripping sdds Aeson.encode Aeson.eitherDecode
 
@@ -237,8 +237,8 @@ propJSONRountripEpochNonceResult = property $ do
   nonce <- fmap GetEpochNonceResult $ forAll $ Gen.maybe $ do
     NonceResult
       <$> (Ledger.Nonce . Crypto.castHash . Crypto.hashWith id <$> Gen.bytes (Range.linear 0 32))
-      <*> Gen.genSlotNo
-      <*> Gen.genHashBlockHeader
+      <*> fmap Just Gen.genSlotNo
+      <*> fmap Just Gen.genHashBlockHeader
       <*> Gen.genBlockNo
   tripping nonce Aeson.encode Aeson.eitherDecode
 
@@ -390,10 +390,10 @@ goldenEpochStakePoolDelegationResult = do
       $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @C.StakePoolKey)) poolIdBech32
 
   let lovelace = C.Lovelace 100000000000000
-      slotNo = C.SlotNo 1382422
+      slotNo = Just $ C.SlotNo 1382422
       blockNo = C.BlockNo 64903
 
-  let sdds = fmap (\poolId -> ActiveSDDResult poolId lovelace slotNo blockHeaderHash blockNo) poolIds
+  let sdds = fmap (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo) poolIds
       result = GetEpochActiveStakePoolDelegationResult sdds
   pure $ Aeson.encodePretty result
 
@@ -418,7 +418,7 @@ goldenEpochNonceResult = do
           Just $
             NonceResult
               nonce
-              (C.SlotNo 518400)
-              blockHeaderHash
+              (Just $ C.SlotNo 518400)
+              (Just blockHeaderHash)
               (C.BlockNo 21645)
   pure $ Aeson.encodePretty result

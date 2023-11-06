@@ -24,12 +24,14 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
  )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (Tip (Tip))
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
+  ActiveSDDResult (ActiveSDDResult),
+ )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-import Marconi.ChainIndex.Indexers.EpochState (EpochNonce (EpochNonce), EpochSDD (EpochSDD))
-import Marconi.Core (Timed (Timed))
+import Marconi.ChainIndex.Indexers.EpochState (EpochNonce (EpochNonce))
 import Spec.Marconi.ChainIndex.Api.Gen (
   genBurnTokenEventResult,
   genGetBurnTokenEventsParams,
@@ -76,6 +78,11 @@ tests =
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/epoch-stakepooldelegation-response.json"
             goldenEpochStakePoolDelegationResult
+        , goldenVsStringDiff
+            "Golden test for EpochStakePoolDelegationAtGenesisResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-stakepooldelegation-at-genesis-response.json"
+            goldenEpochStakePoolDelegationAtGenesisResult
         , goldenVsStringDiff
             "Golden test for EpochNonResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
@@ -177,17 +184,36 @@ goldenEpochStakePoolDelegationResult = do
       $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
 
   let lovelace = C.Lovelace 100000000000000
-      slotNo = C.SlotNo 1382422
-      epochNo = C.EpochNo 6
+      slotNo = Just $ C.SlotNo 1382422
       blockNo = C.BlockNo 64903
+      epochNo = C.EpochNo 123
 
   let result =
         fmap
-          ( \poolId ->
-              Timed
-                (C.ChainPoint slotNo blockHeaderHash)
-                (EpochSDD epochNo poolId lovelace blockNo)
-          )
+          (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo epochNo)
+          poolIds
+  pure $ Aeson.encodePretty result
+
+goldenEpochStakePoolDelegationAtGenesisResult :: IO ByteString
+goldenEpochStakePoolDelegationAtGenesisResult = do
+  let poolIdsBech32 =
+        [ "pool1z22x50lqsrwent6en0llzzs9e577rx7n3mv9kfw7udwa2rf42fa"
+        ]
+  poolIds <- forM poolIdsBech32 $ \poolIdBech32 -> do
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
+
+  let lovelace = C.Lovelace 100000000000000
+      slotNo = Nothing
+      blockHeaderHash = Nothing
+      blockNo = C.BlockNo 0
+      epochNo = C.EpochNo 0
+
+  let result =
+        fmap
+          (\poolId -> ActiveSDDResult poolId lovelace slotNo blockHeaderHash blockNo epochNo)
           poolIds
   pure $ Aeson.encodePretty result
 
