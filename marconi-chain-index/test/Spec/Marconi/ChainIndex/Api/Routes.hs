@@ -26,12 +26,13 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (Tip (Tip))
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   ActiveSDDResult (ActiveSDDResult),
+  EpochNonceResult (EpochNonceResult),
+  nonceToMaybe,
  )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-import Marconi.ChainIndex.Indexers.EpochState (EpochNonce (EpochNonce))
 import Spec.Marconi.ChainIndex.Api.Gen (
   genBurnTokenEventResult,
   genGetBurnTokenEventsParams,
@@ -88,6 +89,16 @@ tests =
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/epoch-nonce-response.json"
             goldenEpochNonceResult
+        , goldenVsStringDiff
+            "Golden test for EpochNonResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-nonce-byron-response.json"
+            goldenEpochNonceByronResult
+        , goldenVsStringDiff
+            "Golden test for EpochNonResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-nonce-at-genesis-response.json"
+            goldenEpochNonceAtGenesisResult
         ]
     ]
 
@@ -222,11 +233,42 @@ goldenEpochNonceResult = do
         Ledger.Nonce $
           Crypto.castHash $
             Crypto.hashWith id "162d29c4e1cf6b8a84f2d692e67a3ac6bc7851bc3e6e4afe64d15778bed8bd86"
+      epochNo = Just $ C.EpochNo 2
+      blockNo = Just $ C.BlockNo 21645
+      slotNo = Just $ C.SlotNo 1382422
+      blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
+  blockHeaderHash <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex
+        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        blockHeaderHashRawBytes
 
   let result =
-        Just $
-          EpochNonce
-            (C.EpochNo 2)
-            nonce
-            (C.BlockNo 21645)
+        EpochNonceResult (Just blockHeaderHash) blockNo epochNo slotNo (nonceToMaybe nonce)
+  pure $ Aeson.encodePretty result
+
+goldenEpochNonceByronResult :: IO ByteString
+goldenEpochNonceByronResult = do
+  let epochNo = Just $ C.EpochNo 2
+      blockNo = Just $ C.BlockNo 21645
+      slotNo = Just $ C.SlotNo 1382422
+      blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
+  blockHeaderHash <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex
+        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        blockHeaderHashRawBytes
+
+  let result =
+        EpochNonceResult (Just blockHeaderHash) blockNo epochNo slotNo (nonceToMaybe Ledger.NeutralNonce)
+  pure $ Aeson.encodePretty result
+
+goldenEpochNonceAtGenesisResult :: IO ByteString
+goldenEpochNonceAtGenesisResult = do
+  let result =
+        EpochNonceResult Nothing Nothing Nothing Nothing (nonceToMaybe Ledger.NeutralNonce)
   pure $ Aeson.encodePretty result
