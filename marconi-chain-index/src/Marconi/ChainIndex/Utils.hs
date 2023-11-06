@@ -13,6 +13,8 @@ module Marconi.ChainIndex.Utils (
   toException,
   chainPointOrGenesis,
   addressesToPredicate,
+  chainPointToSlotNo,
+  chainPointToHash,
 ) where
 
 import Cardano.Api qualified as C
@@ -167,3 +169,11 @@ shelleyBasedToCardanoEra C.MaryEra = Just C.ShelleyBasedEraMary
 shelleyBasedToCardanoEra C.AlonzoEra = Just C.ShelleyBasedEraAlonzo
 shelleyBasedToCardanoEra C.BabbageEra = Just C.ShelleyBasedEraBabbage
 shelleyBasedToCardanoEra C.ConwayEra = Just C.ShelleyBasedEraConway
+
+chainPointToSlotNo :: C.ChainPoint -> Maybe C.SlotNo
+chainPointToSlotNo C.ChainPointAtGenesis = Nothing
+chainPointToSlotNo (C.ChainPoint s _) = Just s
+
+chainPointToHash :: C.ChainPoint -> Maybe (C.Hash C.BlockHeader)
+chainPointToHash C.ChainPointAtGenesis = Nothing
+chainPointToHash (C.ChainPoint _ h) = Just h

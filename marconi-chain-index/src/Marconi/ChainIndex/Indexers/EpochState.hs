@@ -35,7 +35,7 @@ module Marconi.ChainIndex.Indexers.EpochState (
   mkEpochStateWorker,
 
   -- * Queries
-  ActiveSDDByEpochNoQuery,
+  ActiveSDDByEpochNoQuery (..),
   NonceByEpochNoQuery,
 ) where
 
@@ -816,7 +816,7 @@ instance Core.Closeable (ExceptT Core.IndexerError IO) EpochStateIndexer where
     Core.close $ indexer ^. epochNonceIndexer
 
 newtype ActiveSDDByEpochNoQuery = ActiveSDDByEpochNoQuery C.EpochNo
-  deriving newtype (FromJSON, ToJSON)
+  deriving newtype (Num, FromJSON, ToJSON)
 
 type instance Core.Result ActiveSDDByEpochNoQuery = [Core.Timed C.ChainPoint EpochSDD]
 

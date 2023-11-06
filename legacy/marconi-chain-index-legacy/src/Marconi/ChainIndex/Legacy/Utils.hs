@@ -13,6 +13,8 @@ module Marconi.ChainIndex.Legacy.Utils (
   toException,
   chainPointOrGenesis,
   addressesToPredicate,
+  extractSlotNoAndHash,
+  chainPointToMaybes,
 ) where
 
 import Cardano.Api qualified as C
@@ -167,3 +169,14 @@ shelleyBasedToCardanoEra C.MaryEra = Just C.ShelleyBasedEraMary
 shelleyBasedToCardanoEra C.AlonzoEra = Just C.ShelleyBasedEraAlonzo
 shelleyBasedToCardanoEra C.BabbageEra = Just C.ShelleyBasedEraBabbage
 shelleyBasedToCardanoEra C.ConwayEra = Just C.ShelleyBasedEraConway
+
+extractSlotNoAndHash :: C.ChainPoint -> (C.SlotNo, C.Hash C.BlockHeader)
+extractSlotNoAndHash (C.ChainPoint s h) = (s, h)
+extractSlotNoAndHash C.ChainPointAtGenesis =
+  error $
+    "Expected chain point later than genesis."
+      <> " This is an application bug, please open an issue at https://github.com/input-output-hk/marconi."
+
+chainPointToMaybes :: C.ChainPoint -> (Maybe C.SlotNo, Maybe (C.Hash C.BlockHeader))
+chainPointToMaybes (C.ChainPoint s h) = (Just s, Just h)
+chainPointToMaybes C.ChainPointAtGenesis = (Nothing, Nothing)
