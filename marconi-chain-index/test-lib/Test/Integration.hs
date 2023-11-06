@@ -24,6 +24,9 @@ import Data.Default (def)
 import Data.Maybe (listToMaybe)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Ledger.Test (testnet)
+import Marconi.ChainIndex.Runner qualified as Runner
+import Marconi.ChainIndex.Types qualified as Types
+import Marconi.Core qualified as Core
 import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen.MintTokenEvent
 import Test.Helpers qualified as Helpers
 
@@ -165,8 +168,6 @@ mkUnbalancedTxBodyContentFromTxMintValue validityRange ledgerPP address txIns tx
     , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra txIns
     }
 
-{- Indexers and queries -}
-
 -- | Wrapper for @C.'estimateTransactionFee'@.
 calculateFee
   :: (C.IsShelleyBasedEra era)
@@ -202,3 +203,31 @@ signAndSubmitTx
 signAndSubmitTx info witnesses txbody = Helpers.submitAwaitTx info (tx, txbody)
   where
     tx = C.makeSignedTransaction witnesses txbody
+
+{- Indexers and queries -}
+
+{- | @Core.'CatchupConfig'@ with values suitable for end-to-end tests. The current values are taken
+from those hard-coded in the marconi-chain-index application.
+-}
+mkEndToEndCatchupConfig :: Core.CatchupConfig
+mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100
+
+{- | Build a @Runner.'RunIndexerConfig'@ with values suitable for end-to-end tests with
+ - cardano-node-emulator. This assumes there is no rollback and sets the securityParam to 1.
+ - Starts at genesis.
+-}
+mkEndToEndRunIndexerConfig
+  :: Types.MarconiTrace IO
+  -> E.Types.NodeServerConfig
+  -> Runner.RunIndexerEventPreprocessing event
+  -> Runner.RunIndexerConfig event
+mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
+  Runner.RunIndexerConfig
+    marconiTrace
+    preprocessor
+    (Types.RetryConfig 30 (Just 120))
+    -- No rollbacks so security param is arbitrary
+    1
+    (E.Types.nscNetworkId nscConfig)
+    C.ChainPointAtGenesis
+    (E.Types.nscSocketPath nscConfig)

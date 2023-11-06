@@ -60,7 +60,7 @@ import Marconi.ChainIndex.Indexers.Worker (
  )
 import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.ChainIndex.Runner qualified as Runner
-import Marconi.ChainIndex.Types (RetryConfig (RetryConfig), TxIndexInBlock (TxIndexInBlock))
+import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen
@@ -637,29 +637,24 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
         (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
         getDistance
 
-    -- No rollbacks so this is arbitrary
-    securityParam = 1
-    startingPoint = C.ChainPointAtGenesis
-    retryConfig = RetryConfig 30 (Just 120)
-    -- Same as for Marconi.ChainIndex.Run
-    catchupConfig = Core.mkCatchupConfig 5_000 100
     -- Do no filtering
     mintTokenConfig = MintTokenEvent.MintTokenEventConfig Nothing
-    config =
-      Runner.RunIndexerConfig
-        marconiTrace
-        anyTxBodyPreprocessor
-        retryConfig
-        securityParam
-        (Integration.nscNetworkId nscConfig)
-        startingPoint
-        (Integration.nscSocketPath nscConfig)
+
+    catchupConfig = Integration.mkEndToEndCatchupConfig
+    config = Integration.mkEndToEndRunIndexerConfig marconiTrace nscConfig anyTxBodyPreprocessor
 
   -- Create the worker/coordinator
   StandardWorker mindexer worker <-
     H.evalIO $
       either throwIO pure
-        =<< runExceptT (mintBuilder securityParam catchupConfig mintTokenConfig trace tempPath)
+        =<< runExceptT
+          ( mintBuilder
+              (config ^. Runner.runIndexerConfigSecurityParam)
+              catchupConfig
+              mintTokenConfig
+              trace
+              tempPath
+          )
   coordinator <- H.evalIO $ Core.mkCoordinator [worker]
 
   -- Generate a random MintValue to submit to the local network

@@ -31,7 +31,6 @@ import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.Worker (StandardWorker (StandardWorker))
 import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.ChainIndex.Runner qualified as Runner
-import Marconi.ChainIndex.Types (RetryConfig (RetryConfig))
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Test.Gen.Marconi.ChainIndex.Types qualified as CGen
@@ -135,26 +134,14 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
 
   -- Indexer preprocessor and configuration
   let
-    -- No rollbacks so this is arbitrary
-    securityParam = 1
-    startingPoint = C.ChainPointAtGenesis
-    retryConfig = RetryConfig 30 (Just 120)
-    -- Same as for Marconi.ChainIndex.Run
-    catchupConfig = Core.mkCatchupConfig 5_000 100
-
-    config =
-      Runner.RunIndexerConfig
-        marconiTrace
-        Runner.withDistancePreprocessor
-        retryConfig
-        securityParam
-        (Integration.nscNetworkId nscConfig)
-        startingPoint
-        (Integration.nscSocketPath nscConfig)
+    catchupConfig = Integration.mkEndToEndCatchupConfig
+    config = Integration.mkEndToEndRunIndexerConfig marconiTrace nscConfig Runner.withDistancePreprocessor
 
   StandardWorker mindexer worker <-
     Hedgehog.evalIO $
-      either throwIO pure =<< runExceptT (blockInfoBuilder securityParam catchupConfig trace tempPath)
+      either throwIO pure
+        =<< runExceptT
+          (blockInfoBuilder (config ^. Runner.runIndexerConfigSecurityParam) catchupConfig trace tempPath)
   coordinator <- Hedgehog.evalIO $ Core.mkCoordinator [worker]
 
   -- Start the testnet and indexer, and run the query.
