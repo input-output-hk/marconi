@@ -9,17 +9,18 @@ import Cardano.Api.Extended.Streaming qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Concurrent qualified as IO
 import Control.Concurrent.Async qualified as IO
+import Control.Exception (throwIO)
 import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
+import GHC.Exception (errorCallException, errorCallWithCallStackException)
 import GHC.Stack qualified as GHC
 import Hedgehog (MonadTest)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Stock.CallStack qualified as H
 import Hedgehog.Extras.Test qualified as HE
-import Hedgehog.Extras.Test.Base qualified as H
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
 import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
@@ -59,20 +60,20 @@ emptyTxBodyContent validityRange ledgerPP =
 
 getLedgerProtocolParams
   :: forall era m
-   . (C.IsShelleyBasedEra era, MonadIO m, MonadTest m)
+   . (C.IsShelleyBasedEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> m (C.LedgerProtocolParameters era)
 getLedgerProtocolParams localNodeConnectInfo = do
   eraInMode <-
-    H.nothingFail $
+    nothingFail "toEraInMode" $
       C.toEraInMode (C.shelleyBasedToCardanoEra (C.shelleyBasedEra @era)) C.CardanoMode
-  fmap C.LedgerProtocolParameters . H.leftFailM . H.leftFailM . liftIO $
+  fmap C.LedgerProtocolParameters . leftFailM . leftFailM . liftIO $
     C.queryNodeLocalState localNodeConnectInfo Nothing $
       C.QueryInEra eraInMode $
         C.QueryInShelleyBasedEra C.shelleyBasedEra C.QueryProtocolParameters
 
 findUTxOByAddress
-  :: (C.IsShelleyBasedEra era, MonadIO m, MonadTest m)
+  :: (C.IsShelleyBasedEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> C.Address a
   -> m (C.UTxO era)
@@ -83,16 +84,16 @@ findUTxOByAddress localNodeConnectInfo address = do
             C.QueryUTxOByAddress $
               Set.singleton (C.toAddressAny address)
   eraInMode <-
-    H.nothingFail $
+    nothingFail "toEraInMode" $
       C.toEraInMode (C.shelleyBasedToCardanoEra C.shelleyBasedEra) C.CardanoMode
-  H.leftFailM . H.leftFailM . liftIO $
+  leftFailM . leftFailM . liftIO $
     C.queryNodeLocalState localNodeConnectInfo Nothing $
       C.QueryInEra eraInMode query
 
 -- | Get [TxIn] and total value for an address.
 getAddressTxInsValue
   :: forall era m a
-   . (C.IsShelleyBasedEra era, MonadIO m, MonadTest m)
+   . (C.IsShelleyBasedEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> C.Address a
   -> m ([C.TxIn], C.Lovelace)
@@ -102,27 +103,27 @@ getAddressTxInsValue con address = do
       values = map (\case C.TxOut _ v _ _ -> C.txOutValueToLovelace v) txOuts
   pure (txIns, sum values)
 
--- TODO: PLT-8098 use MarconiTrace IO for consistent messages?
 submitTx
-  :: (C.IsCardanoEra era, MonadIO m, MonadTest m)
+  :: (C.IsCardanoEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> C.Tx era
   -> m ()
 submitTx localNodeConnectInfo tx = do
   eraInMode <-
-    H.nothingFail $
+    nothingFail "toEraInMode" $
       C.toEraInMode C.cardanoEra C.CardanoMode
   submitResult :: SubmitResult (C.TxValidationErrorInMode C.CardanoMode) <-
     liftIO $ C.submitTxToNodeLocal localNodeConnectInfo $ C.TxInMode tx eraInMode
   failOnTxSubmitFail submitResult
   where
-    failOnTxSubmitFail :: (Show a, MonadTest m, MonadIO m) => SubmitResult a -> m ()
+    failOnTxSubmitFail :: (Show a, MonadIO m) => SubmitResult a -> m ()
     failOnTxSubmitFail = \case
-      SubmitFail reason -> H.failMessage GHC.callStack $ "Transaction failed: " <> show reason
-      -- TODO: PLT-8098 convert to logInfo
+      SubmitFail reason ->
+        liftIO $
+          throwIO $
+            flip errorCallWithCallStackException GHC.callStack $
+              "Transaction failed: " <> show reason
       SubmitSuccess -> liftIO $ putStrLn "Transaction submitted successfully"
-
--- TODO: PLT-8098 delete this if unused
 
 -- | Block until a transaction with @txId@ is sent over the local chainsync protocol.
 awaitTxId :: C.LocalNodeConnectInfo C.CardanoMode -> C.TxId -> IO ()
@@ -139,11 +140,9 @@ awaitTxId con txId = do
         when (txId `notElem` txIds) loop
   loop
 
--- TODO: PLT-8098 delete this if unused
-
 -- | Submit the argument transaction and await for it to be accepted into the blockhain.
 submitAwaitTx
-  :: (C.IsCardanoEra era, MonadIO m, MonadTest m)
+  :: (C.IsCardanoEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> (C.Tx era, C.TxBody era)
   -> m ()
@@ -335,3 +334,16 @@ addressAnyToShelley _ = Nothing
 getValueFromTxMintValue :: C.TxMintValue build era -> C.Value
 getValueFromTxMintValue (C.TxMintValue _ v _) = v
 getValueFromTxMintValue _ = mempty
+
+{- Failure-wrapping functions analogous to those of hedgehog-extras but in MonadIO
+ - for easier use of actions in Helpers with async. -}
+nothingFail :: (MonadIO m) => String -> Maybe a -> m a
+nothingFail err Nothing = liftIO $ throwIO $ errorCallException err
+nothingFail _ (Just x) = pure x
+
+leftFail :: (MonadIO m, Show e) => Either e a -> m a
+leftFail (Left err) = liftIO $ throwIO $ errorCallException $ show err
+leftFail (Right x) = pure x
+
+leftFailM :: (MonadIO m, Show e) => m (Either e a) -> m a
+leftFailM f = f >>= leftFail

@@ -10,7 +10,7 @@ module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
-import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent), ChainSyncEvent)
+import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async qualified as Async
@@ -666,41 +666,43 @@ endToEndMintTokenEvent = H.withShrinks 0 $
           -- TODO: PLT-8098 convert this and the blockinfo one to use the corresponding functions from lifted-async, which
           -- propertyT implements. that way you can do everything with hedgehog in the race as well
           -- and clean some things up by putting the tests in there and using race_.
-          res <- H.evalIO $
-            Async.race (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator) $
-              do
-                threadDelay 5_000_000
+          res <- H.evalIO
+            $ Async.race
+              (Integration.startTestnet nscConfig >> Runner.runIndexer config coordinator)
+            $ do
+              threadDelay 5_000_000
 
-                ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
+              ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 
-                -- Transaction-builder inputs
-                address <- H.nothingFail Integration.knownShelleyAddress
-                witnessSigningKey <- H.nothingFail Integration.knownWitnessSigningKey
-                (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
-                let validityRange = Integration.unboundedValidityRange
+              -- Transaction-builder inputs
+              address <- Helpers.nothingFail "Empty knownShelleyAddress" Integration.knownShelleyAddress
+              witnessSigningKey <-
+                Helpers.nothingFail "Empty knownWitnessSigningKey" Integration.knownWitnessSigningKey
+              (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+              let validityRange = Integration.unboundedValidityRange
 
-                let txbody =
-                      Integration.mkUnbalancedTxBodyContentFromTxMintValue
-                        validityRange
-                        ledgerPP
-                        address
-                        txIns
-                        txMintValue
-                --
-                -- Submit the transaction and run the test
-                Integration.validateAndSubmitTx
-                  localNodeConnectInfo
-                  ledgerPP
-                  (Integration.nscNetworkId nscConfig)
-                  address
-                  witnessSigningKey
-                  txbody
-                  lovelace
+              let txbody =
+                    Integration.mkUnbalancedTxBodyContentFromTxMintValue
+                      validityRange
+                      ledgerPP
+                      address
+                      txIns
+                      txMintValue
+              --
+              -- Submit the transaction and run the test
+              Integration.validateAndSubmitTx
+                localNodeConnectInfo
+                ledgerPP
+                (Integration.nscNetworkId nscConfig)
+                address
+                witnessSigningKey
+                txbody
+                lovelace
 
-                indexer <- readMVar mindexer
+              indexer <- readMVar mindexer
 
-                runExceptT (Core.queryLatest MintTokenEvent.AllEvents indexer)
-                  >>= either throwIO pure
+              runExceptT (Core.queryLatest MintTokenEvent.AllEvents indexer)
+                >>= either throwIO pure
 
           queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
 

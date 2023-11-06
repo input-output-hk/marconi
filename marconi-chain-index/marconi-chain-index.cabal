@@ -356,9 +356,6 @@ library marconi-chain-index-test-lib
     , cardano-ledger-core
     , cardano-node-emulator
     , cardano-node-socket-emulator
-    , contra-tracer
-    , data-default
-    , hedgehog-extras
     , iohk-monitoring
     , ouroboros-network-protocols
     , plutus-core
@@ -366,21 +363,24 @@ library marconi-chain-index-test-lib
     , plutus-ledger-api             ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
-    , text
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
   build-depends:
     , async
-    , base        >=4.9 && <5
+    , base             >=4.9 && <5
     , bytestring
     , containers
+    , contra-tracer
+    , data-default
     , directory
     , filepath
     , hedgehog
+    , hedgehog-extras
     , lens
     , mtl
     , streaming
     , temporary
+    , text
     , time

@@ -111,7 +111,7 @@ unboundedValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.V
 {- Transaction operations -}
 
 validateAndSubmitTx
-  :: (H.MonadTest m, MonadIO m)
+  :: (MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> C.LedgerProtocolParameters C.BabbageEra
   -> C.NetworkId
@@ -123,7 +123,7 @@ validateAndSubmitTx
   -> m ()
 validateAndSubmitTx localNodeConnectInfo ledgerPP networkId address witnessSigningKey txbodyc lovelace = do
   txbodyValid <-
-    H.leftFail $
+    Helpers.leftFail $
       mkValidatedTxBodyWithFee ledgerPP networkId address txbodyc lovelace 1
   let keyWitness = C.makeShelleyKeyWitness txbodyValid witnessSigningKey
   signAndSubmitTx localNodeConnectInfo [keyWitness] txbodyValid
@@ -238,7 +238,7 @@ calculateFee ledgerPP nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses n
 context, and wait for it to be submitted over the protocol.
 -}
 signAndSubmitTx
-  :: (H.MonadTest m, MonadIO m)
+  :: (MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> [C.KeyWitness C.BabbageEra]
   -> C.TxBody C.BabbageEra
