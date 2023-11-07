@@ -69,6 +69,7 @@ library
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo
     Marconi.ChainIndex.Api.JsonRpc.Routes
     Marconi.ChainIndex.Api.JsonRpc.Server
     Marconi.ChainIndex.Api.Rest.Endpoint.Metrics
