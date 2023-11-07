@@ -13,7 +13,7 @@ let
 
       src = ../.;
 
-      compiler-nix-name = "ghc928";
+      compiler-nix-name = "ghc962";
 
       shell.withHoogle = false;
 
