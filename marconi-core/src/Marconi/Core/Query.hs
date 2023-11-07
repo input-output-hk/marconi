@@ -18,16 +18,15 @@ module Marconi.Core.Query (
   Stability (Stable, Volatile),
   isStable,
   calcStability,
-  queryWithStability,
-  queryWithCalcStabilityLsp,
-  queryWithCalcStabilityLspAt,
   WithStability (WithStability, unWithStability),
+  withStabilityM,
   withStability,
   withStabilityAt,
   queryErrorWithStability,
 ) where
 
 import Control.Comonad (Comonad (duplicate, extract))
+import Control.Lens (over)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
@@ -60,11 +59,12 @@ import Marconi.Core.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Indexer.ListIndexer (ListIndexer, events)
 import Marconi.Core.Type (
   Point,
-  QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore, SlotNoBoundsInvalid),
+  QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore),
   Result,
   Timed,
   event,
   point,
+  _AheadOfLastSync,
  )
 
 -- | Get the event stored by the indexer at a given point in time
@@ -234,6 +234,10 @@ type instance
   Result (WithStability (EventsFromQuery event)) =
     [Stability (Timed (Point event) event)]
 
+type instance
+  Result (WithStability (EventsMatchingQuery event)) =
+    [Stability (Timed (Point event) event)]
+
 instance
   (MonadError (QueryError (EventsFromQuery event)) m)
   => Queryable m event (EventsFromQuery event) ListIndexer
@@ -359,67 +363,27 @@ calcStability f lsp e = do
     then Stable e
     else Volatile e
 
-type QueryWithStabilityConstr query1 query2 f event indexer m =
-  ( Result query1 ~ f (Timed (Point event) event)
-  , Result query2 ~ [Timed (Point event) event]
-  , Result (WithStability query2)
-      ~ [Stability (Timed (Point event) event)]
-  , Queryable
-      (ExceptT (QueryError query2) m)
-      event
-      query1
-      indexer
-  , Ord (Point event)
-  , MonadError (QueryError (WithStability query2)) m
-  , IsSync m event indexer
-  , Traversable f
-  )
-
--- | Convert a non-'Stability' supporting instance to a 'Stability' supporting instance
-queryWithCalcStabilityLspAt
-  :: (QueryWithStabilityConstr query1 query2 f event indexer m)
-  => Point event
-  -> WithStability query1
-  -> indexer event
-  -> m (f (Stability (Timed (Point event) event)))
-queryWithCalcStabilityLspAt p = queryWithCalcStabilityLsp (const p) p
-
--- | Convert a non-'Stability' supporting instance to a 'Stability' supporting instance
-queryWithCalcStabilityLsp
-  :: (QueryWithStabilityConstr query1 query2 f event indexer m)
-  => (Timed (Point event) event -> Point event)
-  -> Point event
-  -> WithStability query1
-  -> indexer event
-  -> m (f (Stability (Timed (Point event) event)))
-queryWithCalcStabilityLsp getPoint p q idx = do
-  lsp <- lastStablePoint idx
-  queryWithStability (calcStability getPoint lsp) p q idx
-
 -- | Convert a non-'Stability' supporting instance to a 'Stability' supporting instance.
-queryWithStability
-  :: (QueryWithStabilityConstr query1 query2 f event indexer m)
-  => (Timed (Point event) event -> Stability (Timed (Point event) event))
-  -> Point event
-  -> WithStability query1
-  -> indexer event
-  -> m (f (Stability (Timed (Point event) event)))
-queryWithStability toStability p (WithStability q) =
+withStabilityM
+  :: ( Result query ~ f event
+     , Result (WithStability query) ~ f (Stability event)
+     , MonadError (QueryError (WithStability query)) m
+     , Traversable f
+     )
+  => (event -> Stability event)
+  -> ExceptT (QueryError query) m (f event)
+  -> m (f (Stability event))
+withStabilityM toStability = do
   either
     (throwError . queryErrorWithStability (fmap toStability))
     (pure . fmap toStability)
     <=< runExceptT
-    . query p q
 
 queryErrorWithStability
-  :: ( Result (WithStability query) ~ [Stability event]
-     , Result query ~ [event]
+  :: ( Result (WithStability query) ~ f (Stability event)
+     , Result query ~ f event
      )
-  => ([event] -> [Stability event])
+  => (f event -> f (Stability event))
   -> QueryError query
   -> QueryError (WithStability query)
-queryErrorWithStability toStability = \case
-  NotStoredAnymore -> NotStoredAnymore
-  (IndexerQueryError t) -> IndexerQueryError t
-  (AheadOfLastSync r) -> AheadOfLastSync $ fmap toStability r
-  (SlotNoBoundsInvalid r) -> SlotNoBoundsInvalid r
+queryErrorWithStability toStability = over _AheadOfLastSync (fmap toStability)

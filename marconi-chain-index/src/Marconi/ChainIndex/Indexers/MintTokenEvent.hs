@@ -94,7 +94,7 @@ import Cardano.Ledger.Mary.Value (
 import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?), _2)
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
-import Control.Monad.Except (MonadError, runExceptT, throwError)
+import Control.Monad.Except (ExceptT, MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Short qualified as Short
 import Data.Foldable (foldlM)
@@ -618,7 +618,9 @@ instance
       (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
       Core.ListIndexer
   where
-  query = Core.queryWithCalcStabilityLsp (view Core.point)
+  query p (Core.WithStability q) idx = do
+    lsp <- Core.lastStablePoint idx
+    Core.withStabilityM (Core.calcStability (view Core.point) lsp) $ Core.query p q idx
 
 {- | Helper for ListIndexer query.
  Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
@@ -742,7 +744,13 @@ instance
       ix
 
 instance
-  (MonadIO m, MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m)
+  ( MonadIO m
+  , MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m
+  , Core.IsSync
+      (ExceptT Core.IndexerError IO)
+      event
+      Core.SQLiteIndexer
+  )
   => Core.IsSync m event MintTokenEventIndexerCombine
   where
   lastSyncPoint idx = do
@@ -780,6 +788,14 @@ unwrapCombineIndexer (MintTokenEventIndexerCombine sp _mintTokenIndexerMv _block
 
 instance
   ( MonadIO m
+  , Core.IsSync m MintTokenBlockEvents Core.SQLiteIndexer
+  , Core.IsSync
+      ( ExceptT
+          (QueryError (BI.BlockInfoBySlotNoQuery BlockInfo))
+          m
+      )
+      BlockInfo
+      Core.SQLiteIndexer
   , MonadError (Core.QueryError (Core.WithStability (QueryByAssetId MintTokenBlockEvents))) m
   )
   => Core.Queryable
@@ -788,7 +804,7 @@ instance
       (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
       MintTokenEventIndexerCombine
   where
-  query p q@(Core.WithStability (QueryByAssetId _ _ _ upperSlotNo _)) idx = do
+  query p (Core.WithStability q'@(QueryByAssetId _ _ _ upperSlotNo _)) idx = do
     (securityParam, mintTokenIdx, blockInfoIdx) <- unwrapCombineIndexer idx
 
     let fromError :: QueryError a -> QueryError b
@@ -819,7 +835,8 @@ instance
                   Text.pack $
                     "BlockInfo at slot " <> show slot <> " not found!"
             Left e -> throwError $ fromError e
-    Core.queryWithStability withStab p q mintTokenIdx
+
+    Core.withStabilityM withStab $ Core.query p q' mintTokenIdx
 
 {- | Helper for MintTokenEventIndexer in the case where a 'lowerTxId' is provided.
 Query to look up the earliest SlotNo matching a TxId. This is implemented as a separate query so

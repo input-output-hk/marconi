@@ -173,7 +173,7 @@ instance
   where
   query p q@(BlockInfoBySlotNoQuery sn) =
     querySyncedOnlySQLiteIndexerBySlotNoWith
-      (\cp -> pure [":slotNo" := cp])
+      (\s -> pure [":slotNo" := s])
       (const blockInfoBySlotNoQuery)
       (const listToMaybe)
       sn

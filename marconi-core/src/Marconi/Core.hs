@@ -425,12 +425,10 @@ module Marconi.Core (
   Stability (..),
   isStable,
   queryErrorWithStability,
-  queryWithStability,
-  queryWithCalcStabilityLsp,
-  queryWithCalcStabilityLspAt,
   WithStability (WithStability, unWithStability),
-  withStabilityAt,
+  withStabilityM,
   withStability,
+  withStabilityAt,
 
   -- * Indexer Transformers
   IndexerTrans (..),
@@ -642,11 +640,9 @@ import Marconi.Core.Query (
   isStable,
   latestEvent,
   queryErrorWithStability,
-  queryWithCalcStabilityLsp,
-  queryWithCalcStabilityLspAt,
-  queryWithStability,
   withStability,
   withStabilityAt,
+  withStabilityM,
  )
 import Marconi.Core.Transformer.Class (IndexerMapTrans (..), IndexerTrans (..))
 import Marconi.Core.Transformer.IndexTransformer (

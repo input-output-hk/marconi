@@ -299,12 +299,14 @@ test-suite marconi-chain-index-test
     , base16-bytestring
     , bytestring
     , cborg
+    , comonad
     , containers
     , contra-tracer
     , directory
     , filepath
     , hedgehog
     , lens
+    , mtl
     , nonempty-containers
     , optparse-applicative
     , postgresql-simple
