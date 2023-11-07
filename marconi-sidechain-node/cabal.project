@@ -12,11 +12,9 @@ repository cardano-haskell-packages
     d4a35cd3121aa00d18544bb0ac01c3e1691d618f462c46129271bccf39f7e8ee
 
 -- See CONTRIBUTING.adoc for how to update index-state
---  , hackage.haskell.org 2023-09-29T00:00:00Z
---  , cardano-haskell-packages 2023-09-29T00:00:00Z
 index-state:
-  , hackage.haskell.org 2023-05-10T10:34:57Z
-  , cardano-haskell-packages 2023-07-21T13:00:00Z
+  , hackage.haskell.org 2023-10-02T00:00:00Z
+  , cardano-haskell-packages 2023-10-02T00:00:00Z
 
 packages:
   marconi-sidechain-node
@@ -60,8 +58,8 @@ constraints:
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/marconi
-  tag: 6b85177d7bfc1ee6ad185f23305a2f92a2e6e6de
-  --sha256: 10pqgjs8sjc5h3j6zkrq0vwpx2bz0yfif0w89zv58g2i6f7hgq9j
+  tag: e5004fdd3b23c6b9fd78986a2783de689df86fc7
+  --sha256: sha256-IMAUEBux1pzlHNVhwbWulzFR0nAsWbD7QiX1lQDozEk=
   subdir:
     marconi-core
     -- We need to use compatible cardano-api versions
@@ -70,8 +68,8 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/cardano-node
-  tag: 5071bf4b88a035a843e20ebb5fbdefdc99ab839e
-  --sha256: 1c4vqh6hk7hbwja7v3fl918bhdr94r4jn439n8c20nxcin5l0zai
+  tag: 517eae2e0105d4bcd0c568abca09e0e6b3c6c9d3
+  --sha256: sha256-OXtK/9CTEnsJm/RgZWbWqp9koWFJqBZmK23bG4OQj4I=
   subdir:
     cardano-node
     trace-dispatcher
@@ -82,8 +80,8 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ouroboros-consensus
-  tag: 26cfb9666efd78692912fbdcc41e927f64f282ae
-  --sha256: 0p4axag77by7bwc3wnbdphpc6ib57b0di4clzcb8c0za0gf1sw46
+  tag: 019a99b71f9d009e1a2101d09f6be0e75a33ea96
+  --sha256: sha256-hD96X9Z9bs5RHtbyjhhEfSgqOUe2aG2Lygs9dH9Rafg=
   subdir:
     ouroboros-consensus
     ouroboros-consensus-cardano
