@@ -916,6 +916,7 @@
         "hls-1.10": "hls-1.10_2",
         "hls-2.0": "hls-2.0",
         "hls-2.2": "hls-2.2",
+        "hls-2.3": "hls-2.3",
         "hpc-coveralls": "hpc-coveralls_2",
         "hydra": "hydra_2",
         "iserv-proxy": "iserv-proxy_2",
@@ -934,11 +935,11 @@
         "stackage": "stackage_2"
       },
       "locked": {
-        "lastModified": 1694743473,
-        "narHash": "sha256-Eg0pS15XnXFfkB2iRFtwCBIw+tLcvyg2NEbGpW0whQs=",
+        "lastModified": 1696995756,
+        "narHash": "sha256-Te0lJDA3MfzWDlNPvZQ6ECjQ3miqcKbGv+wA9aFywVE=",
         "owner": "input-output-hk",
         "repo": "haskell.nix",
-        "rev": "445086f35d450af485cd9200b86211355095b2a1",
+        "rev": "2ebea581e35a3611a9da3ead59f2337c2347b0af",
         "type": "github"
       },
       "original": {
@@ -1060,6 +1061,23 @@
         "type": "github"
       }
     },
+    "hls-2.3": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1695910642,
+        "narHash": "sha256-tR58doOs3DncFehHwCLczJgntyG/zlsSd7DgDgMPOkI=",
+        "owner": "haskell",
+        "repo": "haskell-language-server",
+        "rev": "458ccdb55c9ea22cd5d13ec3051aaefb295321be",
+        "type": "github"
+      },
+      "original": {
+        "owner": "haskell",
+        "ref": "2.3.0.0",
+        "repo": "haskell-language-server",
+        "type": "github"
+      }
+    },
     "hpc-coveralls": {
       "flake": false,
       "locked": {
@@ -1177,18 +1195,17 @@
         ],
         "iohk-nix": "iohk-nix",
         "nixpkgs": [
-          "haskell-nix",
-          "nixpkgs-2305"
+          "nixpkgs"
         ],
         "pre-commit-hooks-nix": "pre-commit-hooks-nix",
         "sphinxcontrib-haddock": "sphinxcontrib-haddock"
       },
       "locked": {
-        "lastModified": 1697628614,
-        "narHash": "sha256-9T8zPc1cwf9xsfZ9XWn8pQaN+pmp5sabzm8iRNEESUQ=",
+        "lastModified": 1698052499,
+        "narHash": "sha256-FoXYUaknObBfNoYaWt06Aq4pV+QvI0h1EXdzK4yutEg=",
         "owner": "input-output-hk",
         "repo": "iogx",
-        "rev": "274cf3e3b33ac151e0cae54848f7c2ea9232f1e2",
+        "rev": "98685364d646db5e7cb64bcbe9d455e8f2bb99d7",
         "type": "github"
       },
       "original": {
@@ -2035,7 +2052,11 @@
         "hackage": "hackage",
         "haskell-nix": "haskell-nix",
         "iogx": "iogx",
-        "mithril": "mithril"
+        "mithril": "mithril",
+        "nixpkgs": [
+          "haskell-nix",
+          "nixpkgs"
+        ]
       }
     },
     "rust-overlay": {
