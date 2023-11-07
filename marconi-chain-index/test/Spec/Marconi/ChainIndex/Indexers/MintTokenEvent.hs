@@ -644,22 +644,16 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
           )
   coordinator <- H.evalIO $ Core.mkCoordinator [worker]
 
-  -- Generate a random MintValue to submit to the local network
+  -- Generate a random MintValue
   txMintValue <- H.forAll Gen.genTxMintValue
 
-  {- NOTE: PLT-8098
-   startTestnet does not shutdown when the test is done.
-   See Cardano.Node.Socket.Emulator.Server.runServerNode.
-   As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
-   SlotAdd log messages.
-   -}
   H.evalIO $ Integration.startTestnet nscConfig
 
   res <- H.evalIO
     $ Async.race
       (Runner.runIndexer config coordinator)
     $ do
-      threadDelay 30_000_000
+      threadDelay 5_000_000
 
       ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 
@@ -671,14 +665,15 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
       let validityRange = Integration.unboundedValidityRange
 
       let txbody =
-            Integration.mkUnbalancedTxBodyContentFromTxMintValue
+            Integration.mkUnbalancedTxBodyContent
               validityRange
               ledgerPP
-              address
               txIns
+              txIns
+              [Helpers.mkTxOut address $ C.lovelaceToValue lovelace <> Gen.getValueFromTxMintValue txMintValue]
               txMintValue
 
-      -- Submit the transaction and wait for it to arrive on the network
+      -- Submit the transaction
       Integration.validateAndSubmitTx
         localNodeConnectInfo
         ledgerPP
@@ -688,9 +683,11 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
         txbody
         lovelace
 
+      threadDelay 5_000_000
+
       indexer <- readMVar mindexer
 
-      runExceptT (Core.queryLatest MintTokenEvent.AllEvents indexer)
+      runExceptT (Core.queryLatest MintTokenEvent.AllMintEvents indexer)
         >>= either throwIO pure
 
   queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
@@ -765,9 +762,6 @@ getPolicyAssetsFromTimedEvents
 getPolicyAssetsFromTimedEvents = map (op . (^. Core.event . mintTokenEventAsset)) . getFlattenedTimedEvents
   where
     op e = (e ^. mintAssetPolicyId, e ^. mintAssetAssetName, e ^. mintAssetQuantity)
-
--- TODO: PLT-8098 check whether these are already provided (or almost) in cardano-api
--- if not, they might be better put in cardano-api-extended
 
 -- | Unpack a TxMintValue into its id, name and quantity. Note there can be multiple assets.
 getPolicyAssetsFromTxMintValue

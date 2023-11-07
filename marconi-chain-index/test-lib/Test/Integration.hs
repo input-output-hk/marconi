@@ -75,8 +75,6 @@ mkLocalNodeInfo tempAbsBasePath slotLength = do
           }
   pure (config, localNodeConnectInfo)
 
--- TODO: PLT-8098 check cardano-node-emulator to see if this already exists.
-
 -- | Take the first @C.'ShelleyAddr'@ of @Cardano.Node.Emulator.Generators.'knownAddresses'@.
 knownShelleyAddress :: Maybe (C.Address C.ShelleyAddr)
 knownShelleyAddress = listToMaybe knownAddresses >>= getShelleyAddr
@@ -113,16 +111,12 @@ validateAndSubmitTx localNodeConnectInfo ledgerPP networkId address witnessSigni
   let keyWitness = C.makeShelleyKeyWitness txbodyValid witnessSigningKey
   signAndSubmitTx localNodeConnectInfo [keyWitness] txbodyValid
 
--- TODO: PLT-8098 did the legacy impl mix up parameter order for number of Byron/Shelley key witnesses?
--- compare with estimateTransactionFee in cardano-api, where Shelley witness number comes first.
--- If so, why does it still validate?
-
--- TODO: PLT-8098 make a note about how this is a shortcut for testing that does not do the
--- full iterative transaction fee calculation. apparantly there is a utility in cardano-node for
--- that.
-
 {- | Validate the transaction, calculate the fee and build the transaction body with txOut
- - and fee adjustments applied.
+ - and fee adjustments applied. This rebuilds a new single TxOut with the txMintValue from the body
+ - and the fee-adjusted Ada asset.
+ -
+ - This is a cheat for building a balanced transaction in the limited context of the integration
+ - tests sending a single transaction to the network.
 -}
 mkValidatedTxBodyWithFee
   :: C.LedgerProtocolParameters C.BabbageEra
@@ -154,19 +148,21 @@ mkValidatedTxBodyWithFee ledgerPP networkid address txbodyc lovelace nKeywitness
       where
         fee = calculateFee ledgerPP (length $ C.txIns txbodyc') 1 0 nKeywitnesses networkid txbody'
 
-mkUnbalancedTxBodyContentFromTxMintValue
+mkUnbalancedTxBodyContent
   :: (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra)
   -> C.LedgerProtocolParameters C.BabbageEra
-  -> C.Address C.ShelleyAddr
   -> [C.TxIn]
+  -> [C.TxIn]
+  -- ^ Collateral. Ada assets only.
+  -> [C.TxOut C.CtxTx C.BabbageEra]
   -> C.TxMintValue C.BuildTx C.BabbageEra
   -> C.TxBodyContent C.BuildTx C.BabbageEra
-mkUnbalancedTxBodyContentFromTxMintValue validityRange ledgerPP address txIns txMintValue =
+mkUnbalancedTxBodyContent validityRange ledgerPP txIns collateral txOuts txMintValue =
   (Helpers.emptyTxBodyContent validityRange ledgerPP)
     { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
-    , C.txOuts = [Helpers.mkTxOut address $ Gen.MintTokenEvent.getValueFromTxMintValue txMintValue]
+    , C.txOuts = txOuts
     , C.txMintValue = txMintValue
-    , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra txIns
+    , C.txInsCollateral = C.TxInsCollateral C.CollateralInBabbageEra collateral
     }
 
 -- | Wrapper for @C.'estimateTransactionFee'@.
@@ -192,18 +188,20 @@ calculateFee ledgerPP nInputs nOutputs nByronKeyWitnesses nShelleyKeyWitnesses n
         nShelleyKeyWitnesses
         nByronKeyWitnesses
 
-{- | Sign the validated tx body, submit to node emulator
- and wait for it to be submitted over the protocol.
--}
+-- | Sign the validated tx body, submit to node emulator.
 signAndSubmitTx
   :: (MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> [C.KeyWitness C.BabbageEra]
   -> C.TxBody C.BabbageEra
   -> m ()
-signAndSubmitTx info witnesses txbody = Helpers.submitAwaitTx info (tx, txbody)
+signAndSubmitTx info witnesses txbody = Helpers.submitTx info tx
   where
     tx = C.makeSignedTransaction witnesses txbody
+
+-- | Set the quantity of all elements in Value to 0.
+quantityToZero :: C.Value -> C.Value
+quantityToZero = C.valueFromList . map (fmap (const 0)) . C.valueToList
 
 {- Indexers and queries -}
 

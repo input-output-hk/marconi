@@ -5,14 +5,10 @@
 module Test.Helpers where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Extended.Streaming qualified as C
 import Cardano.Api.Shelley qualified as C
-import Control.Concurrent qualified as IO
-import Control.Concurrent.Async qualified as IO
 import Control.Exception (throwIO)
-import Control.Monad (void, when)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import GHC.Exception (errorCallException, errorCallWithCallStackException)
@@ -22,7 +18,6 @@ import Hedgehog qualified as H
 import Hedgehog.Extras.Stock.CallStack qualified as H
 import Hedgehog.Extras.Test qualified as HE
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
-import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.Environment qualified as IO
 import System.IO qualified as IO
@@ -126,74 +121,6 @@ submitTx localNodeConnectInfo tx = do
             flip errorCallWithCallStackException GHC.callStack $
               "Transaction failed: " <> show reason
       SubmitSuccess -> liftIO $ putStrLn "Transaction submitted successfully"
-
--- | Block until a transaction with @txId@ is sent over the local chainsync protocol.
-awaitTxId :: C.LocalNodeConnectInfo C.CardanoMode -> C.TxId -> IO ()
-awaitTxId con txId = do
-  chan :: IO.Chan [C.TxId] <- IO.newChan
-  let indexer =
-        C.blocks con C.ChainPointAtGenesis
-          & C.ignoreRollbacks
-          & S.map bimTxIds
-          & S.chain (IO.writeChan chan)
-  void $ (IO.link =<<) $ IO.async $ void $ S.effects indexer
-  let loop = do
-        txIds <- IO.readChan chan
-        when (txId `notElem` txIds) loop
-  loop
-
--- | Submit the argument transaction and await for it to be accepted into the blockhain.
-submitAwaitTx
-  :: (C.IsCardanoEra era, MonadIO m)
-  => C.LocalNodeConnectInfo C.CardanoMode
-  -> (C.Tx era, C.TxBody era)
-  -> m ()
-submitAwaitTx con (tx, txBody) = do
-  submitTx con tx
-  liftIO $ awaitTxId con $ C.getTxId txBody
-
-mkTransferTx
-  :: forall era m
-   . (C.IsShelleyBasedEra era, MonadIO m, MonadTest m, MonadFail m)
-  => C.NetworkId
-  -> C.LocalNodeConnectInfo C.CardanoMode
-  -> (C.TxValidityLowerBound era, C.TxValidityUpperBound era)
-  -> C.Address C.ShelleyAddr
-  -> C.Address C.ShelleyAddr
-  -> [C.ShelleyWitnessSigningKey]
-  -> C.Lovelace
-  -> m (C.Tx era, C.TxBody era)
-mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
-  ledgerPP <- getLedgerProtocolParams @era con
-  (txIns, totalLovelace) <- getAddressTxInsValue @era con from
-  let tx0 =
-        (emptyTxBodyContent validityRange ledgerPP)
-          { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
-          , C.txOuts = [mkAddressAdaTxOut to totalLovelace]
-          }
-  txBody0 :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx0
-  let fee =
-        calculateFee
-          ledgerPP
-          (length $ C.txIns tx0)
-          (length $ C.txOuts tx0)
-          0
-          (length keyWitnesses)
-          networkId
-          txBody0
-          :: C.Lovelace
-
-  when (howMuch + fee >= totalLovelace) $ fail "Not enough funds"
-  let tx =
-        tx0
-          { C.txFee = C.TxFeeExplicit (txFeesExplicitInShelleyBasedEra C.shelleyBasedEra) fee
-          , C.txOuts =
-              [ mkAddressAdaTxOut to howMuch
-              , mkAddressAdaTxOut from $ totalLovelace - howMuch - fee
-              ]
-          }
-  txBody :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx
-  return (C.signShelleyTransaction txBody keyWitnesses, txBody)
 
 mkAddressValueTxOut
   :: (C.IsShelleyBasedEra era)

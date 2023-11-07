@@ -148,7 +148,6 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
 
   {- NOTE: PLT-8098
    startTestnet does not shutdown when the test is done.
-   See Cardano.Node.Socket.Emulator.Server.runServerNode.
    As a temporary measure to avoid polluting the test output, Integration.startTestnet squashes all
    SlotAdd log messages.
    -}
