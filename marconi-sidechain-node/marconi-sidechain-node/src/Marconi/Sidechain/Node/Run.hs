@@ -103,7 +103,7 @@ runSidechainChainIndex portNumber = do
 
     putStrLn "Getting SDD..."
     foldEvent h () $ \() -> \case
-      AnchoredEvent _ _ (LedgerNewEpochEvent (LedgerStakeDistEvent e)) -> print e
+      AnchoredEvent _ _ _ _ (LedgerNewEpochEvent (LedgerStakeDistEvent e)) -> print e
       _otherEvent -> pure ()
   where
     runTCPClient :: HostName -> ServiceName -> (Socket -> IO a) -> IO a
