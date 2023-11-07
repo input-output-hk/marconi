@@ -41,11 +41,11 @@ run = do
   traceConfig <- defaultConfigStdout
   withTrace traceConfig "marconi-sidechain" $ \trace -> do
     let marconiTrace = mkMarconiTrace trace
-    logInfo trace $ "marconi-sidechain-" <> Text.pack getVersion
 
     cliArgs@CliArgs{dbDir, socketFilePath, networkId, optionsRetryConfig} <- parseCli
 
-    logInfo trace . Text.toStrict $ pShowDarkBg cliArgs
+    logInfo trace $ "marconi-sidechain-" <> Text.pack getVersion
+    logInfo trace $ Text.toStrict . pShowDarkBg $ cliArgs
 
     createDirectoryIfMissing True dbDir
 

@@ -60,11 +60,10 @@ run appName = withGracefulTermination_ $ do
   (trace, sb) <- defaultStdOutLogger appName
   let marconiTrace = mkMarconiTrace trace
 
-  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
-
   o <- Cli.parseOptions
 
-  logInfo trace . Text.toStrict $ pShowDarkBg o
+  logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
+  logInfo trace $ Text.toStrict . pShowDarkBg $ o
 
   createDirectoryIfMissing True (Cli.optionsDbPath o)
 
