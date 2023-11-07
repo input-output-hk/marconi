@@ -371,7 +371,9 @@ withStabilityM
      , Traversable f
      )
   => (event -> Stability event)
+  -- ^ A function to calculate @Stability@ of an @event@
   -> ExceptT (QueryError query) m (f event)
+  -- ^ In @ExceptT@ action whose result is an @event@
   -> m (f (Stability event))
 withStabilityM toStability = do
   either
