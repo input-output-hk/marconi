@@ -52,7 +52,9 @@ library
     , maybe-unix
 
   hs-source-dirs:  src
-  exposed-modules: Marconi.Sidechain.Experimental.Run
+  exposed-modules:
+    Marconi.Sidechain.Experimental.CLI
+    Marconi.Sidechain.Experimental.Run
 
   --Marconi.Sidechain.Experimental.Api.HttpServer
   --Marconi.Sidechain.Experimental.Api.Query.Indexers.EpochState
