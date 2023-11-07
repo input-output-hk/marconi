@@ -1,0 +1,265 @@
+cabal-version: 3.0
+name:          marconi-sidechain-experimental
+version:       1.2.0.0
+license:       Apache-2.0
+license-files:
+  LICENSE
+  NOTICE
+
+-- TODO: PLT-8076 seems silly
+
+author:        Brendan Brown
+maintainer:    brendan.brown@iohk.io
+homepage:      https://github.com/input-output-hk/marconi#readme
+bug-reports:   https://github.com/input-output-hk/marconi/issues
+description:
+  Please see the README on GitHub at <https://github.com/input-output-hk/marconi#readme>
+
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/input-output-hk/marconi
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    OverloadedStrings
+    ScopedTypeVariables
+    StandaloneDeriving
+
+  ghc-options:
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wmissing-import-lists
+    -Wnoncanonical-monad-instances -Wredundant-constraints
+    -Wunused-packages
+
+common maybe-unix
+  if !os(windows)
+    build-depends: unix
+
+library
+  import:
+    lang
+    , maybe-unix
+
+  hs-source-dirs:  src
+  exposed-modules: Marconi.Sidechain.Experimental.Run
+
+  --Marconi.Sidechain.Experimental.Api.HttpServer
+  --Marconi.Sidechain.Experimental.Api.Query.Indexers.EpochState
+  --Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
+  --Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
+  --Marconi.Sidechain.Experimental.Api.Routes
+  --Marconi.Sidechain.Experimental.Bootstrap
+  --Marconi.Sidechain.Experimental.CLI
+  --Marconi.Sidechain.Experimental.Concurrency
+  --Marconi.Sidechain.Experimental.Env
+  --Marconi.Sidechain.Experimental.Error
+  --Marconi.Sidechain.Experimental.Utils
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-chain-index    >=1.2.0
+    , marconi-core           >=1.2.0
+    , marconi-core-json-rpc  >=1.2.0
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api          ^>=8.20
+    , cardano-ledger-core
+    , cardano-slotting     ^>=0.1.1.1
+    , iohk-monitoring
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                  >=4.9 && <5
+    , bytestring
+    , data-default
+    , directory
+    , fast-logger
+    , filepath
+    , http-types
+    , lens
+    , mtl
+    , optparse-applicative
+    , pretty-simple
+    , prettyprinter
+    , prometheus-client
+    , servant
+    , servant-server
+    , stm                   >=2.5
+    , text
+    , time
+    , wai-extra
+    , warp
+
+executable marconi-sidechain-experimental
+  import:         lang
+  hs-source-dirs: app
+  main-is:        Main.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-sidechain-experimental
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:  base >=4.9 && <5
+
+test-suite marconi-sidechain-experimental-test
+  import:             lang
+  ghc-options:        -Wno-unused-packages
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  hs-source-dirs:     test
+  other-modules:
+
+  --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
+  --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
+  --Spec.Marconi.Sidechain.Experimental.CLI
+  --Spec.Marconi.Sidechain.Experimental.CLIInputValidation
+  --Spec.Marconi.Sidechain.Experimental.Env
+  --Spec.Marconi.Sidechain.Experimental.Integration
+  --Spec.Marconi.Sidechain.Experimental.Routes
+  --Spec.Marconi.Sidechain.Experimental.RpcClientAction
+  --Spec.Marconi.Sidechain.Experimental.Utils
+
+  --------------------
+  -- Required local executable
+  --------------------
+  build-tool-depends:
+    marconi-sidechain-experimental:marconi-sidechain-experimental
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}  >=1.2.0
+    , marconi-core
+    , marconi-core-json-rpc                                                    >=1.2.0
+    , marconi-sidechain-experimental                                           >=1.2.0
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api             ^>=8.20
+    , cardano-api-gen         ^>=8.2
+    , cardano-crypto-class
+    , cardano-ledger-shelley
+    , cardano-slotting        ^>=0.1.1.1
+    , hedgehog-extras
+    , iohk-monitoring
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , base                    >=4.9 && <5
+    , bytestring
+    , containers
+    , directory
+    , exceptions
+    , filepath
+    , hedgehog
+    , http-client
+    , lens
+    , mtl
+    , optparse-applicative
+    , process
+    , resourcet
+    , servant
+    , servant-client
+    , servant-server
+    , stm
+    , tasty
+    , tasty-expected-failure
+    , tasty-golden
+    , tasty-hedgehog
+    , tasty-hunit
+    , temporary
+    , text
+    , warp
+
+-- TODO: PLT-8076
+--executable examples-json-rpc-client
+--  import:         lang
+--  hs-source-dirs: examples/json-rpc-client/src
+--  main-is:        Main.hs
+--
+--  --------------------
+--  -- Local components
+--  --------------------
+--  build-depends:
+--    , marconi-core-json-rpc  >=1.2.0
+--    , marconi-sidechain      >=1.2.0
+--
+--  ------------------------
+--  -- Non-IOG dependencies
+--  ------------------------
+--  build-depends:
+--    , base            >=4.9 && <5
+--    , http-client
+--    , servant
+--    , servant-client
+--
+--library db-utils
+--  import:          lang
+--  hs-source-dirs:  db-utils/src
+--  exposed-modules: Marconi.DB.SqlUtils
+--
+--  --------------------------
+--  -- Other IOG dependencies
+--  --------------------------
+--  build-depends:   cardano-api ^>=8.20
+--
+--  ------------------------
+--  -- Non-IOG dependencies
+--  ------------------------
+--  build-depends:
+--    , async
+--    , base            >=4.9 && <5
+--    , raw-strings-qq
+--    , sqlite-simple
+--    , text
+--    , time
+--
+--executable db-utils-exe
+--  import:         lang
+--  hs-source-dirs: db-utils/exe
+--  main-is:        Main.hs
+--
+--  --------------------
+--  -- Local components
+--  --------------------
+--  build-depends:  db-utils
+--
+--  ------------------------
+--  -- Non-IOG dependencies
+--  ------------------------
+--  build-depends:
+--    , base                  >=4.9 && <5
+--    , optparse-applicative
