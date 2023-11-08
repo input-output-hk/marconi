@@ -6,8 +6,7 @@ Core architecture
    :titlesonly:
 
    system-context
-   component-diagram
-   key-concepts
+   building-blocks-view
    sequence-diagram
    local-node-communication
    marconi-as-a-node
