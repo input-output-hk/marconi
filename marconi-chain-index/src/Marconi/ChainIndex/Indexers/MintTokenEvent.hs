@@ -137,7 +137,7 @@ import Marconi.Core qualified as Core
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
 type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenBlockEvents
 
--- | The inner state of the 'EpochStateIndexer'
+-- | The inner state of the 'MintTokenIndexerCombine'
 data MintTokenEventIndexerCombine event = MintTokenEventIndexerCombine
   { _mintTokenEventIndexerSecurityParam :: !SecurityParam
   , _mintTokenEventIndexerCombineIndexer :: Con.MVar (StandardIndexer IO Core.SQLiteIndexer event)
