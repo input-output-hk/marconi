@@ -9,29 +9,19 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 {- |
- This module propose an alternative to the index implementation proposed in @Storable@.
+ @Marconi.Core@ re-exports most of the content of the sub-modules and in most scenario,
+ most of the stuff you need to set up a chain-indexing solution.
 
- = Motivation
+ = Features
 
- The point we wanted to address are the following:
+ Marconi provides the following features out of the box:
 
-    * @Storable@ implementation is designed in a way that strongly promotes indexers
-      that rely on a mix of database and in-memory storage.
-      We try to propose a more generic design that would allow:
-
-        * full in-memory indexers
-        * indexer backed by a simple file
-        * indexer transformers, that add capability (logging, caching...) to an indexer
-        * mock indexer, for testing purpose, with predefined behaviour
-        * group of indexers, synchronised as a single indexer
-        * implement in-memory/database storage that rely on other query heuristic
-
-    * The original implementation considered the @StorablePoint@ as data that can be derived from
-      @Event@, leading to the design of synthetic events to deal with indexer that didn't index
-      enough data.
-
-    * In marconi, the original design uses a callback design to handle `MVar` modification,
-      we wanted to address this point as well.
+    * full in-memory indexers;
+    * indexers backed by a simple file;
+    * sqlite-indexers;
+    * indexer transformers, that add capability (logging, caching...) to an indexer;
+    * group of indexers, synchronised as a single indexer;
+    * mixed-indexers that allows a different type of storage for recent events and older ones.
 
  = Terminology
 
@@ -70,8 +60,7 @@
           (it allows us to opt-in for traces if we want, indexer by indexer)
         * Transform to change the input type of an indexer
 
-  Contrary to the original Marconi design,
-  indexers don't have a unique (in-memory/sqlite) implementation.
+  indexers can have different implementations (SQLite, in-memory...).
   @SQLite@ indexers are the most common ones. For specific scenarios, you may want to combine
   them with a mixed indexer or to go for other types of indexers.
   We may consider other database backend than @SQLite@ in the future.
@@ -87,24 +76,9 @@
 
  == Define an indexer instance
 
- === Define an indexer instance for 'ListIndexer'
-
-        1. You need to define a type for @event@ (the input of your indexer).
-        As soon as it's done, define the 'Point' type instance for this event,
-        'Point' is a way to know when the Point was emitted.
-        It can be a time, a slot number, a block, whatever information that tracks when
-        an event happen.
-
-        2. It's already enough to index `Timed` of the events you defined at step one
-        of your indexer and to proceed to rollback.
-        You can already test it, creating an indexer with `listIndexer`.
-
-        3. Define a @query@ type and the corresponding 'Result' type.
-
-        4. Then, for this query you need to define the 'Queryable' instance that
-        corresponds to your indexer.
-
-        5. The 'ListIndexer' is ready.
+ At this stage, in most of the cases, you want to define an `SQLiteIndexer`,
+ which will store the incoming events into an SQLite database.
+ Other types of indexers exist and we detail some of them as well below.
 
  == Define an indexer instance for 'SQLiteIndexer'
 
@@ -143,6 +117,25 @@
         There's no helper on this one, but you probably want to query the database and
         to aggregate the query result in your @Result@ type.
 
+ === Define an indexer instance for 'ListIndexer'
+
+        1. You need to define a type for @event@ (the input of your indexer).
+        As soon as it's done, define the 'Point' type instance for this event,
+        'Point' is a way to know when the Point was emitted.
+        It can be a time, a slot number, a block, whatever information that tracks when
+        an event happens.
+
+        2. It's already enough to index `Timed` of the events you defined at step one
+        of your indexer and to proceed to rollback.
+        You can already test it, creating an indexer with `listIndexer`.
+
+        3. Define a @query@ type and the corresponding 'Result' type.
+
+        4. Then, for this query you need to define the 'Queryable' instance that
+        corresponds to your indexer.
+
+        5. The 'ListIndexer' is ready.
+
  === Define an indexer instance for a 'MixedIndexer'
 
  Follow in order the steps for the creation of a 'ListIndexer' (the in-memory part)
@@ -157,7 +150,7 @@
 
  == Write a new indexer
 
-    Most user probably /don't/ want to do this.
+    Most users probably /don't/ want to do this.
 
     A good reason is to add support for another backend
     (another database or another in-memory structure)
@@ -166,9 +159,9 @@
 
         * 'IsSync'
         * 'IsIndex'
-        * 'AppendResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
         * 'Queryable'
         * 'Closeable' (if you plan to use it in a worker, and you probably plan to)
+        * 'AppendResult' (if you plan to use it as the in-memory part of a 'MixedIndexer')
 
     Best practices is to implement as much as we can 'event'/'query' agnostic
     instances of the typeclasses of these module for the new indexer.
