@@ -62,7 +62,7 @@ getLedgerProtocolParams
   -> m (C.LedgerProtocolParameters era)
 getLedgerProtocolParams localNodeConnectInfo = do
   eraInMode <-
-    nothingFail "toEraInMode" $
+    nothingFail eraInModeFailMsg $
       C.toEraInMode (C.shelleyBasedToCardanoEra (C.shelleyBasedEra @era)) C.CardanoMode
   fmap C.LedgerProtocolParameters . leftFailM . leftFailM . liftIO $
     C.queryNodeLocalState localNodeConnectInfo Nothing $
@@ -81,7 +81,7 @@ findUTxOByAddress localNodeConnectInfo address = do
             C.QueryUTxOByAddress $
               Set.singleton (C.toAddressAny address)
   eraInMode <-
-    nothingFail "toEraInMode" $
+    nothingFail eraInModeFailMsg $
       C.toEraInMode (C.shelleyBasedToCardanoEra C.shelleyBasedEra) C.CardanoMode
   leftFailM . leftFailM . liftIO $
     C.queryNodeLocalState localNodeConnectInfo Nothing $
@@ -107,7 +107,7 @@ submitTx
   -> m ()
 submitTx localNodeConnectInfo tx = do
   eraInMode <-
-    nothingFail "toEraInMode" $
+    nothingFail eraInModeFailMsg $
       C.toEraInMode C.cardanoEra C.CardanoMode
   submitResult :: SubmitResult (C.TxValidationErrorInMode C.CardanoMode) <-
     liftIO $ C.submitTxToNodeLocal localNodeConnectInfo $ C.TxInMode tx eraInMode
@@ -252,6 +252,9 @@ leftFail (Right x) = pure x
 
 leftFailM :: (MonadIO m, Show e) => m (Either e a) -> m a
 leftFailM f = f >>= leftFail
+
+eraInModeFailMsg :: String
+eraInModeFailMsg = "Inconsistent arguments passed to Cardano.Api.toEraInMode"
 
 {- Miscellaneous accessors -}
 
