@@ -1,7 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
   tests,
@@ -15,14 +17,24 @@ import Control.Lens.Fold qualified as Lens
 import Control.Lens.Traversal qualified as Lens
 import Control.Monad (forM, forM_, void, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Except (runExceptT)
+import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Tracer (nullTracer)
-import Data.List ((\\))
+import Data.Foldable (minimumBy)
+import Data.List (maximumBy, (\\))
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
-import Gen.Marconi.ChainIndex.Types qualified as CGenApi
+import Data.Ord (comparing)
+import Data.Word (Word64)
+import Gen.Marconi.ChainIndex.Mockchain (
+  MockBlock (MockBlock),
+  MockBlockWithInfo (mockBlockInfoChainTip),
+  Mockchain,
+  MockchainWithInfo,
+  genMockchainWithInfo,
+  mockchainWithInfoAsMockchain,
+ )
 import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Gen, PropertyT, (===))
 import Hedgehog qualified as H
@@ -53,9 +65,11 @@ import Marconi.ChainIndex.Indexers.Worker (
  )
 import Marconi.ChainIndex.Indexers.Worker qualified as Core
 import Marconi.ChainIndex.Types (SecurityParam, TxIndexInBlock (TxIndexInBlock))
+import Marconi.ChainIndex.Types qualified as Core
 import Marconi.Core qualified as Core
 import Spec.Marconi.ChainIndex.Indexers.BlockInfo qualified as Test.BlockInfo
-import System.Directory (doesFileExist, removeFile)
+import System.FilePath ((</>))
+import System.IO.Temp qualified as Tmp
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
@@ -132,13 +146,21 @@ tests =
     , testGroup
         "Stability"
         [ testPropertyNamed
-            "withStability always stable when lsp is `securityParam` > any event"
+            "withStability always stable when SecurityParam is 0"
             "withStabilityAllStable"
             withStabilityAllStable
         , testPropertyNamed
-            "withStability all unstable"
+            "withStability all unstable when SecurityParam is greater than upper slot of chain"
             "withStabilityAllUnstable"
             withStabilityAllUnstable
+        , testPropertyNamed
+            "despite the SecurityParam of 0, all results are stable due to upperSlotNo"
+            "withStabilitySetUsnStable"
+            withStabilitySetUsnStable
+        , testPropertyNamed
+            "despite the high SecurityParam, all results are unstable due to upperSlotNo"
+            "withStabilitySetUsnUnstable"
+            withStabilitySetUsnUnstable
         ]
     ]
 
@@ -656,11 +678,6 @@ genTimedEvents = do
       ]
   forM cps $ \cp -> Core.Timed cp <$> genMintTokenBlockEvents
 
-genTimedEventsByChainPoints :: [C.ChainPoint] -> Gen [Core.Timed C.ChainPoint MintTokenBlockEvents]
-genTimedEventsByChainPoints cps = do
-  a <- forM cps $ \cp -> Core.Timed cp <$> genMintTokenBlockEvents
-  pure (mapMaybe sequence a)
-
 genMintTokenBlockEvents :: Gen (Maybe MintTokenBlockEvents)
 genMintTokenBlockEvents = do
   events <-
@@ -729,129 +746,225 @@ data MintTokenIndexers = MintTokenIndexers
       :: Concurrent.MVar (Core.StandardIndexer IO Core.SQLiteIndexer BlockInfo.BlockInfo)
   }
 
-mkMintTokenEventIndexerCombineQuery
-  :: (C.ChainPoint -> C.ChainPoint)
+data UpperSlotNo = Min | Max
+
+-- | Given a @SecurityParam@ of @0@ and no @upperSlotNo@, all events should be @Stable@
+withStabilityAllStable :: H.Property
+withStabilityAllStable =
+  stabilityTestBase (H.assert . all isStable) Nothing 0
+
+-- | Given a @SecurityParam@ of @1000000@ and no @upperSlotNo@, all events should be @Volatile@
+withStabilityAllUnstable :: H.Property
+withStabilityAllUnstable =
+  stabilityTestBase (H.assert . not . any isStable) Nothing 1000000
+
+{- | Given a maximal @upperSlotNo@, all events should be @Stable@, despite a @SecurityParam@ of
+    @1000000@
+-}
+withStabilitySetUsnStable :: H.Property
+withStabilitySetUsnStable =
+  stabilityTestBase (H.assert . all isStable) (Just Max) 1000000
+
+{- | Given a minimal @upperSlotNo@, all events should be @Volatile@, despite a @SecurityParam@ of
+    @0@
+-}
+withStabilitySetUsnUnstable :: H.Property
+withStabilitySetUsnUnstable =
+  stabilityTestBase (H.assert . not . any isStable) (Just Min) 0
+
+-- | A function for building stability tests with the MintTokenEvent.MintTokenEventIndexerCombine
+stabilityTestBase
+  :: ([Core.Stability (Core.Timed C.ChainPoint MintTokenBlockEvents)] -> PropertyT IO ())
+  -> Maybe UpperSlotNo
   -> SecurityParam
-  -> [Core.Timed (Core.Point MintTokenBlockEvents) (Maybe MintTokenBlockEvents)]
-  -> [Core.Timed (Core.Point MintTokenBlockEvents) BlockInfo.BlockInfo]
+  -> H.Property
+stabilityTestBase assertion upperSlotNo securityParam = H.property $ do
+  policy <- H.forAll CGen.genPolicyId
+  events <- H.forAll genMockchainWithInfo
+  mintEvents <- H.forAll $ getMintTokenEvents $ mockchainWithInfoAsMockchain events
+  let blockEvents = Test.BlockInfo.getBlockInfoEvents events
+  let event = maximumBy (comparing $ view Core.point) mintEvents
+      point = event ^. Core.point
+      usn = do
+        upper <- upperSlotNo
+        let comp = case upper of
+              Min -> minimumBy
+              Max -> maximumBy
+        let upperPoint = comp (comparing $ view Core.point) blockEvents ^. Core.point
+        case upperPoint of
+          (C.ChainPoint sn _) -> Just sn
+          _ -> Nothing
+  ((Right res)) <-
+    liftIO $
+      runExceptT $
+        withIndexer securityParam events $
+          Core.query
+            point
+            ( Core.WithStability
+                (MintTokenEvent.QueryByAssetId policy Nothing Nothing usn Nothing)
+            )
+  assertion res
+
+-- | Generate a list of events from a mock chain
+getMintTokenEvents
+  :: Mockchain era
+  -> Gen [Core.Timed C.ChainPoint (Maybe MintTokenEvent.MintTokenBlockEvents)]
+getMintTokenEvents =
+  let getTxBody :: C.Tx era -> C.TxBody era
+      getTxBody (C.Tx txBody _) = txBody
+      getBlockSpentsEvent
+        :: MockBlock era
+        -> Gen (Core.Timed C.ChainPoint (Maybe MintTokenEvent.MintTokenBlockEvents))
+      getBlockSpentsEvent (MockBlock (C.BlockHeader slotNo blockHeaderHash blockNo) txs) = do
+        events <- concat <$> traverse (getInputs blockNo . getTxBody) txs
+        pure $
+          Core.Timed
+            (C.ChainPoint slotNo blockHeaderHash)
+            ( fmap MintTokenBlockEvents $
+                NonEmpty.nonEmpty events
+            )
+   in traverse getBlockSpentsEvent
+
+getInputs :: C.BlockNo -> C.TxBody era -> Gen [MintTokenEvent]
+getInputs
+  blockNo
+  ( C.TxBody
+      C.TxBodyContent
+        { C.txIns
+        , C.txInsCollateral
+        , C.txScriptValidity
+        }
+    ) =
+    let inputs = case C.txScriptValidityToScriptValidity txScriptValidity of
+          C.ScriptValid -> fst <$> txIns
+          C.ScriptInvalid -> case txInsCollateral of
+            C.TxInsCollateralNone -> []
+            C.TxInsCollateral _ txins -> txins
+        makeLocation :: C.TxIn -> Word64 -> MintTokenEventLocation
+        makeLocation (C.TxIn txId _) txIdx = MintTokenEventLocation blockNo txId (Core.TxIndexInBlock txIdx)
+        locations = zipWith makeLocation inputs [0 ..]
+        genMintAssetRedeemer = do
+          scriptData <- Gen.genSimpleHashableScriptData
+          MintAssetRedeemer
+            <$> Gen.genSimpleScriptData
+            <*> pure (C.hashScriptDataBytes scriptData)
+        generator =
+          MintAsset
+            <$> CGen.genPolicyId
+            <*> CGen.genAssetName
+            <*> CGen.genSignedNonZeroQuantity
+            <*> H.Gen.maybe genMintAssetRedeemer
+     in do
+          assets <- traverse (const generator) locations
+          pure $ zipWith MintTokenEvent locations assets
+
+mkMintCombine
+  :: SecurityParam
   -> IO
       ( MintTokenIndexers
       , MintTokenEvent.MintTokenEventIndexerCombine MintTokenEvent.MintTokenBlockEvents
       )
-mkMintTokenEventIndexerCombineQuery lspModifier securityParam events blockInfoEvents =
-  do
-    let catchupConfig = Core.mkCatchupConfig 4 2
-    let blockInfoPath = ":memory:"
-    blockInfoIndexerE <- runExceptT $ BlockInfo.mkBlockInfoIndexer blockInfoPath
-    let blockInfoIndexer = case blockInfoIndexerE of
-          Left e -> error $ show e
-          Right x -> x
+mkMintCombine securityParam = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
+  let blockInfoPath = dir </> "blockInfo.db"
+  let catchupConfig = Core.mkCatchupConfig 4 2
 
-    hydratedBlockInfoIndexerE <-
-      runExceptT $
-        Core.indexAll (fmap Just <$> blockInfoEvents) blockInfoIndexer
+  Right blockInfoIndexer <- runExceptT $ BlockInfo.mkBlockInfoIndexer blockInfoPath
 
-    let hydratedBlockInfoIndexer = case hydratedBlockInfoIndexerE of
-          Left e -> error $ show e
-          Right x -> x
+  blockInfoVar <-
+    liftIO $
+      Concurrent.newMVar $
+        Core.mkStandardIndexerWithFilter
+          ( Core.StandardWorkerConfig
+              "mintTokenWorker"
+              securityParam
+              catchupConfig
+              (pure . Just)
+              nullTracer
+          )
+          Just
+          blockInfoIndexer
 
-    blockInfoVar <-
-      liftIO $
-        Concurrent.newMVar $
-          Core.mkStandardIndexerWithFilter
-            ( Core.StandardWorkerConfig
-                "mintTokenWorker"
-                securityParam
-                catchupConfig
-                (pure . Just)
-                nullTracer
+  let mintPath = dir </> "mint.db"
+
+  Right mintTokenIndexer <- runExceptT $ MintTokenEvent.mkMintTokenIndexer mintPath
+
+  mintTokenVar <-
+    liftIO $
+      Concurrent.newMVar $
+        Core.mkStandardIndexerWithFilter
+          ( Core.StandardWorkerConfig
+              "mintTokenWorker"
+              securityParam
+              catchupConfig
+              (pure . Just)
+              nullTracer
+          )
+          Just
+          mintTokenIndexer
+
+  let indexers = MintTokenIndexers mintTokenVar blockInfoVar
+  let combined = MintTokenEvent.MintTokenEventIndexerCombine securityParam mintTokenVar blockInfoVar
+  pure (indexers, combined)
+
+withIndexer
+  :: SecurityParam
+  -> MockchainWithInfo C.BabbageEra
+  -> ( MintTokenEvent.MintTokenEventIndexerCombine MintTokenEvent.MintTokenBlockEvents
+       -> ExceptT
+            ( Core.QueryError
+                (Core.WithStability (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents))
             )
-            Just
-            hydratedBlockInfoIndexer
-    let mintPath = ":memory:"
-    mintTokenIndexerE <- runExceptT $ MintTokenEvent.mkMintTokenIndexer mintPath
-    let mintTokenIndexer = case mintTokenIndexerE of
-          Left e -> error $ show e
-          Right x -> x
-
-    hydratedMintTokenIndexerE <- runExceptT $ Core.indexAll events mintTokenIndexer
-    let hydratedMintTokenIndexer = case hydratedMintTokenIndexerE of
-          Left e -> error $ show e
-          Right x -> x
-
-    lastPoint <- Core.lastSyncPoint hydratedMintTokenIndexer
-    Right hydratedMintTokenIndexerWithPoint <-
-      runExceptT $
-        Core.setLastStablePoint (lspModifier lastPoint) hydratedMintTokenIndexer
-
-    mintTokenVar <-
-      liftIO $
-        Concurrent.newMVar $
-          Core.mkStandardIndexerWithFilter
-            (Core.StandardWorkerConfig "mintTokenWorker" securityParam catchupConfig (pure . Just) nullTracer)
-            Just
-            hydratedMintTokenIndexerWithPoint
-    let indexers = MintTokenIndexers mintTokenVar blockInfoVar
-
-    pure (indexers, MintTokenEvent.MintTokenEventIndexerCombine securityParam mintTokenVar blockInfoVar)
-
-genTimed :: Hedgehog.Gen a -> Hedgehog.Gen (Core.Timed C.ChainPoint a)
-genTimed gen = Core.Timed <$> CGenApi.genChainPoint <*> gen
-
-withStabilityAllStable :: H.Property
-withStabilityAllStable =
-  stabilityTestBase guaranteeStability (H.assert . all isStable) 2160
-  where
-    guaranteeStability :: C.ChainPoint -> C.ChainPoint
-    guaranteeStability (C.ChainPoint (C.SlotNo _) bh) = C.ChainPoint (C.SlotNo 1000) bh
-    guaranteeStability x = x
-
-withStabilityAllUnstable :: H.Property
-withStabilityAllUnstable =
-  stabilityTestBase guaranteeVolatility (H.assert . not . any isStable) 2160
-  where
-    guaranteeVolatility (C.ChainPoint (C.SlotNo _) bh) = C.ChainPoint (C.SlotNo 9) bh
-    guaranteeVolatility x = x
-
-stabilityTestBase
-  :: (C.ChainPoint -> C.ChainPoint)
-  -> ([Core.Stability (Core.Timed C.ChainPoint MintTokenBlockEvents)] -> PropertyT IO ())
-  -> SecurityParam
-  -> H.Property
-stabilityTestBase lspModifier assertion securityParam = H.property $ do
-  -- Generate events with all the same policyId, to simplify the query
-  -- and since only the temporal information is being tested.
-  policy <- H.forAll CGen.genPolicyId
-  blockEvents <-
-    fmap
-      ( filter
-          (\b -> not $ isGenesis (b ^. Core.point))
+            IO
+            a
+     )
+  -> ExceptT
+      ( Core.QueryError
+          (Core.WithStability (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents))
       )
-      <$> H.forAll
-      $ traverse (const (genTimed Test.BlockInfo.genBlockInfo)) [(0 :: Int) .. 20]
+      IO
+      a
+withIndexer securityParam events f = do
+  (indexers, mintTokenCombine) <- liftIO (mkMintCombine securityParam)
+  liftIO $ indexMockchain securityParam indexers events
+  res <- f mintTokenCombine
+  void $ liftIO $ runExceptT $ closeIndexers indexers
+  pure res
 
-  events <-
-    setPolicyId policy . fmap (fmap Just)
-      <$> H.forAll (genTimedEventsByChainPoints (fmap (view Core.point) blockEvents))
-  (idxs@(MintTokenIndexers mintTokenIndexer _), combined) <-
-    liftIO (mkMintTokenEventIndexerCombineQuery lspModifier securityParam events blockEvents)
-  idx <- liftIO $ Concurrent.readMVar mintTokenIndexer
-  lastPoint <- liftIO $ Core.lastSyncPoint idx
-  result <-
-    H.evalExceptT $
-      Core.query
-        lastPoint
-        ( Core.WithStability
-            (MintTokenEvent.QueryByAssetId policy Nothing Nothing Nothing Nothing)
-        )
-        combined
-  closeIndexers idxs
-  liftIO delFile
-  assertion result
-  where
-    delFile = do
-      exists <- doesFileExist ":memory:"
-      when exists $ removeFile ":memory:" >> putStrLn "Deleted file: :memory:"
+indexMockchain
+  :: SecurityParam -> MintTokenIndexers -> MockchainWithInfo C.BabbageEra -> IO ()
+indexMockchain
+  (Core.SecurityParam sp)
+  (MintTokenIndexers mintTokenVar blockInfoVar)
+  chainWithInfo = do
+    let chain = mockchainWithInfoAsMockchain chainWithInfo
+        tip = maximum $ fmap mockBlockInfoChainTip chainWithInfo
+        chainTipPoint = case tip of
+          C.ChainTip (C.SlotNo unSlotNo) bh _ ->
+            case toInteger unSlotNo - toInteger sp of
+              stable@((> 0) -> True) -> C.ChainPoint (C.SlotNo (fromIntegral stable)) bh
+              _ -> C.ChainPointAtGenesis
+          _ -> C.ChainPointAtGenesis
+
+        withGen
+          :: (Core.Point event ~ C.ChainPoint)
+          => Gen [Core.Timed (Core.Point event) (Maybe event)]
+          -> Core.StandardIndexer IO Core.SQLiteIndexer event
+          -> IO (Core.StandardIndexer IO Core.SQLiteIndexer event)
+        withGen eventGenerator idx = do
+          events <- H.Gen.sample eventGenerator
+          Right res <- runExceptT $ Core.indexAll (fmap (fmap (WithDistance 0 . Just)) <$> events) idx
+          Right res' <-
+            if isGenesis chainTipPoint
+              then pure (Right res)
+              else runExceptT $ Core.setLastStablePoint chainTipPoint res
+          pure res'
+
+    Concurrent.modifyMVar_ mintTokenVar (withGen (getMintTokenEvents chain))
+    Concurrent.modifyMVar_
+      blockInfoVar
+      ( withGen
+          (pure $ Test.BlockInfo.getBlockInfoEvents chainWithInfo)
+      )
 
 isStable :: Core.Stability a -> Bool
 isStable (Core.Stable _) = True
