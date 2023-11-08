@@ -12,13 +12,13 @@ import Control.Exception (throw)
 import Control.Lens qualified as Lens
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
-import Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Hedgehog ((===))
 import Hedgehog qualified
 import Marconi.ChainIndex.Indexers.ChainTip (ChainTipIndexer)
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
 import Marconi.Core qualified as Core
 import System.IO.Temp qualified as Tmp
+import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

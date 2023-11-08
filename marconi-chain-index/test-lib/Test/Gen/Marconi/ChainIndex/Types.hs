@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 
-module Gen.Marconi.ChainIndex.Types (
+module Test.Gen.Marconi.ChainIndex.Types (
   nonEmptySubset,
   genBlockHeader,
   genHashBlockHeader,

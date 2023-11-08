@@ -2,7 +2,6 @@ module Spec.Marconi.ChainIndex.Api.Gen where
 
 import Cardano.Api qualified as C
 import Data.String (fromString)
-import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (
   Gen,
  )
@@ -13,6 +12,7 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
  )
 import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
 
 genBurnTokenEventResult :: Maybe C.HashableScriptData -> Gen BurnTokenEventResult
 genBurnTokenEventResult hsd =

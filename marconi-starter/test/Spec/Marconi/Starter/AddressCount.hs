@@ -11,7 +11,6 @@ import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Gen.Marconi.ChainIndex.Types (genAddressInEra, genBlockNo, genChainPoint', genSlotNo)
 import Hedgehog (Gen, Property, PropertyT, (===))
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -39,6 +38,7 @@ import Marconi.Starter.Indexers.AddressCount (
   AddressCountQuery (AddressCountQuery),
   mkAddressCountSqliteIndexer,
  )
+import Test.Gen.Marconi.ChainIndex.Types (genAddressInEra, genBlockNo, genChainPoint', genSlotNo)
 
 hprop_generator_preconditions :: Property
 hprop_generator_preconditions = H.property $ do

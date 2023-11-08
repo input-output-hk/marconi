@@ -1,6 +1,7 @@
 = Marconi Haskell style guide
 :toc:
 
+
 The purpose of this document is to codify various aspects of how we write Haskell code as we contribute to Marconi.
 
 The goal is twofold:

@@ -332,9 +332,11 @@ library marconi-chain-index-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
-    Gen.Marconi.ChainIndex.Mockchain
-    Gen.Marconi.ChainIndex.Types
-    Helpers
+    Test.Gen.Marconi.ChainIndex.MintTokenEvent
+    Test.Gen.Marconi.ChainIndex.Mockchain
+    Test.Gen.Marconi.ChainIndex.Types
+    Test.Helpers
+    Test.Integration
 
   --------------------
   -- Local components
@@ -348,15 +350,18 @@ library marconi-chain-index-test-lib
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                  ^>=8.20
-    , cardano-api-gen              ^>=8.2
+    , cardano-api                   ^>=8.20
+    , cardano-api-gen               ^>=8.2
     , cardano-binary
     , cardano-crypto-class
     , cardano-ledger-core
-    , hedgehog-extras
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
+    , iohk-monitoring
     , ouroboros-network-protocols
     , plutus-core
-    , plutus-ledger-api            ^>=1.9
+    , plutus-ledger
+    , plutus-ledger-api             ^>=1.9
     , plutus-tx
     , plutus-tx-plugin
 
@@ -365,14 +370,18 @@ library marconi-chain-index-test-lib
   ------------------------
   build-depends:
     , async
-    , base        >=4.9 && <5
+    , base             >=4.9 && <5
     , bytestring
     , containers
+    , contra-tracer
+    , data-default
     , directory
     , filepath
     , hedgehog
+    , hedgehog-extras
     , lens
     , mtl
     , streaming
     , temporary
+    , text
     , time

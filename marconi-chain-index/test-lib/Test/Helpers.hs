@@ -2,44 +2,29 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 
-module Helpers where
+module Test.Helpers where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Extended.Streaming qualified as C
 import Cardano.Api.Shelley qualified as C
-import Control.Concurrent qualified as IO
-import Control.Concurrent.Async qualified as IO
-import Control.Monad (void, when)
+import Control.Exception (throwIO)
+import Control.Monad (when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Function ((&))
 import Data.Map qualified as Map
 import Data.Set qualified as Set
+import GHC.Exception (errorCallException, errorCallWithCallStackException)
 import GHC.Stack qualified as GHC
 import Hedgehog (MonadTest)
 import Hedgehog qualified as H
 import Hedgehog.Extras.Stock.CallStack qualified as H
 import Hedgehog.Extras.Test qualified as HE
-import Hedgehog.Extras.Test.Base qualified as H
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult (SubmitFail, SubmitSuccess))
-import Streaming.Prelude qualified as S
 import System.Directory qualified as IO
 import System.Environment qualified as IO
 import System.IO qualified as IO
 import System.IO.Temp qualified as IO
 import System.Info qualified as IO
 
-{- | Note [cardano-testnet update] }
-
-Everything related to `cardano-testnet` has been commented after we updated to the CHaP release of
-`cardano-api-8.8`. The reason is that `cardano-tesnet` still wasn't updated, and we don't know when
-it will be updated. Thus, we prefer to always be in the latest version of `cardano-api`. However, in
-the near future we're planning to replace cardano-testnet with cardano-node-emulator, so the
-cardano-testnet related code should change anyway.
--}
-readAs :: (C.HasTextEnvelope a, MonadIO m, MonadTest m) => C.AsType a -> FilePath -> m a
-readAs as path = do
-  path' <- H.note path
-  H.leftFailM . liftIO $ C.readFileTextEnvelope as (C.File path')
+{- Protocol / transaction helpers -}
 
 -- | An empty transaction
 emptyTxBodyContent
@@ -72,20 +57,20 @@ emptyTxBodyContent validityRange ledgerPP =
 
 getLedgerProtocolParams
   :: forall era m
-   . (C.IsShelleyBasedEra era, MonadIO m, MonadTest m)
+   . (C.IsShelleyBasedEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> m (C.LedgerProtocolParameters era)
 getLedgerProtocolParams localNodeConnectInfo = do
   eraInMode <-
-    H.nothingFail $
+    nothingFail eraInModeFailMsg $
       C.toEraInMode (C.shelleyBasedToCardanoEra (C.shelleyBasedEra @era)) C.CardanoMode
-  fmap C.LedgerProtocolParameters . H.leftFailM . H.leftFailM . liftIO $
+  fmap C.LedgerProtocolParameters . leftFailM . leftFailM . liftIO $
     C.queryNodeLocalState localNodeConnectInfo Nothing $
       C.QueryInEra eraInMode $
         C.QueryInShelleyBasedEra C.shelleyBasedEra C.QueryProtocolParameters
 
 findUTxOByAddress
-  :: (C.IsShelleyBasedEra era, MonadIO m, MonadTest m)
+  :: (C.IsShelleyBasedEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> C.Address a
   -> m (C.UTxO era)
@@ -96,16 +81,16 @@ findUTxOByAddress localNodeConnectInfo address = do
             C.QueryUTxOByAddress $
               Set.singleton (C.toAddressAny address)
   eraInMode <-
-    H.nothingFail $
+    nothingFail eraInModeFailMsg $
       C.toEraInMode (C.shelleyBasedToCardanoEra C.shelleyBasedEra) C.CardanoMode
-  H.leftFailM . H.leftFailM . liftIO $
+  leftFailM . leftFailM . liftIO $
     C.queryNodeLocalState localNodeConnectInfo Nothing $
       C.QueryInEra eraInMode query
 
 -- | Get [TxIn] and total value for an address.
 getAddressTxInsValue
   :: forall era m a
-   . (C.IsShelleyBasedEra era, MonadIO m, MonadTest m)
+   . (C.IsShelleyBasedEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> C.Address a
   -> m ([C.TxIn], C.Lovelace)
@@ -116,90 +101,26 @@ getAddressTxInsValue con address = do
   pure (txIns, sum values)
 
 submitTx
-  :: (C.IsCardanoEra era, MonadIO m, MonadTest m)
+  :: (C.IsCardanoEra era, MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
   -> C.Tx era
   -> m ()
 submitTx localNodeConnectInfo tx = do
   eraInMode <-
-    H.nothingFail $
+    nothingFail eraInModeFailMsg $
       C.toEraInMode C.cardanoEra C.CardanoMode
   submitResult :: SubmitResult (C.TxValidationErrorInMode C.CardanoMode) <-
     liftIO $ C.submitTxToNodeLocal localNodeConnectInfo $ C.TxInMode tx eraInMode
   failOnTxSubmitFail submitResult
   where
-    failOnTxSubmitFail :: (Show a, MonadTest m) => SubmitResult a -> m ()
+    failOnTxSubmitFail :: (Show a, MonadIO m) => SubmitResult a -> m ()
     failOnTxSubmitFail = \case
-      SubmitFail reason -> H.failMessage GHC.callStack $ "Transaction failed: " <> show reason
-      SubmitSuccess -> pure ()
-
--- | Block until a transaction with @txId@ is sent over the local chainsync protocol.
-awaitTxId :: C.LocalNodeConnectInfo C.CardanoMode -> C.TxId -> IO ()
-awaitTxId con txId = do
-  chan :: IO.Chan [C.TxId] <- IO.newChan
-  let indexer =
-        C.blocks con C.ChainPointAtGenesis
-          & C.ignoreRollbacks
-          & S.map bimTxIds
-          & S.chain (IO.writeChan chan)
-  void $ (IO.link =<<) $ IO.async $ void $ S.effects indexer
-  let loop = do
-        txIds <- IO.readChan chan
-        when (txId `notElem` txIds) loop
-  loop
-
--- | Submit the argument transaction and await for it to be accepted into the blockhain.
-submitAwaitTx
-  :: (C.IsCardanoEra era, MonadIO m, MonadTest m)
-  => C.LocalNodeConnectInfo C.CardanoMode
-  -> (C.Tx era, C.TxBody era)
-  -> m ()
-submitAwaitTx con (tx, txBody) = do
-  submitTx con tx
-  liftIO $ awaitTxId con $ C.getTxId txBody
-
-mkTransferTx
-  :: forall era m
-   . (C.IsShelleyBasedEra era, MonadIO m, MonadTest m, MonadFail m)
-  => C.NetworkId
-  -> C.LocalNodeConnectInfo C.CardanoMode
-  -> (C.TxValidityLowerBound era, C.TxValidityUpperBound era)
-  -> C.Address C.ShelleyAddr
-  -> C.Address C.ShelleyAddr
-  -> [C.ShelleyWitnessSigningKey]
-  -> C.Lovelace
-  -> m (C.Tx era, C.TxBody era)
-mkTransferTx networkId con validityRange from to keyWitnesses howMuch = do
-  ledgerPP <- getLedgerProtocolParams @era con
-  (txIns, totalLovelace) <- getAddressTxInsValue @era con from
-  let tx0 =
-        (emptyTxBodyContent validityRange ledgerPP)
-          { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
-          , C.txOuts = [mkAddressAdaTxOut to totalLovelace]
-          }
-  txBody0 :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx0
-  let fee =
-        calculateFee
-          ledgerPP
-          (length $ C.txIns tx0)
-          (length $ C.txOuts tx0)
-          0
-          (length keyWitnesses)
-          networkId
-          txBody0
-          :: C.Lovelace
-
-  when (howMuch + fee >= totalLovelace) $ fail "Not enough funds"
-  let tx =
-        tx0
-          { C.txFee = C.TxFeeExplicit (txFeesExplicitInShelleyBasedEra C.shelleyBasedEra) fee
-          , C.txOuts =
-              [ mkAddressAdaTxOut to howMuch
-              , mkAddressAdaTxOut from $ totalLovelace - howMuch - fee
-              ]
-          }
-  txBody :: C.TxBody era <- HE.leftFail $ C.createAndValidateTransactionBody tx
-  return (C.signShelleyTransaction txBody keyWitnesses, txBody)
+      SubmitFail reason ->
+        liftIO $
+          throwIO $
+            flip errorCallWithCallStackException GHC.callStack $
+              "Transaction failed: " <> show reason
+      SubmitSuccess -> liftIO $ putStrLn "Transaction submitted successfully"
 
 mkAddressValueTxOut
   :: (C.IsShelleyBasedEra era)
@@ -224,6 +145,10 @@ mkAddressAdaTxOut address lovelace =
           Left adaOnlyInEra -> C.TxOutAdaOnly adaOnlyInEra lovelace
           Right multiAssetInEra -> C.TxOutValue multiAssetInEra $ C.lovelaceToValue lovelace
    in mkAddressValueTxOut address txOutValue
+
+-- | Create a single @C.'TxOut'@ from a Babbage-era @C.'TxOutValue'@.
+mkTxOut :: C.Address C.ShelleyAddr -> C.Value -> C.TxOut ctx C.BabbageEra
+mkTxOut address' = mkAddressValueTxOut address' . C.TxOutValue C.MultiAssetInBabbageEra
 
 {- | Adapted from:
  https://github.com/input-output-hk/cardano-node/blob/d15ff2b736452857612dd533c1ddeea2405a2630/cardano-cli/src/Cardano/CLI/Shelley/Run/Transaction.hs#L1105-L1112
@@ -271,6 +196,8 @@ calculateAndUpdateTxFee ledgerPP networkId lengthTxIns lengthKeyWitnesses txbc =
       txbc' = txbc{C.txFee = fee}
   return (feeLovelace, txbc')
 
+{- Hedgehog helpers -}
+
 {- | This is a copy of the workspace from
  hedgehog-extras:Hedgehog.Extras.Test.Base, which for darwin sets
  the systemTemp folder to /tmp.
@@ -296,7 +223,40 @@ workspace prefixPath f = GHC.withFrozenCallStack $ do
 setDarwinTmpdir :: IO ()
 setDarwinTmpdir = when (IO.os == "darwin") $ IO.setEnv "TMPDIR" "/tmp"
 
--- * Accessors
+{- | Run a unit test with the hedgehog API in the @HE.'Integration'@ context,
+with a temporary working directory.
+-}
+unitTestWithTmpDir
+  :: (GHC.HasCallStack)
+  => FilePath
+  -- ^ Prefix path
+  -> (FilePath -> HE.Integration ())
+  -- ^ Test to run with temporary working directory
+  -> H.Property
+unitTestWithTmpDir prefixPath =
+  H.withShrinks 0
+    . HE.propertyOnce
+    . (liftIO setDarwinTmpdir >>)
+    . HE.runFinallies
+    . workspace prefixPath
+
+{- Failure-wrapping functions analogous to those of hedgehog-extras but in MonadIO
+ - for greater flexibility. -}
+nothingFail :: (MonadIO m) => String -> Maybe a -> m a
+nothingFail err Nothing = liftIO $ throwIO $ errorCallException err
+nothingFail _ (Just x) = pure x
+
+leftFail :: (MonadIO m, Show e) => Either e a -> m a
+leftFail (Left err) = liftIO $ throwIO $ errorCallException $ show err
+leftFail (Right x) = pure x
+
+leftFailM :: (MonadIO m, Show e) => m (Either e a) -> m a
+leftFailM f = f >>= leftFail
+
+eraInModeFailMsg :: String
+eraInModeFailMsg = "Inconsistent arguments passed to Cardano.Api.toEraInMode"
+
+{- Miscellaneous accessors -}
 
 bimTxIds :: C.BlockInMode mode -> [C.TxId]
 bimTxIds (C.BlockInMode block _) = blockTxIds block

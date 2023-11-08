@@ -1,32 +1,39 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
-  tests,
+  propTests,
+  unitTests,
 ) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
+import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent qualified as Concurrent
+import Control.Concurrent.Async qualified as Async
+import Control.Exception (throwIO)
 import Control.Lens (over, toListOf, view, (^.))
 import Control.Lens.Fold qualified as Lens
 import Control.Lens.Traversal qualified as Lens
 import Control.Monad (forM, forM_, void, when)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Except (runExceptT)
 import Control.Tracer (nullTracer)
 import Data.List ((\\))
 import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
-import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Gen, PropertyT, (===))
 import Hedgehog qualified as H
+import Hedgehog.Extras qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as H.Range
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.ChainIndex.Indexers (mintBuilder)
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
   EventType (BurnEventType, MintEventType),
   MintAsset (MintAsset),
@@ -38,6 +45,7 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   QueryByAssetId (QueryByAssetId),
   StandardMintTokenEventIndexer,
   mintAssetAssetId,
+  mintAssetAssetName,
   mintAssetPolicyId,
   mintAssetQuantity,
   mintTokenEventAsset,
@@ -48,14 +56,23 @@ import Marconi.ChainIndex.Indexers.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
+import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen
+import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
+import Test.Helpers qualified as Helpers
+import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
-tests :: TestTree
-tests =
+{- | Genuine property tests, in which more than one test can be run and
+ - options on the number of tests might be configured by the caller.
+-}
+propTests :: TestTree
+propTests =
   testGroup
     "Spec.Marconi.ChainIndex.Indexers.MintTokenEvent"
     [ testGroup
@@ -122,6 +139,23 @@ tests =
             "Don't find anything at untrack AssetId"
             "propRunnerDoesntTrackUnselectedAssetId"
             propRunnerDoesntTrackUnselectedAssetId
+        ]
+    ]
+
+{- | Unit tests, defined with the Hedgehog API.
+ - Tests defined @Hedgehog.'propertyOnce'@ or otherwise with
+   a fixed number of test runs that should not be changed.
+-}
+unitTests :: TestTree
+unitTests =
+  testGroup
+    "Spec.Marconi.ChainIndex.Indexers.MintTokenEvent"
+    [ testGroup
+        "End-to-end indexer tests with cardano-node-emulator"
+        [ testPropertyNamed
+            "Indexing a testnet and then submitting a transaction with a mint event to it has the indexer receive that mint event"
+            "endToEndMintTokenEvent"
+            endToEndMintTokenEvent
         ]
     ]
 
@@ -574,6 +608,98 @@ queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
         Nothing -> MintTokenEvent.AllEvents
   H.evalExceptT $ Core.queryLatest query indexer
 
+{- | End-to-end test that a single mint event sent over a local network
+ - via cardano-node-emulator is received by the indexer.
+-}
+endToEndMintTokenEvent :: H.Property
+endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
+  -- Setup
+  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
+  let marconiTrace = mkMarconiTrace trace
+
+  -- Local node config and connect info, with slots of length 100ms
+  (nscConfig, localNodeConnectInfo) <- liftIO $ Integration.mkLocalNodeInfo tempPath 100
+
+  let
+    -- Do no filtering
+    mintTokenConfig = MintTokenEvent.MintTokenEventConfig Nothing
+    catchupConfig = Integration.mkEndToEndCatchupConfig
+    config =
+      Integration.mkEndToEndRunIndexerConfig
+        marconiTrace
+        nscConfig
+        Integration.anyTxBodyWithDistancePreprocessor
+
+  -- Create the worker/coordinator
+  StandardWorker mindexer worker <-
+    H.evalIO $
+      either throwIO pure
+        =<< runExceptT
+          ( mintBuilder
+              (config ^. Runner.runIndexerConfigSecurityParam)
+              catchupConfig
+              mintTokenConfig
+              trace
+              tempPath
+          )
+  coordinator <- H.evalIO $ Core.mkCoordinator [worker]
+
+  -- Generate a random MintValue
+  txMintValue <- H.forAll Gen.genTxMintValue
+
+  H.evalIO $ Integration.startTestnet nscConfig
+
+  res <- H.evalIO
+    $ Async.race
+      (Runner.runIndexer config coordinator)
+    $ do
+      threadDelay 5_000_000
+
+      ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
+
+      -- Transaction-builder inputs
+      address <- Helpers.nothingFail "Empty knownShelleyAddress" Integration.knownShelleyAddress
+      witnessSigningKey <-
+        Helpers.nothingFail "Empty knownWitnessSigningKey" Integration.knownWitnessSigningKey
+      (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+      let validityRange = Integration.unboundedValidityRange
+
+      let txbody =
+            Integration.mkUnbalancedTxBodyContent
+              validityRange
+              ledgerPP
+              txIns
+              txIns
+              [Helpers.mkTxOut address $ C.lovelaceToValue lovelace <> Gen.getValueFromTxMintValue txMintValue]
+              txMintValue
+
+      -- Submit the transaction
+      Integration.validateAndSubmitTx
+        localNodeConnectInfo
+        ledgerPP
+        (Integration.nscNetworkId nscConfig)
+        address
+        witnessSigningKey
+        txbody
+        lovelace
+
+      threadDelay 5_000_000
+
+      indexer <- readMVar mindexer
+
+      runExceptT (Core.queryLatest MintTokenEvent.AllMintEvents indexer)
+        >>= either throwIO pure
+
+  queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
+
+  -- Test
+  let queryPolicyAssets = List.sort $ getPolicyAssetsFromTimedEvents queryEvents
+      inputPolicyAssets = List.sort $ getPolicyAssetsFromTxMintValue txMintValue
+
+  queryPolicyAssets === inputPolicyAssets
+
+{- Utilities -}
+
 getPolicyIdFromAssetId :: C.AssetId -> C.PolicyId
 getPolicyIdFromAssetId C.AdaAssetId = ""
 getPolicyIdFromAssetId (C.AssetId pid _) = pid
@@ -629,6 +755,28 @@ getFlattenedTimedEvent timedEvent =
         Core.Timed (timedEvent ^. Core.point) e
     )
     $ timedEvent ^. Core.event . mintTokenEvents
+
+getPolicyAssetsFromTimedEvents
+  :: [Core.Timed C.ChainPoint MintTokenBlockEvents]
+  -> [(C.PolicyId, C.AssetName, C.Quantity)]
+getPolicyAssetsFromTimedEvents = map (op . (^. Core.event . mintTokenEventAsset)) . getFlattenedTimedEvents
+  where
+    op e = (e ^. mintAssetPolicyId, e ^. mintAssetAssetName, e ^. mintAssetQuantity)
+
+-- | Unpack a TxMintValue into its id, name and quantity. Note there can be multiple assets.
+getPolicyAssetsFromTxMintValue
+  :: C.TxMintValue C.BuildTx C.BabbageEra -> [(C.PolicyId, C.AssetName, C.Quantity)]
+getPolicyAssetsFromTxMintValue txMintValue = case txMintValue of
+  (C.TxMintValue C.MultiAssetInBabbageEra mintedValues (C.BuildTxWith _policyIdToWitnessMap)) ->
+    mapMaybe
+      ( \(assetId, quantity) -> case assetId of
+          C.AssetId policyId assetName -> Just (policyId, assetName, quantity)
+          C.AdaAssetId -> Nothing
+      )
+      $ C.valueToList mintedValues
+  _ -> []
+
+{- Generators -}
 
 genTimedEvents :: Gen [Core.Timed C.ChainPoint (Maybe MintTokenBlockEvents)]
 genTimedEvents = do
