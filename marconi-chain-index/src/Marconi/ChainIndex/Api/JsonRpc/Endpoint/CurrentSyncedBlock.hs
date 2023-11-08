@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
@@ -12,9 +13,12 @@ import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (runExceptT)
-import Data.Aeson (FromJSON, ToJSON)
+import Control.Monad.Reader ()
+import Data.Aeson ()
+import Data.Aeson.TH (Options (omitNothingFields), defaultOptions, deriveJSON, fieldLabelModifier)
 import Data.Bifunctor (first)
-import GHC.Generics (Generic)
+import Data.Char (toLower)
+import Data.Word (Word64)
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
   Tip,
   fromChainTip,
@@ -36,12 +40,25 @@ type RpcGetCurrentSyncedBlock =
     GetCurrentSyncedBlockResult
 
 data GetCurrentSyncedBlockResult = GetCurrentSyncedBlockResult
-  { blockNo :: Maybe C.BlockNo
-  , blockHeaderHash :: Maybe (C.Hash C.BlockHeader)
-  , slotNo :: Maybe C.SlotNo
-  , nodeTip :: Maybe Tip
+  { currentSyncedBlockResultBlockNo :: Maybe C.BlockNo
+  , currentSyncedBlockResultBlockTimestamp :: Maybe Word64
+  , currentSyncedBlockResultBlockHeaderHash :: Maybe (C.Hash C.BlockHeader)
+  , currentSyncedBlockResultSlotNo :: Maybe C.SlotNo
+  , currentSyncedBlockResultEpochNo :: Maybe C.EpochNo
+  , currentSyncedBlockResultNodeTip :: Maybe Tip
   }
-  deriving (Eq, Ord, Generic, Show, FromJSON, ToJSON)
+  deriving (Eq, Ord, Show)
+
+$( deriveJSON
+    defaultOptions
+      { fieldLabelModifier = \str ->
+          case drop 24 str of
+            c : rest -> toLower c : rest
+            _ -> error "Malformed label in JSON type GetCurrentSyncedBlockResult."
+      , omitNothingFields = True
+      }
+    ''GetCurrentSyncedBlockResult
+ )
 
 getCurrentSyncPointHandler
   :: ReaderHandler
@@ -75,9 +92,16 @@ getCurrentSyncedBlockHandler
       )
 getCurrentSyncedBlockHandler =
   let processCurrentSync :: C.ChainPoint -> BlockInfo -> Maybe Tip -> GetCurrentSyncedBlockResult
-      processCurrentSync C.ChainPointAtGenesis _blockInfo tip = GetCurrentSyncedBlockResult Nothing Nothing Nothing tip
+      processCurrentSync C.ChainPointAtGenesis _blockInfo tip =
+        GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing Nothing tip
       processCurrentSync (C.ChainPoint slotNo' hash) blockInfo tip =
-        GetCurrentSyncedBlockResult (Just $ blockInfo ^. BlockInfo.blockNo) (Just hash) (Just slotNo') tip
+        GetCurrentSyncedBlockResult
+          (Just $ blockInfo ^. BlockInfo.blockNo)
+          (Just $ blockInfo ^. BlockInfo.timestamp)
+          (Just hash)
+          (Just slotNo')
+          (Just $ blockInfo ^. BlockInfo.epochNo)
+          tip
       mapResult :: Core.Result CurrentSyncPoint.CurrentSyncPointQuery -> GetCurrentSyncedBlockResult
       mapResult (Core.Timed point (CurrentSyncPoint.CurrentSyncPointResult blockInfo tip)) =
         processCurrentSync point blockInfo $ fromChainTip tip

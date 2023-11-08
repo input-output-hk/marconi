@@ -10,7 +10,7 @@ import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Indexers.UtxoQuery (UtxoQueryEvent, UtxoQueryIndexer)
+import Marconi.ChainIndex.Indexers.UtxoQuery (UtxoQueryEvent)
 import Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
 
@@ -174,7 +174,10 @@ propTrippingUtxoResultJSON = Hedgehog.property $ do
 
 withIndexer
   :: Gen.MockchainWithInfo C.BabbageEra
-  -> ( UtxoQueryIndexer (ExceptT (Core.QueryError UtxoQuery.UtxoQueryEvent) IO)
+  -> ( Core.SQLiteAggregateQuery
+        (ExceptT (Core.QueryError UtxoQueryEvent) IO)
+        C.ChainPoint
+        UtxoQueryEvent
        -> ExceptT (Core.QueryError UtxoQuery.UtxoQueryEvent) IO a
      )
   -> ExceptT (Core.QueryError UtxoQuery.UtxoQueryEvent) IO a
@@ -201,7 +204,11 @@ indexMockchain
       fmap (either (error . show) id)
         . Core.indexAllEither (Test.BlockInfo.getBlockInfoEvents chainWithInfo)
 
-closeIndexers :: (MonadIO m) => UtxoQueryIndexers -> UtxoQueryIndexer m -> m ()
+closeIndexers
+  :: (MonadIO m)
+  => UtxoQueryIndexers
+  -> Core.SQLiteAggregateQuery m C.ChainPoint UtxoQueryEvent
+  -> m ()
 closeIndexers
   (UtxoQueryIndexers utxoVar spentVar datumVar blockInfoVar)
   aggregate = do
@@ -231,7 +238,10 @@ utxoQueryIndexersAsAggregate
 mkUtxoQuery
   :: IO
       ( UtxoQueryIndexers
-      , UtxoQueryIndexer (ExceptT (Core.QueryError UtxoQueryEvent) IO)
+      , Core.SQLiteAggregateQuery
+          (ExceptT (Core.QueryError UtxoQueryEvent) IO)
+          C.ChainPoint
+          UtxoQueryEvent
       )
 mkUtxoQuery = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
   let blockInfoPath = dir </> "blockInfo.db"

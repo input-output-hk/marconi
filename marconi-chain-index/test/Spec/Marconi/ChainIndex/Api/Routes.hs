@@ -12,6 +12,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
+import Data.Text (Text)
 import Hedgehog (
   Property,
   forAll,
@@ -24,12 +25,15 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
  )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (Tip (Tip))
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
+  ActiveSDDResult (ActiveSDDResult),
+  EpochNonceResult (EpochNonceResult),
+  nonceToMaybe,
+ )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-import Marconi.ChainIndex.Indexers.EpochState (EpochNonce (EpochNonce), EpochSDD (EpochSDD))
-import Marconi.Core (Timed (Timed))
 import Spec.Marconi.ChainIndex.Api.Gen (
   genBurnTokenEventResult,
   genGetBurnTokenEventsParams,
@@ -77,10 +81,25 @@ tests =
             "test/Spec/Golden/Routes/epoch-stakepooldelegation-response.json"
             goldenEpochStakePoolDelegationResult
         , goldenVsStringDiff
+            "Golden test for EpochStakePoolDelegationAtGenesisResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-stakepooldelegation-at-genesis-response.json"
+            goldenEpochStakePoolDelegationAtGenesisResult
+        , goldenVsStringDiff
             "Golden test for EpochNonResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/epoch-nonce-response.json"
             goldenEpochNonceResult
+        , goldenVsStringDiff
+            "Golden test for EpochNonResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-nonce-byron-response.json"
+            goldenEpochNonceByronResult
+        , goldenVsStringDiff
+            "Golden test for EpochNonResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-nonce-at-genesis-response.json"
+            goldenEpochNonceAtGenesisResult
         ]
     ]
 
@@ -97,47 +116,38 @@ propJSONRountripGetBurnTokenEventsResult = property $ do
   tripping r Aeson.encode Aeson.eitherDecode
 
 goldenCurrentChainPointGenesisResult :: IO ByteString
-goldenCurrentChainPointGenesisResult = do
-  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing
+goldenCurrentChainPointGenesisResult =
+  do
+    pure
+    $ Aeson.encodePretty
+    $ GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing Nothing Nothing
 
 goldenCurrentChainPointResult :: IO ByteString
 goldenCurrentChainPointResult = do
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
+      epochNo = C.EpochNo 6
       blockNo = C.BlockNo 64903
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+      blockTimestamp = 0
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   pure $
     Aeson.encodePretty $
       GetCurrentSyncedBlockResult
         (Just blockNo)
+        (Just blockTimestamp)
         (Just blockHeaderHash)
         (Just (C.SlotNo 1))
+        (Just epochNo)
         (Just $ Tip blockNo blockHeaderHash (C.SlotNo 1))
 
 goldenMintingPolicyHashTxResult :: IO ByteString
 goldenMintingPolicyHashTxResult = do
   let redeemerData = C.ScriptDataNumber 34
   let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
-  txId <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex C.AsTxId txIdRawBytes
+  txId <- getTxIdHash txIdRawBytes
 
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   let mints =
         [ BurnTokenEventResult
@@ -157,37 +167,42 @@ goldenMintingPolicyHashTxResult = do
 goldenEpochStakePoolDelegationResult :: IO ByteString
 goldenEpochStakePoolDelegationResult = do
   let blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
-  blockHeaderHash <-
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromRawBytesHex
-        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
-        blockHeaderHashRawBytes
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   let poolIdsBech32 =
         [ "pool1z22x50lqsrwent6en0llzzs9e577rx7n3mv9kfw7udwa2rf42fa"
         , "pool1547tew8vmuj0g6vj3k5jfddudextcw6hsk2hwgg6pkhk7lwphe6"
         , "pool174mw7e20768e8vj4fn8y6p536n8rkzswsapwtwn354dckpjqzr8"
         ]
-  poolIds <- forM poolIdsBech32 $ \poolIdBech32 -> do
-    either
-      (error . show)
-      pure
-      $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32
+  poolIds <- getStakePoolHashes poolIdsBech32
 
   let lovelace = C.Lovelace 100000000000000
-      slotNo = C.SlotNo 1382422
-      epochNo = C.EpochNo 6
+      slotNo = Just $ C.SlotNo 1382422
       blockNo = C.BlockNo 64903
+      epochNo = C.EpochNo 123
 
   let result =
         fmap
-          ( \poolId ->
-              Timed
-                (C.ChainPoint slotNo blockHeaderHash)
-                (EpochSDD epochNo poolId lovelace blockNo)
-          )
+          (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo epochNo)
+          poolIds
+  pure $ Aeson.encodePretty result
+
+goldenEpochStakePoolDelegationAtGenesisResult :: IO ByteString
+goldenEpochStakePoolDelegationAtGenesisResult = do
+  let poolIdsBech32 =
+        [ "pool1z22x50lqsrwent6en0llzzs9e577rx7n3mv9kfw7udwa2rf42fa"
+        ]
+  poolIds <- getStakePoolHashes poolIdsBech32
+
+  let lovelace = C.Lovelace 100000000000000
+      slotNo = Nothing
+      blockHeaderHash = Nothing
+      blockNo = C.BlockNo 0
+      epochNo = C.EpochNo 0
+
+  let result =
+        fmap
+          (\poolId -> ActiveSDDResult poolId lovelace slotNo blockHeaderHash blockNo epochNo)
           poolIds
   pure $ Aeson.encodePretty result
 
@@ -197,11 +212,54 @@ goldenEpochNonceResult = do
         Ledger.Nonce $
           Crypto.castHash $
             Crypto.hashWith id "162d29c4e1cf6b8a84f2d692e67a3ac6bc7851bc3e6e4afe64d15778bed8bd86"
+      epochNo = Just $ C.EpochNo 2
+      blockNo = Just $ C.BlockNo 21645
+      slotNo = Just $ C.SlotNo 1382422
+      blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
 
   let result =
-        Just $
-          EpochNonce
-            (C.EpochNo 2)
-            nonce
-            (C.BlockNo 21645)
+        EpochNonceResult (Just blockHeaderHash) blockNo epochNo slotNo (nonceToMaybe nonce)
   pure $ Aeson.encodePretty result
+
+goldenEpochNonceByronResult :: IO ByteString
+goldenEpochNonceByronResult = do
+  let epochNo = Just $ C.EpochNo 2
+      blockNo = Just $ C.BlockNo 21645
+      slotNo = Just $ C.SlotNo 1382422
+      blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
+  blockHeaderHash <- getBlockHeaderHash blockHeaderHashRawBytes
+
+  let result =
+        EpochNonceResult (Just blockHeaderHash) blockNo epochNo slotNo (nonceToMaybe Ledger.NeutralNonce)
+  pure $ Aeson.encodePretty result
+
+goldenEpochNonceAtGenesisResult :: IO ByteString
+goldenEpochNonceAtGenesisResult = do
+  let result =
+        EpochNonceResult Nothing Nothing Nothing Nothing (nonceToMaybe Ledger.NeutralNonce)
+  pure $ Aeson.encodePretty result
+
+getBlockHeaderHash :: (Applicative f) => Crypto.ByteString -> f (CS.Hash CS.BlockHeader)
+getBlockHeaderHash rawBytes =
+  either
+    (error . show)
+    pure
+    $ C.deserialiseFromRawBytesHex
+      (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+      rawBytes
+
+getTxIdHash :: (Applicative f) => Crypto.ByteString -> f CS.TxId
+getTxIdHash rawBytes =
+  either
+    (error . show)
+    pure
+    $ C.deserialiseFromRawBytesHex C.AsTxId rawBytes
+
+getStakePoolHashes :: (Traversable t, Monad m) => t Text -> m (t (CS.Hash CS.StakePoolKey))
+getStakePoolHashes poolIdsBech32 =
+  forM poolIdsBech32 $ \poolIdBech32 -> do
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromBech32 (C.AsHash (C.proxyToAsType $ Proxy @CS.StakePoolKey)) poolIdBech32

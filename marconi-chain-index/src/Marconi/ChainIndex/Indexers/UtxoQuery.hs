@@ -101,10 +101,11 @@ data UtxoQueryAggregate m = forall
   }
 
 -- | An alias for the 'SQLiteAggregateQuery' that handle the 'UtxoQueryEvent'
-type UtxoQueryIndexer m = Core.SQLiteAggregateQuery m C.ChainPoint UtxoQueryEvent
+type UtxoQueryIndexer m =
+  Core.WithTrace IO (Core.SQLiteAggregateQuery m C.ChainPoint) UtxoQueryEvent
 
 -- | Generate a @UtxoQueryIndexer@ from the given source
-mkUtxoSQLiteQuery :: UtxoQueryAggregate m -> IO (UtxoQueryIndexer m)
+mkUtxoSQLiteQuery :: UtxoQueryAggregate m -> IO (Core.SQLiteAggregateQuery m C.ChainPoint event)
 mkUtxoSQLiteQuery (UtxoQueryAggregate _utxo _spent _datum _blockInfo) =
   Core.mkSQLiteAggregateQuery $
     Map.fromList
