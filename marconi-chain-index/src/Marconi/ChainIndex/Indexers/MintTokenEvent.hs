@@ -746,10 +746,6 @@ instance
 instance
   ( MonadIO m
   , MonadError (Core.QueryError (QueryByAssetId MintTokenBlockEvents)) m
-  , Core.IsSync
-      (ExceptT Core.IndexerError IO)
-      event
-      Core.SQLiteIndexer
   )
   => Core.IsSync m event MintTokenEventIndexerCombine
   where
