@@ -16,7 +16,7 @@ If you _really_ cannot use Nix and still want to contribute to Marconi, then xre
 
 This repository uses Nix to provide the development and build environment.
 
-For instructions on how to install and configure nix (including how to enable access to our binary caches), refer to link:https://github.com/input-output-hk/iogx/blob/main/doc/nix-setup-guide.md[this document]. 
+For instructions on how to install and configure Nix (including how to enable access to our binary caches), refer to link:https://github.com/input-output-hk/iogx/blob/main/doc/nix-setup-guide.md[this document]. 
 
 If you already have Nix installed and configured, you may enter the development shell by running `nix develop`.
 
