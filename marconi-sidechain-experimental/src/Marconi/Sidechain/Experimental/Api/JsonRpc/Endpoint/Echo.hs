@@ -2,6 +2,7 @@
 
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo where
 
+import qualified Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo as ChainIndex.Echo
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
@@ -16,4 +17,4 @@ type RpcEchoMethod = JsonRpc "echo" String String String
 echo
   :: String
   -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) String)
-echo = return . Right
+echo = ChainIndex.Echo.echo
