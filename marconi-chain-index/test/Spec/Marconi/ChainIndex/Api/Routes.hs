@@ -34,6 +34,14 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
+
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
+  AddressUtxoResult (AddressUtxoResult),
+  GetUtxosFromAddressResult (GetUtxosFromAddressResult),
+  SpentInfoResult (SpentInfoResult),
+  UtxoTxInput (UtxoTxInput),
+ )
+import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Spec.Marconi.ChainIndex.Api.Gen (
   genBurnTokenEventResult,
   genGetBurnTokenEventsParams,
@@ -85,6 +93,11 @@ tests =
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/epoch-stakepooldelegation-at-genesis-response.json"
             goldenEpochStakePoolDelegationAtGenesisResult
+        , goldenVsStringDiff
+            "Golden test for AddressUtxoResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/address-utxo-response.json"
+            goldenAddressUtxoResult
         , goldenVsStringDiff
             "Golden test for EpochNonResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
@@ -162,6 +175,68 @@ goldenMintingPolicyHashTxResult = do
             True
         ]
       result = GetBurnTokenEventsResult mints
+  pure $ Aeson.encodePretty result
+
+goldenAddressUtxoResult :: IO ByteString
+goldenAddressUtxoResult = do
+  let datum = C.ScriptDataNumber 34
+  let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
+  txId <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex C.AsTxId txIdRawBytes
+
+  let txId2RawBytes = "2f1f574c0365afd9865332eec4ff75e599d80c525afc7b7d6e38d27d0a01bf47"
+  txId2 <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex C.AsTxId txId2RawBytes
+
+  let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
+  blockHeaderHash <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex
+        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        blockHeaderHashRawBytes
+
+  let spentTxIdRawBytes = "2e19f40cdf462444234d0de049163d5269ee1150feda868560315346dd12807d"
+  spentTxId <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex C.AsTxId spentTxIdRawBytes
+
+  let utxos =
+        [ AddressUtxoResult
+            (C.SlotNo 1)
+            blockHeaderHash
+            (C.EpochNo 0)
+            (C.BlockNo 1)
+            (TxIndexInBlock 0)
+            (C.TxIn txId (C.TxIx 0))
+            Nothing
+            Nothing
+            (C.valueFromList [(C.AdaAssetId, 10)])
+            Nothing
+            [UtxoTxInput $ C.TxIn txId2 (C.TxIx 1)]
+        , AddressUtxoResult
+            (C.SlotNo 1)
+            blockHeaderHash
+            (C.EpochNo 0)
+            (C.BlockNo 1)
+            (TxIndexInBlock 0)
+            (C.TxIn txId (C.TxIx 0))
+            (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
+            (Just datum)
+            (C.valueFromList [(C.AdaAssetId, 1)])
+            (Just $ SpentInfoResult (C.SlotNo 12) spentTxId)
+            [UtxoTxInput $ C.TxIn txId (C.TxIx 0)]
+        ]
+      result = GetUtxosFromAddressResult utxos
   pure $ Aeson.encodePretty result
 
 goldenEpochStakePoolDelegationResult :: IO ByteString

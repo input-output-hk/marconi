@@ -14,6 +14,7 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
   getTargetAddressesQueryHandler,
  )
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (getUtxosFromAddressQueryHandler)
 import Marconi.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI)
 import Marconi.ChainIndex.Api.Types (HttpServerConfig)
 import Marconi.Core.JsonRpc (ReaderServer)
@@ -28,3 +29,4 @@ jsonRpcServer =
     :<|> getEpochNonceHandler
     :<|> getBurnTokenEventsHandler
     :<|> getCurrentSyncedBlockHandler
+    :<|> getUtxosFromAddressQueryHandler

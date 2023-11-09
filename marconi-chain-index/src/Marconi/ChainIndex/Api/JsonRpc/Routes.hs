@@ -17,6 +17,7 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
   RpcTargetAddressesMethod,
  )
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (RpcGetUtxosFromAddressMethod)
 import Network.JsonRpc.Types (RawJsonRpc)
 import Servant ((:<|>), (:>))
 
@@ -31,3 +32,4 @@ type RpcAPI =
     :<|> RpcEpochNonceMethod
     :<|> RpcGetBurnTokenEventsMethod
     :<|> RpcGetCurrentSyncedBlock
+    :<|> RpcGetUtxosFromAddressMethod

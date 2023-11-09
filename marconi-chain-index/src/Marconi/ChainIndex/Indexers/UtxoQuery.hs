@@ -36,7 +36,6 @@ import Control.Concurrent (MVar)
 import Control.Lens ((^.), (^?))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO (liftIO))
-import Control.Monad.Except (MonadError)
 import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
@@ -228,6 +227,7 @@ data UtxoQueryInput = UtxoQueryInput
   , _upperBound :: Maybe C.SlotNo
   -- ^ Inclusive upperBound (utxo spent after this point displaed with their spent information)
   }
+  deriving (Generic, ToJSON, FromJSON)
 
 Lens.makeLenses ''UtxoQueryInput
 
@@ -283,8 +283,8 @@ baseQuery =
   |]
 
 instance
-  (MonadIO m, MonadError (Core.QueryError UtxoQueryEvent) m)
-  => Core.Queryable m UtxoQueryEvent UtxoQueryInput (Core.SQLiteAggregateQuery m C.ChainPoint)
+  (MonadIO m)
+  => Core.Queryable m UtxoQueryEvent UtxoQueryInput (Core.SQLiteAggregateQuery IO C.ChainPoint)
   where
   query point q indexer =
     let addressFilter = (["u.address = :address"], [":address" := q ^. address])

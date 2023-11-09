@@ -19,7 +19,7 @@ import Control.Concurrent qualified as Concurrent
 import Control.Lens ((^.), (^..), (^?))
 import Control.Lens qualified as Lens
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Control.Monad.Trans.Except (runExceptT)
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 
@@ -78,11 +78,10 @@ propAllUnspent = Hedgehog.property $ do
     Hedgehog.forAll $
       Hedgehog.Gen.element $
         utxoEvents ^.. Lens.folded . Core.event . Lens.folded . Lens.folded . Utxo.address
-  (Right res) :: Either (Core.QueryError UtxoQuery.UtxoQueryEvent) [UtxoQuery.UtxoResult] <-
+  res :: [UtxoQuery.UtxoResult] <-
     liftIO $
-      runExceptT $
-        withIndexer events $
-          Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
+      withIndexer events $
+        Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
   Hedgehog.assert $
     all (> point) (res ^.. Lens.folded . UtxoQuery.spentInfo . Lens.folded . Core.point)
 
@@ -98,11 +97,10 @@ propResolvedDatum = Hedgehog.property $ do
     Hedgehog.forAll $
       Hedgehog.Gen.element $
         utxoEvents ^.. Lens.folded . Core.event . Lens.folded . Lens.folded . Utxo.address
-  (Right res) :: Either (Core.QueryError UtxoQuery.UtxoQueryEvent) [UtxoQuery.UtxoResult] <-
+  res :: [UtxoQuery.UtxoResult] <-
     liftIO $
-      runExceptT $
-        withIndexer events $
-          Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
+      withIndexer events $
+        Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
   let storedData = Test.Datum.getDatumsEvents $ Gen.mockchainWithInfoAsMockchain events
       notInDatumEvents :: C.Hash C.ScriptData -> Either String String
       notInDatumEvents hash =
@@ -155,11 +153,10 @@ propFutureSpentAreTxIn = Hedgehog.property $ do
     Hedgehog.forAll $
       Hedgehog.Gen.element $
         utxoEvents ^.. Lens.folded . Core.event . Lens.folded . Lens.folded . Utxo.address
-  (Right res) :: Either (Core.QueryError UtxoQuery.UtxoQueryEvent) [UtxoQuery.UtxoResult] <-
+  res :: [UtxoQuery.UtxoResult] <-
     liftIO $
-      runExceptT $
-        withIndexer events $
-          Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
+      withIndexer events $
+        Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
   let findSpentInUtxos = flip elem txIds
       findUTxo utxoRes = fromMaybe True $ do
         spendTxId <- utxoRes ^? UtxoQuery.spentInfo . traverse . Core.event . Lens._2
@@ -175,17 +172,17 @@ propTrippingUtxoResultJSON = Hedgehog.property $ do
 withIndexer
   :: Gen.MockchainWithInfo C.BabbageEra
   -> ( Core.SQLiteAggregateQuery
-        (ExceptT (Core.QueryError UtxoQueryEvent) IO)
+        IO
         C.ChainPoint
         UtxoQueryEvent
-       -> ExceptT (Core.QueryError UtxoQuery.UtxoQueryEvent) IO a
+       -> IO a
      )
-  -> ExceptT (Core.QueryError UtxoQuery.UtxoQueryEvent) IO a
+  -> IO a
 withIndexer events f = do
   (indexers, utxoQuery) <- liftIO mkUtxoQuery
   liftIO $ indexMockchain indexers events
-  res <- f utxoQuery
-  void $ liftIO $ runExceptT $ closeIndexers indexers utxoQuery
+  res <- liftIO $ f utxoQuery
+  void $ liftIO $ closeIndexers indexers utxoQuery
   pure res
 
 indexMockchain
@@ -239,7 +236,7 @@ mkUtxoQuery
   :: IO
       ( UtxoQueryIndexers
       , Core.SQLiteAggregateQuery
-          (ExceptT (Core.QueryError UtxoQueryEvent) IO)
+          IO
           C.ChainPoint
           UtxoQueryEvent
       )
