@@ -15,7 +15,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Main where
+module BasicApp where
 
 -- BLOCKSTART import
 
@@ -60,7 +60,13 @@ import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 -- BLOCKEND import
 
 main :: IO ()
-main = runBlockInfoSqliteIndexerHttp
+main = do
+  -- We start by getting the network id and socket file path of the local node.
+  -- We get the values through the CLI.
+  [socketFilePath, networkMagicStr] <- getArgs
+  let networkMagic = read networkMagicStr
+      networkId = C.Testnet $ C.NetworkMagic networkMagic
+  runBlockInfoSqliteIndexerHttp socketFilePath networkId
 
 -- BLOCKSTART env
 data Env indexer = Env
@@ -84,22 +90,18 @@ data Env indexer = Env
   }
 
 withIndexerBuildEnv
-  :: Core.WorkerIndexer IO BlockEvent BlockInfoEvent indexer
+  :: FilePath
+  -> C.NetworkId
+  -> Core.WorkerIndexer IO BlockEvent BlockInfoEvent indexer
   -> (Env indexer -> IO ())
   -> IO ()
-withIndexerBuildEnv worker action = do
-  -- We start by getting the network id and socket file path of the local node.
-  -- We get the values through the CLI.
-  [socketFilePath, networkMagicStr] <- getArgs
-  let networkMagic = read networkMagicStr
-
+withIndexerBuildEnv socketFilePath networkId worker action = do
   -- For logging, we use IOG's logging framework
   -- called `iohk-monitoring-framework`: https://github.com/input-output-hk/iohk-monitoring-framework.
   -- We initialise the trace with default values.
   traceConfig <- Trace.defaultConfigStdout
   Trace.withTrace traceConfig "marconi-tutorial" $ \stdoutTrace -> do
     let marconiTrace = mkMarconiTrace stdoutTrace
-    let networkId = C.Testnet $ C.NetworkMagic networkMagic
 
     -- We query the local node for the security parameter with a retry mechanism
     -- in case the node has not been started.
@@ -111,18 +113,18 @@ withIndexerBuildEnv worker action = do
 -- BLOCKEND env
 
 -- BLOCKSTART runBlockInfoListIndexer
-runBlockInfoListIndexer :: IO ()
-runBlockInfoListIndexer = do
+runBlockInfoListIndexer :: FilePath -> C.NetworkId -> IO ()
+runBlockInfoListIndexer socketFilePath networkId = do
   worker <- mkBlockInfoListIndexerWorker
-  withIndexerBuildEnv worker $ \env -> liftIO $ runIndexer env
+  withIndexerBuildEnv socketFilePath networkId worker $ \env -> liftIO $ runIndexer env
 
 -- BLOCKEND runBlockInfoListIndexer
 
 -- BLOCKSTART runBlockInfoSqliteIndexer
-runBlockInfoSqliteIndexer :: IO ()
-runBlockInfoSqliteIndexer = do
+runBlockInfoSqliteIndexer :: FilePath -> C.NetworkId -> IO ()
+runBlockInfoSqliteIndexer socketFilePath networkId = do
   worker <- mkBlockInfoSqliteIndexerWorker ":memory:"
-  withIndexerBuildEnv worker $ \env -> liftIO $ runIndexer env
+  withIndexerBuildEnv socketFilePath networkId worker $ \env -> liftIO $ runIndexer env
 
 -- BLOCKEND runBlockInfoSqliteIndexer
 
@@ -160,10 +162,10 @@ runIndexer env = do
 -- BLOCKEND runBlockInfoIndexer
 
 -- BLOCKSTART runBlockInfoListIndexerHttp
-runBlockInfoListIndexerHttp :: IO ()
-runBlockInfoListIndexerHttp = do
+runBlockInfoListIndexerHttp :: FilePath -> C.NetworkId -> IO ()
+runBlockInfoListIndexerHttp socketFilePath networkId = do
   worker <- mkBlockInfoListIndexerWorker
-  withIndexerBuildEnv worker $ \env -> do
+  withIndexerBuildEnv socketFilePath networkId worker $ \env -> do
     let blockInfoWorker = envIndexerWorker env
     let blockInfoIndexerVar = Core.workerIndexerVar blockInfoWorker
 
@@ -176,10 +178,10 @@ runBlockInfoListIndexerHttp = do
 -- BLOCKEND runBlockInfoListIndexerHttp
 
 -- BLOCKSTART runBlockInfoSqliteIndexerHttp
-runBlockInfoSqliteIndexerHttp :: IO ()
-runBlockInfoSqliteIndexerHttp = do
+runBlockInfoSqliteIndexerHttp :: FilePath -> C.NetworkId -> IO ()
+runBlockInfoSqliteIndexerHttp socketFilePath networkId = do
   worker <- mkBlockInfoSqliteIndexerWorker ":memory:"
-  withIndexerBuildEnv worker $ \env -> do
+  withIndexerBuildEnv socketFilePath networkId worker $ \env -> do
     let blockInfoWorker = envIndexerWorker env
     let blockInfoIndexerVar = Core.workerIndexerVar blockInfoWorker
 

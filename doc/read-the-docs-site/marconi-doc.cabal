@@ -33,10 +33,10 @@ common lang
     -Wnoncanonical-monad-instances -Wredundant-constraints
     -Wunused-packages
 
-executable marconi-doc
-  import:         lang
-  hs-source-dirs: doc/marconi-as-a-library/tutorials
-  main-is:        BasicApp.hs
+library
+  import:          lang
+  hs-source-dirs:  doc/marconi-as-a-library/tutorials
+  exposed-modules: BasicApp
 
   --------------------
   -- Local components
@@ -64,4 +64,46 @@ executable marconi-doc
     , mtl
     , servant-server
     , sqlite-simple
+    , warp
+
+test-suite marconi-doc-test
+  import:         lang
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: doc/marconi-as-a-library/tutorials
+  main-is:        BasicAppSpec.hs
+  other-modules:  BasicApp
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-chain-index    >=1.2.0
+    , marconi-core           >=1.2.0
+    , marconi-core-json-rpc  >=1.2.0
+    , marconi-doc
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
+    , iohk-monitoring
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base             >=4.9 && <5
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , mtl
+    , servant-server
+    , sqlite-simple
+    , tasty
+    , tasty-hedgehog
     , warp

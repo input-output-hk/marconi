@@ -35,7 +35,9 @@ import Test.Helpers qualified as Helpers
 
 {- Node emulator setup and helpers -}
 
--- | Start a testnet using the node emulator, omitting 'SlotAdd' messages.
+{- | Start a testnet using the node emulator, omitting 'SlotAdd' messages.
+TODO: This should be moved to cardano-node-emulator
+-}
 startTestnet
   :: E.Types.NodeServerConfig
   -> IO ()
@@ -43,13 +45,17 @@ startTestnet = E.main (condTracing (not . isSlotAddLogObject . snd) E.prettyTrac
   where
     isSlotAddLogObject = isSlotAddMsg . loContent
 
--- | Predicate used to suppress 'SlotAdd' messages in the logger.
+{- | Predicate used to suppress 'SlotAdd' messages in the logger.
+TODO: This should be moved to cardano-node-emulator
+-}
 isSlotAddMsg :: LOContent E.Types.CNSEServerLogMsg -> Bool
 isSlotAddMsg (LogMessage (E.Types.ProcessingEmulatorMsg (ChainEvent (SlotAdd _)))) = True
 isSlotAddMsg _ = False
 
 {- | Construct local node configuration for node emulator from a temporary directory path and slot
 length parameter, for use in integration tests.
+
+TODO: This should be moved to cardano-node-emulator
 -}
 mkLocalNodeInfo
   :: FilePath
@@ -75,19 +81,26 @@ mkLocalNodeInfo tempAbsBasePath slotLength = do
           }
   pure (config, localNodeConnectInfo)
 
--- | Take the first @C.'ShelleyAddr'@ of @Cardano.Node.Emulator.Generators.'knownAddresses'@.
+{- | Take the first @C.'ShelleyAddr'@ of @Cardano.Node.Emulator.Generators.'knownAddresses'@.
+TODO: This should be moved to cardano-node-emulator
+-}
 knownShelleyAddress :: Maybe (C.Address C.ShelleyAddr)
 knownShelleyAddress = listToMaybe knownAddresses >>= getShelleyAddr
   where
+    -- TODO This should be moved to cardano-api-extended
     getShelleyAddr :: C.AddressInEra C.BabbageEra -> Maybe (C.Address C.ShelleyAddr)
     getShelleyAddr (C.AddressInEra (C.ShelleyAddressInEra C.ShelleyBasedEraBabbage) addr) = Just addr
     getShelleyAddr _ = Nothing
 
--- | Take the first @C.'WitnessPaymentExtendedKey'@ from 'knownXPrvs'.
+{- | Take the first @C.'WitnessPaymentExtendedKey'@ from 'knownXPrvs'.
+TODO: This should be moved to cardano-node-emulator
+-}
 knownWitnessSigningKey :: Maybe C.ShelleyWitnessSigningKey
 knownWitnessSigningKey = C.WitnessPaymentExtendedKey . C.PaymentExtendedSigningKey <$> listToMaybe knownXPrvs
 
--- | Unbounded validity range for transaction validation in the Babbage era.
+{- | Unbounded validity range for transaction validation in the Babbage era.
+TODO: This should be moved to cardano-api
+-}
 unboundedValidityRange :: (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUpperBound C.BabbageEra)
 unboundedValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
 

@@ -124,7 +124,7 @@ propTrippingBlockInfoJSON = Hedgehog.property $ do
 
 -- | Test for block info using cardano-node-emulator
 endToEndBlockInfo :: Hedgehog.Property
-endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
+endToEndBlockInfo = Helpers.withUnitTestWithTmpDir "." $ \tempPath -> do
   -- Setup
   (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
   let marconiTrace = mkMarconiTrace trace

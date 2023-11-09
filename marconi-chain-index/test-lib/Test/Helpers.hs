@@ -1,6 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 
 module Test.Helpers where
 
@@ -226,14 +225,14 @@ setDarwinTmpdir = when (IO.os == "darwin") $ IO.setEnv "TMPDIR" "/tmp"
 {- | Run a unit test with the hedgehog API in the @HE.'Integration'@ context,
 with a temporary working directory.
 -}
-unitTestWithTmpDir
+withUnitTestWithTmpDir
   :: (GHC.HasCallStack)
   => FilePath
   -- ^ Prefix path
   -> (FilePath -> HE.Integration ())
   -- ^ Test to run with temporary working directory
   -> H.Property
-unitTestWithTmpDir prefixPath =
+withUnitTestWithTmpDir prefixPath =
   H.withShrinks 0
     . HE.propertyOnce
     . (liftIO setDarwinTmpdir >>)
