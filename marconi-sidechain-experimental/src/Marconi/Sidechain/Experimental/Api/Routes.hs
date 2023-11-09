@@ -36,7 +36,7 @@ import Marconi.Sidechain.Experimental.CLI (CliArgs)
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc, UnusedRequestParams)
 import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
 
--- | marconi-sidechain APIs
+-- | marconi-sidechain-experimental APIs
 type API = JsonRpcAPI :<|> RestAPI
 
 ----------------------------------------------
