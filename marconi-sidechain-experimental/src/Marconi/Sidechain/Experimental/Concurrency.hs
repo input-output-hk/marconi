@@ -12,7 +12,7 @@ import Control.Concurrent.MVar (newEmptyMVar, putMVar, tryTakeMVar)
 import Control.Exception (Exception, catch, throwIO)
 import Control.Monad (void)
 import Data.Void (Void)
-import Marconi.Sidechain.Error (HasExit, toExitCode, withSignalHandling)
+import Marconi.Sidechain.Experimental.Error (HasExit, toExitCode, withSignalHandling)
 import System.Exit (ExitCode (ExitFailure), exitWith)
 
 -- * Graceful exception handling after SIGINT or SIGTERM

@@ -1,1 +1,4 @@
-module Spec where
+module Main where
+
+main :: IO ()
+main = error "TODO"

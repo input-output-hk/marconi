@@ -53,20 +53,18 @@ library
 
   hs-source-dirs:  src
   exposed-modules:
+    Marconi.Sidechain.Experimental.Api.HttpServer
+    Marconi.Sidechain.Experimental.Api.Query.Indexers.EpochState
+    Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
+    Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
+    Marconi.Sidechain.Experimental.Api.Routes
+    Marconi.Sidechain.Experimental.Bootstrap
     Marconi.Sidechain.Experimental.CLI
+    Marconi.Sidechain.Experimental.Concurrency
+    Marconi.Sidechain.Experimental.Env
+    Marconi.Sidechain.Experimental.Error
     Marconi.Sidechain.Experimental.Run
-
-  --Marconi.Sidechain.Experimental.Api.HttpServer
-  --Marconi.Sidechain.Experimental.Api.Query.Indexers.EpochState
-  --Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
-  --Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
-  --Marconi.Sidechain.Experimental.Api.Routes
-  --Marconi.Sidechain.Experimental.Bootstrap
-  --Marconi.Sidechain.Experimental.CLI
-  --Marconi.Sidechain.Experimental.Concurrency
-  --Marconi.Sidechain.Experimental.Env
-  --Marconi.Sidechain.Experimental.Error
-  --Marconi.Sidechain.Experimental.Utils
+    Marconi.Sidechain.Experimental.Utils
 
   --------------------
   -- Local components
@@ -134,7 +132,8 @@ test-suite marconi-sidechain-experimental-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-  other-modules:
+
+  -- other-modules:
 
   --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
   --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
@@ -148,10 +147,10 @@ test-suite marconi-sidechain-experimental-test
 
   --------------------
   -- Required local executable
-  --------------------
   build-tool-depends:
     marconi-sidechain-experimental:marconi-sidechain-experimental
 
+  --------------------
   --------------------
   -- Local components
   --------------------
