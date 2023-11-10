@@ -57,32 +57,6 @@ data SQLiteSourceProvider m point
     (IsSourceProvider m event indexer, Point event ~ point) =>
     SQLiteSourceProvider (Con.MVar (indexer event))
 
-{- | Type alias for the type classes that are required to build a worker for an indexer
- type WorkerIndexerType n event indexer =
-   ( IsIndex n event indexer
-   , IsSync n event indexer
-   , Closeable n indexer
-   )
--}
-
--- {- | A worker hides the shape of an indexer and integrates the data needed to interact with a
--- coordinator.
--- -}
--- data WorkerM m input point = forall indexer event n.
---   ( WorkerIndexerType n event indexer
---   , Point event ~ point
---   ) =>
---   Worker
---   { workerName :: Text
---   -- ^ use to identify the worker in logs
---   , workerState :: MVar (indexer event)
---   -- ^ the indexer controlled by this worker
---   , transformInput :: Preprocessor (ExceptT IndexerError m) point input event
---   -- ^ adapt the input event givent by the coordinator to the worker type
---   , hoistError :: forall a. n a -> ExceptT IndexerError m a
---   -- ^ adapt the monadic stack of the indexer to the one of the worker
---   }
-
 -- | An aggregation of SQLite indexers used to build query across indexers.
 data SQLiteAggregateQuery m point event = SQLiteAggregateQuery
   { _databases :: [SQLiteSourceProvider m point]
@@ -99,13 +73,6 @@ databases = Lens.lens _databases (\agg _databases -> agg{_databases})
 aggregateConnection :: Lens.Lens' (SQLiteAggregateQuery m point event) SQL.Connection
 aggregateConnection =
   Lens.lens _aggregateConnection (\agg _aggregateConnection -> agg{_aggregateConnection})
-
--- -- | Adapt the monadic stack of the indexer to the one of the query
--- hoistError :: forall m point event n e. Lens.Lens' (SQLiteAggregateQuery m point event) (forall a. n a -> ExceptT e m a)
--- hoistError =
---   Lens.lens (\(SQLiteAggregateQuery _ _ hoist) -> hoist) (\(SQLiteAggregateQuery db ac _) _hoistError -> SQLiteAggregateQuery db ac _hoistError)
-
--- Lens.makeLenses ''SQLiteAggregateQuery
 
 {- | Build a @SQLiteSourceProvider@ from a map that attaches
 each database of the provided sources to the corresponding alias
