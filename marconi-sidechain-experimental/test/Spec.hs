@@ -2,90 +2,21 @@
 
 module Main (main) where
 
-import Cardano.BM.Setup (withTrace)
-import Cardano.BM.Tracing (defaultConfigTesting)
-import Control.Monad.Reader (runReaderT)
-
--- import Marconi.ChainIndex.Legacy.Logging (mkMarconiTrace)
--- import Marconi.Sidechain.Api.HttpServer (marconiApp)
--- import Marconi.Sidechain.CLI (parseCliArgs)
--- import Marconi.Sidechain.CLI qualified as CLI
--- import Marconi.Sidechain.Env (SidechainEnv, mkSidechainEnv)
-import Network.JsonRpc.Client.Types ()
-import Network.Wai.Handler.Warp qualified as Warp
-
--- import Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn qualified as Api.Query.Indexers.MintBurn
--- import Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo qualified as Api.Query.Indexers.Utxo
--- import Spec.Marconi.Sidechain.CLI qualified as CLI
--- import Spec.Marconi.Sidechain.CLIInputValidation qualified as CLIInputValidation
--- import Spec.Marconi.Sidechain.Env qualified as Env
--- import Spec.Marconi.Sidechain.Integration qualified as Integration
--- import Spec.Marconi.Sidechain.Routes qualified as Routes
--- import Spec.Marconi.Sidechain.RpcClientAction (RpcClientAction, mkRpcClientAction)
-
-import Control.Lens ((^.))
 import Marconi.ChainIndex.Logger (defaultStdOutLogger)
-import Marconi.Sidechain.Experimental.Api.HttpServer (sidechainApp)
-import Marconi.Sidechain.Experimental.CLI qualified as CLI
-import Marconi.Sidechain.Experimental.Env (mkSidechainEnvFromCliArgs, sidechainHttpServerConfig)
+import Network.JsonRpc.Client.Types ()
 import Spec.Marconi.Sidechain.Experimental.CLI qualified as CLI
-import System.Directory (createDirectory, getTemporaryDirectory)
-import System.FilePath ((</>))
+import System.Directory (getTemporaryDirectory)
 import System.IO.Temp (withTempDirectory)
-import Test.Tasty (TestTree, defaultMain, localOption, testGroup)
-import Test.Tasty.ExpectedFailure (ignoreTestBecause)
-import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
+import Test.Tasty (TestTree, defaultMain, testGroup)
 
+-- Tests are run in a temporary directory for later use with Warp.testWithApplication,
+-- as tests analogous to those in marconi-sidechain are added.
 main :: IO ()
 main = do
   tmp <- getTemporaryDirectory
   withTempDirectory tmp "marconi-sidechain" $ \tempDir -> do
     (trace, sb) <- defaultStdOutLogger "marconi-sidechain-experimental-test"
-    cliArgs <- mkCliArgs tempDir
     defaultMain tests
-
--- TODO: PLT-8076
--- Fixing security param since node is not yet running here to be able to query it.
--- env <- mkSidechainEnvFromCliArgs trace sb cliArgs 1
--- Warp.testWithApplication (pure $ sidechainApp $ env ^. sidechainHttpServerConfig) $ \port -> do
---  defaultMain tests
---  --rpcClientAction <- flip runReaderT env $ mkRpcClientAction port
---  -- defaultMain $ tests env rpcClientAction
 
 tests :: TestTree
 tests = testGroup "marconi-sidechain-experimental" [CLI.tests]
-
--- TODO: PLT-8076
--- tests :: SidechainEnv -> RpcClientAction -> TestTree
--- tests env rpcClientAction = testGroup "marconi-sidechain" []
---  testGroup
---    "marconi-sidechain"
---    [ ignoreTestBecause "needs local running cardano-node" Integration.tests
---    , CLIInputValidation.tests
---    , localOption (HedgehogTestLimit $ Just 200) $
---        testGroup
---          "marconi-sidechain" []
---          [ Env.tests env
---          , CLI.tests
---          , Routes.tests
---          , Api.Query.Indexers.Utxo.tests rpcClientAction
---          , Api.Query.Indexers.MintBurn.tests rpcClientAction
---          ]
---    ]
-
-mkCliArgs :: FilePath -> IO CLI.CliArgs
-mkCliArgs tempDir = do
-  let nodeConfigFile = tempDir </> "cardano-node-config.json"
-      nodeStateDir = tempDir </> "cardano-node-state"
-  writeFile nodeConfigFile "{}"
-  createDirectory nodeStateDir
-  CLI.parseCliArgs
-    [ "--testnet-magic"
-    , "1"
-    , "--node-config-path"
-    , nodeConfigFile
-    , "--socket-path"
-    , nodeStateDir </> "cardano-node.socket"
-    , "--db-dir"
-    , nodeStateDir
-    ]
