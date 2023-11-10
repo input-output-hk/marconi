@@ -11,6 +11,7 @@ import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (Trace, logError)
 import Control.Lens (makeLenses)
 import Control.Monad (unless)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (toJSON)
 import Data.List.NonEmpty qualified as NEList
 import Data.Set.NonEmpty qualified as NESet
@@ -27,6 +28,7 @@ import Marconi.ChainIndex.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig))
 import Marconi.ChainIndex.Logger (mkMarconiTrace)
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Runner qualified as ChainIndex.Runner
+import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.ChainIndex.Utils qualified as ChainIndex.Utils
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.Types (
@@ -71,16 +73,27 @@ makeLenses ''SidechainEnv
 
 {- CONSTRUCTORS -}
 
+querySecurityParamFromCliArgs :: (MonadIO m) => Trace IO Text -> CliArgs -> m SecurityParam
+querySecurityParamFromCliArgs trace CliArgs{..} =
+  liftIO $
+    withNodeConnectRetry (mkMarconiTrace trace) optionsRetryConfig socketFilePath $
+      ChainIndex.Utils.toException $
+        ChainIndex.Utils.querySecurityParam @Void networkId socketFilePath
+
 {- | Create the 'SidechainEnv' from the CLI arguments,
 with some validity checks on arguments needed to create the environment.
+
+The SecurityParam is an argument as it must be queried from a running node.
+Separating the parameter query from the rest of the logic allows for easier testing.
 -}
 mkSidechainEnvFromCliArgs
   :: Trace IO Text
   -> BM.Switchboard Text
   -- ^ Switchboard from iohk-monitoring, for sending shutdown.
   -> CliArgs
+  -> SecurityParam
   -> IO SidechainEnv
-mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} = do
+mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
   -- Local utility copied from Marconi.ChainIndex.Run.run
   -- See note there for motivation.
   let exitWithLogFullError :: Text -> IO a
@@ -101,11 +114,6 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} = do
 
   -- Create the db directory if needed
   createDirectoryIfMissing True dbDir
-
-  securityParam <-
-    withNodeConnectRetry marconiTrace optionsRetryConfig socketFilePath $
-      ChainIndex.Utils.toException $
-        ChainIndex.Utils.querySecurityParam @Void networkId socketFilePath
 
   -- Indexer config
   let

@@ -22,6 +22,7 @@ import Marconi.Sidechain.Experimental.Concurrency (
  )
 import Marconi.Sidechain.Experimental.Env (
   mkSidechainEnvFromCliArgs,
+  querySecurityParamFromCliArgs,
   sidechainHttpServerConfig,
   sidechainRunIndexersConfig,
  )
@@ -39,7 +40,7 @@ run =
 
     -- Create the 'SidechainEnv' from the CLI arguments,
     -- with some validity checks on arguments needed to create the environment.
-    env <- mkSidechainEnvFromCliArgs trace sb cliArgs
+    env <- mkSidechainEnvFromCliArgs trace sb cliArgs =<< querySecurityParamFromCliArgs trace cliArgs
 
     raceSignalHandled_
       (Unhandled (runReaderT runHttpServer (env ^. sidechainHttpServerConfig)))
