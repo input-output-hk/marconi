@@ -1,0 +1,62 @@
+marconi-sidechain - a lightweight customizable solution for indexing and
+querying the Cardano blockchain
+
+Usage: marconi-sidechain-experimental 
+         [--version] (-s|--socket-path FILE-PATH) --node-config-path ARG
+         (-d|--db-dir DIR) [--http-port INT] 
+         (--mainnet | --testnet-magic NATURAL) 
+         [--max-indexing-depth | --min-indexing-depth NATURAL] 
+         [(-a|--addresses-to-index BECH32-ADDRESS)] 
+         [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
+         [--fail-if-resyncing-from-genesis] [--initial-retry-time NATURAL] 
+         [--no-max-retry-time | --max-retry-time NATURAL] 
+         [(-n|--slot-no SLOT-NO) (-b|--block-header-hash BLOCK-HEADER-HASH)]
+
+  marconi-sidechain
+
+Available options:
+  -h,--help                Show this help text
+  --version                Show marconi version
+  -s,--socket-path FILE-PATH
+                           Path to node socket.
+  --node-config-path ARG   Path to node configuration which you are connecting
+                           to.
+  -d,--db-dir DIR          Directory path where all Marconi-related SQLite
+                           databases are located.
+  --http-port INT          JSON-RPC http port number (default: 3000)
+  --mainnet                Use the mainnet magic id.
+  --testnet-magic NATURAL  Specify a testnet magic id.
+  --max-indexing-depth     Only index blocks that are not rollbackable
+  --min-indexing-depth NATURAL
+                           Depth of a block before it is indexed in relation to
+                           the tip of the local connected node
+  -a,--addresses-to-index BECH32-ADDRESS
+                           Bech32 Shelley addresses to index. i.e
+                           "--address-to-index address-1 --address-to-index
+                           address-2 ..." or "--address-to-index "address-1
+                           address-2" ..."
+  --match-asset-id POLICY_ID[.ASSET_NAME]
+                           Asset to index, defined by the policy id and an
+                           optional asset name i.e "--match-asset-id
+                           assetname-1.policy-id-1 --match-asset-id policy-id-2
+                           ..." or "--match-asset-id "assetname-1.policy-id-1
+                           policy-id-2" ..."
+  --fail-if-resyncing-from-genesis
+                           Fails resuming if one indexer must resync from
+                           genesis when it can resume from a later point.
+  --initial-retry-time NATURAL
+                           Initial time (in seconds) before retry after a failed
+                           node connection. Defaults to 30s.
+  --no-max-retry-time      Unlimited retries.
+  --max-retry-time NATURAL Max time (in seconds) allowed after startup for
+                           retries. Defaults to 30min.
+  -n,--slot-no SLOT-NO     Slot number of the preferred starting point. Note
+                           that you also need to provide the starting point
+                           block header hash with `--block-header-hash`. Might
+                           fail if the target indexers can't resume from
+                           arbitrary points.
+  -b,--block-header-hash BLOCK-HEADER-HASH
+                           Block header hash of the preferred starting point.
+                           Note that you also need to provide the starting point
+                           slot number with `--slot-no`. Might fail if the
+                           target indexers can't resume from arbitrary points.

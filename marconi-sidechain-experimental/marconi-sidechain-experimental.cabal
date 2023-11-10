@@ -137,7 +137,8 @@ test-suite marconi-sidechain-experimental-test
 
   --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
   --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
-  --Spec.Marconi.Sidechain.Experimental.CLI
+  spec.marconi.sidechain.experimental.cli
+
   --Spec.Marconi.Sidechain.Experimental.CLIInputValidation
   --Spec.Marconi.Sidechain.Experimental.Env
   --Spec.Marconi.Sidechain.Experimental.Integration
