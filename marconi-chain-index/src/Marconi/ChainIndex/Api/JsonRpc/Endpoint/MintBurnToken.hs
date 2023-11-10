@@ -17,7 +17,6 @@ import Cardano.Api qualified as C
 import Control.Applicative ((<|>))
 import Control.Comonad (Comonad (extract))
 import Control.Lens (view, (^.), (^?), _1, _2)
-import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson.Types (ToJSON (toJSON), object, parseJSON, withObject, (.:), (.:?), (.=))
 import Data.Bifunctor (first)
@@ -42,7 +41,7 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, hoistHttpHandler, queryErrToRpcErr)
-import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, mkJsonRpcInternalErr)
+import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
 
 ------------------
 -- Method types --
@@ -124,18 +123,9 @@ getMintingPolicyHashTxHandler
       )
 getMintingPolicyHashTxHandler q = do
   indexer <- view (configQueryables . queryableMintToken)
-  lastPointM <- hoistHttpHandler $ runExceptT $ Core.lastSyncPoint indexer
-  case lastPointM of
-    Left err ->
-      pure $
-        Left $
-          mkJsonRpcInternalErr $
-            Just $
-              "Can't resolve last point in getBurnTokenEvents: " <> show err
-    Right lastPoint ->
-      hoistHttpHandler $
-        liftIO $
-          first queryErrToRpcErr <$> Core.queryEither lastPoint (Core.WithStability q) indexer
+  hoistHttpHandler $
+    liftIO $
+      first queryErrToRpcErr <$> Core.queryLatestEither (Core.WithStability q) indexer
 
 -- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
 getBurnTokenEventsHandler

@@ -59,6 +59,7 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintTokenEvents,
  )
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.ChainIndex.Indexers.MintTokenEventQuery qualified as MintTokenEventQuery
 import Marconi.ChainIndex.Indexers.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
@@ -862,7 +863,7 @@ mkMintCombine
   :: SecurityParam
   -> IO
       ( MintTokenIndexers
-      , MintTokenEvent.MintTokenEventIndexerCombine MintTokenEvent.MintTokenBlockEvents
+      , MintTokenEventQuery.MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents
       )
 mkMintCombine securityParam = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
   let blockInfoPath = dir </> "blockInfo.db"
@@ -903,13 +904,13 @@ mkMintCombine securityParam = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir
           mintTokenIndexer
 
   let indexers = MintTokenIndexers mintTokenVar blockInfoVar
-  let combined = MintTokenEvent.MintTokenEventIndexerCombine securityParam mintTokenVar blockInfoVar
+  let combined = MintTokenEventQuery.MintTokenEventIndexerQuery securityParam mintTokenVar blockInfoVar
   pure (indexers, combined)
 
 withIndexer
   :: SecurityParam
   -> MockchainWithInfo C.BabbageEra
-  -> ( MintTokenEvent.MintTokenEventIndexerCombine MintTokenEvent.MintTokenBlockEvents
+  -> ( MintTokenEventQuery.MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents
        -> ExceptT
             ( Core.QueryError
                 (Core.WithStability (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents))
