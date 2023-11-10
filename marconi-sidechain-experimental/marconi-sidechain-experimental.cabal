@@ -6,8 +6,6 @@ license-files:
   LICENSE
   NOTICE
 
--- TODO: PLT-8076 seems silly
-
 author:        Brendan Brown
 maintainer:    brendan.brown@iohk.io
 homepage:      https://github.com/input-output-hk/marconi#readme

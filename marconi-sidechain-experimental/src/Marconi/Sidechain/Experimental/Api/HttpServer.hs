@@ -6,7 +6,6 @@ module Marconi.Sidechain.Experimental.Api.HttpServer where
 import Control.Lens ((^.))
 import Control.Monad.Reader (ReaderT, ask, lift)
 import Data.Proxy (Proxy (Proxy))
-import Marconi.ChainIndex.Experimental.Api.JsonRpc.Server (jsonRpcServer)
 import Marconi.Core.JsonRpc (
   ReaderHandler,
   ReaderServer,
@@ -14,7 +13,8 @@ import Marconi.Core.JsonRpc (
   hoistReaderHandler,
   mkHttpRequestTracer,
  )
-import Marconi.Sidechain.Experimental.Api.Routes (API)
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Routes (JsonRpcAPI)
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Server (jsonRpcServer)
 import Marconi.Sidechain.Experimental.Api.Types (
   SidechainHttpServerConfig,
   chainIndexHttpServerConfig,
@@ -48,3 +48,6 @@ sidechainApp config = do
 -- TODO: PLT-8076 jsonRpcServer :<|> restApiServer
 httpRpcServer :: ReaderServer SidechainHttpServerConfig API
 httpRpcServer = jsonRpcServer
+
+-- | TODO: PLT-8076 add RestAPI
+type API = JsonRpcAPI

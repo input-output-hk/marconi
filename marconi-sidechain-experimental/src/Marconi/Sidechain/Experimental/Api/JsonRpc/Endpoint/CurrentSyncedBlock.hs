@@ -5,9 +5,10 @@ module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock wh
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc, UnusedRequestParams)
 
 -- | TODO: PLT-8076
-type RpcCurrentSyncedBlockMethod =
-  JsonRpc
-    "getCurrentSyncedBlock"
-    UnusedRequestParams
-    String
-    GetCurrentSyncedBlockResult
+type RpcCurrentSyncedBlockMethod = ()
+
+--  JsonRpc
+--    "getCurrentSyncedBlock"
+--    UnusedRequestParams
+--    String
+--    GetCurrentSyncedBlockResult

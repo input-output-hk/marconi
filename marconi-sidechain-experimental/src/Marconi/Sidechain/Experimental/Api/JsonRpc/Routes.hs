@@ -20,17 +20,19 @@ import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses (
   RpcTargetAddressesMethod,
  )
-import Network.JsonRpc.Types (JsonRpc, RawJsonRpc, UnusedRequestParams)
-import Servant.API (Get, JSON, PlainText, (:<|>), (:>))
+import Network.JsonRpc.Types (RawJsonRpc)
+import Servant.API ((:<|>), (:>))
 
 type JsonRpcAPI = "json-rpc" :> RawJsonRpc RpcAPI
+
+-- TODO: PLT-8076
 
 -- | JSON-RPC methods
 type RpcAPI =
   RpcEchoMethod
-    :<|> RpcTargetAddressesMethod
-    :<|> RpcCurrentSyncedBlockMethod
-    :<|> RpcPastAddressUtxoMethod
-    :<|> RpcGetBurnTokenEventsMethod
-    :<|> RpcEpochActiveStakePoolDelegationMethod
+    -- :<|> RpcTargetAddressesMethod
+    -- :<|> RpcCurrentSyncedBlockMethod
+    -- :<|> RpcPastAddressUtxoMethod
+    -- :<|> RpcGetBurnTokenEventsMethod
+    -- :<|> RpcEpochActiveStakePoolDelegationMethod
     :<|> RpcEpochNonceMethod
