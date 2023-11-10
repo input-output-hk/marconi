@@ -56,11 +56,11 @@ library
     Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce
     Marconi.Sidechain.Experimental.Api.JsonRpc.Routes
     Marconi.Sidechain.Experimental.Api.JsonRpc.Server
-    Marconi.Sidechain.Experimental.Bootstrap
     Marconi.Sidechain.Experimental.CLI
     Marconi.Sidechain.Experimental.Concurrency
     Marconi.Sidechain.Experimental.Env
     Marconi.Sidechain.Experimental.Error
+    Marconi.Sidechain.Experimental.Indexers
     Marconi.Sidechain.Experimental.Run
     Marconi.Sidechain.Experimental.Utils
 

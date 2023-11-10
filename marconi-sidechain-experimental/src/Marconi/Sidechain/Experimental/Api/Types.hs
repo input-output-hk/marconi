@@ -7,10 +7,14 @@ module Marconi.Sidechain.Experimental.Api.Types (
   module Marconi.Sidechain.Experimental.Api.Types,
 ) where
 
+import qualified Cardano.Api as C
 import Control.Lens (makeLenses, (^.))
 import Control.Monad.Except (ExceptT, mapExceptT)
 import Control.Monad.Reader (ReaderT, withReaderT)
+import Data.List.NonEmpty (NonEmpty)
 import qualified Marconi.ChainIndex.Api.Types as Types
+
+{- SERVER CONFIG -}
 
 {- | TODO: PLT-8076 this likely needs to be changed. can augment or modify the one from
 chain-index. should include the cli args as well based on existing sidechain package
@@ -19,12 +23,23 @@ for example, even the TargetAddresses type of marconi-sidechain is not exactly t
   do not change.
 -}
 data SidechainHttpServerConfig = SidechainHttpServerConfig
-  { _chainIndexHttpServerConfig :: Types.HttpServerConfig
-  , -- TODO: PLT-8076
-    _sidechainLocalHttpServerConfig :: ()
+  { _chainIndexHttpServerConfig :: !Types.HttpServerConfig
+  , _sidechainExtraHttpServerConfig :: !SidechainExtraHttpServerConfig
   }
 
+{- SIDECHAIN EXTRA CONFIG -}
+
+type TargetAssets = NonEmpty (C.PolicyId, Maybe C.AssetName)
+
+newtype SidechainExtraHttpServerConfig = SidechainExtraHttpServerConfig
+  { _sidechainTargetAssets :: TargetAssets
+  }
+
+{- LENSES -}
+makeLenses ''SidechainExtraHttpServerConfig
 makeLenses ''SidechainHttpServerConfig
+
+{- UTILITIES -}
 
 -- | Specialization of 'withReaderT'.
 withChainIndexHttpServerConfig

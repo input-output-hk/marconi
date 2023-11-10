@@ -44,7 +44,7 @@ run = do
     error "TODO"
 
 -- TODO: PLT-8076
--- rpcEnv <- mkSidechainEnvFromCliArgs securityParam cliArgs marconiTrace
+-- rpcEnv <- mkSidechainConfigFromCliArgs securityParam cliArgs marconiTrace
 
 -- raceSignalHandled_
 --  (Unhandled (runReaderT runHttpServer rpcEnv))
