@@ -6,6 +6,7 @@ module Marconi.Sidechain.Experimental.Api.HttpServer where
 import Control.Lens ((^.))
 import Control.Monad.Reader (ReaderT, ask, lift)
 import Data.Proxy (Proxy (Proxy))
+import Marconi.ChainIndex.Experimental.Api.JsonRpc.Server (jsonRpcServer)
 import Marconi.Core.JsonRpc (
   ReaderHandler,
   ReaderServer,
@@ -14,7 +15,12 @@ import Marconi.Core.JsonRpc (
   mkHttpRequestTracer,
  )
 import Marconi.Sidechain.Experimental.Api.Routes (API)
-import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, configPort, configTrace)
+import Marconi.Sidechain.Experimental.Api.Types (
+  SidechainHttpServerConfig,
+  chainIndexHttpServerConfig,
+  configPort,
+  configTrace,
+ )
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setPort)
 import Servant.Server (
   Application,
@@ -27,13 +33,13 @@ import Servant.Server (
 runHttpServer :: ReaderT SidechainHttpServerConfig IO ()
 runHttpServer = do
   config <- ask
-  let settings = setPort (config ^. configPort) defaultSettings
-  requestTracer <- mkHttpRequestTracer (config ^. configTrace)
+  let settings = setPort (config ^. chainIndexHttpServerConfig . configPort) defaultSettings
+  requestTracer <- mkHttpRequestTracer (config ^. chainIndexHttpServerConfig . configTrace)
   lift $ runSettings settings $ requestTracer $ sidechainApp config
 
 sidechainApp :: SidechainHttpServerConfig -> Application
 sidechainApp config = do
-  let trace = config ^. configTrace
+  let trace = config ^. chainIndexHttpServerConfig . configTrace
       wrapHandler :: ReaderHandler SidechainHttpServerConfig a -> Handler a
       wrapHandler = catchHttpHandlerExceptions trace . hoistReaderHandler config
   serve (Proxy @API) $
@@ -41,4 +47,4 @@ sidechainApp config = do
 
 -- TODO: PLT-8076 jsonRpcServer :<|> restApiServer
 httpRpcServer :: ReaderServer SidechainHttpServerConfig API
-httpRpcServer = undefined
+httpRpcServer = jsonRpcServer

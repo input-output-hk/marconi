@@ -3,12 +3,12 @@
 
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce where
 
-import qualified Cardano.Api as C
-import qualified Cardano.Ledger.BaseTypes as Ledger
+import Cardano.Api qualified as C
+import Cardano.Ledger.BaseTypes qualified as Ledger
 import Data.Word (Word64)
-import qualified Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState as ChainIndex.EpochState
-import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler)
-import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig)
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState qualified as ChainIndex.EpochState
+import Marconi.Core.JsonRpc (ReaderHandler)
+import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, mapChainIndexExceptT)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
 
 {- METHOD -}
@@ -38,12 +38,14 @@ data NonceResult
 
 {- HANDLER -}
 
--- | TODO: PLT-8076 will need dimap handler from rpc package. Handler for retrieving stake pool delegation per epoch
+{- | Call @ChainIndex.EpochState.'getEpochNonceHandler'@, mapping the configuration
+and result types to match the ones of this package.
+-}
 getEpochNonceHandler
   :: Word64
   -- ^ EpochNo
   -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) SidechainEpochNonceResult)
-getEpochNonceHandler = fmap mapResult ChainIndex.EpochState.getEpochNonceHandler
+getEpochNonceHandler = mapChainIndexExceptT . fmap (fmap mapResult) . ChainIndex.EpochState.getEpochNonceHandler
   where
     mapResult :: ChainIndex.EpochState.EpochNonceResult -> SidechainEpochNonceResult
     -- TODO: PLT-8076 what did the Nothing case in sidechain correspond to in the chain-index
@@ -52,5 +54,4 @@ getEpochNonceHandler = fmap mapResult ChainIndex.EpochState.getEpochNonceHandler
       case (blockNo, nonce) of
         (Nothing, _) -> Nothing
         (Just bn, Nothing) -> Just $ NonceResult Ledger.NeutralNonce slotNo blockHash bn
-
--- (\nonce' blockNo' -> NonceResult nonce' slotNo blockHash blockNo') <$> nonce <*> blockNo
+        (Just bn, Just h) -> Just $ NonceResult (Ledger.Nonce h) slotNo blockHash bn
