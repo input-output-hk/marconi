@@ -34,12 +34,14 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
   AddressUtxoResult (AddressUtxoResult),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   SpentInfoResult (SpentInfoResult),
+ )
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
   UtxoTxInput (UtxoTxInput),
+  ValueWrapper (ValueWrapper),
  )
 import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Spec.Marconi.ChainIndex.Api.Gen (
@@ -217,24 +219,26 @@ goldenAddressUtxoResult = do
             (C.EpochNo 0)
             (C.BlockNo 1)
             (TxIndexInBlock 0)
-            (C.TxIn txId (C.TxIx 0))
+            txId
+            (C.TxIx 0)
             Nothing
             Nothing
-            (C.valueFromList [(C.AdaAssetId, 10)])
+            (ValueWrapper $ C.valueFromList [(C.AdaAssetId, 10)])
             Nothing
-            [UtxoTxInput $ C.TxIn txId2 (C.TxIx 1)]
+            [UtxoTxInput txId2 (C.TxIx 1)]
         , AddressUtxoResult
             (C.SlotNo 1)
             blockHeaderHash
             (C.EpochNo 0)
             (C.BlockNo 1)
             (TxIndexInBlock 0)
-            (C.TxIn txId (C.TxIx 0))
+            txId
+            (C.TxIx 0)
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
             (Just datum)
-            (C.valueFromList [(C.AdaAssetId, 1)])
+            (ValueWrapper $ C.valueFromList [(C.AdaAssetId, 1)])
             (Just $ SpentInfoResult (C.SlotNo 12) spentTxId)
-            [UtxoTxInput $ C.TxIn txId (C.TxIx 0)]
+            [UtxoTxInput txId (C.TxIx 0)]
         ]
       result = GetUtxosFromAddressResult utxos
   pure $ Aeson.encodePretty result

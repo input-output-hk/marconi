@@ -35,14 +35,12 @@ import Control.Applicative (Alternative ((<|>)))
 import Control.Concurrent (MVar)
 import Control.Lens ((^.), (^?))
 import Control.Lens qualified as Lens
-import Control.Monad (when)
 import Control.Monad.Cont (MonadIO (liftIO))
-import Control.Monad.Except (MonadError (throwError))
 import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
@@ -294,7 +292,7 @@ baseQuery =
 
 -- Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
 instance
-  (MonadIO m, MonadError (Core.QueryError UtxoQueryInput) m)
+  (MonadIO m)
   => Core.Queryable
       m
       UtxoQueryEvent
@@ -327,13 +325,4 @@ instance
                 <> sqlFilters
                 <> " GROUP BY u.txId, u.txIx"
                 <> " ORDER BY u.slotNo ASC"
-     in do
-          -- TODO I'm not sure I actually agree that this should live here, I think it's a property
-          -- of the data
-          when
-            (fromMaybe False ((<) <$> q ^. lowerBound <*> q ^. upperBound))
-            ( throwError $
-                Core.IndexerQueryError
-                  "The 'createdBeforeSlotNo' param value must be larger than the slot number of the 'createdAfterTx' transaction."
-            )
-          liftIO $ SQL.queryNamed (indexer ^. Core.aggregateConnection) query params
+     in liftIO $ SQL.queryNamed (indexer ^. Core.aggregateConnection) query params
