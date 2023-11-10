@@ -35,12 +35,14 @@ import Control.Applicative (Alternative ((<|>)))
 import Control.Concurrent (MVar)
 import Control.Lens ((^.), (^?))
 import Control.Lens qualified as Lens
+import Control.Monad (when)
 import Control.Monad.Cont (MonadIO (liftIO))
+import Control.Monad.Except (MonadError (throwError))
 import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map qualified as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
@@ -98,21 +100,6 @@ data UtxoQueryAggregate m = forall
   , blockInfoIndexer :: MVar (blockInfoIndexer blockInfo)
   -- ^ the source provider for the 'BlockInfo' table, usually a @BlockInfoIndexer@
   }
-
--- | An alias for the 'SQLiteAggregateQuery' that handle the 'UtxoQueryEvent'
-type UtxoQueryIndexer m =
-  Core.WithTrace IO (Core.SQLiteAggregateQuery m C.ChainPoint) UtxoQueryEvent
-
--- | Generate a @UtxoQueryIndexer@ from the given source
-mkUtxoSQLiteQuery :: UtxoQueryAggregate m -> IO (Core.SQLiteAggregateQuery m C.ChainPoint event)
-mkUtxoSQLiteQuery (UtxoQueryAggregate _utxo _spent _datum _blockInfo) =
-  Core.mkSQLiteAggregateQuery $
-    Map.fromList
-      [ ("utxo", SQLiteSourceProvider _utxo)
-      , ("spent", SQLiteSourceProvider _spent)
-      , ("datum", SQLiteSourceProvider _datum)
-      , ("blockInfo", SQLiteSourceProvider _blockInfo)
-      ]
 
 data UtxoResult = UtxoResult
   { _utxo :: Utxo
@@ -231,6 +218,29 @@ data UtxoQueryInput = UtxoQueryInput
 
 Lens.makeLenses ''UtxoQueryInput
 
+-- | An alias for the 'SQLiteAggregateQuery' that handle the 'UtxoQueryEvent'
+type UtxoQueryIndexer m =
+  Core.WithTrace
+    IO
+    ( Core.SQLiteAggregateQuery
+        m
+        C.ChainPoint
+    )
+    UtxoQueryEvent
+
+-- | Generate a @UtxoQueryIndexer@ from the given source
+mkUtxoSQLiteQuery
+  :: UtxoQueryAggregate m
+  -> IO (Core.SQLiteAggregateQuery m C.ChainPoint event)
+mkUtxoSQLiteQuery (UtxoQueryAggregate _utxo _spent _datum _blockInfo) =
+  Core.mkSQLiteAggregateQuery $
+    Map.fromList
+      [ ("utxo", SQLiteSourceProvider _utxo)
+      , ("spent", SQLiteSourceProvider _spent)
+      , ("datum", SQLiteSourceProvider _datum)
+      , ("blockInfo", SQLiteSourceProvider _blockInfo)
+      ]
+
 type instance Core.Result UtxoQueryInput = [UtxoResult]
 
 baseQuery :: SQL.Query
@@ -282,9 +292,14 @@ baseQuery =
   LEFT JOIN blockInfo.blockInfo spentBlockInfo ON spentBlockInfo.slotNo = futureSpent.slotNo
   |]
 
+-- Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
 instance
-  (MonadIO m)
-  => Core.Queryable m UtxoQueryEvent UtxoQueryInput (Core.SQLiteAggregateQuery IO C.ChainPoint)
+  (MonadIO m, MonadError (Core.QueryError UtxoQueryInput) m)
+  => Core.Queryable
+      m
+      UtxoQueryEvent
+      UtxoQueryInput
+      (Core.SQLiteAggregateQuery n C.ChainPoint)
   where
   query point q indexer =
     let addressFilter = (["u.address = :address"], [":address" := q ^. address])
@@ -313,4 +328,12 @@ instance
                 <> " GROUP BY u.txId, u.txIx"
                 <> " ORDER BY u.slotNo ASC"
      in do
+          -- TODO I'm not sure I actually agree that this should live here, I think it's a property
+          -- of the data
+          when
+            (fromMaybe False ((<) <$> q ^. lowerBound <*> q ^. upperBound))
+            ( throwError $
+                Core.IndexerQueryError
+                  "The 'createdBeforeSlotNo' param value must be larger than the slot number of the 'createdAfterTx' transaction."
+            )
           liftIO $ SQL.queryNamed (indexer ^. Core.aggregateConnection) query params

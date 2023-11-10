@@ -1,4 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE RankNTypes #-}
 
 {- |
     A @SQLiteAggregateQuery@ provides a way to query the content of several @SQLiteIndexer@s
@@ -21,7 +23,7 @@ import Control.Concurrent qualified as Con
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
-import Control.Monad.Cont (MonadIO (liftIO))
+import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Database.SQLite.Simple (NamedParam ((:=)))
@@ -55,6 +57,32 @@ data SQLiteSourceProvider m point
     (IsSourceProvider m event indexer, Point event ~ point) =>
     SQLiteSourceProvider (Con.MVar (indexer event))
 
+{- | Type alias for the type classes that are required to build a worker for an indexer
+ type WorkerIndexerType n event indexer =
+   ( IsIndex n event indexer
+   , IsSync n event indexer
+   , Closeable n indexer
+   )
+-}
+
+-- {- | A worker hides the shape of an indexer and integrates the data needed to interact with a
+-- coordinator.
+-- -}
+-- data WorkerM m input point = forall indexer event n.
+--   ( WorkerIndexerType n event indexer
+--   , Point event ~ point
+--   ) =>
+--   Worker
+--   { workerName :: Text
+--   -- ^ use to identify the worker in logs
+--   , workerState :: MVar (indexer event)
+--   -- ^ the indexer controlled by this worker
+--   , transformInput :: Preprocessor (ExceptT IndexerError m) point input event
+--   -- ^ adapt the input event givent by the coordinator to the worker type
+--   , hoistError :: forall a. n a -> ExceptT IndexerError m a
+--   -- ^ adapt the monadic stack of the indexer to the one of the worker
+--   }
+
 -- | An aggregation of SQLite indexers used to build query across indexers.
 data SQLiteAggregateQuery m point event = SQLiteAggregateQuery
   { _databases :: [SQLiteSourceProvider m point]
@@ -71,6 +99,11 @@ databases = Lens.lens _databases (\agg _databases -> agg{_databases})
 aggregateConnection :: Lens.Lens' (SQLiteAggregateQuery m point event) SQL.Connection
 aggregateConnection =
   Lens.lens _aggregateConnection (\agg _aggregateConnection -> agg{_aggregateConnection})
+
+-- -- | Adapt the monadic stack of the indexer to the one of the query
+-- hoistError :: forall m point event n e. Lens.Lens' (SQLiteAggregateQuery m point event) (forall a. n a -> ExceptT e m a)
+-- hoistError =
+--   Lens.lens (\(SQLiteAggregateQuery _ _ hoist) -> hoist) (\(SQLiteAggregateQuery db ac _) _hoistError -> SQLiteAggregateQuery db ac _hoistError)
 
 -- Lens.makeLenses ''SQLiteAggregateQuery
 
@@ -97,6 +130,24 @@ mkSQLiteAggregateQuery sources = do
 
 instance (MonadIO m) => Closeable m (SQLiteAggregateQuery m point) where
   close indexer = liftIO $ SQL.close $ indexer ^. aggregateConnection
+
+instance
+  (MonadIO m, MonadTrans t, Monad (t m), Ord point, point ~ Point event)
+  => IsSync (t m) event (SQLiteAggregateQuery m point)
+  where
+  lastSyncPoint query@(SQLiteAggregateQuery _ _) =
+    let getPoint :: SQLiteSourceProvider m point -> m point
+        getPoint (SQLiteSourceProvider ix) = do
+          ix' <- liftIO $ Con.readMVar ix
+          lastSyncPoint ix'
+     in lift . fmap minimum . traverse getPoint . Lens.view databases $ query
+
+  lastStablePoint query@(SQLiteAggregateQuery _ _) =
+    let getPoint :: SQLiteSourceProvider m point -> m point
+        getPoint (SQLiteSourceProvider ix) = do
+          ix' <- liftIO $ Con.readMVar ix
+          lastStablePoint ix'
+     in lift . fmap minimum . traverse getPoint . Lens.view databases $ query
 
 instance
   (MonadIO m, Ord point, point ~ Point event)

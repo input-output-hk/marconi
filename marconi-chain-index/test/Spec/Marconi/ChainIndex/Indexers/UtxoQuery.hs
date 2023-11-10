@@ -19,7 +19,7 @@ import Control.Concurrent qualified as Concurrent
 import Control.Lens ((^.), (^..), (^?))
 import Control.Lens qualified as Lens
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Trans.Except (runExceptT)
+import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 
@@ -175,13 +175,13 @@ withIndexer
         IO
         C.ChainPoint
         UtxoQueryEvent
-       -> IO a
+       -> (ExceptT (Core.QueryError UtxoQuery.UtxoQueryInput) IO) a
      )
   -> IO a
 withIndexer events f = do
   (indexers, utxoQuery) <- liftIO mkUtxoQuery
   liftIO $ indexMockchain indexers events
-  res <- liftIO $ f utxoQuery
+  Right res <- liftIO $ runExceptT $ f utxoQuery
   void $ liftIO $ closeIndexers indexers utxoQuery
   pure res
 

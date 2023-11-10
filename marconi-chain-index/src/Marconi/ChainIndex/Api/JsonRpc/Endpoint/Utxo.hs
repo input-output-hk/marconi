@@ -1,6 +1,10 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
@@ -15,8 +19,9 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
 import Cardano.Api (FromJSON, ToJSON)
 import Cardano.Api qualified as C
 import Control.Lens (view, (^.))
-import Control.Monad (join)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad (join, unless)
+import Control.Monad.Except (ExceptT, MonadError (throwError), MonadTrans (lift), runExceptT)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), object, (.:), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Aeson
@@ -30,11 +35,12 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text, pack, unpack)
 import Data.Text.Encoding qualified as Text
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
+import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables, configTrackedAddresses)
 import Marconi.ChainIndex.Indexers (queryableUtxo)
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BI
 import Marconi.ChainIndex.Indexers.Utxo (datumHash, txIn, txIndex, value)
 import Marconi.ChainIndex.Indexers.UtxoQuery (
+  UtxoQueryEvent,
   UtxoQueryInput (UtxoQueryInput),
   UtxoResult (UtxoResult),
  )
@@ -42,7 +48,8 @@ import Marconi.ChainIndex.Types (TxIndexInBlock)
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, hoistHttpHandler, queryErrToRpcErr)
 import Marconi.Core.Type (Result)
-import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, mkJsonRpcInvalidParamsErr)
+import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, mkJsonRpcInternalErr, mkJsonRpcInvalidParamsErr)
+import Servant.Server (Handler)
 
 ------------------
 -- Method types --
@@ -66,28 +73,56 @@ getUtxoQueryInputHandler
   -> ReaderHandler HttpServerConfig (Either (JsonRpcErr String) (Result UtxoQueryInput))
 getUtxoQueryInputHandler query = do
   indexer <- view (configQueryables . queryableUtxo)
-  hoistHttpHandler $
-    liftIO $
-      first queryErrToRpcErr <$> Core.queryLatestEither query indexer
+  let sqliteAggregateLastSyncPoint :: ExceptT (Core.QueryError UtxoQueryInput) Handler C.ChainPoint
+      sqliteAggregateLastSyncPoint = do
+        res <- liftIO $ runExceptT $ lift $ Core.lastSyncPoint indexer
+        case res of
+          Left err -> throwError err
+          Right res' -> pure res'
+  lastPointM <- hoistHttpHandler $ runExceptT sqliteAggregateLastSyncPoint
+  case lastPointM of
+    Left err ->
+      pure $
+        Left $
+          mkJsonRpcInternalErr $
+            Just $
+              "Can't resolve last point in getUtxosFromAddress: " <> show err
+    Right lastPoint ->
+      hoistHttpHandler $
+        liftIO $
+          first queryErrToRpcErr <$> Core.queryEither lastPoint query indexer
 
 -- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
 getUtxosFromAddressQueryHandler
   :: GetUtxosFromAddressParams
   -> ReaderHandler HttpServerConfig (Either (JsonRpcErr String) GetUtxosFromAddressResult)
 getUtxosFromAddressQueryHandler query = do
-  res <- join <$> traverse getUtxoQueryInputHandler (mapGetBurnTokenEventsQuery query)
+  addresses <- view configTrackedAddresses
+  res <- join <$> traverse getUtxoQueryInputHandler (mapGetBurnTokenEventsQuery addresses query)
   pure $ mapGetBurnTokenEventsResult =<< res
   where
-    mapGetBurnTokenEventsQuery :: GetUtxosFromAddressParams -> Either (JsonRpcErr String) UtxoQueryInput
-    mapGetBurnTokenEventsQuery (GetUtxosFromAddressParams addr createdAtAfter unspentBefore) = do
-      mappedAddr <- addressMapping (pack addr)
-      pure $ UtxoQueryInput mappedAddr createdAtAfter unspentBefore
-      where
-        addressMapping addressText = do
-          let toQueryExceptions e =
-                mkJsonRpcInvalidParamsErr $ Just (show addressText <> " generated error: " <> show e)
-          bimap toQueryExceptions C.toAddressAny $
-            C.deserialiseFromBech32 C.AsShelleyAddress addressText
+    mapGetBurnTokenEventsQuery
+      :: [C.AddressAny] -> GetUtxosFromAddressParams -> Either (JsonRpcErr String) UtxoQueryInput
+    mapGetBurnTokenEventsQuery
+      targetAddresses
+      (GetUtxosFromAddressParams addr createdAtAfter unspentBefore) = do
+        mappedAddr <- addressMapping (pack addr)
+        unless
+          (mappedAddr `elem` targetAddresses)
+          ( Left $
+              mkJsonRpcInvalidParamsErr $
+                Just "The 'address' param value must belong to the provided target addresses."
+          )
+        pure $ UtxoQueryInput mappedAddr createdAtAfter unspentBefore
+        where
+          addressMapping addressText = do
+            bimap
+              ( const $
+                  mkJsonRpcInvalidParamsErr $
+                    Just "The 'address' param value must be in the Bech32 format."
+              )
+              C.toAddressAny
+              $ C.deserialiseFromBech32 C.AsShelleyAddress addressText
     -- Map internal events to our 'getBurnTokenEventsHandler' response object
     mapGetBurnTokenEventsResult :: [UtxoResult] -> Either (JsonRpcErr String) GetUtxosFromAddressResult
     mapGetBurnTokenEventsResult = fmap GetUtxosFromAddressResult . traverse mapResult
@@ -129,14 +164,6 @@ data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   -- ^ Upper slot in the window
   }
   deriving (Show, Eq, Generic, FromJSON)
-
-instance ToJSON GetUtxosFromAddressParams where
-  toJSON q =
-    object
-      [ "_address" .= address q
-      , "_lowerBound" .= createdAtOrAfterSlotNo q
-      , "_upperBound" .= unspentBeforeSlotNo q
-      ]
 
 newtype GetUtxosFromAddressResult = GetUtxosFromAddressResult
   {unAddressUtxosResult :: [AddressUtxoResult]}
