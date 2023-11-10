@@ -54,10 +54,10 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Sidechain.Experimental.Api.HttpServer
-    Marconi.Sidechain.Experimental.Api.Query.Indexers.EpochState
-    Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
-    Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
-    Marconi.Sidechain.Experimental.Api.Routes
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Routes
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Server
     Marconi.Sidechain.Experimental.Bootstrap
     Marconi.Sidechain.Experimental.CLI
     Marconi.Sidechain.Experimental.Concurrency
