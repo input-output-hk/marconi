@@ -1,14 +1,58 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Marconi.Sidechain.Experimental.Env where
 
+import Cardano.Api qualified as C
+import Cardano.BM.Backend.Switchboard qualified as BM
+import Cardano.BM.Setup qualified as BM
+import Cardano.BM.Trace (Trace, logError)
 import Control.Lens (makeLenses)
-import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig)
-import Marconi.Sidechain.Experimental.CLI (
-  CliArgs (CliArgs, httpPort, targetAddresses, targetAssets),
+import Control.Monad (unless)
+import Data.Aeson (toJSON)
+import Data.List.NonEmpty qualified as NEList
+import Data.Set.NonEmpty qualified as NESet
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Void (Void)
+import Marconi.ChainIndex.Api.Types (HttpServerConfig (HttpServerConfig))
+import Marconi.ChainIndex.Indexers.EpochState (
+  EpochStateWorkerConfig (EpochStateWorkerConfig),
+  NodeConfig (NodeConfig),
  )
-import Marconi.Sidechain.Experimental.Indexers (SidechainIndexersConfig)
+import Marconi.ChainIndex.Indexers.MintTokenEvent (MintTokenEventConfig (MintTokenEventConfig))
+import Marconi.ChainIndex.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig))
+import Marconi.ChainIndex.Logger (mkMarconiTrace)
+import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.ChainIndex.Runner qualified as ChainIndex.Runner
+import Marconi.ChainIndex.Utils qualified as ChainIndex.Utils
+import Marconi.Core qualified as Core
+import Marconi.Sidechain.Experimental.Api.Types (
+  SidechainExtraHttpServerConfig (SidechainExtraHttpServerConfig),
+  SidechainHttpServerConfig (SidechainHttpServerConfig),
+ )
+import Marconi.Sidechain.Experimental.CLI (
+  CliArgs (
+    CliArgs,
+    dbDir,
+    httpPort,
+    networkId,
+    nodeConfigPath,
+    optionsChainPoint,
+    optionsRetryConfig,
+    socketFilePath,
+    targetAddresses,
+    targetAssets
+  ),
+ )
+import Marconi.Sidechain.Experimental.Indexers (
+  SidechainIndexersConfig (SidechainIndexersConfig),
+  sidechainBuildIndexers,
+ )
+import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Exit (exitFailure)
 
 {- TYPE -}
 
@@ -23,37 +67,99 @@ data SidechainEnv = SidechainEnv
 
 {- CONSTRUCTORS -}
 
--- mkSidechainEnv
---  :: SecurityParam
---  -> Port
---  -> Maybe TargetAddresses
---  -> Maybe TargetAssets
---  -> CliArgs
---  -> MarconiTrace IO
---  -> IO SidechainEnv
--- mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace = do
---  -- TODO: PLT-8076 decide whether you want to use the chain-index http server stuff
---  -- or the sidechain server stuff. likely the former.
---  let httpSettings = undefined
---  let sidechainQueryEnv = SidechainQueryEnv undefined undefined
---  -- TODO: PLT-8076
---  -- sidechain <-
---  --  SidechainIndexersEnv
---  --    <$> mkAddressUtxoIndexerEnv targetAddresses
---  --    <*> mkMintEventIndexerEnv targetAssets
---  --    <*> mkEpochStateEnv
---  -- pure $ SidechainEnv sidechainQueryEnv sidechainIndexers cliArgs trace
---  undefined
---
--- mkSidechainEnvFromCliArgs
---  :: SecurityParam
---  -> CliArgs
---  -> MarconiTrace IO
---  -> IO SidechainEnv
--- mkSidechainEnvFromCliArgs securityParam cliArgs@CliArgs{httpPort, targetAddresses, targetAssets} trace = do
---  mkSidechainEnv securityParam httpPort targetAddresses targetAssets cliArgs trace
---
--- makeLenses ''SidechainQueryEnv
+{- | TODO: PLT-8076 Create the 'SidechainEnv' from the CLI arguments,
+with some validity checks on arguments needed to create the environment.
+-}
+mkSidechainEnvFromCliArgs
+  :: Trace IO Text
+  -> BM.Switchboard Text
+  -- ^ Switchboard from iohk-monitoring, for sending shutdown.
+  -> CliArgs
+  -> IO SidechainEnv
+mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} = do
+  -- Local utility copied from Marconi.ChainIndex.Run.run
+  -- See note there for motivation.
+  let exitWithLogFullError :: Text -> IO a
+      exitWithLogFullError msg = do
+        logError trace msg
+        BM.shutdown sb
+        exitFailure
+
+  let marconiTrace = mkMarconiTrace trace
+
+  -- Check whether the nodeConfigPath exists and if not fail.
+  nodePathExists <- doesFileExist nodeConfigPath
+  unless nodePathExists $
+    exitWithLogFullError $
+      Text.pack $
+        "Config file does not exist at the provided path: "
+          <> nodeConfigPath
+
+  -- Create the db directory if needed
+  createDirectoryIfMissing True dbDir
+
+  securityParam <-
+    withNodeConnectRetry marconiTrace optionsRetryConfig socketFilePath $
+      ChainIndex.Utils.toException $
+        ChainIndex.Utils.querySecurityParam @Void networkId socketFilePath
+
+  -- Indexer config
+  let
+    filteredAddresses =
+      maybe
+        []
+        (map C.AddressShelley . NEList.toList . NESet.toList)
+        targetAddresses
+    -- Hard-coded with the same values as chain-index
+    catchupConfig = Core.mkCatchupConfig 5000 100
+    -- TODO: PLT-8076 default is do not include script. check legacy sidechain.
+    -- Snapshot config hard-coded as in chain-index
+    epochStateConfig = EpochStateWorkerConfig (NodeConfig nodeConfigPath) 100
+    mintBurnConfig = MintTokenEventConfig targetAssets
+    utxoConfig = UtxoIndexerConfig filteredAddresses False
+
+    runIndexerConfig =
+      ChainIndex.Runner.RunIndexerConfig
+        marconiTrace
+        ChainIndex.Runner.withDistanceAndTipPreprocessor
+        optionsRetryConfig
+        securityParam
+        networkId
+        -- Note this will be updated relative to the latest sync point,
+        -- in runSidechainIndexers.
+        optionsChainPoint
+        socketFilePath
+
+    indexersConfig =
+      SidechainIndexersConfig
+        trace
+        securityParam
+        runIndexerConfig
+        catchupConfig
+        dbDir
+        epochStateConfig
+        mintBurnConfig
+        utxoConfig
+
+  -- Build the indexers, returning workers and latest sync
+  -- This is needed to build the http config.
+  (indexerLastStablePoint, queryables, coordinator) <-
+    either (exitWithLogFullError . Text.pack . show) pure =<< sidechainBuildIndexers indexersConfig
+
+  -- Http config
+  let
+    httpConfig =
+      HttpServerConfig
+        trace
+        httpPort
+        securityParam
+        filteredAddresses
+        (toJSON cliArgs)
+        queryables
+    sidechainExtraConfig = SidechainExtraHttpServerConfig targetAssets
+    sidechainHttpConfig = SidechainHttpServerConfig httpConfig sidechainExtraConfig
+
+  pure (SidechainEnv sidechainHttpConfig indexersConfig)
 
 {- LENSES -}
 makeLenses ''SidechainEnv

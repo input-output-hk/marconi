@@ -56,6 +56,8 @@ sidechainBuildIndexers config =
       (config ^. sidechainIndexersTrace)
       (config ^. sidechainIndexersDbPath)
 
+-- TODO: PLT-8076 should implement failsifresync from original sidechain
+
 runSidechainIndexers
   :: (MonadIO m)
   => SidechainIndexersConfig

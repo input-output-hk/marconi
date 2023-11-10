@@ -96,6 +96,7 @@ library
     , http-types
     , lens
     , mtl
+    , nonempty-containers
     , optparse-applicative
     , pretty-simple
     , prettyprinter

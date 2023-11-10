@@ -31,8 +31,11 @@ data SidechainHttpServerConfig = SidechainHttpServerConfig
 
 type TargetAssets = NonEmpty (C.PolicyId, Maybe C.AssetName)
 
+-- TODO: PLT-8076 unclear whether this is needed or whether the indexer configs
+-- containing this (and passed via queryables) make it moot.
+
 newtype SidechainExtraHttpServerConfig = SidechainExtraHttpServerConfig
-  { _sidechainTargetAssets :: TargetAssets
+  { _sidechainTargetAssets :: Maybe TargetAssets
   }
 
 {- LENSES -}
