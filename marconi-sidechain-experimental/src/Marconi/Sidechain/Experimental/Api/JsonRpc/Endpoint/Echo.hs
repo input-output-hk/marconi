@@ -2,9 +2,9 @@
 
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo where
 
-import qualified Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo as ChainIndex.Echo
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo qualified as ChainIndex.Echo
 import Marconi.Core.JsonRpc (ReaderHandler)
-import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig)
+import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, mapChainIndexExceptT)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
 
 {- METHOD -}
@@ -17,4 +17,4 @@ type RpcEchoMethod = JsonRpc "echo" String String String
 echo
   :: String
   -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) String)
-echo = ChainIndex.Echo.echo
+echo = mapChainIndexExceptT . ChainIndex.Echo.echo
