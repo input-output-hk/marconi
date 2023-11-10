@@ -8,7 +8,7 @@ import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, mapChainIndexExceptT)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, UnusedRequestParams)
 
--- | TODO: PLT-8076 taken from sidechain and need to adapt
+{- METHOD -}
 type RpcTargetAddressesMethod =
   JsonRpc
     "getTargetAddresses"
@@ -16,7 +16,7 @@ type RpcTargetAddressesMethod =
     String
     [Text]
 
--- | TODO: PLT-8076
+{- HANDLER -}
 getTargetAddressesQueryHandler
   :: UnusedRequestParams
   -- ^ Will be an empty string, empty object, or null, as we are ignoring this param, and returning everything

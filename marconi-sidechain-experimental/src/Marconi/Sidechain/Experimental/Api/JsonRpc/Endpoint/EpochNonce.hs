@@ -50,8 +50,6 @@ getEpochNonceHandler
 getEpochNonceHandler = mapChainIndexExceptT . fmap (fmap mapResult) . ChainIndex.EpochState.getEpochNonceHandler
   where
     mapResult :: ChainIndex.EpochState.EpochNonceResult -> SidechainEpochNonceResult
-    -- TODO: PLT-8076 what did the Nothing case in sidechain correspond to in the chain-index
-    -- version? A guess for now based on EpochState module.
     mapResult (ChainIndex.EpochState.EpochNonceResult hash bn _ sn nc) =
       case (bn, nc) of
         (Nothing, _) -> Nothing

@@ -124,10 +124,10 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
         targetAddresses
     -- Hard-coded with the same values as chain-index
     catchupConfig = Core.mkCatchupConfig 5000 100
-    -- TODO: PLT-8076 default is do not include script. check legacy sidechain.
     -- Snapshot config hard-coded as in chain-index
     epochStateConfig = EpochStateWorkerConfig (NodeConfig nodeConfigPath) 100
     mintBurnConfig = MintTokenEventConfig targetAssets
+    -- Explicitly does not include the script.
     utxoConfig = UtxoIndexerConfig filteredAddresses False
 
     runIndexerConfig =

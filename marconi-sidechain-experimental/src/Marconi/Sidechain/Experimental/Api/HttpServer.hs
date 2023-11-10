@@ -45,9 +45,7 @@ sidechainApp config = do
   serve (Proxy @API) $
     hoistServer (Proxy @API) wrapHandler httpRpcServer
 
--- TODO: PLT-8076 jsonRpcServer :<|> restApiServer
 httpRpcServer :: ReaderServer SidechainHttpServerConfig API
 httpRpcServer = jsonRpcServer
 
--- | TODO: PLT-8076 add RestAPI
 type API = JsonRpcAPI

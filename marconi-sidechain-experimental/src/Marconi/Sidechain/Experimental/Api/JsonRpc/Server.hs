@@ -10,12 +10,3 @@ import Servant.API ((:<|>) ((:<|>)))
 -- | Handlers for the JSON-RPC
 jsonRpcServer :: ReaderServer SidechainHttpServerConfig JsonRpcAPI
 jsonRpcServer = echo :<|> getEpochNonceHandler
-
--- TODO: PLT-8076
--- Chainindex handlers
---  echo
---    :<|> getTargetAddressesQueryHandler
---    :<|> getEpochStakePoolDelegationHandler
---    :<|> getEpochNonceHandler
---    :<|> getBurnTokenEventsHandler
---    :<|> getCurrentSyncedBlockHandler

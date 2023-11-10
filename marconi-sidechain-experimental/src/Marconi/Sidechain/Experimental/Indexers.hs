@@ -74,7 +74,7 @@ updateRunIndexerConfigWithLastStable lastStable =
     updateStartingPoint stablePoint C.ChainPointAtGenesis = stablePoint
     updateStartingPoint _ pt = pt
 
--- TODO: PLT-8076 should implement failsifresync from original sidechain
+-- TODO: Should implement failsIfResync from original sidechain
 runIndexers :: ReaderT SidechainRunIndexersConfig IO ()
 runIndexers = do
   config <- ask

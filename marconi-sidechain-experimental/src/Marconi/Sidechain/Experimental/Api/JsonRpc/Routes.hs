@@ -25,11 +25,10 @@ import Servant.API ((:<|>), (:>))
 
 type JsonRpcAPI = "json-rpc" :> RawJsonRpc RpcAPI
 
--- TODO: PLT-8076
-
 -- | JSON-RPC methods
 type RpcAPI =
   RpcEchoMethod
+    -- TODO:
     -- :<|> RpcTargetAddressesMethod
     -- :<|> RpcCurrentSyncedBlockMethod
     -- :<|> RpcPastAddressUtxoMethod

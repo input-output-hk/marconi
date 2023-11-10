@@ -1,37 +1,20 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
 module Marconi.Sidechain.Experimental.Error (
-  QueryExceptions (IndexerInternalError, QueryError, UnexpectedQueryResult, UntrackedPolicy),
   HasExit (toExit),
   Exit (TimedOut, Errored, Killed, Terminated, Interrupted),
   withSignalHandling,
   toExitCode,
 ) where
 
-import Cardano.Api qualified as C
 import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (newEmptyMVar, takeMVar, tryPutMVar)
-import Control.Exception (Exception)
 import Control.Monad (void)
 import Data.Foldable (traverse_)
-import Data.Text (Text)
 import Marconi.ChainIndex.Error (IndexerError (Timeout))
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
 import System.Posix (Handler (CatchOnce), Signal, installHandler, sigINT, sigTERM)
-
-data QueryExceptions
-  = QueryError !Text
-  | UntrackedPolicy C.PolicyId (Maybe C.AssetName)
-  | -- TODO: PLT-8076
-
-    -- | UnexpectedQueryResult !(StorableQuery UtxoHandle)
-    UnexpectedQueryResult ()
-  | IndexerInternalError !Text
-  deriving stock (Show)
-  deriving anyclass (Exception)
 
 -- * Mapping of exceptions to exit codes
 
@@ -58,7 +41,6 @@ instance HasExit (IndexerError a) where
       Timeout _ -> TimedOut
       _ -> Errored
 
--- | TODO: PLT-8076 make a follow-up
 instance HasExit Core.IndexerError where
   toExit _ = Errored
 
