@@ -10,7 +10,7 @@ module Marconi.Sidechain.Experimental.Error (
   toExitCode,
 ) where
 
-import qualified Cardano.Api as C
+import Cardano.Api qualified as C
 import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (newEmptyMVar, takeMVar, tryPutMVar)
 import Control.Exception (Exception)
@@ -18,7 +18,8 @@ import Control.Monad (void)
 import Data.Foldable (traverse_)
 import Data.Text (Text)
 import Marconi.ChainIndex.Error (IndexerError (Timeout))
-import qualified Marconi.ChainIndex.Indexers.Utxo as Utxo
+import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Marconi.Core qualified as Core
 import System.Posix (Handler (CatchOnce), Signal, installHandler, sigINT, sigTERM)
 
 data QueryExceptions
@@ -56,6 +57,10 @@ instance HasExit (IndexerError a) where
     case err of
       Timeout _ -> TimedOut
       _ -> Errored
+
+-- | TODO: PLT-8076 make a follow-up
+instance HasExit Core.IndexerError where
+  toExit _ = Errored
 
 instance HasExit Signal where
   toExit signal

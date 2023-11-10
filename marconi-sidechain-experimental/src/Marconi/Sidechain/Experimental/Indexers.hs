@@ -7,6 +7,7 @@ import Cardano.BM.Trace (Trace)
 import Control.Lens (makeLenses, over, (^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (ReaderT, ask)
 import Data.Text (Text)
 import Marconi.ChainIndex.Indexers (Coordinator, MarconiChainIndexQueryables)
 import Marconi.ChainIndex.Indexers qualified as ChainIndex.Indexers
@@ -20,21 +21,27 @@ import Marconi.Core (CatchupConfig, IndexerError)
 
 {- TYPE -}
 
-{- | Configuration for constructing and running marconi indexers as used
-in this package.
--}
-data SidechainIndexersConfig = SidechainIndexersConfig
-  { _sidechainIndexersTrace :: !(Trace IO Text)
-  , _sidechainIndexersSecurityParam :: !SecurityParam
-  , _sidechainIndexersRunIndexerConfig :: !(RunIndexerConfig TipOrBlock)
-  , _sidechainIndexersCatchupConfig :: !CatchupConfig
-  , _sidechainIndexersDbPath :: !FilePath
-  , _sidechainIndexersEpochStateConfig :: !EpochState.EpochStateWorkerConfig
-  , _sidechainIndexersMintTokenEventConfig :: !MintTokenEvent.MintTokenEventConfig
-  , _sidechainIndexersUtxoConfig :: !Utxo.UtxoIndexerConfig
+-- | Configuration for running indexers via a coordinator.
+data SidechainRunIndexersConfig = SidechainRunIndexersConfig
+  { _sidechainRunIndexersRunIndexerConfig :: !(RunIndexerConfig TipOrBlock)
+  , _sidechainRunIndexersCoordinator :: !ChainIndex.Indexers.Coordinator
   }
 
-makeLenses ''SidechainIndexersConfig
+{- | Configuration for constructing marconi indexers as used
+in this package.
+-}
+data SidechainBuildIndexersConfig = SidechainBuildIndexersConfig
+  { _sidechainBuildIndexersTrace :: !(Trace IO Text)
+  , _sidechainBuildIndexersSecurityParam :: !SecurityParam
+  , _sidechainBuildIndexersCatchupConfig :: !CatchupConfig
+  , _sidechainBuildIndexersDbPath :: !FilePath
+  , _sidechainBuildIndexersEpochStateConfig :: !EpochState.EpochStateWorkerConfig
+  , _sidechainBuildIndexersMintTokenEventConfig :: !MintTokenEvent.MintTokenEventConfig
+  , _sidechainBuildIndexersUtxoConfig :: !Utxo.UtxoIndexerConfig
+  }
+
+makeLenses ''SidechainBuildIndexersConfig
+makeLenses ''SidechainRunIndexersConfig
 
 {- INDEXER BUILDERS AND RUNNERS -}
 
@@ -43,37 +50,35 @@ similarly to the marconi-chain-index application.
 -}
 sidechainBuildIndexers
   :: (MonadIO m)
-  => SidechainIndexersConfig
+  => SidechainBuildIndexersConfig
   -> m (Either IndexerError (C.ChainPoint, MarconiChainIndexQueryables, Coordinator))
 sidechainBuildIndexers config =
   liftIO . runExceptT $
     ChainIndex.Indexers.buildIndexers
-      (config ^. sidechainIndexersSecurityParam)
-      (config ^. sidechainIndexersCatchupConfig)
-      (config ^. sidechainIndexersUtxoConfig)
-      (config ^. sidechainIndexersMintTokenEventConfig)
-      (config ^. sidechainIndexersEpochStateConfig)
-      (config ^. sidechainIndexersTrace)
-      (config ^. sidechainIndexersDbPath)
+      (config ^. sidechainBuildIndexersSecurityParam)
+      (config ^. sidechainBuildIndexersCatchupConfig)
+      (config ^. sidechainBuildIndexersUtxoConfig)
+      (config ^. sidechainBuildIndexersMintTokenEventConfig)
+      (config ^. sidechainBuildIndexersEpochStateConfig)
+      (config ^. sidechainBuildIndexersTrace)
+      (config ^. sidechainBuildIndexersDbPath)
 
--- TODO: PLT-8076 should implement failsifresync from original sidechain
-
-runSidechainIndexers
-  :: (MonadIO m)
-  => SidechainIndexersConfig
-  -> C.ChainPoint
-  -- ^ Indexer's last stable point, used to update the preferred starting point
-  -- in 'RunIndexerConfig' as needed.
-  -> ChainIndex.Indexers.Coordinator
-  -> m ()
-runSidechainIndexers config indexerLastStablePoint =
-  liftIO
-    . ChainIndex.Runner.runIndexer (updateRunnerConfig config ^. sidechainIndexersRunIndexerConfig)
+updateRunIndexerConfigWithLastStable
+  :: C.ChainPoint -> SidechainRunIndexersConfig -> SidechainRunIndexersConfig
+updateRunIndexerConfigWithLastStable lastStable =
+  over
+    (sidechainRunIndexersRunIndexerConfig . runIndexerConfigChainPoint)
+    (updateStartingPoint lastStable)
   where
-    updateRunnerConfig =
-      over
-        (sidechainIndexersRunIndexerConfig . runIndexerConfigChainPoint)
-        (updateStartingPoint indexerLastStablePoint)
     updateStartingPoint :: C.ChainPoint -> C.ChainPoint -> C.ChainPoint
     updateStartingPoint stablePoint C.ChainPointAtGenesis = stablePoint
     updateStartingPoint _ pt = pt
+
+-- TODO: PLT-8076 should implement failsifresync from original sidechain
+runIndexers :: ReaderT SidechainRunIndexersConfig IO ()
+runIndexers = do
+  config <- ask
+  liftIO $
+    ChainIndex.Runner.runIndexer
+      (config ^. sidechainRunIndexersRunIndexerConfig)
+      (config ^. sidechainRunIndexersCoordinator)

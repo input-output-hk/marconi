@@ -17,7 +17,7 @@ import Data.Set.NonEmpty qualified as NESet
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig (HttpServerConfig))
+import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.ChainIndex.Indexers.EpochState (
   EpochStateWorkerConfig (EpochStateWorkerConfig),
   NodeConfig (NodeConfig),
@@ -48,8 +48,10 @@ import Marconi.Sidechain.Experimental.CLI (
   ),
  )
 import Marconi.Sidechain.Experimental.Indexers (
-  SidechainIndexersConfig (SidechainIndexersConfig),
+  SidechainBuildIndexersConfig (SidechainBuildIndexersConfig),
+  SidechainRunIndexersConfig (SidechainRunIndexersConfig),
   sidechainBuildIndexers,
+  updateRunIndexerConfigWithLastStable,
  )
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Exit (exitFailure)
@@ -62,12 +64,14 @@ import System.Exit (exitFailure)
 -}
 data SidechainEnv = SidechainEnv
   { _sidechainHttpServerConfig :: !SidechainHttpServerConfig
-  , _sidechainIndexersConfig :: !SidechainIndexersConfig
+  , _sidechainRunIndexersConfig :: !SidechainRunIndexersConfig
   }
+
+makeLenses ''SidechainEnv
 
 {- CONSTRUCTORS -}
 
-{- | TODO: PLT-8076 Create the 'SidechainEnv' from the CLI arguments,
+{- | Create the 'SidechainEnv' from the CLI arguments,
 with some validity checks on arguments needed to create the environment.
 -}
 mkSidechainEnvFromCliArgs
@@ -130,11 +134,11 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} = do
         optionsChainPoint
         socketFilePath
 
-    indexersConfig =
-      SidechainIndexersConfig
+    -- Used in sidechainBuildIndexers but not passed to the SidechainEnv
+    buildIndexersConfig =
+      SidechainBuildIndexersConfig
         trace
         securityParam
-        runIndexerConfig
         catchupConfig
         dbDir
         epochStateConfig
@@ -144,22 +148,25 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} = do
   -- Build the indexers, returning workers and latest sync
   -- This is needed to build the http config.
   (indexerLastStablePoint, queryables, coordinator) <-
-    either (exitWithLogFullError . Text.pack . show) pure =<< sidechainBuildIndexers indexersConfig
+    either (exitWithLogFullError . Text.pack . show) pure =<< sidechainBuildIndexers buildIndexersConfig
+
+  let
+    runIndexersConfig =
+      updateRunIndexerConfigWithLastStable indexerLastStablePoint $
+        SidechainRunIndexersConfig runIndexerConfig coordinator
 
   -- Http config
   let
     httpConfig =
-      HttpServerConfig
+      ChainIndex.Types.HttpServerConfig
         trace
         httpPort
         securityParam
         filteredAddresses
         (toJSON cliArgs)
         queryables
+
     sidechainExtraConfig = SidechainExtraHttpServerConfig targetAssets
     sidechainHttpConfig = SidechainHttpServerConfig httpConfig sidechainExtraConfig
 
-  pure (SidechainEnv sidechainHttpConfig indexersConfig)
-
-{- LENSES -}
-makeLenses ''SidechainEnv
+  pure (SidechainEnv sidechainHttpConfig runIndexersConfig)
