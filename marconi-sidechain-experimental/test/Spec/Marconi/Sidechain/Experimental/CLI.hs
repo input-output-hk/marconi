@@ -3,7 +3,7 @@
 module Spec.Marconi.Sidechain.Experimental.CLI where
 
 import Data.ByteString.Lazy (ByteString, fromStrict)
-import qualified Data.Text as T
+import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
 import Options.Applicative (
   ParserResult (CompletionInvoked, Failure, Success),
