@@ -51,5 +51,5 @@ getEpochNonceHandler = withChainIndexHandler . fmap (fmap mapResult) . ChainInde
   where
     mapResult :: ChainIndex.EpochState.EpochNonceResult -> SidechainEpochNonceResult
     mapResult (ChainIndex.EpochState.EpochNonceResult hash bn _ sn nc) =
-      let nonce = maybe Ledger.NeutralNonce Ledger.Nonce nc
-       in NonceResult nonce sn hash <$> bn
+      let nonce' = maybe Ledger.NeutralNonce Ledger.Nonce nc
+       in NonceResult nonce' sn hash <$> bn
