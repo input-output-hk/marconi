@@ -69,6 +69,10 @@ library
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
     Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types
+    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers
     Marconi.ChainIndex.Api.JsonRpc.Routes
     Marconi.ChainIndex.Api.JsonRpc.Server
     Marconi.ChainIndex.Api.Rest.Endpoint.Metrics
@@ -306,6 +310,7 @@ test-suite marconi-chain-index-test
     , filepath
     , hedgehog
     , lens
+    , mtl
     , nonempty-containers
     , optparse-applicative
     , postgresql-simple

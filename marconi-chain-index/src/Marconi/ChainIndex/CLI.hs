@@ -307,8 +307,8 @@ commonMaybeTargetAddressParser =
         <> Opt.metavar "BECH32-ADDRESS"
         <> Opt.help
           "Bech32 Shelley addresses to index. \
-          \ i.e \"--address-to-index address-1 --address-to-index address-2 ...\"\
-          \ or \"--address-to-index \"address-1 address-2\" ...\""
+          \ i.e \"--addresses-to-index address-1 --addresses-to-index address-2 ...\"\
+          \ or \"--addresses-to-index \"address-1 address-2\" ...\""
 
 {- | Parse target assets, both the @PolicyId@ and the @AssetName@ are expected to be in their
  RawBytesHex representation, they must be separated by a comma.

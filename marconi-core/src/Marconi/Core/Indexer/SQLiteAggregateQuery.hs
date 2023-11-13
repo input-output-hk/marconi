@@ -21,7 +21,7 @@ import Control.Concurrent qualified as Con
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
-import Control.Monad.Cont (MonadIO (liftIO))
+import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Database.SQLite.Simple (NamedParam ((:=)))
@@ -72,8 +72,6 @@ aggregateConnection :: Lens.Lens' (SQLiteAggregateQuery m point event) SQL.Conne
 aggregateConnection =
   Lens.lens _aggregateConnection (\agg _aggregateConnection -> agg{_aggregateConnection})
 
--- Lens.makeLenses ''SQLiteAggregateQuery
-
 {- | Build a @SQLiteSourceProvider@ from a map that attaches
 each database of the provided sources to the corresponding alias
 -}
@@ -97,6 +95,24 @@ mkSQLiteAggregateQuery sources = do
 
 instance (MonadIO m) => Closeable m (SQLiteAggregateQuery m point) where
   close indexer = liftIO $ SQL.close $ indexer ^. aggregateConnection
+
+instance
+  (MonadIO m, MonadTrans t, Monad (t m), Ord point, point ~ Point event)
+  => IsSync (t m) event (SQLiteAggregateQuery m point)
+  where
+  lastSyncPoint query@(SQLiteAggregateQuery _ _) =
+    let getPoint :: SQLiteSourceProvider m point -> m point
+        getPoint (SQLiteSourceProvider ix) = do
+          ix' <- liftIO $ Con.readMVar ix
+          lastSyncPoint ix'
+     in lift . fmap minimum . traverse getPoint . Lens.view databases $ query
+
+  lastStablePoint query@(SQLiteAggregateQuery _ _) =
+    let getPoint :: SQLiteSourceProvider m point -> m point
+        getPoint (SQLiteSourceProvider ix) = do
+          ix' <- liftIO $ Con.readMVar ix
+          lastStablePoint ix'
+     in lift . fmap minimum . traverse getPoint . Lens.view databases $ query
 
 instance
   (MonadIO m, Ord point, point ~ Point event)
