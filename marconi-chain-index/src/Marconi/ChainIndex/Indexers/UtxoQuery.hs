@@ -290,7 +290,6 @@ baseQuery =
   LEFT JOIN blockInfo.blockInfo spentBlockInfo ON spentBlockInfo.slotNo = futureSpent.slotNo
   |]
 
--- Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
 instance
   (MonadIO m)
   => Core.Queryable

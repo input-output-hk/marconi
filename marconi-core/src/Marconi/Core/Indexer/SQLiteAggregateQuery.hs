@@ -1,6 +1,4 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE ImpredicativeTypes #-}
-{-# LANGUAGE RankNTypes #-}
 
 {- |
     A @SQLiteAggregateQuery@ provides a way to query the content of several @SQLiteIndexer@s
