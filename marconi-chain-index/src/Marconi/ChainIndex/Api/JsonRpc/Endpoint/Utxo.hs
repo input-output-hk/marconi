@@ -1,11 +1,4 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
   AddressUtxoResult (AddressUtxoResult),
@@ -17,7 +10,7 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
 
 import Cardano.Api qualified as C
 import Control.Lens (view, (^.))
-import Control.Monad (join)
+import Control.Monad (join, unless)
 import Control.Monad.Except (ExceptT, MonadError (throwError), MonadTrans (lift), runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (bimap, first)
@@ -101,16 +94,15 @@ getUtxosFromAddressQueryHandler query = do
     mapGetBurnTokenEventsQuery
       :: [C.AddressAny] -> GetUtxosFromAddressParams -> Either (JsonRpcErr String) UtxoQueryInput
     mapGetBurnTokenEventsQuery
-      _ -- targetAddresses
+      targetAddresses
       (GetUtxosFromAddressParams addr createdAtAfter unspentBefore) = do
         mappedAddr <- addressMapping (pack addr)
-        -- TODO I can't actually see where we used to do this, and I get this error when running `run-pre-prod-queries`. Am I missing something?
-        -- unless
-        --   (mappedAddr `elem` targetAddresses)
-        --   ( Left $
-        --       mkJsonRpcInvalidParamsErr $
-        --         Just "The 'address' param value must belong to the provided target addresses."
-        --   )
+        unless
+          (null targetAddresses || mappedAddr `elem` targetAddresses)
+          ( Left $
+              mkJsonRpcInvalidParamsErr $
+                Just "The 'address' param value must belong to the provided target addresses."
+          )
         pure $ UtxoQueryInput mappedAddr createdAtAfter unspentBefore
         where
           addressMapping addressText = do
