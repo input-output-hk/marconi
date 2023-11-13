@@ -52,8 +52,13 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Sidechain.Experimental.Api.HttpServer
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock
     Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation
     Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo
+    Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses
     Marconi.Sidechain.Experimental.Api.JsonRpc.Routes
     Marconi.Sidechain.Experimental.Api.JsonRpc.Server
     Marconi.Sidechain.Experimental.Api.Types
@@ -79,7 +84,6 @@ library
   build-depends:
     , cardano-api          ^>=8.20
     , cardano-ledger-core
-    , cardano-slotting     ^>=0.1.1.1
     , iohk-monitoring
 
   ------------------------
@@ -89,25 +93,16 @@ library
     , aeson
     , async
     , base                  >=4.9 && <5
-    , bytestring
-    , data-default
     , directory
-    , fast-logger
-    , filepath
-    , http-types
     , lens
     , mtl
     , nonempty-containers
     , optparse-applicative
     , pretty-simple
-    , prettyprinter
-    , prometheus-client
     , servant
     , servant-server
     , stm                   >=2.5
     , text
-    , time
-    , wai-extra
     , warp
 
 executable marconi-sidechain-experimental
@@ -132,19 +127,7 @@ test-suite marconi-sidechain-experimental-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-
-  -- other-modules:
-
-  --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.MintBurn
-  --Spec.Marconi.Sidechain.Experimental.Api.Query.Indexers.Utxo
-  spec.marconi.sidechain.experimental.cli
-
-  --Spec.Marconi.Sidechain.Experimental.CLIInputValidation
-  --Spec.Marconi.Sidechain.Experimental.Env
-  --Spec.Marconi.Sidechain.Experimental.Integration
-  --Spec.Marconi.Sidechain.Experimental.Routes
-  --Spec.Marconi.Sidechain.Experimental.RpcClientAction
-  --Spec.Marconi.Sidechain.Experimental.Utils
+  other-modules:      Spec.Marconi.Sidechain.Experimental.CLI
 
   --------------------
   -- Required local executable
@@ -159,7 +142,7 @@ test-suite marconi-sidechain-experimental-test
     , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}  >=1.2.0
     , marconi-core
     , marconi-core-json-rpc                                                    >=1.2.0
-    , marconi-sidechain-experimental                                           >=1.2.0
+    , marconi-sidechain-experimental                                           >=0.0.1
 
   --------------------------
   -- Other IOG dependencies
@@ -169,7 +152,6 @@ test-suite marconi-sidechain-experimental-test
     , cardano-api-gen         ^>=8.2
     , cardano-crypto-class
     , cardano-ledger-shelley
-    , cardano-slotting        ^>=0.1.1.1
     , hedgehog-extras
     , iohk-monitoring
     , plutus-tx-plugin
@@ -185,7 +167,6 @@ test-suite marconi-sidechain-experimental-test
     , containers
     , directory
     , exceptions
-    , filepath
     , hedgehog
     , http-client
     , lens

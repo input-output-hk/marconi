@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications #-}
 
--- | Boilerplate to run the HTTP server as in marconi-chain-index.
+-- | Run the HTTP server for the JSON-RPC API.
 module Marconi.Sidechain.Experimental.Api.HttpServer where
 
 import Control.Lens ((^.))
@@ -29,7 +29,7 @@ import Servant.Server (
   serve,
  )
 
--- | Bootstraps the HTTP server
+-- | Bootstraps the HTTP server.
 runHttpServer :: ReaderT SidechainHttpServerConfig IO ()
 runHttpServer = do
   config <- ask
@@ -43,9 +43,9 @@ sidechainApp config = do
       wrapHandler :: ReaderHandler SidechainHttpServerConfig a -> Handler a
       wrapHandler = catchHttpHandlerExceptions trace . hoistReaderHandler config
   serve (Proxy @API) $
-    hoistServer (Proxy @API) wrapHandler httpRpcServer
+    hoistServer (Proxy @API) wrapHandler httpServer
 
-httpRpcServer :: ReaderServer SidechainHttpServerConfig API
-httpRpcServer = jsonRpcServer
+httpServer :: ReaderServer SidechainHttpServerConfig API
+httpServer = jsonRpcServer
 
 type API = JsonRpcAPI

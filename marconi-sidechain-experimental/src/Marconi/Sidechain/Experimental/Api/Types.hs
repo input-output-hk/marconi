@@ -16,35 +16,28 @@ import Marconi.ChainIndex.Api.Types qualified as Types
 {- SERVER CONFIG -}
 
 {- | 'SidechainHttpServerConfig' augments @Types.'HttpServerConfig'@ with
- - 'SidechainExtraHttpServerConfig', containing anything needed for sidechain
- - queries not included in HttpServerConfig.
+ - additional fields containing anything needed for sidechain
+ - queries not included in @Types.'HttpServerConfig'@.
 -}
 data SidechainHttpServerConfig = SidechainHttpServerConfig
   { _chainIndexHttpServerConfig :: !Types.HttpServerConfig
-  , _sidechainExtraHttpServerConfig :: !SidechainExtraHttpServerConfig
+  , _sidechainTargetAssets :: Maybe TargetAssets
   }
 
 {- SIDECHAIN EXTRA CONFIG -}
 
 type TargetAssets = NonEmpty (C.PolicyId, Maybe C.AssetName)
 
-newtype SidechainExtraHttpServerConfig = SidechainExtraHttpServerConfig
-  { _sidechainTargetAssets :: Maybe TargetAssets
-  }
-
 {- LENSES -}
-makeLenses ''SidechainExtraHttpServerConfig
 makeLenses ''SidechainHttpServerConfig
 
 {- UTILITIES -}
 
--- | Specialization of 'withReaderT'.
-withChainIndexHttpServerConfig
-  :: ReaderT Types.HttpServerConfig m a -> ReaderT SidechainHttpServerConfig m a
-withChainIndexHttpServerConfig = withReaderT (^. chainIndexHttpServerConfig)
-
--- | Specialization of 'mapError' and 'withReaderT' in the case used here.
-mapChainIndexExceptT
+{- | Specialization of a composition of 'mapError' and 'withReaderT' to facilitate
+mappings between handlers from `marconi-chain-index` using @Types.'HttpServerConfig'@
+and handlers of this package using 'SidechainHttpServerConfig'.
+-}
+withChainIndexHandler
   :: ExceptT e (ReaderT Types.HttpServerConfig m) a
   -> ExceptT e (ReaderT SidechainHttpServerConfig m) a
-mapChainIndexExceptT = mapExceptT withChainIndexHttpServerConfig
+withChainIndexHandler = mapExceptT (withReaderT (^. chainIndexHttpServerConfig))

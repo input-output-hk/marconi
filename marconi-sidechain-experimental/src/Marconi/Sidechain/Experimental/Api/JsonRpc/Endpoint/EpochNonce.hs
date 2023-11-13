@@ -12,7 +12,7 @@ import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState qualified as ChainIndex.EpochState
 import Marconi.Core.JsonRpc (ReaderHandler)
-import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, mapChainIndexExceptT)
+import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
 
 {- METHOD -}
@@ -47,7 +47,7 @@ getEpochNonceHandler
   :: Word64
   -- ^ EpochNo
   -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) SidechainEpochNonceResult)
-getEpochNonceHandler = mapChainIndexExceptT . fmap (fmap mapResult) . ChainIndex.EpochState.getEpochNonceHandler
+getEpochNonceHandler = withChainIndexHandler . fmap (fmap mapResult) . ChainIndex.EpochState.getEpochNonceHandler
   where
     mapResult :: ChainIndex.EpochState.EpochNonceResult -> SidechainEpochNonceResult
     mapResult (ChainIndex.EpochState.EpochNonceResult hash bn _ sn nc) =

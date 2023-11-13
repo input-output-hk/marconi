@@ -32,7 +32,6 @@ import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.ChainIndex.Utils qualified as ChainIndex.Utils
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.Types (
-  SidechainExtraHttpServerConfig (SidechainExtraHttpServerConfig),
   SidechainHttpServerConfig (SidechainHttpServerConfig),
  )
 import Marconi.Sidechain.Experimental.CLI (
@@ -174,7 +173,6 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
         (toJSON cliArgs)
         queryables
 
-    sidechainExtraConfig = SidechainExtraHttpServerConfig targetAssets
-    sidechainHttpConfig = SidechainHttpServerConfig httpConfig sidechainExtraConfig
+    sidechainHttpConfig = SidechainHttpServerConfig httpConfig targetAssets
 
   pure (SidechainEnv sidechainHttpConfig runIndexersConfig)

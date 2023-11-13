@@ -3,20 +3,8 @@
 
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Routes where
 
-import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent (
-  RpcGetBurnTokenEventsMethod,
- )
-import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
-  RpcCurrentSyncedBlockMethod,
- )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo (RpcEchoMethod)
-import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation (
-  RpcEpochActiveStakePoolDelegationMethod,
- )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce (RpcEpochNonceMethod)
-import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
-  RpcPastAddressUtxoMethod,
- )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses (
   RpcTargetAddressesMethod,
  )
@@ -29,9 +17,10 @@ type JsonRpcAPI = "json-rpc" :> RawJsonRpc RpcAPI
 type RpcAPI =
   RpcEchoMethod
     :<|> RpcTargetAddressesMethod
-    -- TODO:
-    -- :<|> RpcCurrentSyncedBlockMethod
-    -- :<|> RpcPastAddressUtxoMethod
-    -- :<|> RpcGetBurnTokenEventsMethod
-    -- :<|> RpcEpochActiveStakePoolDelegationMethod
     :<|> RpcEpochNonceMethod
+
+-- TODO:
+-- :<|> RpcCurrentSyncedBlockMethod
+-- :<|> RpcPastAddressUtxoMethod
+-- :<|> RpcGetBurnTokenEventsMethod
+-- :<|> RpcEpochActiveStakePoolDelegationMethod
