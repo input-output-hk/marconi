@@ -159,6 +159,7 @@ test-suite marconi-sidechain-experimental-test
   ------------------------
   -- Non-IOG dependencies
   ------------------------
+
   build-depends:
     , aeson
     , aeson-pretty
