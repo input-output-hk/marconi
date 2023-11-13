@@ -37,6 +37,9 @@ let
           marconi-sidechain.doHaddock = false;
           marconi-sidechain.flags.defer-plugin-errors = false;
 
+          marconi-sidechain-experimental.doHaddock = false;
+          marconi-sidechain-experimental.flags.defer-plugin-errors = false;
+
           marconi-starter.doHaddock = false;
           marconi-starter.flags.defer-plugin-errors = false;
 
@@ -73,6 +76,7 @@ let
           marconi-chain-index.ghcOptions = [ "-Werror" ];
           marconi-core.ghcOptions = [ "-Werror" ];
           marconi-sidechain.ghcOptions = [ "-Werror" ];
+          marconi-sidechain-experimental.ghcOptions = [ "-Werror" ];
           marconi-starter.ghcOptions = [ "-Werror" ];
         };
       }];
