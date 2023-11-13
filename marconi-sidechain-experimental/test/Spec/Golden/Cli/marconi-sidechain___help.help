@@ -32,8 +32,8 @@ Available options:
                            the tip of the local connected node
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
-                           "--address-to-index address-1 --address-to-index
-                           address-2 ..." or "--address-to-index "address-1
+                           "--addresses-to-index address-1 --addresses-to-index
+                           address-2 ..." or "--addresses-to-index "address-1
                            address-2" ..."
   --match-asset-id POLICY_ID[.ASSET_NAME]
                            Asset to index, defined by the policy id and an
