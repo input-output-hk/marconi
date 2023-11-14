@@ -127,7 +127,10 @@ test-suite marconi-sidechain-experimental-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   hs-source-dirs:     test
-  other-modules:      Spec.Marconi.Sidechain.Experimental.CLI
+  other-modules:
+    Spec.Marconi.Sidechain.Experimental.CLI
+    Spec.Marconi.Sidechain.Experimental.CLIInputValidation
+    Spec.Marconi.Sidechain.Experimental.Utils
 
   --------------------
   -- Required local executable
@@ -152,6 +155,7 @@ test-suite marconi-sidechain-experimental-test
     , cardano-api-gen         ^>=8.2
     , cardano-crypto-class
     , cardano-ledger-shelley
+    , filepath
     , hedgehog-extras
     , iohk-monitoring
     , plutus-tx-plugin
