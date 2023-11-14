@@ -1,0 +1,14 @@
+option --match-asset-id: Expected Base16-encoded bytestring, but got 0000notAToken0; invalid character at offset: 4
+
+Usage: marconi-sidechain-experimental 
+         [--version] (-s|--socket-path FILE-PATH) --node-config-path ARG
+         (-d|--db-dir DIR) [--http-port INT] 
+         (--mainnet | --testnet-magic NATURAL) 
+         [--max-indexing-depth | --min-indexing-depth NATURAL] 
+         [(-a|--addresses-to-index BECH32-ADDRESS)] 
+         [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
+         [--fail-if-resyncing-from-genesis] [--initial-retry-time NATURAL] 
+         [--no-max-retry-time | --max-retry-time NATURAL] 
+         [(-n|--slot-no SLOT-NO) (-b|--block-header-hash BLOCK-HEADER-HASH)]
+
+  marconi-sidechain
