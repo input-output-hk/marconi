@@ -18,13 +18,16 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
-import Marconi.ChainIndex.Indexers.BlockInfo qualified as Block
+import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
 import Marconi.ChainIndex.Indexers.Coordinator (coordinatorWorker, standardCoordinator)
 import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.ChainIndex.Indexers.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.ChainIndex.Indexers.MintTokenEventQuery (
+  MintTokenEventIndexerQuery (MintTokenEventIndexerQuery),
+ )
 import Marconi.ChainIndex.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
@@ -59,7 +62,7 @@ type EpochStateIndexer =
     (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
 type MintTokenEventIndexer =
   StandardIndexer IO Core.SQLiteIndexer MintTokenEvent.MintTokenBlockEvents
-type BlockInfoIndexer = StandardIndexer IO Core.SQLiteIndexer Block.BlockInfo
+type BlockInfoIndexer = StandardIndexer IO Core.SQLiteIndexer BlockInfo.BlockInfo
 type UtxoIndexer = UtxoQuery.UtxoQueryIndexer IO
 type CurrentSyncPointIndexer =
   Core.WithTrace
@@ -70,7 +73,7 @@ type CurrentSyncPointIndexer =
 -- | Container for all the queryable indexers of marconi-chain-index.
 data MarconiChainIndexQueryables = MarconiChainIndexQueryables
   { _queryableEpochState :: !(MVar EpochStateIndexer)
-  , _queryableMintToken :: !(MVar MintTokenEventIndexer)
+  , _queryableMintToken :: !(MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents)
   , _queryableUtxo :: !UtxoIndexer
   , _queryableCurrentSyncPoint :: !CurrentSyncPointIndexer
   }
@@ -156,7 +159,7 @@ buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateC
       queryables =
         MarconiChainIndexQueryables
           epochStateMVar
-          mintTokenMVar
+          (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
           utxoQueryIndexer
           currentSyncPointIndexer
 
@@ -189,25 +192,30 @@ buildTxBodyCoordinator textLogger extract workers = do
 
 -- | Configure and start the @BlockInfo@ indexer
 blockInfoBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
   -> Core.CatchupConfig
-  -> BM.Trace m Text
+  -> BM.Trace IO Text
   -> FilePath
-  -> n (StandardWorker m BlockEvent Block.BlockInfo Core.SQLiteIndexer)
+  -> n (StandardWorker IO BlockEvent BlockInfo.BlockInfo Core.SQLiteIndexer)
 blockInfoBuilder securityParam catchupConfig textLogger path =
   let indexerName = "BlockInfo"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
-      extractBlockInfo :: BlockEvent -> Block.BlockInfo
-      extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = Block.fromBlockEratoBlockInfo b eno t
+      blockInfoDbPath = path </> BlockInfo.dbName
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook
+            ?~ BlockInfo.catchupConfigEventHook indexerName textLogger blockInfoDbPath
+      extractBlockInfo :: BlockEvent -> BlockInfo.BlockInfo
+      extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = BlockInfo.fromBlockEratoBlockInfo b eno t
       blockInfoWorkerConfig =
         StandardWorkerConfig
           indexerName
           securityParam
-          catchupConfig
+          catchupConfigWithTracer
           (pure . Just . extractBlockInfo)
           (BM.appendName indexerName indexerEventLogger)
-   in Block.blockInfoWorker blockInfoWorkerConfig (path </> "blockInfo.db")
+   in BlockInfo.blockInfoWorker blockInfoWorkerConfig (path </> BlockInfo.dbName)
 
 -- | Configure and start the @Utxo@ indexer
 utxoBuilder

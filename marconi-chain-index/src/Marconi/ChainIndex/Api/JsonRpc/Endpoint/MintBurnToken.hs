@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
@@ -15,8 +16,10 @@ import Cardano.Api (FromJSON)
 import Cardano.Api qualified as C
 import Control.Applicative ((<|>))
 import Control.Comonad (Comonad (extract))
-import Control.Lens ((^.), (^?), _1, _2)
+import Control.Lens (view, (^.), (^?), _1, _2)
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson.Types (ToJSON (toJSON), object, parseJSON, withObject, (.:), (.:?), (.=))
+import Data.Bifunctor (first)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
@@ -37,7 +40,7 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
-import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, queryHttpReaderHandler)
+import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, hoistHttpHandler, queryErrToRpcErr)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
 
 ------------------
@@ -106,7 +109,6 @@ data BurnTokenEventResult = BurnTokenEventResult
 -- Handlers --
 --------------
 
--- | Return 'MintTokenBlockEvents' based on 'QueryByAssetId'
 getMintingPolicyHashTxHandler
   :: MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
   -> ReaderHandler
@@ -119,10 +121,11 @@ getMintingPolicyHashTxHandler
               )
           )
       )
-getMintingPolicyHashTxHandler =
-  queryHttpReaderHandler
-    (configQueryables . queryableMintToken)
-    . Core.WithStability
+getMintingPolicyHashTxHandler q = do
+  indexer <- view (configQueryables . queryableMintToken)
+  hoistHttpHandler $
+    liftIO $
+      first queryErrToRpcErr <$> Core.queryLatestEither (Core.WithStability q) indexer
 
 -- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
 getBurnTokenEventsHandler

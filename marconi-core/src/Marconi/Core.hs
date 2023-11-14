@@ -412,14 +412,16 @@ module Marconi.Core (
   EventsFromQuery (..),
   EventsMatchingQuery (..),
   allEvents,
+  calcStability,
   LatestEventsQuery (LatestEventsQuery),
   latestEvent,
   Stability (..),
   isStable,
-  queryWithStability,
+  queryErrorWithStability,
   WithStability (WithStability, unWithStability),
-  withStabilityAt,
+  withStabilityM,
   withStability,
+  withStabilityAt,
 
   -- * Indexer Transformers
   IndexerTrans (..),
@@ -627,11 +629,13 @@ import Marconi.Core.Query (
   Stability (..),
   WithStability (WithStability, unWithStability),
   allEvents,
+  calcStability,
   isStable,
   latestEvent,
-  queryWithStability,
+  queryErrorWithStability,
   withStability,
   withStabilityAt,
+  withStabilityM,
  )
 import Marconi.Core.Transformer.Class (IndexerMapTrans (..), IndexerTrans (..))
 import Marconi.Core.Transformer.IndexTransformer (
