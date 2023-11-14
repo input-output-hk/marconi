@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          marconi-sidechain-experimental
-version:       0.0.1.0
+version:       1.2.0.0
 license:       Apache-2.0
 license-files:
   LICENSE
@@ -145,7 +145,7 @@ test-suite marconi-sidechain-experimental-test
     , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}  >=1.2.0
     , marconi-core
     , marconi-core-json-rpc                                                    >=1.2.0
-    , marconi-sidechain-experimental                                           >=0.0.1
+    , marconi-sidechain-experimental                                           >=1.2.0
 
   --------------------------
   -- Other IOG dependencies

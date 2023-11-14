@@ -92,6 +92,7 @@ let
         "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
         "marconi-chain-index.components.exes.marconi-chain-index"
         "marconi-sidechain.components.exes.marconi-sidechain"
+        "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
       ]
         prev.hsPkgs;
     })
