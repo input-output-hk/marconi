@@ -104,7 +104,7 @@ let
     includeMingwW64HydraJobs = false;
     shellArgs = repoRoot.nix.shell;
     readTheDocs = {
-      enable = true;
+      enable = !pkgs.stdenv.isDarwin;
       siteFolder = "doc/read-the-docs-site";
     };
   };
