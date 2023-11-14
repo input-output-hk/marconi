@@ -255,13 +255,19 @@ instance Ord Utxo where
 instance FromJSON Utxo where
   parseJSON (Object v) =
     Utxo
-      <$> v .: "address"
+      <$> v
+        .: "address"
       <*> (C.TxIn <$> v .: "txId" <*> v .: "txIx")
-      <*> v .: "datumHash"
-      <*> v .: "value"
-      <*> v .: "inlineScript"
-      <*> v .: "inlineScriptHash"
-      <*> v .: "txIndexInBlock"
+      <*> v
+        .: "datumHash"
+      <*> v
+        .: "value"
+      <*> v
+        .: "inlineScript"
+      <*> v
+        .: "inlineScriptHash"
+      <*> v
+        .: "txIndexInBlock"
   parseJSON _ = mempty
 
 instance ToJSON Utxo where
@@ -322,8 +328,10 @@ toChainPointRow cp = ChainPointRow <$> C.chainPointToSlotNo cp <*> C.chainPointT
 instance FromJSON ChainPointRow where
   parseJSON (Object v) =
     ChainPointRow
-      <$> v .: "slotNo"
-      <*> v .: "blockHeaderHash"
+      <$> v
+        .: "slotNo"
+      <*> v
+        .: "blockHeaderHash"
   parseJSON _ = mempty
 
 instance ToJSON ChainPointRow where
@@ -401,8 +409,10 @@ instance FromJSON UtxoRow where
               Just $ SpentInfo s' txId'
             _error -> fail "Inconsistent spent info"
      in UtxoRow
-          <$> v .: "utxo"
-          <*> v .: "slotNo"
+          <$> v
+            .: "utxo"
+          <*> v
+            .: "slotNo"
           <*> parseSpentInfo
   parseJSON _ = mempty
 

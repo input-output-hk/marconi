@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Gen.Marconi.ChainIndex.Mockchain (
+module Test.Gen.Marconi.ChainIndex.Mockchain (
   Mockchain,
   genMockchain,
   MockBlock (..),
@@ -32,15 +32,15 @@ import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Time.Clock.POSIX (POSIXTime)
-import Gen.Marconi.ChainIndex.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
-import Gen.Marconi.ChainIndex.Types qualified as Gen
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Internal.Gen qualified as Hedgehog.Gen
 import Hedgehog.Range qualified
 import Hedgehog.Range qualified as Range
-import Helpers (emptyTxBodyContent)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Test.Gen.Marconi.ChainIndex.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
+import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
+import Test.Helpers (emptyTxBodyContent)
 
 type Mockchain era = [MockBlock era]
 

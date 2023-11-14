@@ -36,7 +36,6 @@ import Control.Concurrent (MVar)
 import Control.Lens ((^.), (^?))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO (liftIO))
-import Control.Monad.Except (MonadError)
 import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
@@ -99,21 +98,6 @@ data UtxoQueryAggregate m = forall
   , blockInfoIndexer :: MVar (blockInfoIndexer blockInfo)
   -- ^ the source provider for the 'BlockInfo' table, usually a @BlockInfoIndexer@
   }
-
--- | An alias for the 'SQLiteAggregateQuery' that handle the 'UtxoQueryEvent'
-type UtxoQueryIndexer m =
-  Core.WithTrace IO (Core.SQLiteAggregateQuery m C.ChainPoint) UtxoQueryEvent
-
--- | Generate a @UtxoQueryIndexer@ from the given source
-mkUtxoSQLiteQuery :: UtxoQueryAggregate m -> IO (Core.SQLiteAggregateQuery m C.ChainPoint event)
-mkUtxoSQLiteQuery (UtxoQueryAggregate _utxo _spent _datum _blockInfo) =
-  Core.mkSQLiteAggregateQuery $
-    Map.fromList
-      [ ("utxo", SQLiteSourceProvider _utxo)
-      , ("spent", SQLiteSourceProvider _spent)
-      , ("datum", SQLiteSourceProvider _datum)
-      , ("blockInfo", SQLiteSourceProvider _blockInfo)
-      ]
 
 data UtxoResult = UtxoResult
   { _utxo :: Utxo
@@ -228,8 +212,32 @@ data UtxoQueryInput = UtxoQueryInput
   , _upperBound :: Maybe C.SlotNo
   -- ^ Inclusive upperBound (utxo spent after this point displaed with their spent information)
   }
+  deriving (Generic, ToJSON, FromJSON)
 
 Lens.makeLenses ''UtxoQueryInput
+
+-- | An alias for the 'SQLiteAggregateQuery' that handle the 'UtxoQueryEvent'
+type UtxoQueryIndexer m =
+  Core.WithTrace
+    IO
+    ( Core.SQLiteAggregateQuery
+        m
+        C.ChainPoint
+    )
+    UtxoQueryEvent
+
+-- | Generate a @UtxoQueryIndexer@ from the given source
+mkUtxoSQLiteQuery
+  :: UtxoQueryAggregate m
+  -> IO (Core.SQLiteAggregateQuery m C.ChainPoint event)
+mkUtxoSQLiteQuery (UtxoQueryAggregate _utxo _spent _datum _blockInfo) =
+  Core.mkSQLiteAggregateQuery $
+    Map.fromList
+      [ ("utxo", SQLiteSourceProvider _utxo)
+      , ("spent", SQLiteSourceProvider _spent)
+      , ("datum", SQLiteSourceProvider _datum)
+      , ("blockInfo", SQLiteSourceProvider _blockInfo)
+      ]
 
 type instance Core.Result UtxoQueryInput = [UtxoResult]
 
@@ -283,8 +291,12 @@ baseQuery =
   |]
 
 instance
-  (MonadIO m, MonadError (Core.QueryError UtxoQueryEvent) m)
-  => Core.Queryable m UtxoQueryEvent UtxoQueryInput (Core.SQLiteAggregateQuery m C.ChainPoint)
+  (MonadIO m)
+  => Core.Queryable
+      m
+      UtxoQueryEvent
+      UtxoQueryInput
+      (Core.SQLiteAggregateQuery n C.ChainPoint)
   where
   query point q indexer =
     let addressFilter = (["u.address = :address"], [":address" := q ^. address])
@@ -312,5 +324,4 @@ instance
                 <> sqlFilters
                 <> " GROUP BY u.txId, u.txIx"
                 <> " ORDER BY u.slotNo ASC"
-     in do
-          liftIO $ SQL.queryNamed (indexer ^. Core.aggregateConnection) query params
+     in liftIO $ SQL.queryNamed (indexer ^. Core.aggregateConnection) query params

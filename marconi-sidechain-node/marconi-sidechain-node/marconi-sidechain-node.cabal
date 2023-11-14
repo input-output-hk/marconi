@@ -52,7 +52,7 @@ library
   --------------------------
   build-depends:
     , cardano-crypto-class
-    , cardano-node               ==8.1.2
+    , cardano-node               ==8.4.0
     , optparse-applicative-fork
 
   -- , marconi-chain-index -- Doesn't work yet because current cardano-node version depends on

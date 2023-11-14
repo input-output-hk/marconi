@@ -59,8 +59,8 @@ Available options:
   --http-port INT          JSON-RPC http port number (default: 3000)
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
-                           "--address-to-index address-1 --address-to-index
-                           address-2 ..." or "--address-to-index "address-1
+                           "--addresses-to-index address-1 --addresses-to-index
+                           address-2 ..." or "--addresses-to-index "address-1
                            address-2" ..."
   --match-asset-id POLICY_ID[.ASSET_NAME]
                            Asset to index, defined by the policy id and an

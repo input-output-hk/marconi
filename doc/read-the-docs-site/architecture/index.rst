@@ -6,9 +6,8 @@ Core architecture
    :titlesonly:
 
    system-context
-   component-diagram
-   key-concepts
-   sequence-diagram
+   building-blocks-view
+   runtime-view
    local-node-communication
    marconi-as-a-node
    ../adr/index
