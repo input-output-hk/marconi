@@ -72,7 +72,7 @@ let
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
           ";
           marconi-sidechain-experimental.preCheck = "
-            export MARCONI_SIDECHAIN_EXPERIMENTAL=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain-experimental
+            export MARCONI_SIDECHAIN_EXPERIMENTAL=${inputs.self.packages.marconi-sidechain-experimental}/bin/marconi-sidechain-experimental
           ";
 
           # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
