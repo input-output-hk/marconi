@@ -148,20 +148,20 @@ tests =
         "Stability"
         [ testPropertyNamed
             "withStability always stable when SecurityParam is 0"
-            "withStabilityAllStable"
-            withStabilityAllStable
+            "propWithStabilityAllStable"
+            propWithStabilityAllStable
         , testPropertyNamed
             "withStability all unstable when SecurityParam is greater than upper slot of chain"
-            "withStabilityAllUnstable"
-            withStabilityAllUnstable
+            "propWithStabilityAllUnstable"
+            propWithStabilityAllUnstable
         , testPropertyNamed
-            "despite the SecurityParam of 0, all results are stable due to upperSlotNo"
-            "withStabilitySetUsnStable"
-            withStabilitySetUsnStable
+            "Despite the SecurityParam of 0, all results are stable due to upperSlotNo"
+            "propWithStabilitySetUsnStable"
+            propWithStabilitySetUsnStable
         , testPropertyNamed
-            "despite the high SecurityParam, all results are unstable due to upperSlotNo"
-            "withStabilitySetUsnUnstable"
-            withStabilitySetUsnUnstable
+            "Despite the high SecurityParam, all results are unstable due to upperSlotNo"
+            "propWithStabilitySetUsnUnstable"
+            propWithStabilitySetUsnUnstable
         ]
     ]
 
@@ -750,27 +750,27 @@ data MintTokenIndexers = MintTokenIndexers
 data UpperSlotNo = Min | Max
 
 -- | Given a @SecurityParam@ of @0@ and no @upperSlotNo@, all events should be @Stable@
-withStabilityAllStable :: H.Property
-withStabilityAllStable =
+propWithStabilityAllStable :: H.Property
+propWithStabilityAllStable =
   stabilityTestBase (H.assert . all isStable) Nothing 0
 
 -- | Given a @SecurityParam@ of @1000000@ and no @upperSlotNo@, all events should be @Volatile@
-withStabilityAllUnstable :: H.Property
-withStabilityAllUnstable =
+propWithStabilityAllUnstable :: H.Property
+propWithStabilityAllUnstable =
   stabilityTestBase (H.assert . not . any isStable) Nothing 1000000
 
 {- | Given a maximal @upperSlotNo@, all events should be @Stable@, despite a @SecurityParam@ of
     @1000000@
 -}
-withStabilitySetUsnStable :: H.Property
-withStabilitySetUsnStable =
+propWithStabilitySetUsnStable :: H.Property
+propWithStabilitySetUsnStable =
   stabilityTestBase (H.assert . all isStable) (Just Max) 1000000
 
 {- | Given a minimal @upperSlotNo@, all events should be @Volatile@, despite a @SecurityParam@ of
     @0@
 -}
-withStabilitySetUsnUnstable :: H.Property
-withStabilitySetUsnUnstable =
+propWithStabilitySetUsnUnstable :: H.Property
+propWithStabilitySetUsnUnstable =
   stabilityTestBase (H.assert . not . any isStable) (Just Min) 0
 
 -- | A function for building stability tests with the MintTokenEvent.MintTokenEventIndexerCombine
@@ -782,7 +782,7 @@ stabilityTestBase
 stabilityTestBase assertion upperSlotNo securityParam = H.property $ do
   policy <- H.forAll CGen.genPolicyId
   events <- H.forAll genMockchainWithInfo
-  mintEvents <- H.forAll $ getMintTokenEvents $ mockchainWithInfoAsMockchain events
+  mintEvents <- H.forAll $ genMintTokenEvents $ mockchainWithInfoAsMockchain events
   let blockEvents = Test.BlockInfo.getBlockInfoEvents events
   let event = maximumBy (comparing $ view Core.point) mintEvents
       point = event ^. Core.point
@@ -807,17 +807,17 @@ stabilityTestBase assertion upperSlotNo securityParam = H.property $ do
   assertion res
 
 -- | Generate a list of events from a mock chain
-getMintTokenEvents
+genMintTokenEvents
   :: Mockchain era
   -> Gen [Core.Timed C.ChainPoint (Maybe MintTokenEvent.MintTokenBlockEvents)]
-getMintTokenEvents =
+genMintTokenEvents =
   let getTxBody :: C.Tx era -> C.TxBody era
       getTxBody (C.Tx txBody _) = txBody
       getBlockSpentsEvent
         :: MockBlock era
         -> Gen (Core.Timed C.ChainPoint (Maybe MintTokenEvent.MintTokenBlockEvents))
       getBlockSpentsEvent (MockBlock (C.BlockHeader slotNo blockHeaderHash blockNo) txs) = do
-        events <- concat <$> traverse (getInputs blockNo . getTxBody) txs
+        events <- concat <$> traverse (genInputs blockNo . getTxBody) txs
         pure $
           Core.Timed
             (C.ChainPoint slotNo blockHeaderHash)
@@ -826,8 +826,8 @@ getMintTokenEvents =
             )
    in traverse getBlockSpentsEvent
 
-getInputs :: C.BlockNo -> C.TxBody era -> Gen [MintTokenEvent]
-getInputs
+genInputs :: C.BlockNo -> C.TxBody era -> Gen [MintTokenEvent]
+genInputs
   blockNo
   ( C.TxBody
       C.TxBodyContent
@@ -960,7 +960,7 @@ indexMockchain
               else runExceptT $ Core.setLastStablePoint chainTipPoint res
           pure res'
 
-    Concurrent.modifyMVar_ mintTokenVar (withGen (getMintTokenEvents chain))
+    Concurrent.modifyMVar_ mintTokenVar (withGen (genMintTokenEvents chain))
     Concurrent.modifyMVar_
       blockInfoVar
       ( withGen
