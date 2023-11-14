@@ -8,10 +8,9 @@ module Marconi.Sidechain.Experimental.Api.Types (
 
 import Cardano.Api qualified as C
 import Control.Lens (makeLenses, (^.))
-import Control.Monad.Except (ExceptT, mapExceptT)
-import Control.Monad.Reader (ReaderT, withReaderT)
 import Data.List.NonEmpty (NonEmpty)
 import Marconi.ChainIndex.Api.Types qualified as Types
+import Marconi.Core.JsonRpc (ReaderHandler, withReaderHandler)
 
 {- SERVER CONFIG -}
 
@@ -38,6 +37,6 @@ mappings between handlers from `marconi-chain-index` using @Types.'HttpServerCon
 and handlers of this package using 'SidechainHttpServerConfig'.
 -}
 withChainIndexHandler
-  :: ExceptT e (ReaderT Types.HttpServerConfig m) a
-  -> ExceptT e (ReaderT SidechainHttpServerConfig m) a
-withChainIndexHandler = mapExceptT (withReaderT (^. chainIndexHttpServerConfig))
+  :: ReaderHandler Types.HttpServerConfig a
+  -> ReaderHandler SidechainHttpServerConfig a
+withChainIndexHandler = withReaderHandler (^. chainIndexHttpServerConfig)
