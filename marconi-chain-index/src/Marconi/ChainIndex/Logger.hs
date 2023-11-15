@@ -187,19 +187,19 @@ chainSyncEventStreamLogging tracer s = effect $ do
       -> (C.ChainPoint -> IO ())
     update memo statsRef = do
       \case
-        (RollForward (BlockEvent bim _epochNo _posixTime) ct) -> do
+        (RollForward (BlockEvent bim _epochNo _posixTime) ct) ->
           let cp = case bim of
                 (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) ->
                   C.ChainPoint slotNo hash
-          \cp' -> runUpdate memo cp cp' $
-            do
-              modifyIORef' statsRef $ \stats ->
-                stats
-                  { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
-                  , syncStatsChainSyncPoint = cp
-                  , syncStatsNodeTip = ct
-                  }
-              printMessage statsRef
+           in \cp' -> runUpdate memo cp cp' $
+                do
+                  modifyIORef' statsRef $ \stats ->
+                    stats
+                      { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
+                      , syncStatsChainSyncPoint = cp
+                      , syncStatsNodeTip = ct
+                      }
+                  printMessage statsRef
         (RollBackward cp ct) -> \cp' -> runUpdate memo cp cp' $ do
           modifyIORef' statsRef $ \stats ->
             stats
