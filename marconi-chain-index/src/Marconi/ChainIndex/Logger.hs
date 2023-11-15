@@ -225,13 +225,11 @@ chainSyncEventStreamLogging tracer s = effect $ do
               | t > minSecondsBetweenMsg -> True
               | otherwise -> False
 
-      if shouldPrint
-        then do
-          liftIO $ modifyIORef' statsRef $ \stats ->
-            stats
-              { syncStatsNumBlocks = 0
-              , syncStatsNumRollbacks = 0
-              , syncStatsLastMessageTime = Just now
-              }
-          logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
-        else pure mempty
+      when shouldPrint $ do
+        logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
+        modifyIORef' statsRef $ \stats ->
+          stats
+            { syncStatsNumBlocks = 0
+            , syncStatsNumRollbacks = 0
+            , syncStatsLastMessageTime = Just now
+            }
