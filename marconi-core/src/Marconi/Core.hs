@@ -397,12 +397,15 @@ module Marconi.Core (
 
   -- ** Coordinator
   Coordinator,
+  ProcessQueueItem (ProcessQueueItem),
   workers,
   tokens,
   channel,
   nbWorkers,
   mkCoordinator,
   processQueue,
+  processQueueInput,
+  processQueueItemLog,
 
   -- * Common queries
 
@@ -547,10 +550,13 @@ import Marconi.Core.Class (
  )
 import Marconi.Core.Coordinator (
   Coordinator,
+  ProcessQueueItem (ProcessQueueItem),
   channel,
   mkCoordinator,
   nbWorkers,
   processQueue,
+  processQueueInput,
+  processQueueItemLog,
   tokens,
   workers,
  )

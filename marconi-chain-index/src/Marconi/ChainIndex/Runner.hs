@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.ChainIndex.Runner (
@@ -172,11 +173,11 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
   :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint a])
-  -> STM.TBQueue (Core.ProcessedInput C.ChainPoint a)
-  -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
+  -> STM.TBQueue (Core.ProcessQueueItem C.ChainPoint (Core.ProcessedInput C.ChainPoint a))
+  -> S.Stream (S.Of (Core.ProcessQueueItem C.ChainPoint (ChainSyncEvent BlockEvent))) IO r
   -> IO r
 mkEventStream processEvent q =
-  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
+  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . mapM processEvent
 
 data TipOrBlock = Tip C.ChainTip | Block (WithDistance BlockEvent)
 type instance Core.Point TipOrBlock = C.ChainPoint

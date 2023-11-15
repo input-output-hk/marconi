@@ -27,8 +27,11 @@ import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logInfo)
 import Cardano.BM.Tracing (contramap)
 import Cardano.BM.Tracing qualified as BM
+import Control.Arrow ((&&&))
+import Control.Concurrent (modifyMVar_, newMVar, readMVar)
 import Control.Monad (when)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Time (
   NominalDiffTime,
@@ -42,10 +45,11 @@ import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (MarconiTrace)
+import Marconi.Core qualified as Core
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
-import Streaming (Of, Stream, effect)
+import Streaming (MonadIO (liftIO), Of, Stream, effect)
 import Streaming.Prelude qualified as S
 import Text.Printf (printf)
 
@@ -138,47 +142,72 @@ instance Pretty LastSyncLog where
               ) ->
                 let pct = ((100 :: Double) * fromIntegral chainSyncSlot) / fromIntegral nodeTipSlot
                     rate = fromIntegral numRollForward / realToFrac timeSinceLastMsg :: Double
+                    {- If the percentage will be rounded up to 100, we want to avoid logging that
+                      as it's not very user friendly (it falsely implies full synchronisation) -}
+                    progressStr =
+                      if pct < 99.995
+                        then pretty (printf "%.2f" pct :: String) <> "%"
+                        else "almost synced"
                  in "Synchronising ("
-                      <> pretty (printf "%.2f" pct :: String)
-                      <> "%)."
+                      <> progressStr
+                      <> ")."
                       <+> currentTipMsg timeSinceLastMsgM
                       <+> processingSummaryMsg timeSinceLastMsg
                       <+> pretty (printf "(%.0f blocks/s)." rate :: String)
 
+-- | Adds logging to the event stream
 chainSyncEventStreamLogging
   :: MarconiTrace IO
   -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
-  -> Stream (Of (ChainSyncEvent BlockEvent)) IO r
+  -> Stream (Of (Core.ProcessQueueItem C.ChainPoint (ChainSyncEvent BlockEvent))) IO r
 chainSyncEventStreamLogging tracer s = effect $ do
   stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
-  return $ S.chain (update stats) s
+  ref <- liftIO $ newMVar mempty
+  let memo a act = do
+        m <- readMVar ref
+        case Map.lookup a m of
+          Just _ -> pure ()
+          Nothing -> do
+            act
+            modifyMVar_ ref (pure . Map.union (Map.singleton a ()))
+  pure $ S.map (uncurry Core.ProcessQueueItem . (update memo stats &&& id)) s
   where
     minSecondsBetweenMsg :: NominalDiffTime
     minSecondsBetweenMsg = 10
 
+    {- We need to memoise our actions because we can get multiple events at the same ChainPoint,
+    results in, for example, a higher @syncStatsNumBlocks@ than we'd expect -}
+    runUpdate :: (C.ChainPoint -> IO () -> IO ()) -> C.ChainPoint -> C.ChainPoint -> IO () -> IO ()
+    runUpdate memo cp cp' = when (cp' == cp) . memo cp'
+
     update
-      :: IORef LastSyncStats
+      :: (C.ChainPoint -> IO () -> IO ())
+      -> IORef LastSyncStats
       -> ChainSyncEvent BlockEvent
-      -> IO ()
-    update statsRef (RollForward (BlockEvent bim _epochNo _posixTime) ct) = do
-      let cp = case bim of
-            (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) ->
-              C.ChainPoint slotNo hash
-      modifyIORef' statsRef $ \stats ->
-        stats
-          { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
-          , syncStatsChainSyncPoint = cp
-          , syncStatsNodeTip = ct
-          }
-      printMessage statsRef
-    update statsRef (RollBackward cp ct) = do
-      modifyIORef' statsRef $ \stats ->
-        stats
-          { syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1
-          , syncStatsChainSyncPoint = cp
-          , syncStatsNodeTip = ct
-          }
-      printMessage statsRef
+      -> (C.ChainPoint -> IO ())
+    update memo statsRef = do
+      \case
+        (RollForward (BlockEvent bim _epochNo _posixTime) ct) -> do
+          let cp = case bim of
+                (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _blockNo) _txs) _eim) ->
+                  C.ChainPoint slotNo hash
+          \cp' -> runUpdate memo cp cp' $
+            do
+              modifyIORef' statsRef $ \stats ->
+                stats
+                  { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
+                  , syncStatsChainSyncPoint = cp
+                  , syncStatsNodeTip = ct
+                  }
+              printMessage statsRef
+        (RollBackward cp ct) -> \cp' -> runUpdate memo cp cp' $ do
+          modifyIORef' statsRef $ \stats ->
+            stats
+              { syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1
+              , syncStatsChainSyncPoint = cp
+              , syncStatsNodeTip = ct
+              }
+          printMessage statsRef
 
     printMessage :: IORef LastSyncStats -> IO ()
     printMessage statsRef = do
@@ -196,11 +225,13 @@ chainSyncEventStreamLogging tracer s = effect $ do
               | t > minSecondsBetweenMsg -> True
               | otherwise -> False
 
-      when shouldPrint $ do
-        logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
-        modifyIORef' statsRef $ \stats ->
-          stats
-            { syncStatsNumBlocks = 0
-            , syncStatsNumRollbacks = 0
-            , syncStatsLastMessageTime = Just now
-            }
+      if shouldPrint
+        then do
+          liftIO $ modifyIORef' statsRef $ \stats ->
+            stats
+              { syncStatsNumBlocks = 0
+              , syncStatsNumRollbacks = 0
+              , syncStatsLastMessageTime = Just now
+              }
+          logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
+        else pure mempty
