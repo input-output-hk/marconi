@@ -176,7 +176,7 @@ chainSyncEventStreamLogging tracer s = effect $ do
     minSecondsBetweenMsg = 10
 
     {- We need to memoise our actions because we can get multiple events at the same ChainPoint,
-    results in, for example, a higher @syncStatsNumBlocks@ than we'd expect -}
+    which results in, for example, a higher @syncStatsNumBlocks@ than we'd expect -}
     runUpdate :: (C.ChainPoint -> IO () -> IO ()) -> C.ChainPoint -> C.ChainPoint -> IO () -> IO ()
     runUpdate memo cp cp' = when (cp' == cp) . memo cp'
 
