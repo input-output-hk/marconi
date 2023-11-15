@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.ChainIndex.Runner (
