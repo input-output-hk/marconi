@@ -50,6 +50,8 @@ $ nix build github:input-output-hk/marconi#marconi-sidechain
 Both commands will produce a `result` directory containing the executable
 `result/bin/marconi-sidechain`.
 
+Note that Nix builds work on Mac as well as Linux.
+
 ### Nix+Cabal build
 
 To build `marconi-sidechain` from the source files, use the following commands:
@@ -74,6 +76,8 @@ Or you can run the executable directly with:
 ```sh
 cabal run marconi-sidechain:exe:marconi-sidechain -- --help
 ```
+
+Note that Nix+Cabal builds work on Mac as well as Linux.
 
 ### Docker build
 
