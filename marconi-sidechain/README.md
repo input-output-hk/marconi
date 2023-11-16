@@ -51,6 +51,8 @@ Both commands will produce a `result` directory containing the executable
 `result/bin/marconi-sidechain`.
 
 Note that Nix builds work on Mac as well as Linux.
+However, building native binaries (`aarch64-darwin`) for Apple Silicon is currently broken
+so it's necessary to force an x86 build with the `--system x86_64-darwin` Nix command-line option.
 
 ### Nix+Cabal build
 
@@ -78,6 +80,8 @@ cabal run marconi-sidechain:exe:marconi-sidechain -- --help
 ```
 
 Note that Nix+Cabal builds work on Mac as well as Linux.
+However, building native binaries (`aarch64-darwin`) for Apple Silicon is currently broken
+so it's necessary to force an x86 build with the `--system x86_64-darwin` Nix command-line option.
 
 ### Docker build
 
