@@ -11,7 +11,6 @@
 -}
 module Marconi.Core.Coordinator (
   Coordinator,
-  ProcessQueueItem (ProcessQueueItem),
   workers,
   threadIds,
   tokens,
@@ -21,8 +20,6 @@ module Marconi.Core.Coordinator (
   mkCoordinator,
   step,
   processQueue,
-  processQueueInput,
-  processQueueItemLog,
 ) where
 
 import Control.Concurrent (MVar, QSemN, ThreadId)
@@ -31,15 +28,14 @@ import Control.Concurrent.STM (TChan)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (throwIO)
 import Control.Exception.Base (finally)
-import Control.Lens (makeLenses, view)
+import Control.Lens (makeLenses)
 import Control.Lens.Operators ((^.))
 import Control.Monad (foldM)
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State.Strict (State)
-import Data.Foldable (Foldable (toList), minimumBy, traverse_)
+import Data.Foldable (Foldable (toList))
 import Data.Maybe (catMaybes)
-import Data.Ord (comparing)
 import Marconi.Core.Class (
   Closeable (close),
   IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
@@ -51,7 +47,6 @@ import Marconi.Core.Type (
   Point,
   ProcessedInput (Index, IndexAllDescending, Rollback, StableAt, Stop),
   Timed,
-  point,
  )
 import Marconi.Core.Worker (
   Worker,
@@ -99,17 +94,6 @@ mkCoordinator workers' = do
   threadIds' <- startWorkers channel' errorBox' endTokens' tokens'
   pure $ Coordinator workers' threadIds' tokens' endTokens' channel' errorBox' nb
 
--- | A queued item with a logging function
-data ProcessQueueItem point input = ProcessQueueItem
-  { _processQueueItemLog :: point -> IO ()
-  -- ^ A function which takes a @point@ and logs
-  , _processQueueInput :: input
-  -- ^ The queued input to be indexed
-  }
-  deriving (Functor, Foldable, Traversable)
-
-makeLenses 'ProcessQueueItem
-
 {- | Read a queue of events, processing them synchronously on each worker
 
  Note that this function silently throw an @IndexError@ if the event processing fails.
@@ -123,7 +107,7 @@ processQueue
   => (Timed (Point event) (Maybe event) -> State s (Maybe (Point event)))
   -- ^ emit stable point based on incoming information
   -> s
-  -> STM.TBQueue (ProcessQueueItem (Point event) (ProcessedInput (Point event) event))
+  -> STM.TBQueue (ProcessedInput (Point event) event)
   -> Con.MVar (indexer event)
   -> IO r
 processQueue f initialState q cBox =
@@ -140,22 +124,15 @@ processQueue f initialState q cBox =
             [] -> pure [IndexAllDescending timedEvents]
             xs -> pure [IndexAllDescending timedEvents, StableAt (maximum xs)]
         other -> pure [other]
-      getTimed :: ProcessedInput (Point event) event -> Maybe (Timed (Point event) (Maybe event))
-      getTimed (Index e) = Just e
-      getTimed (IndexAllDescending es) = Just (minimumBy (comparing $ view point) es)
-      getTimed _ = Nothing
       queueStep g = do
         e <- STM.atomically $ STM.readTBQueue q
-        let input = e ^. processQueueInput
         g' <- Con.modifyMVar cBox $ \c -> do
-          (events, g') <- runPreprocessor g [input]
+          (events, g') <- runPreprocessor g [e]
           mres <- runExceptT (foldM step c events)
           case mres of
             Left (err :: IndexerError) -> throwIO err
             Right res -> pure (res, g')
 
-        -- We've finished indexing this input, so we need to log
-        traverse_ (view processQueueItemLog e . view point) $ getTimed input
         queueStep g'
    in queueStep attachStable `finally` Con.withMVar cBox close
 

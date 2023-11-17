@@ -107,6 +107,7 @@ library
     , sqlite-simple
     , stm
     , text
+    , time
     , transformers
 
 library marconi-core-test-lib

@@ -144,6 +144,8 @@ runIndexer env = do
           Core.withNoPreprocessor
           -- The retry configuration. If can't connect to local node, or lost
           -- connection, we retry given this configuration.
+          (const $ pure ())
+          -- TODO add an informative comment
           (RetryConfig 30 Nothing)
           -- The security parameter
           (envSecurityParam env)

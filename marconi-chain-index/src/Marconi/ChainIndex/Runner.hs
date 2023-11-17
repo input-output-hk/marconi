@@ -1,5 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
@@ -51,15 +54,17 @@ import Data.Map qualified as Map
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Indexers.Orphans qualified ()
-import Marconi.ChainIndex.Logger (chainSyncEventStreamLogging)
+import Marconi.ChainIndex.Logger ()
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   BlockEvent (blockInMode),
   MarconiTrace,
   RetryConfig,
   SecurityParam,
+  TipOrBlock (Block, Tip),
  )
 import Marconi.Core qualified as Core
+import Prettyprinter (pretty)
 import Prettyprinter qualified as PP
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
@@ -135,12 +140,16 @@ runIndexer
               socketPath
               networkId
               [startingPoint]
-              (mkEventStream processEvent eventQueue . chainSyncEventStreamLogging trace)
+              (mkEventStream processEvent eventQueue)
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.pretty NoIntersectionFoundLog
       void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-      Core.processQueue (stablePointComputation securityParam eventProcessing) Map.empty eventQueue cBox
+      Core.processQueue
+        (stablePointComputation securityParam eventProcessing)
+        Map.empty
+        eventQueue
+        cBox
 
 stablePointComputation
   :: SecurityParam
@@ -172,14 +181,11 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
   :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint a])
-  -> STM.TBQueue (Core.ProcessQueueItem C.ChainPoint (Core.ProcessedInput C.ChainPoint a))
-  -> S.Stream (S.Of (Core.ProcessQueueItem C.ChainPoint (ChainSyncEvent BlockEvent))) IO r
+  -> STM.TBQueue (Core.ProcessedInput C.ChainPoint a)
+  -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
   -> IO r
 mkEventStream processEvent q =
-  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . mapM processEvent
-
-data TipOrBlock = Tip C.ChainTip | Block (WithDistance BlockEvent)
-type instance Core.Point TipOrBlock = C.ChainPoint
+  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
 
 withDistanceAndTipPreprocessor
   :: RunIndexerEventPreprocessing TipOrBlock
