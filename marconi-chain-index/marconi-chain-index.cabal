@@ -85,6 +85,8 @@ library
     Marconi.ChainIndex.Api.Types
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
+    Marconi.ChainIndex.Extract.AnyTxBody
+    Marconi.ChainIndex.Extract.MintTokenEvent
     Marconi.ChainIndex.Extract.WithDistance
     Marconi.ChainIndex.Git.Rev
     Marconi.ChainIndex.Git.RevFromGit
@@ -110,6 +112,7 @@ library
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
 
+  -- TODO: PLT-8203 added for the spike
   other-modules:   Paths_marconi_chain_index
   autogen-modules: Paths_marconi_chain_index
 
