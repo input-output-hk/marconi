@@ -35,11 +35,12 @@ module Marconi.Core.Indexer.SQLiteIndexer (
   SQL.ToRow (..),
 ) where
 
+import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async qualified as Async
 import Control.Exception (Handler (Handler), catches)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
-import Control.Monad (when, (<=<))
+import Control.Monad (void, when, (<=<))
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (toList), traverse_)
@@ -113,9 +114,11 @@ data SQLiteIndexer event = SQLiteIndexer
   -- ^ The list of tables we update on rollback, with the information required to update them
   , _setLastStablePointQuery :: SetLastStablePointQuery
   -- ^ The SQL query to fetch the last sync points from the indexer.
-  , _dbLastSync :: Point event
-  -- ^ We keep the last sync point in memory to avoid an SQL query to retrieve it
-  , _dbLastStable :: Point event
+  , _dbLastSync :: Concurrent.MVar (Point event)
+  -- ^ We keep the last sync point in memory to avoid an SQL query to retrieve it. It is wrapped
+  -- in an 'MVar' since this point must be shared across threads between the index runner and any
+  -- query.
+  , _dbLastStable :: Concurrent.MVar (Point event)
   -- ^ We keep the last stable point in memory to avoid an SQL query to retrieve it
   }
 
@@ -164,7 +167,11 @@ mkSqliteIndexer
           -- allow for concurrent insert/query.
           -- see SQLite WAL, https://www.sqlite.org/wal.html
           liftIO $ SQL.execute_ _connection "PRAGMA journal_mode=WAL"
-          _dbLastStable <- getLastStablePoint _connection
+          lastStable <- getLastStablePoint _connection
+          -- NOTE: PLT-8203 same point but different refs, since must be updated
+          -- independently.
+          _dbLastStable <- liftIO $ Concurrent.newMVar lastStable
+          _dbLastSync <- liftIO $ Concurrent.newMVar lastStable
           let indexer =
                 SQLiteIndexer
                   { _databasePath
@@ -172,10 +179,10 @@ mkSqliteIndexer
                   , _insertPlan
                   , _rollbackPlan
                   , _setLastStablePointQuery
-                  , _dbLastSync = _dbLastStable
+                  , _dbLastSync
                   , _dbLastStable
                   }
-          rollback _dbLastStable indexer
+          rollback lastStable indexer
 
 {- | A smart constructor for indexer that want to map an event to a single table.
  We just have to set the type family of `InsertRecord event` to `[param]` and
@@ -269,9 +276,10 @@ indexEvents
   -> m (SQLiteIndexer event)
 indexEvents [] indexer = pure indexer
 indexEvents evts@(e : _) indexer = do
-  let setDbLastSync p = pure . (dbLastSync .~ p)
   runIndexQueries (indexer ^. connection) evts (indexer ^. insertPlan)
-  setDbLastSync (e ^. point) indexer
+  -- TODO: PLT-8203 reconsider this pattern
+  liftIO $ void $ Concurrent.swapMVar (indexer ^. dbLastSync) (e ^. point)
+  pure indexer
 
 runLastStablePointQuery
   :: (MonadError IndexerError m, MonadIO m, SQL.FromRow r)
@@ -309,17 +317,22 @@ instance
     liftIO $
       SQL.withTransaction c $
         traverse_ rollbackTable (indexer ^. rollbackPlan)
-    pure $ indexer & dbLastSync .~ p
+    -- TODO: PLT-8203 reconsider this pattern
+    liftIO $ void $ Concurrent.swapMVar (indexer ^. dbLastSync) p
+    pure indexer
 
   setLastStablePoint p indexer = do
     let c = indexer ^. connection
         SetLastStablePointQuery query = indexer ^. setLastStablePointQuery
     liftIO $ SQL.execute c query p
-    pure $ indexer & dbLastStable .~ p
+    -- TODO: PLT-8203 reconsider this pattern
+    liftIO $ void $ Concurrent.swapMVar (indexer ^. dbLastStable) p
+    pure indexer
 
-instance (Monad m) => IsSync m event SQLiteIndexer where
-  lastStablePoint indexer = pure $ indexer ^. dbLastStable
-  lastSyncPoint indexer = pure $ indexer ^. dbLastSync
+-- TODO: PLT-8203 note we're using MonadIO here now.
+instance (MonadIO m) => IsSync m event SQLiteIndexer where
+  lastStablePoint indexer = liftIO . Concurrent.readMVar $ indexer ^. dbLastStable
+  lastSyncPoint indexer = liftIO . Concurrent.readMVar $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
   close indexer = liftIO $ SQL.close $ indexer ^. connection
@@ -355,7 +368,8 @@ querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
     let c = indexer ^. connection
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
-    when (p > indexer ^. dbLastSync) $
+    lastSync <- liftIO $ Concurrent.readMVar (indexer ^. dbLastSync)
+    when (p > lastSync) $
       throwError (AheadOfLastSync $ Just $ fromRows q res)
     pure $ fromRows q res
 
@@ -387,7 +401,8 @@ querySyncedOnlySQLiteIndexerWith
 querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
     let c = indexer ^. connection
-    when (p > indexer ^. dbLastSync) $
+    lastSync <- liftIO $ Concurrent.readMVar (indexer ^. dbLastSync)
+    when (p > lastSync) $
       throwError (AheadOfLastSync Nothing)
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     pure $ fromRows q res
