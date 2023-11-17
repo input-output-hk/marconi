@@ -6,6 +6,7 @@
 module Marconi.ChainIndex.Runner (
   -- * Runner
   runIndexer,
+  runIndexerFromRef,
 
   -- ** Runner Config
   RunIndexerConfig (RunIndexerConfig),
@@ -99,8 +100,50 @@ instance PP.Pretty RunIndexerLog where
 
 type instance Core.Point BlockEvent = C.ChainPoint
 
+-- NOTE: PLT-8203 version of runIndexer that takes a reference
+-- to an indexer whose state can be shared with the query.
+runIndexerFromRef
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) a indexer
+     , Core.Closeable IO indexer
+     , Core.Point a ~ C.ChainPoint
+     )
+  => RunIndexerConfig a
+  -> Concurrent.MVar (indexer a)
+  -> IO ()
+runIndexerFromRef
+  ( RunIndexerConfig
+      trace
+      eventProcessing
+      retryConfig
+      securityParam
+      networkId
+      startingPoint
+      socketPath
+    )
+  box = do
+    withNodeConnectRetry trace retryConfig socketPath $ do
+      Trace.logInfo trace $
+        PP.pretty $
+          StartingPointLog startingPoint
+      eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
+      let processEvent = eventProcessing ^. runIndexerPreprocessEvent
+          runChainSyncStream =
+            withChainSyncBlockEventStream
+              socketPath
+              networkId
+              [startingPoint]
+              (mkEventStream processEvent eventQueue . chainSyncEventStreamLogging trace)
+          whenNoIntersectionFound NoIntersectionFound =
+            Trace.logError trace $
+              PP.pretty NoIntersectionFoundLog
+      -- TODO: PLT-8203 chain sync stream does not shut down properly in the case. can killThread
+      -- with finally after processQueue.
+      void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
+      Core.processQueue (stablePointComputation securityParam eventProcessing) Map.empty eventQueue box
+
 {- | Connect to the given socket to start a chain sync protocol and start indexing it with the
-given indexer.
+given indexer. Note the indexer will be placed in its own MVar, so it is up to the user to guarantee
+manually that the indexer used later for querying has the correctly updated information.
 
 If you want to start several indexers, use @runIndexers@.
 -}
@@ -112,35 +155,7 @@ runIndexer
   => RunIndexerConfig a
   -> indexer a
   -> IO ()
-runIndexer
-  ( RunIndexerConfig
-      trace
-      eventProcessing
-      retryConfig
-      securityParam
-      networkId
-      startingPoint
-      socketPath
-    )
-  indexer = do
-    withNodeConnectRetry trace retryConfig socketPath $ do
-      Trace.logInfo trace $
-        PP.pretty $
-          StartingPointLog startingPoint
-      eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
-      cBox <- Concurrent.newMVar indexer
-      let processEvent = eventProcessing ^. runIndexerPreprocessEvent
-          runChainSyncStream =
-            withChainSyncBlockEventStream
-              socketPath
-              networkId
-              [startingPoint]
-              (mkEventStream processEvent eventQueue . chainSyncEventStreamLogging trace)
-          whenNoIntersectionFound NoIntersectionFound =
-            Trace.logError trace $
-              PP.pretty NoIntersectionFoundLog
-      void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-      Core.processQueue (stablePointComputation securityParam eventProcessing) Map.empty eventQueue cBox
+runIndexer config indexer = Concurrent.newMVar indexer >>= runIndexerFromRef config
 
 stablePointComputation
   :: SecurityParam

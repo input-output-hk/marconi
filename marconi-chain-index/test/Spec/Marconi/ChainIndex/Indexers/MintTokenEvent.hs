@@ -657,9 +657,12 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
         nscConfig
         mintTokenBlockEventsPreprocessor
 
-  indexer <-
+  indexerRaw <-
     H.evalIO $
       either throwIO pure =<< runExceptT (MintTokenEvent.mkMintTokenIndexer ":memory:")
+
+  -- NOTE: PLT-8203 this ref will allow sharing indexer sync point state with the query
+  indexerRef <- H.evalIO $ Concurrent.newMVar indexerRaw
 
   -- Generate a random MintValue
   txMintValue <- H.forAll Gen.genTxMintValue
@@ -671,7 +674,7 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
       -- NOTE: PLT-8203 old impl with coordinator
       -- (Runner.runIndexer config coordinator)
 
-      (Runner.runIndexer config indexer)
+      (Runner.runIndexerFromRef config indexerRef)
     $ do
       threadDelay 5_000_000
 
@@ -708,14 +711,15 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
       -- threadDelay 5_000_000
       threadDelay 10_000_000
 
-      -- NOTE: PLT-8203 old impl
-      -- indexer <- readMVar mindexer
+      indexer <- readMVar indexerRef
 
       runExceptT (Core.queryLatest MintTokenEvent.AllMintEvents indexer)
         >>= either throwIO pure
 
+  indexer <- H.evalIO $ readMVar indexerRef
+
   -- NOTE: PLT-8203 source of the problem: hat-tip koslambrou for thinking of it
-  H.evalIO $ putStrLn "OOPS! lastSyncPoint:"
+  H.evalIO $ putStrLn "lastSyncPoint:"
   H.evalIO $ Core.lastSyncPoint indexer >>= print
 
   queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
