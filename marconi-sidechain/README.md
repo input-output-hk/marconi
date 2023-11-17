@@ -1,18 +1,29 @@
 # marconi-sidechain
 
-`marconi-sidechain` is a lightweight chain follower application for the Sidechain project to index and query specific information from the Cardano blockchain.
+`marconi-sidechain` is a lightweight chain-follower application for the Sidechain project to index and query specific information from the Cardano blockchain.
 The interface for querying the indexed information uses [JSON-RPC](https://www.jsonrpc.org/specification) over HTTP.
 
-See the [architecture documentation](./doc/ARCHITECTURE.adoc) for more information on how this application was build.
+See the [architecture documentation](./doc/ARCHITECTURE.adoc) for more information on how this application was built.
 
 ## Prerequisites
 
-If using `Nix`:
+If using **Nix**:
 
 * [Nix](https://nixos.org/download.html) (`>=2.5.1`)
-  * Enable IOHK's binary cache or else you will build the world! Refer to [this section](../CONTRIBUTING.adoc#how-to-get-a-shell-environment-with-tools) on how to achieve this.
+* Ensure you have the following configuration (eg in `~/.config/nix/nix.conf`):
 
-If *not* using `Nix`:
+```
+experimental-features = nix-command flakes
+accept-flake-config = true
+```
+
+If using **Docker**:
+
+```
+docker pull nixos/nix:2.18.1
+```
+
+If *not* using **Nix** or **Docker**:
 
 * [GHC](https://www.haskell.org/downloads/) (`==8.10.7`)
 * [Cabal](https://www.haskell.org/cabal/download.html) (`>=3.4.0.0`)
@@ -20,18 +31,39 @@ If *not* using `Nix`:
 
 ## How to build from source
 
-### Cabal build
+### Nix build
 
-TBD
+The `marconi-sidechain` executable is available as a nix flake.
 
-### Cabal+Nix build
+If inside the `marconi` repository, you can run from the top-level:
+
+```
+$ nix build .#marconi-sidechain
+```
+
+Or you may run from anywhere (with or without a clone of the repo):
+
+```
+$ nix build github:input-output-hk/marconi#marconi-sidechain
+```
+
+Both commands will produce a `result` directory containing the executable
+`result/bin/marconi-sidechain`.
+
+Note that Nix builds work on Mac as well as Linux.
+However, building native binaries (`aarch64-darwin`) for Apple Silicon is currently broken
+so it's necessary to force an x86 build with the `--system x86_64-darwin` Nix command-line option.
+
+### Nix+Cabal build
 
 To build `marconi-sidechain` from the source files, use the following commands:
 
 ```sh
 git clone git@github.com:input-output-hk/marconi.git
+cd marconi
 nix develop
-cabal clean && cabal update # Optional, but makes sure you start clean
+cabal update # Important: updates the index-state for the cardano-haskell-packages repository (CHaP)
+cabal clean # Optional, but makes sure you start clean
 cabal build marconi-sidechain
 ```
 
@@ -47,24 +79,28 @@ Or you can run the executable directly with:
 cabal run marconi-sidechain:exe:marconi-sidechain -- --help
 ```
 
-### Nix build
+Note that Nix+Cabal builds work on Mac as well as Linux.
+However, building native binaries (`aarch64-darwin`) for Apple Silicon is currently broken
+so it's necessary to force an x86 build with the `--system x86_64-darwin` Nix command-line option.
 
-The `marconi-sidechain` executable is available as a nix flake.
+### Docker build
 
-If inside the `marconi` repository, you can run from the top-level:
-
-```
-$ nix build .#marconi-sidechain
-```
-
-Or you may run from anywhere:
+Start a container and add some nix configuration:
 
 ```
-$ nix build github:input-output-hk/marconi#marconi-sidechain
+$ docker run -it --name marconi nixos/nix:2.18.1
+bash-5.2# mkdir -p ~/.config/nix/
+bash-5.2# cat >>~/.config/nix/nix.conf <<EOF
+experimental-features = nix-command flakes
+accept-flake-config = true
+EOF
 ```
 
-Both commands will produce a `result` directory containing the executable
-`result/bin/marconi-sidechain`.
+Then follow the instructions for the Nix+Cabal build above.
+
+### Cabal build
+
+TBD
 
 ## Command line summary
 
@@ -128,6 +164,8 @@ The `id` field should be a random ID representing your request. The response wil
 ### JSON-RPC API method examples
 
 All of the following example are actual results from the Cardano pre-production testnet.
+
+A script that runs these examples is in `marconi-sidechain/examples/run-pre-prod-queries`.
 
 #### echo
 
