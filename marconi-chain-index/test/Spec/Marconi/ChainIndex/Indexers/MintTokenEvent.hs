@@ -32,6 +32,7 @@ import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as H.Range
+import Marconi.ChainIndex.Extract.MintTokenEvent (mintTokenBlockEventsPreprocessor)
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.ChainIndex.Indexers (mintBuilder)
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
@@ -624,6 +625,10 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
     -- Do no filtering
     mintTokenConfig = MintTokenEvent.MintTokenEventConfig Nothing
     catchupConfig = Integration.mkEndToEndCatchupConfig
+
+  -- NOTE: PLT-8203 This was the existing implementation with the coordinator/worker
+  -- workaround. The new one fails and exemplifies the problem.
+  {-
     config =
       Integration.mkEndToEndRunIndexerConfig
         marconiTrace
@@ -643,6 +648,18 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
               tempPath
           )
   coordinator <- H.evalIO $ Core.mkCoordinator [worker]
+  -}
+
+  let
+    config =
+      Integration.mkEndToEndRunIndexerConfig
+        marconiTrace
+        nscConfig
+        mintTokenBlockEventsPreprocessor
+
+  indexer <-
+    H.evalIO $
+      either throwIO pure =<< runExceptT (MintTokenEvent.mkMintTokenIndexer ":memory:")
 
   -- Generate a random MintValue
   txMintValue <- H.forAll Gen.genTxMintValue
@@ -651,7 +668,10 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
 
   res <- H.evalIO
     $ Async.race
-      (Runner.runIndexer config coordinator)
+      -- NOTE: PLT-8203 old impl with coordinator
+      -- (Runner.runIndexer config coordinator)
+
+      (Runner.runIndexer config indexer)
     $ do
       threadDelay 5_000_000
 
@@ -683,12 +703,20 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
         txbody
         lovelace
 
-      threadDelay 5_000_000
+      -- NOTE: PLT-8203 increased to show chainsync event log message about non-genesis last sync
+      -- point
+      -- threadDelay 5_000_000
+      threadDelay 10_000_000
 
-      indexer <- readMVar mindexer
+      -- NOTE: PLT-8203 old impl
+      -- indexer <- readMVar mindexer
 
       runExceptT (Core.queryLatest MintTokenEvent.AllMintEvents indexer)
         >>= either throwIO pure
+
+  -- NOTE: PLT-8203 source of the problem: hat-tip koslambrou for thinking of it
+  H.evalIO $ putStrLn "OOPS! lastSyncPoint:"
+  H.evalIO $ Core.lastSyncPoint indexer >>= print
 
   queryEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents] <- H.leftFail res
 
