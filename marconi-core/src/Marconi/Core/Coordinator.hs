@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE StrictData #-}
@@ -124,6 +123,7 @@ processQueue f initialState q cBox =
             [] -> pure [IndexAllDescending timedEvents]
             xs -> pure [IndexAllDescending timedEvents, StableAt (maximum xs)]
         other -> pure [other]
+
       queueStep g = do
         e <- STM.atomically $ STM.readTBQueue q
         g' <- Con.modifyMVar cBox $ \c -> do
@@ -132,7 +132,6 @@ processQueue f initialState q cBox =
           case mres of
             Left (err :: IndexerError) -> throwIO err
             Right res -> pure (res, g')
-
         queueStep g'
    in queueStep attachStable `finally` Con.withMVar cBox close
 
