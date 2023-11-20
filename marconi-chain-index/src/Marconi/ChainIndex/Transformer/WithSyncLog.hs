@@ -26,7 +26,7 @@ import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (MarconiTrace, TipAndBlock (Block, Tip, TipAndBlock))
+import Marconi.ChainIndex.Types (MarconiTrace, TipAndBlock (TipAndBlock))
 import Marconi.Core qualified as Core
 import Marconi.Core.Class (
   Closeable,
@@ -130,15 +130,9 @@ instance
           block. -}
         res <- indexVia unwrap timedEvent indexer
         liftIO $ chainTipUpdate stats tip
-        liftIO $ runUpdate stats block
-        pure res
-      Just (Block block) -> do
-        res <- indexVia unwrap timedEvent indexer
-        liftIO $ runUpdate stats block
-        pure res
-      Just (Tip tip) -> do
-        res <- indexVia unwrap timedEvent indexer
-        liftIO $ chainTipUpdate stats tip
+        case block of
+          Just b -> liftIO $ runUpdate stats b
+          Nothing -> pure ()
         pure res
       Nothing -> pure indexer
     liftIO $ printMessage tracer stats

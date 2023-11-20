@@ -39,7 +39,7 @@ import Marconi.ChainIndex.Types (
   BlockEvent (BlockEvent),
   MarconiTrace,
   SecurityParam,
-  TipAndBlock (Block, Tip, TipAndBlock),
+  TipAndBlock (TipAndBlock),
   TxIndexInBlock,
   blockInMode,
  )
@@ -191,9 +191,7 @@ buildBlockEventCoordinator
   -> m (Core.Worker TipAndBlock C.ChainPoint)
 buildBlockEventCoordinator logger workers =
   let rightToMaybe = \case
-        Tip _ -> Nothing
-        Block x -> Just x
-        TipAndBlock _ x -> Just x
+        TipAndBlock _ x -> x
       fromProcessed
         :: Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent) -> Maybe (WithDistance BlockEvent)
       fromProcessed (Core.Index (Core.Timed _ e)) = e
@@ -276,8 +274,7 @@ chainTipBuilder
       )
 chainTipBuilder tracer path = do
   let chainTipPath = path </> "chainTip"
-      tipOnly (Tip x) = Just x
-      tipOnly _other = Nothing
+      tipOnly (TipAndBlock tip _) = tip
   ChainTip.chainTipWorker tracer tipOnly (ChainTip.ChainTipConfig chainTipPath 2048)
 
 -- | Configure and start the @SpentInfo@ indexer

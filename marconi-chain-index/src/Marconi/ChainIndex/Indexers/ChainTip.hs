@@ -61,7 +61,7 @@ mkChainTipIndexer tracer cfg = do
 chainTipWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => BM.Trace m (Core.IndexerEvent C.ChainPoint)
-  -> (event -> Maybe C.ChainTip)
+  -> (event -> C.ChainTip)
   -> ChainTipConfig
   -> n
       ( Core.WorkerIndexer

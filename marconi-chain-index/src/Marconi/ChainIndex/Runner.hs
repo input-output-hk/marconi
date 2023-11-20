@@ -59,7 +59,7 @@ import Marconi.ChainIndex.Types (
   MarconiTrace,
   RetryConfig,
   SecurityParam,
-  TipAndBlock (Block, Tip, TipAndBlock),
+  TipAndBlock (TipAndBlock),
  )
 import Marconi.Core qualified as Core
 import Prettyprinter (pretty)
@@ -199,12 +199,10 @@ withDistanceAndTipPreprocessor =
               let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
                   withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
                in Core.Timed point withDistance
-         in asTipAndBlock point tip $ Core.Index $ Just <$> blockWithDistance x
-      extractChainTipAndAddDistance (RollBackward x tip) = asTipAndBlock x tip (Core.Rollback x)
+         in asTipAndBlock point tip $ Just $ Core.Index $ Just <$> blockWithDistance x
+      extractChainTipAndAddDistance (RollBackward x tip) = asTipAndBlock x tip (Just $ Core.Rollback x)
       asTipAndBlock point tip = Core.Index . Core.Timed point . Just . TipAndBlock tip
-      blockFromTipAndBlock (Tip _) = Nothing
-      blockFromTipAndBlock (Block event) = Just event
-      blockFromTipAndBlock (TipAndBlock _ event) = Just event
+      blockFromTipAndBlock (TipAndBlock _ event) = event
       getDistance = withGetBlockDistance <=< blockFromTipAndBlock
       blockNoFromBlockEvent = withGetBlockNo <=< blockFromTipAndBlock
       withGetBlockDistance = withGetBlock (fromIntegral . Distance.chainDistance)

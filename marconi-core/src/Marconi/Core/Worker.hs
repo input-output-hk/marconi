@@ -38,7 +38,7 @@ import Marconi.Core.Class (
   IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
   IsSync,
  )
-import Marconi.Core.Preprocessor (Preprocessor, mapMaybeEvent, runPreprocessor)
+import Marconi.Core.Preprocessor (Preprocessor, mapEvent, runPreprocessor)
 import Marconi.Core.Type (
   IndexerError (OtherIndexError, StopIndexer),
   Point,
@@ -115,10 +115,10 @@ createWorkerPure = createWorkerHoist lift
 createWorker
   :: (MonadIO f, WorkerIndexerType (ExceptT IndexerError m) event indexer)
   => Text
-  -> (input -> Maybe event)
+  -> (input -> event)
   -> indexer event
   -> f (WorkerIndexer m input event indexer)
-createWorker name = createWorkerWithPreprocessing name . mapMaybeEvent
+createWorker name = createWorkerWithPreprocessing name . mapEvent
 
 {- | The worker notify its coordinator that it's ready
  and starts waiting for new events and process them as they come
