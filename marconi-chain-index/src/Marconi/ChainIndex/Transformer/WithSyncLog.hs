@@ -25,9 +25,8 @@ import Data.Time (defaultTimeLocale, formatTime)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (BlockEvent, MarconiTrace, TipAndBlock (Block, Tip, TipAndBlock))
+import Marconi.ChainIndex.Types (MarconiTrace, TipAndBlock (Block, Tip, TipAndBlock))
 import Marconi.Core qualified as Core
 import Marconi.Core.Class (
   Closeable,
@@ -122,36 +121,29 @@ instance
   index timedEvent indexer = do
     let stats = indexer ^. syncStatsWrapper . wrapperConfig . syncLogStats
         tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
-    res <- case timedEvent of
-      Core.Timed cp (Just (TipAndBlock tip block)) -> do
+        event = timedEvent ^. Core.event
+    res <- case event of
+      Just (TipAndBlock tip block) -> do
         {- The order here is important.
 
           We must index the block before the tip, but update the stats with the tip before the
           block. -}
-        res <- indexVia unwrap (Core.Timed cp (asTipAndBlock block)) indexer
-        res' <- indexVia unwrap (Core.Timed cp $ Just $ Tip tip) res
+        res <- indexVia unwrap timedEvent indexer
         liftIO $ chainTipUpdate stats tip
         liftIO $ runUpdate stats block
-        pure res'
-      Core.Timed cp (Just (Block block)) -> do
-        res <- indexVia unwrap (Core.Timed cp (asTipAndBlock block)) indexer
+        pure res
+      Just (Block block) -> do
+        res <- indexVia unwrap timedEvent indexer
         liftIO $ runUpdate stats block
         pure res
-      Core.Timed cp (Just (Tip tip)) -> do
-        res <- indexVia unwrap (Core.Timed cp $ Just $ Tip tip) indexer
+      Just (Tip tip) -> do
+        res <- indexVia unwrap timedEvent indexer
         liftIO $ chainTipUpdate stats tip
         pure res
-      Core.Timed _ Nothing -> pure indexer
+      Nothing -> pure indexer
     liftIO $ printMessage tracer stats
     pure res
     where
-      asTipAndBlock :: Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent) -> Maybe TipAndBlock
-      asTipAndBlock = \case
-        Core.Index (Core.Timed cp block) -> Just . Block . Core.Index . Core.Timed cp $ block
-        Core.IndexAllDescending block -> (Just . Block . Core.IndexAllDescending) block
-        Core.Rollback cp -> (Just . Block . Core.Rollback) cp
-        Core.StableAt p -> (Just . Block . Core.StableAt) p
-        Core.Stop -> Just . Block $ Core.Stop
       runUpdate
         :: IORef LastSyncStats
         -> Core.ProcessedInput C.ChainPoint a
