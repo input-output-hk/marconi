@@ -30,7 +30,6 @@ module Marconi.ChainIndex.Runner (
   withDistanceAndTipPreprocessor,
 
   -- * Event types
-  TipOrBlock (Tip, Block),
 ) where
 
 import Cardano.Api.Extended qualified as C
@@ -44,11 +43,10 @@ import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
-import Control.Lens ((^.))
+import Control.Lens (view, (^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Except (ExceptT, void)
+import Control.Monad.Except (ExceptT, void, (<=<))
 import Control.Monad.State.Strict (MonadState (put), State, gets)
-import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance, getEvent)
@@ -61,7 +59,7 @@ import Marconi.ChainIndex.Types (
   MarconiTrace,
   RetryConfig,
   SecurityParam,
-  TipOrBlock (Block, Tip),
+  TipAndBlock (Block, Tip, TipAndBlock),
  )
 import Marconi.Core qualified as Core
 import Prettyprinter (pretty)
@@ -71,7 +69,7 @@ import Streaming.Prelude qualified as S
 
 -- | Runner pre-processing
 data RunIndexerEventPreprocessing event = RunIndexerEventPreprocessing
-  { _runIndexerPreprocessEvent :: ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint event]
+  { _runIndexerPreprocessEvent :: ChainSyncEvent BlockEvent -> Core.ProcessedInput C.ChainPoint event
   , _runIndexerExtractBlockNo :: event -> Maybe C.BlockNo
   , _runIndexerExtractTipDistance :: event -> Maybe Word
   }
@@ -180,19 +178,18 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint a])
+  :: (ChainSyncEvent BlockEvent -> Core.ProcessedInput C.ChainPoint a)
   -> STM.TBQueue (Core.ProcessedInput C.ChainPoint a)
   -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
   -> IO r
 mkEventStream processEvent q =
-  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
+  S.mapM_ $ STM.atomically . STM.writeTBQueue q . processEvent
 
-withDistanceAndTipPreprocessor
-  :: RunIndexerEventPreprocessing TipOrBlock
+withDistanceAndTipPreprocessor :: RunIndexerEventPreprocessing TipAndBlock
 withDistanceAndTipPreprocessor =
   let extractChainTipAndAddDistance
         :: ChainSyncEvent BlockEvent
-        -> [Core.ProcessedInput C.ChainPoint TipOrBlock]
+        -> Core.ProcessedInput C.ChainPoint TipAndBlock
       extractChainTipAndAddDistance (RollForward x tip) =
         let point = blockEventPoint x
             blockWithDistance
@@ -202,29 +199,31 @@ withDistanceAndTipPreprocessor =
               let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
                   withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
                in Core.Timed point withDistance
-         in [ Core.Index $ Just . Block <$> blockWithDistance x
-            , Core.Index $ Just . Tip <$> Core.Timed point tip
-            ]
-      extractChainTipAndAddDistance (RollBackward x tip) =
-        [ Core.Rollback x
-        , Core.Index $ Just . Tip <$> Core.Timed x tip
-        ]
-      getDistance (Tip _) = Nothing
-      getDistance (Block event) = Just . fromIntegral $ Distance.chainDistance event
-      blockNoFromBlockEvent (Tip _) = Nothing
-      blockNoFromBlockEvent (Block event) = Just . getBlockNo . blockInMode $ getEvent event
+         in asTipAndBlock point tip $ Core.Index $ Just <$> blockWithDistance x
+      extractChainTipAndAddDistance (RollBackward x tip) = asTipAndBlock x tip (Core.Rollback x)
+      asTipAndBlock point tip = Core.Index . Core.Timed point . Just . TipAndBlock tip
+      blockFromTipAndBlock (Tip _) = Nothing
+      blockFromTipAndBlock (Block event) = Just event
+      blockFromTipAndBlock (TipAndBlock _ event) = Just event
+      getDistance = withGetBlockDistance <=< blockFromTipAndBlock
+      blockNoFromBlockEvent = withGetBlockNo <=< blockFromTipAndBlock
+      withGetBlockDistance = withGetBlock (fromIntegral . Distance.chainDistance)
+      withGetBlockNo = withGetBlock (getBlockNo . blockInMode . getEvent)
+      withGetBlock f event = fmap f . view Core.event =<< eventFromProcessed event
+      eventFromProcessed (Core.Index e) = Just e
+      eventFromProcessed _ = Nothing
    in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
 
 withNoPreprocessor :: RunIndexerEventPreprocessing BlockEvent
 withNoPreprocessor =
   let eventToProcessedInput
         :: ChainSyncEvent BlockEvent
-        -> [Core.ProcessedInput C.ChainPoint BlockEvent]
+        -> Core.ProcessedInput C.ChainPoint BlockEvent
       eventToProcessedInput (RollForward event _) =
         let point = blockEventPoint event
             timedEvent = Core.Timed point event
-         in [Core.Index $ Just <$> timedEvent]
-      eventToProcessedInput (RollBackward point _tip) = [Core.Rollback point]
+         in Core.Index $ Just <$> timedEvent
+      eventToProcessedInput (RollBackward point _tip) = Core.Rollback point
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
 
@@ -232,7 +231,7 @@ withDistancePreprocessor :: RunIndexerEventPreprocessing (WithDistance BlockEven
 withDistancePreprocessor =
   let addDistance
         :: ChainSyncEvent BlockEvent
-        -> [Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)]
+        -> Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)
       addDistance (RollForward x tip) =
         let point = blockEventPoint x
             blockWithDistance
@@ -242,8 +241,8 @@ withDistancePreprocessor =
               let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
                   withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
                in Core.Timed point withDistance
-         in [Core.Index $ Just <$> blockWithDistance x]
-      addDistance (RollBackward x _tip) = [Core.Rollback x]
+         in Core.Index $ Just <$> blockWithDistance x
+      addDistance (RollBackward x _tip) = Core.Rollback x
       getDistance = Just . fromIntegral . Distance.chainDistance
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode . getEvent
    in RunIndexerEventPreprocessing addDistance blockNoFromBlockEvent getDistance

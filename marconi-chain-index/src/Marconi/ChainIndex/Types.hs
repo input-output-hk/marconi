@@ -19,7 +19,7 @@ module Marconi.ChainIndex.Types (
   UtxoIndexerConfig (..),
 
   -- * A type representing either a @ChainTip@ or a @Block@, with an attached distance to the tip
-  TipOrBlock (..),
+  TipAndBlock (..),
 
   -- * Aliases for the current Cardano era
   CurrentEra,
@@ -94,9 +94,12 @@ data UtxoIndexerConfig = UtxoIndexerConfig
   }
 
 -- | A type representing either a @ChainTip@ or a @Block@, with an attached distance to the tip
-data TipOrBlock = Tip C.ChainTip | Block (WithDistance BlockEvent)
+data TipAndBlock
+  = Tip C.ChainTip
+  | Block (Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent))
+  | TipAndBlock C.ChainTip (Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent))
 
-type instance Core.Point TipOrBlock = C.ChainPoint
+type instance Core.Point TipAndBlock = C.ChainPoint
 
 -- | An alias for the current era, to ease the transition from one era to the next one
 type CurrentEra = C.BabbageEra

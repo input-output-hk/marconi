@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Marconi.ChainIndex.Transformer.WithSyncLog (
   WithSyncStats (..),
@@ -14,16 +15,20 @@ module Marconi.ChainIndex.Transformer.WithSyncLog (
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logInfo)
-import Control.Lens (makeLenses, (^.))
+import Control.Lens (makeLenses, view, (^.))
 import Control.Monad (when)
+import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
+import Data.Foldable (traverse_)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Time (defaultTimeLocale, formatTime)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (MarconiTrace, TipOrBlock (Block, Tip))
+import Marconi.ChainIndex.Types (BlockEvent, MarconiTrace, TipAndBlock (Block, Tip, TipAndBlock))
+import Marconi.Core qualified as Core
 import Marconi.Core.Class (
   Closeable,
   IsIndex (index, rollback, setLastStablePoint),
@@ -39,7 +44,6 @@ import Marconi.Core.Transformer.IndexTransformer (
   wrappedIndexer,
   wrapperConfig,
  )
-import Marconi.Core.Type qualified as Core
 import Prettyprinter (Pretty, pretty, (<+>))
 import Text.Printf (printf)
 
@@ -73,8 +77,6 @@ data SyncLog event = SyncLog
   -- ^ Stats since the last syncing log message
   , _syncLogTracer :: MarconiTrace IO
   -- ^ The pretty-printing tracer
-  , _syncChainPoint :: IORef (Maybe C.ChainPoint)
-  -- ^ Should be @Just@ when we're processing a @Tip@ that was split off from a @Block@
   }
 
 makeLenses ''SyncLog
@@ -108,65 +110,66 @@ withSyncStats
   -> IO (WithSyncStats indexer event)
 withSyncStats tr idx = do
   stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
-  loadedFunc <- newIORef Nothing
-  pure $ WithSyncStats . IndexTransformer (SyncLog stats tr loadedFunc) $ idx
+  pure $ WithSyncStats . IndexTransformer (SyncLog stats tr) $ idx
 
 instance IndexerTrans WithSyncStats where
   unwrap = syncStatsWrapper . wrappedIndexer
 
 instance
-  (MonadIO m, IsIndex m TipOrBlock indexer)
-  => IsIndex m TipOrBlock (WithSyncStats indexer)
+  (MonadIO m, MonadError Core.IndexerError m, IsIndex m TipAndBlock indexer)
+  => IsIndex m TipAndBlock (WithSyncStats indexer)
   where
   index timedEvent indexer = do
-    res <- indexVia unwrap timedEvent indexer
-    let syncUpdate = withSyncUpdate indexUpdate indexer
-    case timedEvent of
-      Core.Timed _ (Just (Tip ct)) -> syncUpdate (Left ct)
-      Core.Timed cp (Just (Block _)) -> syncUpdate (Right cp)
-      _ -> pure ()
+    let stats = indexer ^. syncStatsWrapper . wrapperConfig . syncLogStats
+        tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
+    res <- case timedEvent of
+      Core.Timed cp (Just (TipAndBlock tip block)) -> do
+        {- The order here is important.
+
+          We must index the block before the tip, but update the stats with the tip before the
+          block. -}
+        res <- indexVia unwrap (Core.Timed cp (asTipAndBlock block)) indexer
+        res' <- indexVia unwrap (Core.Timed cp $ Just $ Tip tip) res
+        liftIO $ chainTipUpdate stats tip
+        liftIO $ runUpdate stats block
+        pure res'
+      Core.Timed cp (Just (Block block)) -> do
+        res <- indexVia unwrap (Core.Timed cp (asTipAndBlock block)) indexer
+        liftIO $ runUpdate stats block
+        pure res
+      Core.Timed cp (Just (Tip tip)) -> do
+        res <- indexVia unwrap (Core.Timed cp $ Just $ Tip tip) indexer
+        liftIO $ chainTipUpdate stats tip
+        pure res
+      Core.Timed _ Nothing -> pure indexer
+    liftIO $ printMessage tracer stats
     pure res
+    where
+      asTipAndBlock :: Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent) -> Maybe TipAndBlock
+      asTipAndBlock = \case
+        Core.Index (Core.Timed cp block) -> Just . Block . Core.Index . Core.Timed cp $ block
+        Core.IndexAllDescending block -> (Just . Block . Core.IndexAllDescending) block
+        Core.Rollback cp -> (Just . Block . Core.Rollback) cp
+        Core.StableAt p -> (Just . Block . Core.StableAt) p
+        Core.Stop -> Just . Block $ Core.Stop
+      runUpdate
+        :: IORef LastSyncStats
+        -> Core.ProcessedInput C.ChainPoint a
+        -> IO ()
+      runUpdate stats = \case
+        Core.Index (Core.Timed cp _) -> indexUpdate stats cp
+        Core.IndexAllDescending es -> traverse_ (indexUpdate stats . view Core.point) es
+        Core.Rollback cp -> rollbackUpdate stats cp
+        _ -> pure ()
+
   rollback cp indexer = do
+    let stats = indexer ^. syncStatsWrapper . wrapperConfig . syncLogStats
+        tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
     res <- rollbackVia unwrap cp indexer
-    withSyncUpdate rollbackUpdate indexer (Right cp)
+    liftIO $ rollbackUpdate stats cp
+    liftIO $ printMessage tracer stats
     pure res
   setLastStablePoint = setLastStablePointVia unwrap
-
-{- | A helper for the sync updates.
-
-  When events are pre-processed, they're split up into lists @[Event, Tip]@, then flattened. As a
-  result, by the time we're receiving them here, they're in the pattern:
-    @[Event, Tip, Event, Tip ..]@
-
-  This is problematic at the end of a chain. Specifically: the case where a new tip is added, and
-  there's an event associated with that tip. If we logged naively, we'd observe events which occur
-  in the "future", since the new tip hasn't been logged yet.
-
-  So, we keep track of a @ChainPoint@ in an @IORef@. We can assume that if the current element is a
-  @ChainTip@, the @ChainPoint@ in the @IORef@ must be the @ChainPoint@ of a @Block@ associated with
-  the afforementioned @ChainTip@.
--}
-withSyncUpdate
-  :: (MonadIO m)
-  => (IORef LastSyncStats -> C.ChainPoint -> C.ChainTip -> IO ())
-  -> WithSyncStats indexer event
-  -> Either C.ChainTip C.ChainPoint
-  -> m ()
-withSyncUpdate updateLog sync event =
-  let syncLog = sync ^. syncStatsWrapper . wrapperConfig
-      stats = syncLog ^. syncLogStats
-      maybeCpRef = syncLog ^. syncChainPoint
-      runLogger ct = do
-        mCp <- liftIO $ readIORef maybeCpRef
-        case mCp of
-          Just cp -> liftIO $ do
-            updateLog stats cp ct
-            printMessage (syncLog ^. syncLogTracer) stats
-            writeIORef maybeCpRef Nothing
-          Nothing -> liftIO $ chainTipUpdate stats ct
-   in case event of
-        (Left ct) -> runLogger ct
-        (Right cp) -> liftIO $ writeIORef maybeCpRef (Just cp)
 
 chainTipUpdate :: IORef LastSyncStats -> C.ChainTip -> IO ()
 chainTipUpdate statsRef ct =
@@ -176,23 +179,21 @@ chainTipUpdate statsRef ct =
         { syncStatsNodeTip = ct
         }
 
-indexUpdate :: IORef LastSyncStats -> C.ChainPoint -> C.ChainTip -> IO ()
-indexUpdate statsRef cp ct =
+indexUpdate :: IORef LastSyncStats -> C.ChainPoint -> IO ()
+indexUpdate statsRef cp =
   modifyIORef' statsRef $
     \stats ->
       stats
         { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
         , syncStatsChainSyncPoint = cp
-        , syncStatsNodeTip = ct
         }
 
-rollbackUpdate :: IORef LastSyncStats -> C.ChainPoint -> C.ChainTip -> IO ()
-rollbackUpdate statsRef cp ct = do
+rollbackUpdate :: IORef LastSyncStats -> C.ChainPoint -> IO ()
+rollbackUpdate statsRef cp = do
   modifyIORef' statsRef $ \stats ->
     stats
       { syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1
       , syncStatsChainSyncPoint = cp
-      , syncStatsNodeTip = ct
       }
 
 printMessage :: MarconiTrace IO -> IORef LastSyncStats -> IO ()

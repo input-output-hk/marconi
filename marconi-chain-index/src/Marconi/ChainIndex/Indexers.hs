@@ -11,6 +11,7 @@ import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar)
 import Control.Lens (makeLenses, (?~))
+import Control.Monad ((<=<))
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
 import Data.Function ((&))
@@ -33,12 +34,12 @@ import Marconi.ChainIndex.Indexers.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
-import Marconi.ChainIndex.Runner (TipOrBlock (Block, Tip))
 import Marconi.ChainIndex.Transformer.WithSyncLog (WithSyncStats)
 import Marconi.ChainIndex.Types (
   BlockEvent (BlockEvent),
   MarconiTrace,
   SecurityParam,
+  TipAndBlock (Block, Tip, TipAndBlock),
   TxIndexInBlock,
   blockInMode,
  )
@@ -52,8 +53,8 @@ type instance Core.Point C.ChainTip = C.ChainPoint
 type instance Core.Point [AnyTxBody] = C.ChainPoint
 
 -- Convenience aliases for indexers
-type Coordinator = Core.WithTrace IO Core.Coordinator TipOrBlock
-type SyncStatsCoordinator = WithSyncStats (Core.WithTrace IO Core.Coordinator) TipOrBlock
+type Coordinator = Core.WithTrace IO Core.Coordinator TipAndBlock
+type SyncStatsCoordinator = WithSyncStats (Core.WithTrace IO Core.Coordinator) TipAndBlock
 
 type ChainTipIndexer = ChainTip.ChainTipIndexer IO
 type EpochStateIndexer =
@@ -69,7 +70,7 @@ type CurrentSyncPointIndexer =
   Core.WithTrace
     IO
     CurrentSyncPoint.CurrentSyncPointQueryIndexer
-    TipOrBlock
+    TipAndBlock
 
 -- | Container for all the queryable indexers of marconi-chain-index.
 data MarconiChainIndexQueryables = MarconiChainIndexQueryables
@@ -187,12 +188,19 @@ buildBlockEventCoordinator
   :: (MonadIO m)
   => BM.Trace IO (Core.IndexerEvent C.ChainPoint)
   -> [Core.Worker (WithDistance BlockEvent) C.ChainPoint]
-  -> m (Core.Worker TipOrBlock C.ChainPoint)
+  -> m (Core.Worker TipAndBlock C.ChainPoint)
 buildBlockEventCoordinator logger workers =
   let rightToMaybe = \case
         Tip _ -> Nothing
         Block x -> Just x
-   in Core.worker <$> coordinatorWorker "BlockEvent coordinator" logger (pure . rightToMaybe) workers
+        TipAndBlock _ x -> Just x
+      fromProcessed
+        :: Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent) -> Maybe (WithDistance BlockEvent)
+      fromProcessed (Core.Index (Core.Timed _ e)) = e
+      fromProcessed _ = Nothing
+      getBlock :: TipAndBlock -> IO (Maybe (WithDistance BlockEvent))
+      getBlock = pure . (fromProcessed <=< rightToMaybe)
+   in Core.worker <$> coordinatorWorker "BlockEvent coordinator" logger getBlock workers
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildTxBodyCoordinator
@@ -262,7 +270,7 @@ chainTipBuilder
   -> n
       ( Core.WorkerIndexer
           m
-          TipOrBlock
+          TipAndBlock
           C.ChainTip
           (Core.WithTrace m Core.LastEventIndexer)
       )
