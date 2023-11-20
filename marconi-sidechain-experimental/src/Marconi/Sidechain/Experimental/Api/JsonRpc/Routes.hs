@@ -6,6 +6,9 @@ module Marconi.Sidechain.Experimental.Api.JsonRpc.Routes where
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent (
   RpcGetBurnTokenEventsMethod,
  )
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+  RpcCurrentSyncedBlockMethod,
+ )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo (RpcEchoMethod)
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce (RpcEpochNonceMethod)
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses (
@@ -20,10 +23,10 @@ type JsonRpcAPI = "json-rpc" :> RawJsonRpc RpcAPI
 type RpcAPI =
   RpcEchoMethod
     :<|> RpcTargetAddressesMethod
+    :<|> RpcCurrentSyncedBlockMethod
     :<|> RpcGetBurnTokenEventsMethod
     :<|> RpcEpochNonceMethod
 
 -- TODO:
--- :<|> RpcCurrentSyncedBlockMethod
 -- :<|> RpcPastAddressUtxoMethod
 -- :<|> RpcEpochActiveStakePoolDelegationMethod

@@ -4,6 +4,9 @@ import Marconi.Core.JsonRpc (ReaderServer)
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent (
   getBurnTokenEventsHandler,
  )
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+  getCurrentSyncedBlockHandler,
+ )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo (echo)
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce (getEpochNonceHandler)
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses (
@@ -18,5 +21,6 @@ jsonRpcServer :: ReaderServer SidechainHttpServerConfig JsonRpcAPI
 jsonRpcServer =
   echo
     :<|> getTargetAddressesQueryHandler
+    :<|> getCurrentSyncedBlockHandler
     :<|> getBurnTokenEventsHandler
     :<|> getEpochNonceHandler
