@@ -71,7 +71,7 @@ chainTipWorker
           (Core.WithTrace m Core.LastEventIndexer)
       )
 chainTipWorker tracer extractor cfg =
-  Core.createWorker "chainTip" extractor =<< mkChainTipIndexer tracer cfg
+  Core.createWorker "chainTip" (Just . extractor) =<< mkChainTipIndexer tracer cfg
 
 serialiseTip :: C.ChainTip -> BS.ByteString
 serialiseTip =

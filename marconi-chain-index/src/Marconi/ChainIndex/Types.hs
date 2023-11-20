@@ -93,7 +93,7 @@ data UtxoIndexerConfig = UtxoIndexerConfig
   -- ^ enable utxo indexer to store txOut refScript
   }
 
--- | A type representing either a @ChainTip@ or a @Block@, with an attached distance to the tip
+-- | A type representing a @ChainTip@ and maybe a @Block@, with an attached distance to the tip
 data TipAndBlock = TipAndBlock C.ChainTip (Maybe (WithDistance BlockEvent))
 
 type instance Core.Point TipAndBlock = C.ChainPoint
