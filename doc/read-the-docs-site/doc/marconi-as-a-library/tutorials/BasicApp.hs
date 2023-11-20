@@ -212,6 +212,7 @@ newtype BlockInfoEvent = BlockInfoEvent
 type instance Core.Point BlockInfoEvent = C.ChainPoint
 
 {- | Extract the event from the block provided by a Cardano node.
+
 Note that for Marconi, it is more optimal to return @Nothing@ instead
 of @Just $ BlockInfoEvent mempty@ if there are no events for a given block.
 -}
