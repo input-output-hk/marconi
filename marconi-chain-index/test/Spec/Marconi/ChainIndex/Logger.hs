@@ -9,9 +9,11 @@ import Data.String (fromString)
 import Data.Text qualified as Text
 import Data.Word (Word64)
 import Marconi.ChainIndex.Logger (
+  marconiFormatting,
+ )
+import Marconi.ChainIndex.Transformer.WithSyncLog (
   LastSyncLog (LastSyncLog),
   LastSyncStats (LastSyncStats),
-  marconiFormatting,
  )
 import Prettyprinter (Pretty (pretty))
 import Test.Tasty (TestTree, testGroup)

@@ -144,8 +144,6 @@ runIndexer env = do
           Core.withNoPreprocessor
           -- The retry configuration. If can't connect to local node, or lost
           -- connection, we retry given this configuration.
-          (const $ pure ())
-          -- TODO add an informative comment
           (RetryConfig 30 Nothing)
           -- The security parameter
           (envSecurityParam env)
@@ -218,9 +216,9 @@ type instance Core.Point BlockInfoEvent = C.ChainPoint
 Note that for Marconi, it is more optimal to return @Nothing@ instead
 of @Just $ BlockInfoEvent mempty@ if there are no events for a given block.
 -}
-getEventsFromBlock :: BlockEvent -> Maybe BlockInfoEvent
+getEventsFromBlock :: BlockEvent -> BlockInfoEvent
 getEventsFromBlock (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) _) _) _ _) =
-  Just $ BlockInfoEvent bn
+  BlockInfoEvent bn
 
 -- BLOCKEND event
 

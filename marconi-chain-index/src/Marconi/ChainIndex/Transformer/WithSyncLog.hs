@@ -10,6 +10,8 @@
 
 module Marconi.ChainIndex.Transformer.WithSyncLog (
   WithSyncStats (..),
+  LastSyncLog (..),
+  LastSyncStats (..),
   withSyncStats,
 ) where
 
