@@ -235,7 +235,7 @@ anyTxBodyWithDistancePreprocessor
   :: Runner.RunIndexerEventPreprocessing (Distance.WithDistance [AnyTxBody])
 anyTxBodyWithDistancePreprocessor =
   Runner.RunIndexerEventPreprocessing
-    (fmap (fmap toTxBodys) . basePreprocessor)
+    (map (fmap (fmap toTxBodys)) . basePreprocessor)
     (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
     (Just . fromIntegral . Distance.chainDistance)
   where

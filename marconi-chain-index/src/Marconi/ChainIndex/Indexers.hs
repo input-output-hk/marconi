@@ -11,7 +11,6 @@ import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar)
 import Control.Lens (makeLenses, (?~))
-import Control.Monad ((<=<))
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
 import Data.Function ((&))
@@ -191,14 +190,8 @@ buildBlockEventCoordinator
   -> m (Core.Worker TipAndBlock C.ChainPoint)
 buildBlockEventCoordinator logger workers =
   let rightToMaybe = \case
-        TipAndBlock _ x -> x
-      fromProcessed
-        :: Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent) -> Maybe (WithDistance BlockEvent)
-      fromProcessed (Core.Index (Core.Timed _ e)) = e
-      fromProcessed _ = Nothing
-      getBlock :: TipAndBlock -> IO (Maybe (WithDistance BlockEvent))
-      getBlock = pure . (fromProcessed <=< rightToMaybe)
-   in Core.worker <$> coordinatorWorker "BlockEvent coordinator" logger getBlock workers
+        TipAndBlock _ block -> block
+   in Core.worker <$> coordinatorWorker "BlockEvent coordinator" logger (pure . rightToMaybe) workers
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildTxBodyCoordinator

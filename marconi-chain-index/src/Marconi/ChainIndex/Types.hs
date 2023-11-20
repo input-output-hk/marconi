@@ -94,8 +94,7 @@ data UtxoIndexerConfig = UtxoIndexerConfig
   }
 
 -- | A type representing either a @ChainTip@ or a @Block@, with an attached distance to the tip
-data TipAndBlock
-  = TipAndBlock C.ChainTip (Maybe (Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)))
+data TipAndBlock = TipAndBlock C.ChainTip (Maybe (WithDistance BlockEvent))
 
 type instance Core.Point TipAndBlock = C.ChainPoint
 

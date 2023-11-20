@@ -17,12 +17,12 @@ module Marconi.ChainIndex.Transformer.WithSyncLog (
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logInfo)
-import Control.Lens (makeLenses, view, (^.))
+import Control.Lens (makeLenses, (^.))
 import Control.Monad (when)
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Foldable (traverse_)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.Maybe (isJust)
 import Data.Time (defaultTimeLocale, formatTime)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word64)
@@ -124,32 +124,16 @@ instance
     let stats = indexer ^. syncStatsWrapper . wrapperConfig . syncLogStats
         tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
         event = timedEvent ^. Core.event
+        p = timedEvent ^. Core.point
     res <- case event of
       Just (TipAndBlock tip block) -> do
-        {- The order here is important.
-
-          We must index the block before the tip, but update the stats with the tip before the
-          block. -}
         res <- indexVia unwrap timedEvent indexer
         liftIO $ chainTipUpdate stats tip
-        case block of
-          Just b -> liftIO $ runUpdate stats b
-          Nothing -> pure ()
+        when (isJust block) $ liftIO $ indexUpdate stats p
         pure res
       Nothing -> pure indexer
     liftIO $ printMessage tracer stats
     pure res
-    where
-      runUpdate
-        :: IORef LastSyncStats
-        -> Core.ProcessedInput C.ChainPoint a
-        -> IO ()
-      runUpdate stats = \case
-        Core.Index (Core.Timed cp _) -> indexUpdate stats cp
-        Core.IndexAllDescending es -> traverse_ (indexUpdate stats . view Core.point) es
-        Core.Rollback cp -> rollbackUpdate stats cp
-        _ -> pure ()
-
   rollback cp indexer = do
     let stats = indexer ^. syncStatsWrapper . wrapperConfig . syncLogStats
         tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
