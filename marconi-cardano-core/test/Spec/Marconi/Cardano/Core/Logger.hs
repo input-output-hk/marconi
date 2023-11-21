@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.ChainIndex.Logger (tests) where
+module Spec.Marconi.Cardano.Core.Logger (tests) where
 
 import Cardano.Api qualified as C
 import Data.ByteString.Lazy (ByteString)

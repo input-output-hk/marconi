@@ -207,15 +207,13 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Indexers.Spent
     Spec.Marconi.ChainIndex.Indexers.Utxo
     Spec.Marconi.ChainIndex.Indexers.UtxoQuery
-    Spec.Marconi.ChainIndex.Logger
-    Spec.Marconi.ChainIndex.Orphans
     Spec.Marconi.ChainIndex.Utils
 
   --------------------
   -- Local components
   --------------------
   build-depends:
-    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
     , marconi-chain-index
     , marconi-chain-index-test-lib
     , marconi-core:{marconi-core, marconi-core-test-lib}
@@ -290,8 +288,6 @@ library marconi-chain-index-test-lib
   hs-source-dirs:  test-lib
   exposed-modules:
     Test.Gen.Marconi.ChainIndex.MintTokenEvent
-    Test.Gen.Marconi.ChainIndex.Mockchain
-    Test.Gen.Marconi.ChainIndex.Types
     Test.Helpers
     Test.Integration
 
@@ -299,7 +295,7 @@ library marconi-chain-index-test-lib
   -- Local components
   --------------------
   build-depends:
-    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
     , marconi-chain-index
     , marconi-core
 

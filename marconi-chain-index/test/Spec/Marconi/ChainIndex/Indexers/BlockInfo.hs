@@ -32,8 +32,8 @@ import Marconi.ChainIndex.Indexers (blockInfoBuilder)
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
-import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
-import Test.Gen.Marconi.ChainIndex.Types qualified as CGen
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Types qualified as CGen
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)

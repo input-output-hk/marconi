@@ -30,8 +30,8 @@ import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types qualified as Types
 import Marconi.ChainIndex.Indexers (AnyTxBody (AnyTxBody))
 import Marconi.Core qualified as Core
+import Test.Gen.Marconi.Cardano.Core.Helpers qualified as Core.Helpers
 import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen.MintTokenEvent
-import Test.Helpers qualified as Helpers
 
 {- Node emulator setup and helpers -}
 
@@ -106,7 +106,7 @@ validateAndSubmitTx
   -> m ()
 validateAndSubmitTx localNodeConnectInfo ledgerPP networkId address witnessSigningKey txbodyc lovelace = do
   txbodyValid <-
-    Helpers.leftFail $
+    Core.Helpers.leftFail $
       mkValidatedTxBodyWithFee ledgerPP networkId address txbodyc lovelace 1
   let keyWitness = C.makeShelleyKeyWitness txbodyValid witnessSigningKey
   signAndSubmitTx localNodeConnectInfo [keyWitness] txbodyValid
@@ -135,7 +135,7 @@ mkValidatedTxBodyWithFee ledgerPP networkid address txbodyc lovelace nKeywitness
     rebuildTxOutWithFee
       :: C.TxBodyContent C.BuildTx C.BabbageEra -> C.Lovelace -> C.TxOut C.CtxTx C.BabbageEra
     rebuildTxOutWithFee txbodyc' fee =
-      Helpers.mkTxOut address $
+      Core.Helpers.mkTxOut address $
         C.lovelaceToValue (lovelace - fee)
           <> Gen.MintTokenEvent.getValueFromTxMintValue (C.txMintValue txbodyc')
     updateTxWithFee
@@ -158,7 +158,7 @@ mkUnbalancedTxBodyContent
   -> C.TxMintValue C.BuildTx C.BabbageEra
   -> C.TxBodyContent C.BuildTx C.BabbageEra
 mkUnbalancedTxBodyContent validityRange ledgerPP txIns collateral txOuts txMintValue =
-  (Helpers.emptyTxBodyContent validityRange ledgerPP)
+  (Core.Helpers.emptyTxBodyContent validityRange ledgerPP)
     { C.txIns = map (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) txIns
     , C.txOuts = txOuts
     , C.txMintValue = txMintValue
@@ -195,7 +195,7 @@ signAndSubmitTx
   -> [C.KeyWitness C.BabbageEra]
   -> C.TxBody C.BabbageEra
   -> m ()
-signAndSubmitTx info witnesses txbody = Helpers.submitTx info tx
+signAndSubmitTx info witnesses txbody = Core.Helpers.submitTx info tx
   where
     tx = C.makeSignedTransaction witnesses txbody
 

@@ -214,12 +214,9 @@ library marconi-cardano-core-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
-
-  --Test.Gen.Marconi.Cardano.Core.MintTokenEvent
-  --Test.Gen.Marconi.Cardano.Core.Mockchain
-  --Test.Gen.Marconi.Cardano.Core.Types
-  --Test.Helpers
-  --Test.Integration
+    Test.Gen.Marconi.Cardano.Core.Helpers
+    Test.Gen.Marconi.Cardano.Core.Mockchain
+    Test.Gen.Marconi.Cardano.Core.Types
 
   --------------------
   -- Local components
@@ -275,22 +272,8 @@ test-suite marconi-cardano-core-test
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
-
-  --Spec.Marconi.Cardano.Core.Api.Gen
-  --Spec.Marconi.Cardano.Core.Api.Routes
-  --Spec.Marconi.Cardano.Core.CLI
-  --Spec.Marconi.Cardano.Core.CLIInputValidation
-  --Spec.Marconi.Cardano.Core.Indexers
-  --Spec.Marconi.Cardano.Core.Indexers.BlockInfo
-  --Spec.Marconi.Cardano.Core.Indexers.ChainTip
-  --Spec.Marconi.Cardano.Core.Indexers.Datum
-  --Spec.Marconi.Cardano.Core.Indexers.MintTokenEvent
-  --Spec.Marconi.Cardano.Core.Indexers.Spent
-  --Spec.Marconi.Cardano.Core.Indexers.Utxo
-  --Spec.Marconi.Cardano.Core.Indexers.UtxoQuery
-  --Spec.Marconi.Cardano.Core.Logger
-  --Spec.Marconi.Cardano.Core.Orphans
-  --Spec.Marconi.Cardano.Core.Utils
+    Spec.Marconi.Cardano.Core.Logger
+    Spec.Marconi.Cardano.Core.Orphans
 
   --------------------
   -- Local components

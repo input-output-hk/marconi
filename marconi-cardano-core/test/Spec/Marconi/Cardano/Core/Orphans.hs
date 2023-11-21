@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.ChainIndex.Orphans (tests) where
+module Spec.Marconi.Cardano.Core.Orphans (tests) where
 
 import Cardano.Api qualified as C
 import Data.Aeson qualified as Aeson
@@ -11,7 +11,7 @@ import Hedgehog (Property, forAll, property, tripping)
 import Hedgehog.Range qualified as Range
 import Marconi.Cardano.Core.Orphans ()
 import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

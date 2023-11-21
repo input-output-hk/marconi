@@ -73,8 +73,8 @@ import Spec.Marconi.ChainIndex.Indexers.BlockInfo qualified as Test.BlockInfo
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen
-import Test.Gen.Marconi.ChainIndex.Mockchain (
+import Test.Gen.Marconi.Cardano.Core.Helpers qualified as Core.Helpers
+import Test.Gen.Marconi.Cardano.Core.Mockchain (
   MockBlock (MockBlock),
   MockBlockWithInfo (mockBlockInfoChainTip),
   Mockchain,
@@ -82,7 +82,8 @@ import Test.Gen.Marconi.ChainIndex.Mockchain (
   genMockchainWithInfo,
   mockchainWithInfoAsMockchain,
  )
-import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
+import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
@@ -694,13 +695,13 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
     $ do
       threadDelay 5_000_000
 
-      ledgerPP <- Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
+      ledgerPP <- Core.Helpers.getLedgerProtocolParams @C.BabbageEra localNodeConnectInfo
 
       -- Transaction-builder inputs
-      address <- Helpers.nothingFail "Empty knownShelleyAddress" Integration.knownShelleyAddress
+      address <- Core.Helpers.nothingFail "Empty knownShelleyAddress" Integration.knownShelleyAddress
       witnessSigningKey <-
-        Helpers.nothingFail "Empty knownWitnessSigningKey" Integration.knownWitnessSigningKey
-      (txIns, lovelace) <- Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
+        Core.Helpers.nothingFail "Empty knownWitnessSigningKey" Integration.knownWitnessSigningKey
+      (txIns, lovelace) <- Core.Helpers.getAddressTxInsValue @C.BabbageEra localNodeConnectInfo address
       let validityRange = Integration.unboundedValidityRange
 
       let txbody =
@@ -709,7 +710,8 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
               ledgerPP
               txIns
               txIns
-              [Helpers.mkTxOut address $ C.lovelaceToValue lovelace <> Gen.getValueFromTxMintValue txMintValue]
+              [ Core.Helpers.mkTxOut address $ C.lovelaceToValue lovelace <> Gen.getValueFromTxMintValue txMintValue
+              ]
               txMintValue
 
       -- Submit the transaction

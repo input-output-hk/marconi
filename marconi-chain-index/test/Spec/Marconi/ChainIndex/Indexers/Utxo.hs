@@ -33,7 +33,7 @@ import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
