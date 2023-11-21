@@ -10,10 +10,11 @@ import Data.Text qualified as Text
 import Data.Word (Word64)
 import Marconi.ChainIndex.Logger (
   marconiFormatting,
+  nullTracer,
  )
 import Marconi.ChainIndex.Transformer.WithSyncLog (
-  LastSyncLog (LastSyncLog),
   LastSyncStats (LastSyncStats),
+  SyncLog (SyncLog),
  )
 import Prettyprinter (Pretty (pretty))
 import Test.Tasty (TestTree, testGroup)
@@ -81,9 +82,9 @@ goldenStartFromLaterPointLogging = do
   pure $ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap (marconiFormatting . pretty) logs
 
 mkLastSyncLog
-  :: C.Hash C.BlockHeader -> Word64 -> Word64 -> Maybe Word64 -> Maybe Word64 -> LastSyncLog
+  :: C.Hash C.BlockHeader -> Word64 -> Word64 -> Maybe Word64 -> Maybe Word64 -> SyncLog event
 mkLastSyncLog blockHeaderHash nbProcessedBlocks nbProcessedRollbacks currentSyncedSlot timeSinceLastSync =
-  LastSyncLog
+  SyncLog
     ( LastSyncStats
         nbProcessedBlocks
         nbProcessedRollbacks
@@ -94,4 +95,5 @@ mkLastSyncLog blockHeaderHash nbProcessedBlocks nbProcessedRollbacks currentSync
         (C.ChainTip (C.SlotNo 100000) blockHeaderHash (C.BlockNo 100000))
         Nothing
     )
+    nullTracer
     (fmap fromIntegral timeSinceLastSync)

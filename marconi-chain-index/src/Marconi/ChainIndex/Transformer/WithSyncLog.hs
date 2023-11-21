@@ -8,8 +8,8 @@
 
 module Marconi.ChainIndex.Transformer.WithSyncLog (
   WithSyncStats (..),
-  LastSyncLog (..),
   LastSyncStats (..),
+  SyncLog (..),
   withSyncStats,
 ) where
 
@@ -22,7 +22,6 @@ import Data.Maybe (isJust)
 import Data.Time (defaultTimeLocale, formatTime)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word64)
-import GHC.Generics (Generic)
 import Marconi.ChainIndex.Orphans ()
 import Marconi.ChainIndex.Types (MarconiTrace, TipAndBlock (TipAndBlock))
 import Marconi.Core qualified as Core
@@ -59,21 +58,14 @@ data LastSyncStats = LastSyncStats
   }
   deriving (Eq, Show)
 
--- | Logging datatype for information that occured since the previous 'LastSyncLog'.
-data LastSyncLog = LastSyncLog
-  { _syncStatsSyncLog :: LastSyncStats
-  -- ^ Stats since the last syncing log message
-  , _timeSinceLastMsgSyncLog :: Maybe NominalDiffTime
-  -- ^ Time since last syncing log message.
-  }
-  deriving stock (Eq, Show, Generic)
-
--- | Logging datatype for information that occured since the previous 'LastSyncLog'.
+-- | Logging datatype for information that occurred since the previous 'LastSyncLog'.
 data SyncLog event = SyncLog
   { _syncLogStats :: LastSyncStats
   -- ^ Stats since the last syncing log message
   , _syncLogTracer :: MarconiTrace IO
   -- ^ The pretty-printing tracer
+  , _syncLogTimeSinceLastMsg :: Maybe NominalDiffTime
+  -- ^ Time since last syncing log message.
   }
 
 -- | A logging modifier that adds stats logging to the indexer
@@ -107,7 +99,7 @@ withSyncStats
   -> WithSyncStats indexer event
 withSyncStats tr idx =
   let stats = LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing
-   in WithSyncStats . IndexTransformer (SyncLog stats tr) $ idx
+   in WithSyncStats . IndexTransformer (SyncLog stats tr Nothing) $ idx
 
 instance IndexerTrans WithSyncStats where
   unwrap = syncStatsWrapper . wrappedIndexer
@@ -142,7 +134,7 @@ printStats
   -> m (WithSyncStats indexer event)
 printStats tracer idx =
   liftIO $
-    traverseOf (syncStatsWrapper . wrapperConfig . syncLogStats) (printMessage tracer) idx
+    traverseOf (syncStatsWrapper . wrapperConfig) (printMessage tracer) idx
 
 chainTipUpdate :: WithSyncStats indexer event -> C.ChainTip -> WithSyncStats indexer event
 chainTipUpdate indexer ct =
@@ -184,12 +176,12 @@ incrementDirection direction =
     . direction
     +~ 1
 
-printMessage :: MarconiTrace IO -> LastSyncStats -> IO LastSyncStats
+printMessage :: MarconiTrace IO -> SyncLog event -> IO (SyncLog event)
 printMessage tracer stats = do
   now <- getCurrentTime
   let minSecondsBetweenMsg :: NominalDiffTime
       minSecondsBetweenMsg = 10
-  let timeSinceLastMsg = diffUTCTime now <$> (stats ^. syncStatsLastMessageTime)
+  let timeSinceLastMsg = diffUTCTime now <$> (stats ^. syncLogStats . syncStatsLastMessageTime)
   -- Should only log if we never logged before and if at least 'minSecondsBetweenMsg' have
   -- passed after last log message.
   let shouldPrint = case timeSinceLastMsg of
@@ -197,20 +189,21 @@ printMessage tracer stats = do
         Just t
           | t > minSecondsBetweenMsg -> True
           | otherwise -> False
-  let resetStats =
-        stats
-          & syncStatsNumBlocks .~ 0
-          & syncStatsNumRollbacks .~ 0
-          & syncStatsLastMessageTime ?~ now
+  let resetStats sts =
+        sts
+          & syncLogStats . syncStatsNumBlocks .~ 0
+          & syncLogStats . syncStatsNumRollbacks .~ 0
+          & syncLogStats . syncStatsLastMessageTime ?~ now
   if shouldPrint
     then do
-      logInfo tracer $ pretty (LastSyncLog stats timeSinceLastMsg)
-      pure resetStats
+      let timeUpdatedStats = stats & syncLogTimeSinceLastMsg .~ timeSinceLastMsg
+      logInfo tracer $ pretty timeUpdatedStats
+      pure $ resetStats timeUpdatedStats
     else pure stats
 
-instance Pretty LastSyncLog where
+instance Pretty (SyncLog event) where
   pretty = \case
-    LastSyncLog (LastSyncStats numRollForward numRollBackwards cp nt _) timeSinceLastMsgM ->
+    SyncLog (LastSyncStats numRollForward numRollBackwards cp nt _) _ timeSinceLastMsgM ->
       let currentTipMsg Nothing = ""
           currentTipMsg (Just _) =
             "Current synced point is"
