@@ -75,6 +75,49 @@ chainPointParser =
         . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
         . C8.pack
 
+startFromOptions2 :: Opt.Parser C.ChainPoint
+startFromOptions2 =
+  C.ChainPoint
+    <$> slotNoParser
+    <*> blockHeaderHashParser
+  where
+    blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
+    blockHeaderHashParser =
+      Opt.option
+        (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
+        ( Opt.long "block-header-hash"
+            <> Opt.short 'b'
+            <> Opt.metavar "BLOCK-HEADER-HASH"
+            <> Opt.help
+              "Block header hash of the preferred starting point. Note that you also need to provide the starting point slot number with `--slot-no`. Might fail if the target indexers can't resume from arbitrary points."
+        )
+    slotNoParser :: Opt.Parser C.SlotNo
+    slotNoParser =
+      Opt.option
+        (C.SlotNo <$> Opt.auto)
+        ( Opt.long "slot-no"
+            <> Opt.short 'n'
+            <> Opt.metavar "SLOT-NO"
+            <> Opt.help
+              "Slot number of the preferred starting point. Note that you also need to provide the starting point block header hash with `--block-header-hash`. Might fail if the target indexers can't resume from arbitrary points."
+        )
+    maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
+    maybeParseHashBlockHeader =
+      either (const Nothing) Just
+        . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
+        . C8.pack
+
+options2 :: Opt.Parser Options
+options2 =
+  Opt.subparser
+    ( Opt.command
+        "start-from"
+        ( Opt.info
+            startFromOptions2
+            (Opt.progDesc "Start from a given slot or block header hash")
+        )
+    )
+
 -- TODO: `pNetworkId` and `pTestnetMagic` are copied from
 -- https://github.com/input-output-hk/cardano-node/blob/988c93085022ed3e2aea5d70132b778cd3e622b9/cardano-cli/src/Cardano/CLI/Shelley/Parsers.hs#L2009-L2027
 -- Use them from there whenever they are exported.
