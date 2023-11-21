@@ -215,7 +215,6 @@ instance Pretty LastSyncLog where
                 <+> currentTipMsg timeSinceLastMsgM
             (Just _, _, C.ChainTipAtGenesis) ->
               "Not syncing. Node tip is at Genesis"
-            -- This case statement should never happen.
             (Just timeSinceLastMsg, C.ChainPointAtGenesis, C.ChainTip{}) ->
               "Synchronising (0%)."
                 <+> currentTipMsg timeSinceLastMsgM
