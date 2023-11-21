@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Marconi.ChainIndex.Transformer.WithSyncLog (
@@ -14,11 +15,9 @@ module Marconi.ChainIndex.Transformer.WithSyncLog (
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (logInfo)
-import Control.Lens (makeLenses, (^.))
-import Control.Monad (when)
+import Control.Lens (Lens', makeLenses, traverseOf, (&), (+~), (.~), (?~), (^.))
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.Maybe (isJust)
 import Data.Time (defaultTimeLocale, formatTime)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
@@ -47,43 +46,43 @@ import Text.Printf (printf)
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats
-  { syncStatsNumBlocks :: !Word64
+  { _syncStatsNumBlocks :: !Word64
   -- ^ Number of applied blocks since last message
-  , syncStatsNumRollbacks :: !Word64
+  , _syncStatsNumRollbacks :: !Word64
   -- ^ Number of rollbacks since last message
-  , syncStatsChainSyncPoint :: C.ChainPoint
+  , _syncStatsChainSyncPoint :: C.ChainPoint
   -- ^ Chain index syncing point
-  , syncStatsNodeTip :: C.ChainTip
+  , _syncStatsNodeTip :: C.ChainTip
   -- ^ Current node tip
-  , syncStatsLastMessageTime :: !(Maybe UTCTime)
+  , _syncStatsLastMessageTime :: !(Maybe UTCTime)
   -- ^ Timestamp of last printed message
   }
   deriving (Eq, Show)
 
 -- | Logging datatype for information that occured since the previous 'LastSyncLog'.
 data LastSyncLog = LastSyncLog
-  { syncStatsSyncLog :: LastSyncStats
+  { _syncStatsSyncLog :: LastSyncStats
   -- ^ Stats since the last syncing log message
-  , timeSinceLastMsgSyncLog :: Maybe NominalDiffTime
+  , _timeSinceLastMsgSyncLog :: Maybe NominalDiffTime
   -- ^ Time since last syncing log message.
   }
   deriving stock (Eq, Show, Generic)
 
 -- | Logging datatype for information that occured since the previous 'LastSyncLog'.
 data SyncLog event = SyncLog
-  { _syncLogStats :: IORef LastSyncStats
+  { _syncLogStats :: LastSyncStats
   -- ^ Stats since the last syncing log message
   , _syncLogTracer :: MarconiTrace IO
   -- ^ The pretty-printing tracer
   }
-
-makeLenses ''SyncLog
 
 -- | A logging modifier that adds stats logging to the indexer
 newtype WithSyncStats indexer event = WithSyncStats
   { _syncStatsWrapper :: IndexTransformer SyncLog indexer event
   }
 
+makeLenses 'LastSyncStats
+makeLenses 'SyncLog
 makeLenses 'WithSyncStats
 
 deriving via
@@ -105,10 +104,10 @@ deriving via
 withSyncStats
   :: MarconiTrace IO
   -> indexer event
-  -> IO (WithSyncStats indexer event)
-withSyncStats tr idx = do
-  stats <- newIORef (LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing)
-  pure $ WithSyncStats . IndexTransformer (SyncLog stats tr) $ idx
+  -> WithSyncStats indexer event
+withSyncStats tr idx =
+  let stats = LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing
+   in WithSyncStats . IndexTransformer (SyncLog stats tr) $ idx
 
 instance IndexerTrans WithSyncStats where
   unwrap = syncStatsWrapper . wrappedIndexer
@@ -118,60 +117,79 @@ instance
   => IsIndex m TipAndBlock (WithSyncStats indexer)
   where
   index timedEvent indexer = do
-    let stats = indexer ^. syncStatsWrapper . wrapperConfig . syncLogStats
-        tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
+    let tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
         event = timedEvent ^. Core.event
         p = timedEvent ^. Core.point
     res <- case event of
       Just (TipAndBlock tip block) -> do
         res <- indexVia unwrap timedEvent indexer
-        liftIO $ chainTipUpdate stats tip
-        when (isJust block) $ liftIO $ indexUpdate stats p
-        pure res
+        let updatedIndexer = chainTipUpdate res tip
+        if isJust block
+          then pure $ indexUpdate updatedIndexer p
+          else pure updatedIndexer
       Nothing -> pure indexer
-    liftIO $ printMessage tracer stats
-    pure res
+    printStats tracer res
   rollback cp indexer = do
-    let stats = indexer ^. syncStatsWrapper . wrapperConfig . syncLogStats
-        tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
+    let tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
     res <- rollbackVia unwrap cp indexer
-    liftIO $ rollbackUpdate stats cp
-    liftIO $ printMessage tracer stats
-    pure res
+    rollbackUpdate res cp & printStats tracer
   setLastStablePoint = setLastStablePointVia unwrap
 
-chainTipUpdate :: IORef LastSyncStats -> C.ChainTip -> IO ()
-chainTipUpdate statsRef ct =
-  modifyIORef' statsRef $
-    \stats ->
-      stats
-        { syncStatsNodeTip = ct
-        }
+printStats
+  :: (MonadIO m)
+  => MarconiTrace IO
+  -> WithSyncStats indexer event
+  -> m (WithSyncStats indexer event)
+printStats tracer idx =
+  liftIO $
+    traverseOf (syncStatsWrapper . wrapperConfig . syncLogStats) (printMessage tracer) idx
 
-indexUpdate :: IORef LastSyncStats -> C.ChainPoint -> IO ()
-indexUpdate statsRef cp =
-  modifyIORef' statsRef $
-    \stats ->
-      stats
-        { syncStatsNumBlocks = syncStatsNumBlocks stats + 1
-        , syncStatsChainSyncPoint = cp
-        }
+chainTipUpdate :: WithSyncStats indexer event -> C.ChainTip -> WithSyncStats indexer event
+chainTipUpdate indexer ct =
+  indexer
+    & syncStatsWrapper
+      . wrapperConfig
+      . syncLogStats
+      . syncStatsNodeTip
+      .~ ct
 
-rollbackUpdate :: IORef LastSyncStats -> C.ChainPoint -> IO ()
-rollbackUpdate statsRef cp = do
-  modifyIORef' statsRef $ \stats ->
-    stats
-      { syncStatsNumRollbacks = syncStatsNumRollbacks stats + 1
-      , syncStatsChainSyncPoint = cp
-      }
+indexUpdate :: WithSyncStats indexer event -> C.ChainPoint -> WithSyncStats indexer event
+indexUpdate indexer cp =
+  indexer
+    & incrementDirection syncStatsNumBlocks
+    & setChainPoint cp
 
-printMessage :: MarconiTrace IO -> IORef LastSyncStats -> IO ()
-printMessage tracer statsRef = do
-  syncStats@LastSyncStats{syncStatsLastMessageTime} <- readIORef statsRef
+rollbackUpdate :: WithSyncStats indexer event -> C.ChainPoint -> WithSyncStats indexer event
+rollbackUpdate indexer cp =
+  indexer
+    & incrementDirection syncStatsNumRollbacks
+    & setChainPoint cp
+
+setChainPoint :: C.ChainPoint -> WithSyncStats indexer event -> WithSyncStats indexer event
+setChainPoint cp =
+  syncStatsWrapper
+    . wrapperConfig
+    . syncLogStats
+    . syncStatsChainSyncPoint
+    .~ cp
+
+incrementDirection
+  :: Lens' LastSyncStats Word64
+  -> WithSyncStats indexer event
+  -> WithSyncStats indexer event
+incrementDirection direction =
+  syncStatsWrapper
+    . wrapperConfig
+    . syncLogStats
+    . direction
+    +~ 1
+
+printMessage :: MarconiTrace IO -> LastSyncStats -> IO LastSyncStats
+printMessage tracer stats = do
   now <- getCurrentTime
   let minSecondsBetweenMsg :: NominalDiffTime
       minSecondsBetweenMsg = 10
-  let timeSinceLastMsg = diffUTCTime now <$> syncStatsLastMessageTime
+  let timeSinceLastMsg = diffUTCTime now <$> (stats ^. syncStatsLastMessageTime)
   -- Should only log if we never logged before and if at least 'minSecondsBetweenMsg' have
   -- passed after last log message.
   let shouldPrint = case timeSinceLastMsg of
@@ -179,14 +197,16 @@ printMessage tracer statsRef = do
         Just t
           | t > minSecondsBetweenMsg -> True
           | otherwise -> False
-  when shouldPrint $ do
-    logInfo tracer $ pretty (LastSyncLog syncStats timeSinceLastMsg)
-    modifyIORef' statsRef $ \stats ->
-      stats
-        { syncStatsNumBlocks = 0
-        , syncStatsNumRollbacks = 0
-        , syncStatsLastMessageTime = Just now
-        }
+  let resetStats =
+        stats
+          & syncStatsNumBlocks .~ 0
+          & syncStatsNumRollbacks .~ 0
+          & syncStatsLastMessageTime ?~ now
+  if shouldPrint
+    then do
+      logInfo tracer $ pretty (LastSyncLog stats timeSinceLastMsg)
+      pure resetStats
+    else pure stats
 
 instance Pretty LastSyncLog where
   pretty = \case

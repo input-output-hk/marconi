@@ -9,7 +9,6 @@ module Marconi.ChainIndex.Indexers.Coordinator (
 ) where
 
 import Cardano.BM.Tracing (Trace)
-import Control.Monad ((<=<))
 import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Data.Text (Text)
 import Marconi.ChainIndex.Indexers.Orphans qualified ()
@@ -31,8 +30,9 @@ syncStatsCoordinator
   -> [Core.Worker event (Core.Point event)]
   -> IO (WithSyncStats (Core.WithTrace IO Core.Coordinator) event)
 syncStatsCoordinator logger prettyLogger =
-  withSyncStats prettyLogger
-    <=< Core.withTraceM logger . Core.mkCoordinator
+  fmap (withSyncStats prettyLogger)
+    . Core.withTraceM logger
+    . Core.mkCoordinator
 
 coordinatorWorker
   :: (MonadIO m, Ord (Core.Point b))

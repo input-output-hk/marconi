@@ -48,12 +48,14 @@ goldenStartFromGenesisLogging = do
   let logs =
         [ mkLastSyncLog fakeBlockHeaderHash 0 0 Nothing Nothing
         , mkLastSyncLog fakeBlockHeaderHash 0 0 Nothing (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 10 1 (Just 100) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 40 0 (Just 500) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 30 0 (Just 800) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 10 0 (Just 900) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 5 2 (Just 950) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 5 3 (Just 1000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 10 1 (Just 10000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 40 0 (Just 50000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 30 0 (Just 80000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 10 0 (Just 90000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 2 (Just 95000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 1 (Just 99995) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 1 (Just 99999) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 3 (Just 100000) (Just 10)
         ]
   pure $ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap (marconiFormatting . pretty) logs
 
@@ -68,11 +70,13 @@ goldenStartFromLaterPointLogging = do
         (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
         fakeBlockHeaderHashRawBytes
   let logs =
-        [ mkLastSyncLog fakeBlockHeaderHash 0 0 (Just 500) Nothing
-        , mkLastSyncLog fakeBlockHeaderHash 30 0 (Just 800) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 10 0 (Just 900) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 5 2 (Just 950) (Just 10)
-        , mkLastSyncLog fakeBlockHeaderHash 5 3 (Just 1000) (Just 10)
+        [ mkLastSyncLog fakeBlockHeaderHash 0 0 (Just 50000) Nothing
+        , mkLastSyncLog fakeBlockHeaderHash 30 0 (Just 80000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 10 0 (Just 90000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 2 (Just 95000) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 1 (Just 99995) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 1 (Just 99999) (Just 10)
+        , mkLastSyncLog fakeBlockHeaderHash 5 3 (Just 100000) (Just 10)
         ]
   pure $ fromString $ Text.unpack $ Text.intercalate "\n" $ fmap (marconiFormatting . pretty) logs
 
@@ -87,7 +91,7 @@ mkLastSyncLog blockHeaderHash nbProcessedBlocks nbProcessedRollbacks currentSync
             Nothing -> C.ChainPointAtGenesis
             Just s -> C.ChainPoint (C.SlotNo s) blockHeaderHash
         )
-        (C.ChainTip (C.SlotNo 1000) blockHeaderHash (C.BlockNo 1000))
+        (C.ChainTip (C.SlotNo 100000) blockHeaderHash (C.BlockNo 100000))
         Nothing
     )
     (fmap fromIntegral timeSinceLastSync)
