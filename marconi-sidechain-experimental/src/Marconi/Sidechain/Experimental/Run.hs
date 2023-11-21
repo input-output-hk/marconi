@@ -9,7 +9,7 @@ import Control.Lens ((^.))
 import Control.Monad.Reader (runReaderT)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
-import Marconi.ChainIndex.Logger (defaultStdOutLogger)
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger)
 import Marconi.Core (IndexerError)
 import Marconi.Sidechain.Experimental.Api.HttpServer (runHttpServer)
 import Marconi.Sidechain.Experimental.CLI (
