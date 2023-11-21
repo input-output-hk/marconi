@@ -115,16 +115,30 @@ instance
     res <- case event of
       Just (TipAndBlock tip block) -> do
         res <- indexVia unwrap timedEvent indexer
-        let updatedIndexer = chainTipUpdate res tip
+        let updatedTipIndexer =
+              res
+                & syncStatsWrapper
+                  . wrapperConfig
+                  . syncLogStats
+                  . syncStatsNodeTip
+                  .~ tip
+            updateIndexerBlocks idx cp =
+              idx
+                & incrementDirection syncStatsNumBlocks
+                & setChainPoint cp
         if isJust block
-          then pure $ indexUpdate updatedIndexer p
-          else pure updatedIndexer
+          then pure $ updateIndexerBlocks updatedTipIndexer p
+          else pure updatedTipIndexer
       Nothing -> pure indexer
     printStats tracer res
   rollback cp indexer = do
     let tracer = indexer ^. syncStatsWrapper . wrapperConfig . syncLogTracer
+        updateIndexerRollbacks idx chainPoint =
+          idx
+            & incrementDirection syncStatsNumRollbacks
+            & setChainPoint chainPoint
     res <- rollbackVia unwrap cp indexer
-    rollbackUpdate res cp & printStats tracer
+    updateIndexerRollbacks res cp & printStats tracer
   setLastStablePoint = setLastStablePointVia unwrap
 
 printStats
@@ -135,27 +149,6 @@ printStats
 printStats tracer idx =
   liftIO $
     traverseOf (syncStatsWrapper . wrapperConfig) (printMessage tracer) idx
-
-chainTipUpdate :: WithSyncStats indexer event -> C.ChainTip -> WithSyncStats indexer event
-chainTipUpdate indexer ct =
-  indexer
-    & syncStatsWrapper
-      . wrapperConfig
-      . syncLogStats
-      . syncStatsNodeTip
-      .~ ct
-
-indexUpdate :: WithSyncStats indexer event -> C.ChainPoint -> WithSyncStats indexer event
-indexUpdate indexer cp =
-  indexer
-    & incrementDirection syncStatsNumBlocks
-    & setChainPoint cp
-
-rollbackUpdate :: WithSyncStats indexer event -> C.ChainPoint -> WithSyncStats indexer event
-rollbackUpdate indexer cp =
-  indexer
-    & incrementDirection syncStatsNumRollbacks
-    & setChainPoint cp
 
 setChainPoint :: C.ChainPoint -> WithSyncStats indexer event -> WithSyncStats indexer event
 setChainPoint cp =
