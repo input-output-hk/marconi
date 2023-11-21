@@ -37,6 +37,9 @@ let
           marconi-sidechain.doHaddock = false;
           marconi-sidechain.flags.defer-plugin-errors = false;
 
+          marconi-sidechain-experimental.doHaddock = false;
+          marconi-sidechain-experimental.flags.defer-plugin-errors = false;
+
           marconi-starter.doHaddock = false;
           marconi-starter.flags.defer-plugin-errors = false;
 
@@ -68,11 +71,15 @@ let
           marconi-sidechain.preCheck = "
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
           ";
+          marconi-sidechain-experimental.preCheck = "
+            export MARCONI_SIDECHAIN_EXPERIMENTAL=${inputs.self.packages.marconi-sidechain-experimental}/bin/marconi-sidechain-experimental
+          ";
 
           # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
           marconi-chain-index.ghcOptions = [ "-Werror" ];
           marconi-core.ghcOptions = [ "-Werror" ];
           marconi-sidechain.ghcOptions = [ "-Werror" ];
+          marconi-sidechain-experimental.ghcOptions = [ "-Werror" ];
           marconi-starter.ghcOptions = [ "-Werror" ];
         };
       }];
@@ -85,6 +92,7 @@ let
         "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
         "marconi-chain-index.components.exes.marconi-chain-index"
         "marconi-sidechain.components.exes.marconi-sidechain"
+        "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
       ]
         prev.hsPkgs;
     })

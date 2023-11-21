@@ -20,6 +20,7 @@ module Marconi.Core.JsonRpc (
   queryIndexerHttpHandler,
   queryIndexerVarHttpHandler,
   queryErrToRpcErr,
+  withReaderHandler,
 ) where
 
 import Cardano.BM.Trace (Trace, logDebug, logError)
@@ -27,9 +28,9 @@ import Control.Concurrent (MVar, readMVar)
 import Control.Exception (SomeAsyncException, SomeException, catches, displayException, throwIO)
 import Control.Exception qualified as Exception
 import Control.Lens (Getter, view, (^.))
-import Control.Monad.Except (ExceptT (ExceptT), runExceptT)
+import Control.Monad.Except (ExceptT (ExceptT), mapExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (ReaderT (ReaderT), runReaderT)
+import Control.Monad.Reader (ReaderT (ReaderT), runReaderT, withReaderT)
 import Data.Aeson qualified as Aeson
 import Data.Bifunctor (first)
 import Data.Default (def)
@@ -71,6 +72,9 @@ hoistReaderHandler env = Handler . ExceptT . flip runReaderT env . runExceptT
 
 hoistHttpHandler :: Handler a -> ReaderHandler env a
 hoistHttpHandler = ExceptT . ReaderT . const . runHandler
+
+withReaderHandler :: (r' -> r) -> ReaderHandler r a -> ReaderHandler r' a
+withReaderHandler = mapExceptT . withReaderT
 
 catchHttpHandlerExceptions :: Trace IO Text -> Handler a -> Handler a
 catchHttpHandlerExceptions trace action =

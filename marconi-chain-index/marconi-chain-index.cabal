@@ -96,6 +96,7 @@ library
     Marconi.ChainIndex.Indexers.Datum
     Marconi.ChainIndex.Indexers.EpochState
     Marconi.ChainIndex.Indexers.MintTokenEvent
+    Marconi.ChainIndex.Indexers.MintTokenEventQuery
     Marconi.ChainIndex.Indexers.Orphans
     Marconi.ChainIndex.Indexers.Spent
     Marconi.ChainIndex.Indexers.SyncHelper
@@ -305,6 +306,7 @@ test-suite marconi-chain-index-test
     , base16-bytestring
     , bytestring
     , cborg
+    , comonad
     , containers
     , contra-tracer
     , directory

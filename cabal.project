@@ -20,9 +20,12 @@ packages: legacy/marconi-core-legacy
           marconi-chain-index
           marconi-core
           marconi-core-json-rpc
-          doc/read-the-docs-site
           marconi-sidechain
+          marconi-sidechain-experimental
           marconi-starter
+if(!os(darwin) || impl(ghc >= 9.4))
+  packages:
+          doc/read-the-docs-site
 
 -- We never, ever, want this.
 write-ghc-environment-files: never

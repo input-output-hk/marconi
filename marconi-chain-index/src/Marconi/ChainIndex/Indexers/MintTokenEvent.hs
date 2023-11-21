@@ -1,10 +1,12 @@
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 {- |
@@ -65,6 +67,11 @@ module Marconi.ChainIndex.Indexers.MintTokenEvent (
   ByTargetAssetIdsArgs (ByTargetAssetIdsArgs),
   evalMintTokenEventsMatchingQuery,
   QueryByAssetId (..),
+  queryByAssetIdPolicyId,
+  queryByAssetIdAssetName,
+  queryByAssetIdEventType,
+  queryByAssetIdUpperSlotNo,
+  queryByAssetIdLowerTxId,
   EventType (..),
   toTimedMintEvents,
 )
@@ -601,7 +608,9 @@ instance
       (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
       Core.ListIndexer
   where
-  query = Core.queryWithStability
+  query p (Core.WithStability q) idx = do
+    lsp <- Core.lastStablePoint idx
+    Core.withStabilityM (Core.calcStability (view Core.point) lsp) $ Core.query p q idx
 
 {- | Helper for ListIndexer query.
  Filter timed events to within the upper/lower slot bounds, returning 'Left' only if
@@ -723,18 +732,6 @@ instance
       point
       config
       ix
-
-instance
-  ( MonadIO m
-  , MonadError (Core.QueryError (Core.WithStability (QueryByAssetId MintTokenBlockEvents))) m
-  )
-  => Core.Queryable
-      m
-      MintTokenBlockEvents
-      (Core.WithStability (QueryByAssetId MintTokenBlockEvents))
-      Core.SQLiteIndexer
-  where
-  query = Core.queryWithStability
 
 {- | Helper for MintTokenEventIndexer in the case where a 'lowerTxId' is provided.
 Query to look up the earliest SlotNo matching a TxId. This is implemented as a separate query so

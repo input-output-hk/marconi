@@ -15,13 +15,16 @@ module Marconi.Core.Query (
   EventsFromQuery (EventsFromQuery),
   Stability (Stable, Volatile),
   isStable,
-  queryWithStability,
+  calcStability,
   WithStability (WithStability, unWithStability),
+  withStabilityM,
   withStability,
   withStabilityAt,
+  queryErrorWithStability,
 ) where
 
 import Control.Comonad (Comonad (duplicate, extract))
+import Control.Lens (over)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((^.), (^..), (^?))
 import Control.Monad (when)
@@ -54,11 +57,12 @@ import Marconi.Core.Indexer.FileIndexer qualified as FileIndexer
 import Marconi.Core.Indexer.ListIndexer (ListIndexer, events)
 import Marconi.Core.Type (
   Point,
-  QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore, SlotNoBoundsInvalid),
+  QueryError (AheadOfLastSync, IndexerQueryError, NotStoredAnymore),
   Result,
   Timed,
   event,
   point,
+  _AheadOfLastSync,
  )
 
 -- | Get the event stored by the indexer at a given point in time
@@ -228,6 +232,10 @@ type instance
   Result (WithStability (EventsFromQuery event)) =
     [Stability (Timed (Point event) event)]
 
+type instance
+  Result (WithStability (EventsMatchingQuery event)) =
+    [Stability (Timed (Point event) event)]
+
 instance
   (MonadError (QueryError (EventsFromQuery event)) m)
   => Queryable m event (EventsFromQuery event) ListIndexer
@@ -318,7 +326,7 @@ withStability
   -> m (f (Stability (Timed (Point event) event)))
 withStability idx res = do
   lsp <- lastStablePoint idx
-  pure $ (calcStability lsp =<< Lens.view point) <$> res
+  pure $ calcStability (Lens.view point) lsp <$> res
 
 {- | Given an indexer, a 'Point' and some traversable of query results,
     calculate the stability of all the query results.
@@ -339,59 +347,43 @@ withStabilityAt
   -> m (f (Stability result))
 withStabilityAt idx p e = do
   lsp <- lastStablePoint idx
-  pure $ calcStability lsp p <$> e
+  pure $ calcStability (const p) lsp <$> e
 
-{- | Helper function to wrap an event in 'Stability' based on the last stable point and a given
- point.
+{- | Helper function to wrap an event in 'Stability' based on the last stable point and a given way
+    to get a point.
 
  Asks: Is the provided point less than (from a time before) or equal to (from the time of) the last
        stable point?
 -}
-calcStability :: (Ord point) => point -> point -> event -> Stability event
-calcStability lsp p e = do
-  if p <= lsp
+calcStability :: (Ord point) => (event -> point) -> point -> event -> Stability event
+calcStability f lsp e = do
+  if f e <= lsp
     then Stable e
     else Volatile e
 
--- | Convert a non-'Stability' supporting instance to a 'Stability' supporting instance
-queryWithStability
-  :: ( Result query1 ~ f (Timed (Point event) event)
-     , Result query2 ~ [Timed (Point event) event]
-     , Result (WithStability query2)
-        ~ [Stability (Timed (Point event) event)]
-     , Queryable
-        (ExceptT (QueryError query2) m)
-        event
-        query1
-        indexer
-     , Ord (Point event)
-     , MonadError (QueryError (WithStability query2)) m
-     , MonadIO m
-     , IsSync m event indexer
+-- | Convert a non-'Stability' supporting instance to a 'Stability' supporting instance.
+withStabilityM
+  :: ( Result query ~ f event
+     , Result (WithStability query) ~ f (Stability event)
+     , MonadError (QueryError (WithStability query)) m
      , Traversable f
      )
-  => Point event
-  -> WithStability query1
-  -> indexer event
-  -> m (f (Stability (Timed (Point event) event)))
-queryWithStability p (WithStability q) idx = do
-  resultE <- runExceptT $ query p q idx
-  result <- either (throwError <=< timedErrorWithStability idx) pure resultE
-  withStability idx result
-  where
-    timedErrorWithStability
-      :: forall m event query indexer
-       . ( MonadIO m
-         , Ord (Point event)
-         , IsSync m event indexer
-         , Result (WithStability query) ~ [Stability (Timed (Point event) event)]
-         , Result query ~ [Timed (Point event) event]
-         )
-      => indexer event
-      -> QueryError query
-      -> m (QueryError (WithStability query))
-    timedErrorWithStability idx' = \case
-      NotStoredAnymore -> pure NotStoredAnymore
-      (IndexerQueryError t) -> pure $ IndexerQueryError t
-      (AheadOfLastSync r) -> AheadOfLastSync <$> traverse (withStability idx') r
-      (SlotNoBoundsInvalid r) -> pure $ SlotNoBoundsInvalid r
+  => (event -> Stability event)
+  -- ^ A function to calculate @Stability@ of an @event@
+  -> ExceptT (QueryError query) m (f event)
+  -- ^ In @ExceptT@ action whose result is an @event@
+  -> m (f (Stability event))
+withStabilityM toStability = do
+  either
+    (throwError . queryErrorWithStability (fmap toStability))
+    (pure . fmap toStability)
+    <=< runExceptT
+
+queryErrorWithStability
+  :: ( Result (WithStability query) ~ f (Stability event)
+     , Result query ~ f event
+     )
+  => (f event -> f (Stability event))
+  -> QueryError query
+  -> QueryError (WithStability query)
+queryErrorWithStability toStability = over _AheadOfLastSync (fmap toStability)
