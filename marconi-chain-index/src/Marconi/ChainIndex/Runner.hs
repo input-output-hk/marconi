@@ -1,5 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
@@ -27,7 +30,6 @@ module Marconi.ChainIndex.Runner (
   withDistanceAndTipPreprocessor,
 
   -- * Event types
-  TipOrBlock (Tip, Block),
 ) where
 
 import Cardano.Api.Extended qualified as C
@@ -51,15 +53,17 @@ import Data.Map qualified as Map
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
 import Marconi.ChainIndex.Indexers.Orphans qualified ()
-import Marconi.ChainIndex.Logger (chainSyncEventStreamLogging)
+import Marconi.ChainIndex.Logger ()
 import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.ChainIndex.Types (
   BlockEvent (blockInMode),
   MarconiTrace,
   RetryConfig,
   SecurityParam,
+  TipAndBlock (TipAndBlock),
  )
 import Marconi.Core qualified as Core
+import Prettyprinter (pretty)
 import Prettyprinter qualified as PP
 import Streaming qualified as S
 import Streaming.Prelude qualified as S
@@ -135,12 +139,16 @@ runIndexer
               socketPath
               networkId
               [startingPoint]
-              (mkEventStream processEvent eventQueue . chainSyncEventStreamLogging trace)
+              (mkEventStream processEvent eventQueue)
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.pretty NoIntersectionFoundLog
       void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-      Core.processQueue (stablePointComputation securityParam eventProcessing) Map.empty eventQueue cBox
+      Core.processQueue
+        (stablePointComputation securityParam eventProcessing)
+        Map.empty
+        eventQueue
+        cBox
 
 stablePointComputation
   :: SecurityParam
@@ -178,35 +186,30 @@ mkEventStream
 mkEventStream processEvent q =
   S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
 
-data TipOrBlock = Tip C.ChainTip | Block (WithDistance BlockEvent)
-type instance Core.Point TipOrBlock = C.ChainPoint
-
 withDistanceAndTipPreprocessor
-  :: RunIndexerEventPreprocessing TipOrBlock
+  :: RunIndexerEventPreprocessing TipAndBlock
 withDistanceAndTipPreprocessor =
   let extractChainTipAndAddDistance
         :: ChainSyncEvent BlockEvent
-        -> [Core.ProcessedInput C.ChainPoint TipOrBlock]
+        -> [Core.ProcessedInput C.ChainPoint TipAndBlock]
       extractChainTipAndAddDistance (RollForward x tip) =
         let point = blockEventPoint x
             blockWithDistance
               :: BlockEvent
-              -> Core.Timed C.ChainPoint (WithDistance BlockEvent)
+              -> WithDistance BlockEvent
             blockWithDistance (BlockEvent b@(C.BlockInMode block _) epochNo' bt) =
               let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
                   withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
-               in Core.Timed point withDistance
-         in [ Core.Index $ Just . Block <$> blockWithDistance x
-            , Core.Index $ Just . Tip <$> Core.Timed point tip
-            ]
+               in withDistance
+         in [Core.Index $ Core.Timed point $ Just $ TipAndBlock tip $ Just $ blockWithDistance x]
       extractChainTipAndAddDistance (RollBackward x tip) =
         [ Core.Rollback x
-        , Core.Index $ Just . Tip <$> Core.Timed x tip
+        , Core.Index $ Core.Timed x $ Just $ TipAndBlock tip Nothing
         ]
-      getDistance (Tip _) = Nothing
-      getDistance (Block event) = Just . fromIntegral $ Distance.chainDistance event
-      blockNoFromBlockEvent (Tip _) = Nothing
-      blockNoFromBlockEvent (Block event) = Just . getBlockNo . blockInMode $ getEvent event
+      getDistance (TipAndBlock _ (Just event)) = Just . fromIntegral $ Distance.chainDistance event
+      getDistance _ = Nothing
+      blockNoFromBlockEvent (TipAndBlock _ (Just event)) = Just . getBlockNo . blockInMode $ getEvent event
+      blockNoFromBlockEvent _ = Nothing
    in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
 
 withNoPreprocessor :: RunIndexerEventPreprocessing BlockEvent

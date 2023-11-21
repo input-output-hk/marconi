@@ -20,7 +20,7 @@ import Data.Text qualified as Text
 import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
-import Marconi.ChainIndex.Indexers.Coordinator (coordinatorWorker, standardCoordinator)
+import Marconi.ChainIndex.Indexers.Coordinator (coordinatorWorker, syncStatsCoordinator)
 import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.ChainIndex.Indexers.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
@@ -36,10 +36,12 @@ import Marconi.ChainIndex.Indexers.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
-import Marconi.ChainIndex.Runner (TipOrBlock (Block, Tip))
+import Marconi.ChainIndex.Transformer.WithSyncLog (WithSyncStats)
 import Marconi.ChainIndex.Types (
   BlockEvent (BlockEvent),
+  MarconiTrace,
   SecurityParam,
+  TipAndBlock (TipAndBlock),
   TxIndexInBlock,
   blockInMode,
  )
@@ -53,7 +55,9 @@ type instance Core.Point C.ChainTip = C.ChainPoint
 type instance Core.Point [AnyTxBody] = C.ChainPoint
 
 -- Convenience aliases for indexers
-type Coordinator = Core.WithTrace IO Core.Coordinator TipOrBlock
+type Coordinator = Core.WithTrace IO Core.Coordinator TipAndBlock
+type SyncStatsCoordinator = WithSyncStats (Core.WithTrace IO Core.Coordinator) TipAndBlock
+
 type ChainTipIndexer = ChainTip.ChainTipIndexer IO
 type EpochStateIndexer =
   Core.WithTrace
@@ -68,7 +72,7 @@ type CurrentSyncPointIndexer =
   Core.WithTrace
     IO
     CurrentSyncPoint.CurrentSyncPointQueryIndexer
-    TipOrBlock
+    TipAndBlock
 
 -- | Container for all the queryable indexers of marconi-chain-index.
 data MarconiChainIndexQueryables = MarconiChainIndexQueryables
@@ -91,92 +95,105 @@ buildIndexers
   -> MintTokenEvent.MintTokenEventConfig
   -> EpochState.EpochStateWorkerConfig
   -> BM.Trace IO Text
+  -> MarconiTrace IO
   -> FilePath
   -> ExceptT
       Core.IndexerError
       IO
       ( C.ChainPoint
       , MarconiChainIndexQueryables
-      , Coordinator
+      , SyncStatsCoordinator
       )
-buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateConfig textLogger path = do
-  let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
-      mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
-      blockEventTextLogger = BM.appendName "blockEvent" textLogger
-      blockEventLogger = BM.appendName "blockEvent" mainLogger
-      txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
+buildIndexers
+  securityParam
+  catchupConfig
+  utxoConfig
+  mintEventConfig
+  epochStateConfig
+  textLogger
+  prettyLogger
+  path = do
+    let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
+        mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+        blockEventTextLogger = BM.appendName "blockEvent" textLogger
+        blockEventLogger = BM.appendName "blockEvent" mainLogger
+        txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
 
-  StandardWorker blockInfoMVar blockInfoWorker <-
-    blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
+    StandardWorker blockInfoMVar blockInfoWorker <-
+      blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
 
-  Core.WorkerIndexer epochStateMVar epochStateWorker <-
-    epochStateBuilder securityParam catchupConfig epochStateConfig blockEventTextLogger path
+    Core.WorkerIndexer epochStateMVar epochStateWorker <-
+      epochStateBuilder securityParam catchupConfig epochStateConfig blockEventTextLogger path
 
-  StandardWorker utxoMVar utxoWorker <-
-    utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
-  StandardWorker spentMVar spentWorker <-
-    spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-  StandardWorker datumMVar datumWorker <-
-    datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-  StandardWorker mintTokenMVar mintTokenWorker <-
-    mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
+    StandardWorker utxoMVar utxoWorker <-
+      utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
+    StandardWorker spentMVar spentWorker <-
+      spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+    StandardWorker datumMVar datumWorker <-
+      datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+    StandardWorker mintTokenMVar mintTokenWorker <-
+      mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
 
-  let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
-      getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
-      toTxBodys :: BlockEvent -> [AnyTxBody]
-      toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
-        zipWith (getTxBody bn) [0 ..] txs
+    let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+        getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+        toTxBodys :: BlockEvent -> [AnyTxBody]
+        toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+          zipWith (getTxBody bn) [0 ..] txs
 
-  coordinatorTxBodyWorkers <-
-    buildTxBodyCoordinator
-      txBodyCoordinatorLogger
-      (pure . Just . fmap toTxBodys)
-      [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
+    coordinatorTxBodyWorkers <-
+      buildTxBodyCoordinator
+        txBodyCoordinatorLogger
+        (pure . Just . fmap toTxBodys)
+        [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
-  utxoQueryIndexer <-
-    Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
-      <$> ( lift $
-              UtxoQuery.mkUtxoSQLiteQuery $
-                UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
-          )
+    utxoQueryIndexer <-
+      Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
+        <$> ( lift $
+                UtxoQuery.mkUtxoSQLiteQuery $
+                  UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
+            )
 
-  blockCoordinator <-
-    lift $
-      buildBlockEventCoordinator
-        blockEventLogger
-        [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
+    blockCoordinator <-
+      lift $
+        buildBlockEventCoordinator
+          blockEventLogger
+          [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-  Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
+    Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
 
-  mainCoordinator <- lift $ standardCoordinator mainLogger [blockCoordinator, chainTipWorker]
+    mainCoordinator <-
+      lift $
+        syncStatsCoordinator
+          mainLogger
+          prettyLogger
+          [blockCoordinator, chainTipWorker]
 
-  let currentSyncPointIndexer =
-        Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
-          CurrentSyncPoint.CurrentSyncPointQueryIndexer
-            mainCoordinator
-            blockInfoMVar
-            chainTipMVar
-      queryables =
-        MarconiChainIndexQueryables
-          epochStateMVar
-          (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
-          utxoQueryIndexer
-          currentSyncPointIndexer
+    let currentSyncPointIndexer =
+          Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
+            CurrentSyncPoint.CurrentSyncPointQueryIndexer
+              mainCoordinator
+              blockInfoMVar
+              chainTipMVar
+        queryables =
+          MarconiChainIndexQueryables
+            epochStateMVar
+            (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
+            utxoQueryIndexer
+            currentSyncPointIndexer
 
-  resumePoint <- Core.lastStablePoint mainCoordinator
+    resumePoint <- Core.lastStablePoint mainCoordinator
 
-  pure (resumePoint, queryables, mainCoordinator)
+    pure (resumePoint, queryables, mainCoordinator)
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildBlockEventCoordinator
   :: (MonadIO m)
   => BM.Trace IO (Core.IndexerEvent C.ChainPoint)
   -> [Core.Worker (WithDistance BlockEvent) C.ChainPoint]
-  -> m (Core.Worker TipOrBlock C.ChainPoint)
+  -> m (Core.Worker TipAndBlock C.ChainPoint)
 buildBlockEventCoordinator logger workers =
   let rightToMaybe = \case
-        Tip _ -> Nothing
-        Block x -> Just x
+        TipAndBlock _ block -> block
    in Core.worker <$> coordinatorWorker "BlockEvent coordinator" logger (pure . rightToMaybe) workers
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
@@ -252,14 +269,13 @@ chainTipBuilder
   -> n
       ( Core.WorkerIndexer
           m
-          TipOrBlock
+          TipAndBlock
           C.ChainTip
           (Core.WithTrace m Core.LastEventIndexer)
       )
 chainTipBuilder tracer path = do
   let chainTipPath = path </> "chainTip"
-      tipOnly (Tip x) = Just x
-      tipOnly _other = Nothing
+      tipOnly (TipAndBlock tip _) = tip
   ChainTip.chainTipWorker tracer tipOnly (ChainTip.ChainTipConfig chainTipPath 2048)
 
 -- | Configure and start the @SpentInfo@ indexer

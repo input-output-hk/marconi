@@ -9,22 +9,23 @@ import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask)
 import Data.Text (Text)
-import Marconi.ChainIndex.Indexers (Coordinator, MarconiChainIndexQueryables)
+import Marconi.ChainIndex.Indexers (MarconiChainIndexQueryables, SyncStatsCoordinator)
 import Marconi.ChainIndex.Indexers qualified as ChainIndex.Indexers
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Runner (RunIndexerConfig, TipOrBlock, runIndexerConfigChainPoint)
+import Marconi.ChainIndex.Logger (mkMarconiTrace)
+import Marconi.ChainIndex.Runner (RunIndexerConfig, runIndexerConfigChainPoint)
 import Marconi.ChainIndex.Runner qualified as ChainIndex.Runner
-import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.ChainIndex.Types (SecurityParam, TipAndBlock)
 import Marconi.Core (CatchupConfig, IndexerError)
 
 {- TYPE -}
 
 -- | Configuration for running indexers via a coordinator.
 data SidechainRunIndexersConfig = SidechainRunIndexersConfig
-  { _sidechainRunIndexersRunIndexerConfig :: !(RunIndexerConfig TipOrBlock)
-  , _sidechainRunIndexersCoordinator :: !ChainIndex.Indexers.Coordinator
+  { _sidechainRunIndexersRunIndexerConfig :: !(RunIndexerConfig TipAndBlock)
+  , _sidechainRunIndexersCoordinator :: !SyncStatsCoordinator
   }
 
 {- | Configuration for constructing marconi indexers as used
@@ -51,7 +52,7 @@ similarly to the marconi-chain-index application.
 sidechainBuildIndexers
   :: (MonadIO m)
   => SidechainBuildIndexersConfig
-  -> m (Either IndexerError (C.ChainPoint, MarconiChainIndexQueryables, Coordinator))
+  -> m (Either IndexerError (C.ChainPoint, MarconiChainIndexQueryables, SyncStatsCoordinator))
 sidechainBuildIndexers config =
   liftIO . runExceptT $
     ChainIndex.Indexers.buildIndexers
@@ -60,8 +61,11 @@ sidechainBuildIndexers config =
       (config ^. sidechainBuildIndexersUtxoConfig)
       (config ^. sidechainBuildIndexersMintTokenEventConfig)
       (config ^. sidechainBuildIndexersEpochStateConfig)
-      (config ^. sidechainBuildIndexersTrace)
+      tracer
+      (mkMarconiTrace tracer)
       (config ^. sidechainBuildIndexersDbPath)
+  where
+    tracer = config ^. sidechainBuildIndexersTrace
 
 updateRunIndexerConfigWithLastStable
   :: C.ChainPoint -> SidechainRunIndexersConfig -> SidechainRunIndexersConfig

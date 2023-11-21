@@ -122,6 +122,7 @@ run appName = withGracefulTermination_ $ do
             volatileEpochStateSnapshotInterval
         )
         trace
+        marconiTrace
         (Cli.optionsDbPath o)
   (indexerLastStablePoint, queryables, coordinator) <-
     ( case mindexers of

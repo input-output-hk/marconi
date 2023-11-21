@@ -18,6 +18,9 @@ module Marconi.ChainIndex.Types (
   -- * Utxo Indexer Configuration, containing targetAddresses and showReferenceScript flag
   UtxoIndexerConfig (..),
 
+  -- * A type representing either a @ChainTip@ or a @Block@, with an attached distance to the tip
+  TipAndBlock (..),
+
   -- * Aliases for the current Cardano era
   CurrentEra,
   pattern AsCurrentEra,
@@ -63,6 +66,8 @@ import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
+import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
+import Marconi.Core qualified as Core
 import Prettyprinter (Doc)
 
 -- | Config type for node retries
@@ -87,6 +92,11 @@ data UtxoIndexerConfig = UtxoIndexerConfig
   , ucEnableUtxoTxOutRef :: Bool
   -- ^ enable utxo indexer to store txOut refScript
   }
+
+-- | A type representing a @ChainTip@ and maybe a @Block@, with an attached distance to the tip
+data TipAndBlock = TipAndBlock C.ChainTip (Maybe (WithDistance BlockEvent))
+
+type instance Core.Point TipAndBlock = C.ChainPoint
 
 -- | An alias for the current era, to ease the transition from one era to the next one
 type CurrentEra = C.BabbageEra
