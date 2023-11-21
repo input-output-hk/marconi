@@ -58,7 +58,7 @@ data LastSyncStats = LastSyncStats
   }
   deriving (Eq, Show)
 
--- | Logging datatype for information that occurred since the previous 'LastSyncLog'.
+-- | Logging datatype for information that occurred since the previous 'SyncLog'.
 data SyncLog event = SyncLog
   { _syncLogStats :: LastSyncStats
   -- ^ Stats since the last syncing log message
