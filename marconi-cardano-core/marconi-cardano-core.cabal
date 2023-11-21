@@ -50,15 +50,8 @@ common lang
     -Wnoncanonical-monad-instances -Wredundant-constraints
     -Wunused-packages
 
-common maybe-unix
-  if !os(windows)
-    build-depends: unix
-
 library
-  import:
-    lang
-    , maybe-unix
-
+  import:          lang
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Cardano.Core.Extract.WithDistance
@@ -82,60 +75,35 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                   ^>=8.20
+    , cardano-api                  ^>=8.20
     , cardano-binary
-    , cardano-crypto-class
-    , cardano-ledger-alonzo         >=1.3.1.1
-    , cardano-ledger-api
-    , cardano-ledger-babbage        >=1.4.0.1
-    , cardano-ledger-conway         >=1.5
-    , cardano-ledger-core
-    , cardano-ledger-mary           >=1.3.0.2
     , cardano-ledger-shelley
-    , cardano-protocol-tpraos       >=1.0.3.3
-    , cardano-slotting              ^>=0.1.1.1
     , iohk-monitoring
     , network-mux
     , ouroboros-consensus
     , ouroboros-consensus-cardano
-    , ouroboros-consensus-protocol
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
   build-depends:
     , aeson
-    , async
-    , base                  >=4.9 && <5
-    , base16-bytestring
+    , base                 >=4.9 && <5
     , bytestring
     , cborg
-    , comonad
     , containers
-    , directory
-    , filepath
     , lens
     , mtl
     , nonempty-containers
-    , optparse-applicative
-    , pretty-simple
     , prettyprinter
-    , process
-    , prometheus-client
     , serialise
-    , servant
-    , servant-server
     , sop-core
     , sqlite-simple
     , stm
     , streaming
     , strict-sop-core
-    , template-haskell
     , text
     , time
-    , transformers
-    , vector-map
-    , warp
 
 library cardano-api-extended
   import:          lang
