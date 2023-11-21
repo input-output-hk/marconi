@@ -15,6 +15,8 @@ import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text qualified as Text
+import Marconi.Cardano.Core.Indexer.Worker (StandardIndexer)
+import Marconi.Cardano.Core.Types (SecurityParam)
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BI
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
@@ -24,8 +26,6 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintTokenEventLocation,
   mintTokenEvents,
  )
-import Marconi.ChainIndex.Indexers.Worker (StandardIndexer)
-import Marconi.ChainIndex.Types (SecurityParam)
 import Marconi.Core qualified as Core
 
 {- If at any point we move to another database backend, we might want to consider changing this to

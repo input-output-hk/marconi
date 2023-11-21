@@ -37,7 +37,16 @@ import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as H.Range
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.Cardano.Core.Indexer.Worker (
+  StandardWorker (StandardWorker),
+  StandardWorkerConfig (StandardWorkerConfig),
+ )
+import Marconi.Cardano.Core.Indexer.Worker qualified as Core
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.Cardano.Core.Runner qualified as Runner
+import Marconi.Cardano.Core.Types (SecurityParam, TxIndexInBlock (TxIndexInBlock))
+import Marconi.Cardano.Core.Types qualified as Core
 import Marconi.ChainIndex.Indexers (mintBuilder)
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
@@ -59,15 +68,6 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
  )
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.MintTokenEventQuery qualified as MintTokenEventQuery
-import Marconi.ChainIndex.Indexers.Worker (
-  StandardWorker (StandardWorker),
-  StandardWorkerConfig (StandardWorkerConfig),
- )
-import Marconi.ChainIndex.Indexers.Worker qualified as Core
-import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
-import Marconi.ChainIndex.Runner qualified as Runner
-import Marconi.ChainIndex.Types (SecurityParam, TxIndexInBlock (TxIndexInBlock))
-import Marconi.ChainIndex.Types qualified as Core
 import Marconi.Core qualified as Core
 import Spec.Marconi.ChainIndex.Indexers.BlockInfo qualified as Test.BlockInfo
 import System.FilePath ((</>))

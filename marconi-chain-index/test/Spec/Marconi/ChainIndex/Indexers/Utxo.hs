@@ -23,14 +23,14 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Hedgehog.Gen qualified as Hedgehog
 import Hedgehog.Range qualified
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance (WithDistance))
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Indexers.Worker (
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
-import Marconi.ChainIndex.Logger (nullTracer)
-import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
+import Marconi.Cardano.Core.Logger (nullTracer)
+import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
+import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen

@@ -18,6 +18,10 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Lazy qualified as Text (toStrict)
 import Data.Void (Void)
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.Cardano.Core.Runner qualified as Runner
+import Marconi.Cardano.Core.Types (TargetAddresses)
 import Marconi.ChainIndex.Api.HttpServer (
   runHttpServer,
  )
@@ -29,10 +33,6 @@ import Marconi.ChainIndex.Indexers (buildIndexers)
 import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
-import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Runner qualified as Runner
-import Marconi.ChainIndex.Types (TargetAddresses)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import System.Directory (createDirectoryIfMissing, doesFileExist)

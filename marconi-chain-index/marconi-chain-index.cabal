@@ -85,7 +85,6 @@ library
     Marconi.ChainIndex.Api.Types
     Marconi.ChainIndex.CLI
     Marconi.ChainIndex.Error
-    Marconi.ChainIndex.Extract.WithDistance
     Marconi.ChainIndex.Git.Rev
     Marconi.ChainIndex.Git.RevFromGit
     Marconi.ChainIndex.Indexers
@@ -97,19 +96,10 @@ library
     Marconi.ChainIndex.Indexers.EpochState
     Marconi.ChainIndex.Indexers.MintTokenEvent
     Marconi.ChainIndex.Indexers.MintTokenEventQuery
-    Marconi.ChainIndex.Indexers.Orphans
     Marconi.ChainIndex.Indexers.Spent
-    Marconi.ChainIndex.Indexers.SyncHelper
     Marconi.ChainIndex.Indexers.Utxo
     Marconi.ChainIndex.Indexers.UtxoQuery
-    Marconi.ChainIndex.Indexers.Worker
-    Marconi.ChainIndex.Logger
-    Marconi.ChainIndex.Node.Client.Retry
-    Marconi.ChainIndex.Orphans
     Marconi.ChainIndex.Run
-    Marconi.ChainIndex.Runner
-    Marconi.ChainIndex.Transformer.WithSyncLog
-    Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
 
   other-modules:   Paths_marconi_chain_index
@@ -119,7 +109,7 @@ library
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
     , marconi-core
     , marconi-core-json-rpc
 
@@ -182,47 +172,6 @@ library
     , vector-map
     , warp
 
-library cardano-api-extended
-  import:          lang
-  visibility:      public
-  hs-source-dirs:  cardano-api-extended/src
-  exposed-modules:
-    Cardano.Api.Extended
-    Cardano.Api.Extended.Block
-    Cardano.Api.Extended.ExtLedgerState
-    Cardano.Api.Extended.Gen
-    Cardano.Api.Extended.IPC
-    Cardano.Api.Extended.Streaming
-    Cardano.Api.Extended.Streaming.Callback
-    Cardano.Api.Extended.Streaming.ChainSyncEvent
-
-  --------------------------
-  -- Other IOG dependencies
-  --------------------------
-  build-depends:
-    , async
-    , base
-    , base16-bytestring
-    , bytestring
-    , cardano-api                    ^>=8.20
-    , cardano-crypto-class
-    , cardano-crypto-wrapper
-    , cardano-ledger-byron
-    , cardano-slotting
-    , hedgehog
-    , memory
-    , ouroboros-consensus
-    , ouroboros-consensus-cardano
-    , ouroboros-consensus-diffusion
-    , ouroboros-consensus-protocol
-    , ouroboros-network-protocols
-    , streaming
-    , strict-sop-core
-    , text
-    , time
-    , transformers
-    , typed-protocols
-
 executable marconi-chain-index
   import:         lang
   hs-source-dirs: app
@@ -266,7 +215,7 @@ test-suite marconi-chain-index-test
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
     , marconi-chain-index
     , marconi-chain-index-test-lib
     , marconi-core:{marconi-core, marconi-core-test-lib}
@@ -350,7 +299,7 @@ library marconi-chain-index-test-lib
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
     , marconi-chain-index
     , marconi-core
 

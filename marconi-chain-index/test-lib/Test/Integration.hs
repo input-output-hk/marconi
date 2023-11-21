@@ -25,10 +25,10 @@ import Data.Default (def)
 import Data.Maybe (listToMaybe)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Ledger.Test (testnet)
-import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
+import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
+import Marconi.Cardano.Core.Runner qualified as Runner
+import Marconi.Cardano.Core.Types qualified as Types
 import Marconi.ChainIndex.Indexers (AnyTxBody (AnyTxBody))
-import Marconi.ChainIndex.Runner qualified as Runner
-import Marconi.ChainIndex.Types qualified as Types
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen.MintTokenEvent
 import Test.Helpers qualified as Helpers

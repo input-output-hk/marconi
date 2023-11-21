@@ -8,11 +8,11 @@ import Data.Data (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text qualified as Text
 import Data.Word (Word64)
-import Marconi.ChainIndex.Logger (
+import Marconi.Cardano.Core.Logger (
   marconiFormatting,
   nullTracer,
  )
-import Marconi.ChainIndex.Transformer.WithSyncLog (
+import Marconi.Cardano.Core.Transformer.WithSyncLog (
   LastSyncStats (LastSyncStats),
   SyncLog (SyncLog),
  )

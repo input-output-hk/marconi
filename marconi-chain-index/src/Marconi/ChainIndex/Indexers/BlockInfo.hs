@@ -51,15 +51,14 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Indexers.Orphans ()
-import Marconi.ChainIndex.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
-import Marconi.ChainIndex.Indexers.Worker (
+import Marconi.Cardano.Core.Indexer.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
+import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
   StandardWorkerConfig,
   mkStandardWorker,
  )
-import Marconi.ChainIndex.Orphans ()
+import Marconi.Cardano.Core.Orphans ()
 import Marconi.Core qualified as Core
 
 data BlockInfo = BlockInfo

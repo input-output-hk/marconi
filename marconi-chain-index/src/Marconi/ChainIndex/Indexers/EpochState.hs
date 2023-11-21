@@ -86,20 +86,19 @@ import Data.VMap qualified as VMap
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Extract.WithDistance (
+import Marconi.Cardano.Core.Extract.WithDistance (
   WithDistance (WithDistance),
  )
-import Marconi.ChainIndex.Indexers.Orphans ()
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
-import Marconi.ChainIndex.Indexers.Worker (
+import Marconi.Cardano.Core.Indexer.SyncHelper qualified as Sync
+import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorkerConfig (logger, securityParamConfig),
   eventExtractor,
   mkStandardIndexer,
   workerName,
  )
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
+import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam))
 import Marconi.Core (IsSync (lastSyncPoint))
 import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Cardano.Block qualified as O

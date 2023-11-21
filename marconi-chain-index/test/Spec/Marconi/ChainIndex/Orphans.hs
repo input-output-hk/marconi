@@ -9,7 +9,7 @@ import Database.SQLite.Simple.Internal qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import Hedgehog (Property, forAll, property, tripping)
 import Hedgehog.Range qualified as Range
-import Marconi.ChainIndex.Orphans ()
+import Marconi.Cardano.Core.Orphans ()
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
 import Test.Tasty (TestTree, testGroup)

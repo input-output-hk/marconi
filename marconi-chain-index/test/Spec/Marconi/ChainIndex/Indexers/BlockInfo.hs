@@ -25,12 +25,12 @@ import Hedgehog qualified
 import Hedgehog.Extras.Test.Base qualified as Hedgehog
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
+import Marconi.Cardano.Core.Indexer.Worker (StandardWorker (StandardWorker))
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.ChainIndex.Indexers (blockInfoBuilder)
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.ChainIndex.Indexers.Worker (StandardWorker (StandardWorker))
-import Marconi.ChainIndex.Logger (defaultStdOutLogger, mkMarconiTrace)
-import Marconi.ChainIndex.Runner qualified as Runner
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
 import Test.Gen.Marconi.ChainIndex.Types qualified as CGen

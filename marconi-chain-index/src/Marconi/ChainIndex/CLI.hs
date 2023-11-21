@@ -26,9 +26,8 @@ import Data.List.NonEmpty qualified as NEList
 import Data.Set.NonEmpty qualified as NESet
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Git.Rev (gitRev)
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (
+import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   RetryConfig (RetryConfig),
   ShouldFailIfResync (ShouldFailIfResync),
@@ -40,6 +39,7 @@ import Marconi.ChainIndex.Types (
   scriptTxDbName,
   utxoDbName,
  )
+import Marconi.ChainIndex.Git.Rev (gitRev)
 import Paths_marconi_chain_index (version)
 
 {- | Allow the user to set a starting point for indexing the user needs to provide both
