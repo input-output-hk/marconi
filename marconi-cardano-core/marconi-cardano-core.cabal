@@ -64,56 +64,34 @@ library
   -- TODO: PLT--8095 evaluate if needed
   -- c-sources:       cbits/rev.c
   exposed-modules:
+    Marconi.Cardano.Core.Extract.WithDistance
+    Marconi.Cardano.Core.Indexer.SyncHelper
+    Marconi.Cardano.Core.Indexer.Worker
+    Marconi.Cardano.Core.Logger
+    Marconi.Cardano.Core.Node.Client.Retry
+    Marconi.Cardano.Core.Orphans
+    Marconi.Cardano.Core.Runner
+    Marconi.Cardano.Core.Transformer.WithSyncLog
+    Marconi.Cardano.Core.Types
 
-  --Marconi.ChainIndex.Api.HttpServer
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types
-  --Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers
-  --Marconi.ChainIndex.Api.JsonRpc.Routes
-  --Marconi.ChainIndex.Api.JsonRpc.Server
-  --Marconi.ChainIndex.Api.Rest.Endpoint.Metrics
-  --Marconi.ChainIndex.Api.Rest.Endpoint.Params
-  --Marconi.ChainIndex.Api.Rest.Endpoint.TargetAddresses
-  --Marconi.ChainIndex.Api.Rest.Endpoint.Time
-  --Marconi.ChainIndex.Api.Rest.Routes
-  --Marconi.ChainIndex.Api.Rest.Server
-  --Marconi.ChainIndex.Api.Routes
-  --Marconi.ChainIndex.Api.Types
-  --Marconi.ChainIndex.CLI
-  --Marconi.ChainIndex.Error
-  --Marconi.ChainIndex.Extract.WithDistance
-  --Marconi.ChainIndex.Git.Rev
-  --Marconi.ChainIndex.Git.RevFromGit
-  --Marconi.ChainIndex.Indexers
-  --Marconi.ChainIndex.Indexers.BlockInfo
-  --Marconi.ChainIndex.Indexers.ChainTip
-  --Marconi.ChainIndex.Indexers.Coordinator
-  --Marconi.ChainIndex.Indexers.CurrentSyncPointQuery
-  --Marconi.ChainIndex.Indexers.Datum
-  --Marconi.ChainIndex.Indexers.EpochState
-  --Marconi.ChainIndex.Indexers.MintTokenEvent
-  --Marconi.ChainIndex.Indexers.MintTokenEventQuery
-  --Marconi.ChainIndex.Indexers.Orphans
-  --Marconi.ChainIndex.Indexers.Spent
-  --Marconi.ChainIndex.Indexers.SyncHelper
-  --Marconi.ChainIndex.Indexers.Utxo
-  --Marconi.ChainIndex.Indexers.UtxoQuery
-  --Marconi.ChainIndex.Indexers.Worker
-  --Marconi.ChainIndex.Logger
-  --Marconi.ChainIndex.Node.Client.Retry
-  --Marconi.ChainIndex.Orphans
-  --Marconi.ChainIndex.Run
-  --Marconi.ChainIndex.Runner
-  --Marconi.ChainIndex.Transformer.WithSyncLog
-  --Marconi.ChainIndex.Types
-  --Marconi.ChainIndex.Utils
+  --Marconi.Cardano.Core.Error
+  -- TODO: PLT--8095 evaluate if needed
+  --Marconi.Cardano.Core.Git.Rev
+  --Marconi.Cardano.Core.Git.RevFromGit
+  --Marconi.Cardano.Core.Indexers
+  --Marconi.Cardano.Core.Indexers.BlockInfo
+  --Marconi.Cardano.Core.Indexers.ChainTip
+  --Marconi.Cardano.Core.Indexers.Coordinator
+  --Marconi.Cardano.Core.Indexers.CurrentSyncPointQuery
+  --Marconi.Cardano.Core.Indexers.Datum
+  --Marconi.Cardano.Core.Indexers.EpochState
+  --Marconi.Cardano.Core.Indexers.MintTokenEvent
+  --Marconi.Cardano.Core.Indexers.MintTokenEventQuery
+  --Marconi.Cardano.Core.Indexers.Orphans
+  --Marconi.Cardano.Core.Indexers.Spent
+  --Marconi.Cardano.Core.Indexers.Utxo
+  --Marconi.Cardano.Core.Indexers.UtxoQuery
+  --Marconi.Cardano.Core.Utils
 
   -- TODO: PLT-8095 evaluate if needed
   -- other-modules:   Paths_marconi_cardano_core
@@ -237,9 +215,9 @@ library marconi-cardano-core-test-lib
   hs-source-dirs:  test-lib
   exposed-modules:
 
-  --Test.Gen.Marconi.ChainIndex.MintTokenEvent
-  --Test.Gen.Marconi.ChainIndex.Mockchain
-  --Test.Gen.Marconi.ChainIndex.Types
+  --Test.Gen.Marconi.Cardano.Core.MintTokenEvent
+  --Test.Gen.Marconi.Cardano.Core.Mockchain
+  --Test.Gen.Marconi.Cardano.Core.Types
   --Test.Helpers
   --Test.Integration
 
@@ -298,21 +276,21 @@ test-suite marconi-cardano-core-test
   hs-source-dirs: test
   other-modules:
 
-  --Spec.Marconi.ChainIndex.Api.Gen
-  --Spec.Marconi.ChainIndex.Api.Routes
-  --Spec.Marconi.ChainIndex.CLI
-  --Spec.Marconi.ChainIndex.CLIInputValidation
-  --Spec.Marconi.ChainIndex.Indexers
-  --Spec.Marconi.ChainIndex.Indexers.BlockInfo
-  --Spec.Marconi.ChainIndex.Indexers.ChainTip
-  --Spec.Marconi.ChainIndex.Indexers.Datum
-  --Spec.Marconi.ChainIndex.Indexers.MintTokenEvent
-  --Spec.Marconi.ChainIndex.Indexers.Spent
-  --Spec.Marconi.ChainIndex.Indexers.Utxo
-  --Spec.Marconi.ChainIndex.Indexers.UtxoQuery
-  --Spec.Marconi.ChainIndex.Logger
-  --Spec.Marconi.ChainIndex.Orphans
-  --Spec.Marconi.ChainIndex.Utils
+  --Spec.Marconi.Cardano.Core.Api.Gen
+  --Spec.Marconi.Cardano.Core.Api.Routes
+  --Spec.Marconi.Cardano.Core.CLI
+  --Spec.Marconi.Cardano.Core.CLIInputValidation
+  --Spec.Marconi.Cardano.Core.Indexers
+  --Spec.Marconi.Cardano.Core.Indexers.BlockInfo
+  --Spec.Marconi.Cardano.Core.Indexers.ChainTip
+  --Spec.Marconi.Cardano.Core.Indexers.Datum
+  --Spec.Marconi.Cardano.Core.Indexers.MintTokenEvent
+  --Spec.Marconi.Cardano.Core.Indexers.Spent
+  --Spec.Marconi.Cardano.Core.Indexers.Utxo
+  --Spec.Marconi.Cardano.Core.Indexers.UtxoQuery
+  --Spec.Marconi.Cardano.Core.Logger
+  --Spec.Marconi.Cardano.Core.Orphans
+  --Spec.Marconi.Cardano.Core.Utils
 
   --------------------
   -- Local components

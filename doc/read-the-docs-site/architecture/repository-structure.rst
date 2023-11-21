@@ -25,7 +25,7 @@ Depending on the chain-indexer the user is trying to build, only a subset of the
 
     Rel(marconiCardanoIndexers, marconiCardanoCore, "creates indexers with")
 
-    Rel(marconiCardanoChainIndex, marconiCardanoIndexers, "instanciates indexers in")
+    Rel(marconiCardanoChainIndex, marconiCardanoIndexers, "instantiates indexers in")
     Rel(marconiCardanoChainIndex, marconiCoreJsonRpc, "provides JSON-RPC HTTP query interface with")
 
 `marconi-core` is the core library which defines the main buildings blocks that a user must use in order to build a chain-indexer in a chain-agnostic way.

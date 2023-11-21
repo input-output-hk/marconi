@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Marconi.ChainIndex.Orphans where
+module Marconi.Cardano.Core.Orphans where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
@@ -28,7 +28,8 @@ import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToField qualified as SQL
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Types (SecurityParam (SecurityParam))
+import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam))
+import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Byron.Ledger qualified as O
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.HardFork.Combinator qualified as O
@@ -36,7 +37,11 @@ import Ouroboros.Consensus.HardFork.Combinator.Serialisation.Common qualified as
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Prettyprinter (Pretty (pretty), (<+>))
 
+-- TODO: PLT-8095 move most of this to cardano-api-extended?
+
 -- * ChainPoint
+instance Core.HasGenesis C.ChainPoint where
+  genesis = C.ChainPointAtGenesis
 
 instance Pretty C.ChainTip where
   pretty C.ChainTipAtGenesis = "ChainTipAtGenesis"

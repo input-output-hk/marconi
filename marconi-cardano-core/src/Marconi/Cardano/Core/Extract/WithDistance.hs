@@ -1,5 +1,5 @@
 -- | Attach distance to the tip to an event
-module Marconi.ChainIndex.Extract.WithDistance (
+module Marconi.Cardano.Core.Extract.WithDistance (
   WithDistance (WithDistance),
   attachDistance,
   chainDistance,

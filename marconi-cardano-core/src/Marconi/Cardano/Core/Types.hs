@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | This module provides several type aliases and utility functions to deal with them.
-module Marconi.ChainIndex.Types (
+module Marconi.Cardano.Core.Types (
   -- * Config for retrying
   RetryConfig (..),
 
@@ -66,7 +66,7 @@ import Data.Word (Word64)
 import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Core qualified as Core
 import Prettyprinter (Doc)
 
