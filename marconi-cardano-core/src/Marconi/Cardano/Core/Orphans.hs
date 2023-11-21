@@ -37,8 +37,6 @@ import Ouroboros.Consensus.HardFork.Combinator.Serialisation.Common qualified as
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Prettyprinter (Pretty (pretty), (<+>))
 
--- TODO: PLT-8095 move most of this to cardano-api-extended?
-
 -- * ChainPoint
 instance Core.HasGenesis C.ChainPoint where
   genesis = C.ChainPointAtGenesis

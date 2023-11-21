@@ -60,9 +60,6 @@ library
     , maybe-unix
 
   hs-source-dirs:  src
-
-  -- TODO: PLT--8095 evaluate if needed
-  -- c-sources:       cbits/rev.c
   exposed-modules:
     Marconi.Cardano.Core.Extract.WithDistance
     Marconi.Cardano.Core.Indexer.SyncHelper
@@ -73,29 +70,6 @@ library
     Marconi.Cardano.Core.Runner
     Marconi.Cardano.Core.Transformer.WithSyncLog
     Marconi.Cardano.Core.Types
-
-  --Marconi.Cardano.Core.Error
-  -- TODO: PLT--8095 evaluate if needed
-  --Marconi.Cardano.Core.Git.Rev
-  --Marconi.Cardano.Core.Git.RevFromGit
-  --Marconi.Cardano.Core.Indexers
-  --Marconi.Cardano.Core.Indexers.BlockInfo
-  --Marconi.Cardano.Core.Indexers.ChainTip
-  --Marconi.Cardano.Core.Indexers.Coordinator
-  --Marconi.Cardano.Core.Indexers.CurrentSyncPointQuery
-  --Marconi.Cardano.Core.Indexers.Datum
-  --Marconi.Cardano.Core.Indexers.EpochState
-  --Marconi.Cardano.Core.Indexers.MintTokenEvent
-  --Marconi.Cardano.Core.Indexers.MintTokenEventQuery
-  --Marconi.Cardano.Core.Indexers.Orphans
-  --Marconi.Cardano.Core.Indexers.Spent
-  --Marconi.Cardano.Core.Indexers.Utxo
-  --Marconi.Cardano.Core.Indexers.UtxoQuery
-  --Marconi.Cardano.Core.Utils
-
-  -- TODO: PLT-8095 evaluate if needed
-  -- other-modules:   Paths_marconi_cardano_core
-  -- autogen-modules: Paths_marconi_cardano_core
 
   --------------------
   -- Local components
