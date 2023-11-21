@@ -4,6 +4,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StrictData #-}
 
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent where
 
@@ -32,10 +33,10 @@ type RpcGetBurnTokenEventsMethod =
 
 -- | Parameter type defining the JSON shape.
 data GetBurnTokenEventsParams = GetBurnTokenEventsParams
-  { policyId :: !C.PolicyId
-  , assetName :: !(Maybe C.AssetName)
-  , createdBeforeSlotNo :: !(Maybe Word64)
-  , createdAfterTx :: !(Maybe C.TxId)
+  { policyId :: C.PolicyId
+  , assetName :: Maybe C.AssetName
+  , createdBeforeSlotNo :: Maybe Word64
+  , createdAfterTx :: Maybe C.TxId
   }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
@@ -62,6 +63,5 @@ getBurnTokenEventsHandler
   -> ReaderHandler
       SidechainHttpServerConfig
       (Either (JsonRpcErr String) ChainIndex.GetBurnTokenEventsResult)
-getBurnTokenEventsHandler params = withChainIndexHandler (ChainIndex.getBurnTokenEventsHandler chainIndexParams)
-  where
-    chainIndexParams = sidechainParamsToChainIndexParams params
+getBurnTokenEventsHandler =
+  withChainIndexHandler . ChainIndex.getBurnTokenEventsHandler . sidechainParamsToChainIndexParams

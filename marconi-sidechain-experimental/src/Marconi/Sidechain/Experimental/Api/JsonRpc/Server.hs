@@ -8,6 +8,9 @@ import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   getCurrentSyncedBlockHandler,
  )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo (echo)
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation (
+  getEpochActiveStakePoolDelegationHandler,
+ )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce (getEpochNonceHandler)
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses (
   getTargetAddressesQueryHandler,
@@ -23,4 +26,5 @@ jsonRpcServer =
     :<|> getTargetAddressesQueryHandler
     :<|> getCurrentSyncedBlockHandler
     :<|> getBurnTokenEventsHandler
+    :<|> getEpochActiveStakePoolDelegationHandler
     :<|> getEpochNonceHandler
