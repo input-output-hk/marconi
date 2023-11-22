@@ -82,7 +82,7 @@ commonStartFromParser =
         ()
         ( Opt.long "start-from"
             <> Opt.help
-              "Start from a given slot and block header hash. Usage: `start-from --slot-no SLOT-NO --block-header-hash BLOCK-HEADER-HASH`"
+              "Start from a given slot and block header hash. Usage: `--start-from --slot-no SLOT-NO --block-header-hash BLOCK-HEADER-HASH`"
         )
         *> (StartFrom <$> (C.ChainPoint <$> slotNoParser <*> blockHeaderHashParser))
       where
