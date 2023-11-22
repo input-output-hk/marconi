@@ -140,11 +140,11 @@ buildIndexers
         toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
           zipWith (getTxBody bn) [0 ..] txs
 
-    -- coordinatorTxBodyWorkers <-
-    --   buildTxBodyCoordinator
-    --     txBodyCoordinatorLogger
-    --     (pure . Just . fmap toTxBodys)
-    --     [utxoWorker, spentWorker, datumWorker]
+    coordinatorTxBodyWorkers <-
+      buildTxBodyCoordinator
+        txBodyCoordinatorLogger
+        (pure . Just . fmap toTxBodys)
+        [utxoWorker, spentWorker, datumWorker]
 
     utxoQueryIndexer <-
       Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
@@ -157,7 +157,7 @@ buildIndexers
       lift $
         buildBlockEventCoordinator
           blockEventLogger
-          [blockInfoWorker]
+          [blockInfoWorker, coordinatorTxBodyWorkers]
 
     -- Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
 

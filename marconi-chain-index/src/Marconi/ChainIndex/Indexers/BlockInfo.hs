@@ -116,6 +116,7 @@ mkBlockInfoIndexer path = do
                , blockNo INT NOT NULL
                , blockTimestamp INT NOT NULL
                , epochNo INT NOT NULL
+               , PRIMARY KEY (slotNo, blockHeaderHash)
                )|]
       blockInfoInsertQuery :: SQL.Query
       blockInfoInsertQuery =
