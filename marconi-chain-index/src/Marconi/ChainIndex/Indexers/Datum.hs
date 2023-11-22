@@ -95,7 +95,7 @@ mkDatumIndexer
 mkDatumIndexer path = do
   let createDatumQuery =
         [sql|CREATE TABLE IF NOT EXISTS datum
-             ( datumHash BLOB PRIMARY KEY
+             ( datumHash BLOB
              , datum BLOB
              , slotNo INT
              , blockHeaderHash BLOB

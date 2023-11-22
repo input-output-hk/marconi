@@ -27,9 +27,9 @@ type JsonRpcAPI = "json-rpc" :> RawJsonRpc RpcAPI
 -- | JSON-RPC methods
 type RpcAPI =
   RpcEchoMethod
-    :<|> RpcTargetAddressesMethod
-    :<|> RpcEpochActiveStakePoolDelegationMethod
-    :<|> RpcEpochNonceMethod
-    :<|> RpcGetBurnTokenEventsMethod
-    :<|> RpcGetCurrentSyncedBlock
+    -- :<|> RpcTargetAddressesMethod
+    -- :<|> RpcEpochActiveStakePoolDelegationMethod
+    -- :<|> RpcEpochNonceMethod
+    -- :<|> RpcGetBurnTokenEventsMethod
+    -- :<|> RpcGetCurrentSyncedBlock
     :<|> RpcGetUtxosFromAddressMethod

@@ -8,8 +8,8 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
   RpcGetBurnTokenEventsMethod,
-  getBurnTokenEventsHandler,
-  getMintingPolicyHashTxHandler,
+  -- getBurnTokenEventsHandler,
+  -- getMintingPolicyHashTxHandler,
 ) where
 
 import Cardano.Api (FromJSON)
@@ -24,7 +24,8 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Indexers (queryableMintToken)
+
+-- import Marconi.ChainIndex.Indexers (queryableMintToken)
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintAssetAssetName,
   mintAssetQuantity,
@@ -109,75 +110,75 @@ data BurnTokenEventResult = BurnTokenEventResult
 -- Handlers --
 --------------
 
-getMintingPolicyHashTxHandler
-  :: MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
-  -> ReaderHandler
-      HttpServerConfig
-      ( Either
-          (JsonRpcErr String)
-          ( Core.Result
-              ( Core.WithStability
-                  (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents)
-              )
-          )
-      )
-getMintingPolicyHashTxHandler q = do
-  indexer <- view (configQueryables . queryableMintToken)
-  hoistHttpHandler $
-    liftIO $
-      first queryErrToRpcErr <$> Core.queryLatestEither (Core.WithStability q) indexer
+-- getMintingPolicyHashTxHandler
+--   :: MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
+--   -> ReaderHandler
+--       HttpServerConfig
+--       ( Either
+--           (JsonRpcErr String)
+--           ( Core.Result
+--               ( Core.WithStability
+--                   (MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents)
+--               )
+--           )
+--       )
+-- getMintingPolicyHashTxHandler q = do
+--   indexer <- view (configQueryables . queryableMintToken)
+--   hoistHttpHandler $
+--     liftIO $
+--       first queryErrToRpcErr <$> Core.queryLatestEither (Core.WithStability q) indexer
 
--- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
-getBurnTokenEventsHandler
-  :: GetBurnTokenEventsParams
-  -> ReaderHandler HttpServerConfig (Either (JsonRpcErr String) GetBurnTokenEventsResult)
-getBurnTokenEventsHandler =
-  dimapHandler mapGetBurnTokenEventsQuery mapGetBurnTokenEventsResult getMintingPolicyHashTxHandler
-  where
-    -- Map the more specific 'GetBurnTokenEventsParams' query to the more general 'QueryByAssetId'
-    mapGetBurnTokenEventsQuery
-      :: GetBurnTokenEventsParams -> MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
-    mapGetBurnTokenEventsQuery (GetBurnTokenEventsParams policyId assetName' beforeSlotNo afterTx) =
-      MintTokenEvent.QueryByAssetId
-        policyId
-        assetName'
-        (Just MintTokenEvent.BurnEventType)
-        beforeSlotNo
-        afterTx
-    -- Map internal events to our 'getBurnTokenEventsHandler' response object
-    mapGetBurnTokenEventsResult
-      :: [ Core.Stability
-            ( Core.Timed
-                (Core.Point MintTokenEvent.MintTokenBlockEvents)
-                MintTokenEvent.MintTokenBlockEvents
-            )
-         ]
-      -> GetBurnTokenEventsResult
-    mapGetBurnTokenEventsResult events = GetBurnTokenEventsResult $ mapResult =<< events
-    {- Map a block's worth of internal events to the components of our 'getBurnTokenEventsHandler'
-    response object -}
-    mapResult
-      :: Core.Stability (Core.Timed C.ChainPoint MintTokenEvent.MintTokenBlockEvents)
-      -> [BurnTokenEventResult]
-    mapResult res =
-      let timed = extract res
-       in mapEvent (timed ^. Core.point) (Core.isStable res)
-            <$> NonEmpty.toList (timed ^. Core.event . mintTokenEvents)
+-- -- | Return 'GetBurnTokenEventsResult' based on 'GetBurnTokenEventsParams'
+-- getBurnTokenEventsHandler
+--   :: GetBurnTokenEventsParams
+--   -> ReaderHandler HttpServerConfig (Either (JsonRpcErr String) GetBurnTokenEventsResult)
+-- getBurnTokenEventsHandler =
+--   dimapHandler mapGetBurnTokenEventsQuery mapGetBurnTokenEventsResult getMintingPolicyHashTxHandler
+--   where
+--     -- Map the more specific 'GetBurnTokenEventsParams' query to the more general 'QueryByAssetId'
+--     mapGetBurnTokenEventsQuery
+--       :: GetBurnTokenEventsParams -> MintTokenEvent.QueryByAssetId MintTokenEvent.MintTokenBlockEvents
+--     mapGetBurnTokenEventsQuery (GetBurnTokenEventsParams policyId assetName' beforeSlotNo afterTx) =
+--       MintTokenEvent.QueryByAssetId
+--         policyId
+--         assetName'
+--         (Just MintTokenEvent.BurnEventType)
+--         beforeSlotNo
+--         afterTx
+--     -- Map internal events to our 'getBurnTokenEventsHandler' response object
+--     mapGetBurnTokenEventsResult
+--       :: [ Core.Stability
+--             ( Core.Timed
+--                 (Core.Point MintTokenEvent.MintTokenBlockEvents)
+--                 MintTokenEvent.MintTokenBlockEvents
+--             )
+--          ]
+--       -> GetBurnTokenEventsResult
+--     mapGetBurnTokenEventsResult events = GetBurnTokenEventsResult $ mapResult =<< events
+--     {- Map a block's worth of internal events to the components of our 'getBurnTokenEventsHandler'
+--     response object -}
+--     mapResult
+--       :: Core.Stability (Core.Timed C.ChainPoint MintTokenEvent.MintTokenBlockEvents)
+--       -> [BurnTokenEventResult]
+--     mapResult res =
+--       let timed = extract res
+--        in mapEvent (timed ^. Core.point) (Core.isStable res)
+--             <$> NonEmpty.toList (timed ^. Core.event . mintTokenEvents)
 
-    {- Map an internal event to a single component of our 'getBurnTokenEventsHandler' response
-    object -}
-    mapEvent :: C.ChainPoint -> Bool -> MintTokenEvent.MintTokenEvent -> BurnTokenEventResult
-    mapEvent chainPoint stable event =
-      let slotAndHash = case chainPoint of
-            (C.ChainPoint slot hash) -> Just (slot, hash)
-            C.ChainPointAtGenesis -> Nothing
-       in BurnTokenEventResult
-            (slotAndHash ^? traverse . _1)
-            (slotAndHash ^? traverse . _2)
-            (event ^. mintTokenEventLocation . mintTokenEventBlockNo)
-            (event ^. mintTokenEventLocation . mintTokenEventTxId)
-            (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerHash)
-            (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerData)
-            (event ^. mintTokenEventAsset . mintAssetAssetName)
-            (abs $ event ^. mintTokenEventAsset . mintAssetQuantity)
-            stable
+--     {- Map an internal event to a single component of our 'getBurnTokenEventsHandler' response
+--     object -}
+--     mapEvent :: C.ChainPoint -> Bool -> MintTokenEvent.MintTokenEvent -> BurnTokenEventResult
+--     mapEvent chainPoint stable event =
+--       let slotAndHash = case chainPoint of
+--             (C.ChainPoint slot hash) -> Just (slot, hash)
+--             C.ChainPointAtGenesis -> Nothing
+--        in BurnTokenEventResult
+--             (slotAndHash ^? traverse . _1)
+--             (slotAndHash ^? traverse . _2)
+--             (event ^. mintTokenEventLocation . mintTokenEventBlockNo)
+--             (event ^. mintTokenEventLocation . mintTokenEventTxId)
+--             (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerHash)
+--             (event ^? mintTokenEventAsset . mintAssetRedeemer . traverse . mintAssetRedeemerData)
+--             (event ^. mintTokenEventAsset . mintAssetAssetName)
+--             (abs $ event ^. mintTokenEventAsset . mintAssetQuantity)
+--             stable

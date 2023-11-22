@@ -5,7 +5,7 @@
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
   RpcGetCurrentSyncedBlock,
-  getCurrentSyncedBlockHandler,
+  -- getCurrentSyncedBlockHandler,
 ) where
 
 import Cardano.Api qualified as C
@@ -24,7 +24,8 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
   fromChainTip,
  )
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Indexers (queryableCurrentSyncPoint)
+
+-- import Marconi.ChainIndex.Indexers (queryableCurrentSyncPoint)
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
@@ -60,49 +61,49 @@ $( deriveJSON
     ''GetCurrentSyncedBlockResult
  )
 
-getCurrentSyncPointHandler
-  :: ReaderHandler
-      HttpServerConfig
-      ( Either
-          (JsonRpcErr String)
-          (Core.Result CurrentSyncPoint.CurrentSyncPointQuery)
-      )
-getCurrentSyncPointHandler = do
-  indexer <- Lens.view (configQueryables . queryableCurrentSyncPoint)
-  lastPointM <- hoistHttpHandler $ runExceptT $ Core.lastSyncPoint indexer
-  case lastPointM of
-    Left err ->
-      pure $
-        Left $
-          mkJsonRpcInternalErr $
-            Just $
-              "Can't resolve last point in getCurrentSyncedBlock: " <> show err
-    Right lastPoint ->
-      hoistHttpHandler $
-        liftIO $
-          first queryErrToRpcErr <$> Core.queryEither lastPoint CurrentSyncPoint.CurrentSyncPointQuery indexer
+-- getCurrentSyncPointHandler
+--   :: ReaderHandler
+--       HttpServerConfig
+--       ( Either
+--           (JsonRpcErr String)
+--           (Core.Result CurrentSyncPoint.CurrentSyncPointQuery)
+--       )
+-- getCurrentSyncPointHandler = do
+--   indexer <- Lens.view (configQueryables . queryableCurrentSyncPoint)
+--   lastPointM <- hoistHttpHandler $ runExceptT $ Core.lastSyncPoint indexer
+--   case lastPointM of
+--     Left err ->
+--       pure $
+--         Left $
+--           mkJsonRpcInternalErr $
+--             Just $
+--               "Can't resolve last point in getCurrentSyncedBlock: " <> show err
+--     Right lastPoint ->
+--       hoistHttpHandler $
+--         liftIO $
+--           first queryErrToRpcErr <$> Core.queryEither lastPoint CurrentSyncPoint.CurrentSyncPointQuery indexer
 
-getCurrentSyncedBlockHandler
-  :: UnusedRequestParams
-  -> ReaderHandler
-      HttpServerConfig
-      ( Either
-          (JsonRpcErr String)
-          GetCurrentSyncedBlockResult
-      )
-getCurrentSyncedBlockHandler =
-  let processCurrentSync :: C.ChainPoint -> BlockInfo -> Maybe Tip -> GetCurrentSyncedBlockResult
-      processCurrentSync C.ChainPointAtGenesis _blockInfo tip =
-        GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing Nothing tip
-      processCurrentSync (C.ChainPoint slotNo' hash) blockInfo tip =
-        GetCurrentSyncedBlockResult
-          (Just $ blockInfo ^. BlockInfo.blockNo)
-          (Just $ blockInfo ^. BlockInfo.timestamp)
-          (Just hash)
-          (Just slotNo')
-          (Just $ blockInfo ^. BlockInfo.epochNo)
-          tip
-      mapResult :: Core.Result CurrentSyncPoint.CurrentSyncPointQuery -> GetCurrentSyncedBlockResult
-      mapResult (Core.Timed point (CurrentSyncPoint.CurrentSyncPointResult blockInfo tip)) =
-        processCurrentSync point blockInfo $ fromChainTip tip
-   in const $ fmap mapResult <$> getCurrentSyncPointHandler
+-- getCurrentSyncedBlockHandler
+--   :: UnusedRequestParams
+--   -> ReaderHandler
+--       HttpServerConfig
+--       ( Either
+--           (JsonRpcErr String)
+--           GetCurrentSyncedBlockResult
+--       )
+-- getCurrentSyncedBlockHandler =
+--   let processCurrentSync :: C.ChainPoint -> BlockInfo -> Maybe Tip -> GetCurrentSyncedBlockResult
+--       processCurrentSync C.ChainPointAtGenesis _blockInfo tip =
+--         GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing Nothing tip
+--       processCurrentSync (C.ChainPoint slotNo' hash) blockInfo tip =
+--         GetCurrentSyncedBlockResult
+--           (Just $ blockInfo ^. BlockInfo.blockNo)
+--           (Just $ blockInfo ^. BlockInfo.timestamp)
+--           (Just hash)
+--           (Just slotNo')
+--           (Just $ blockInfo ^. BlockInfo.epochNo)
+--           tip
+--       mapResult :: Core.Result CurrentSyncPoint.CurrentSyncPointQuery -> GetCurrentSyncedBlockResult
+--       mapResult (Core.Timed point (CurrentSyncPoint.CurrentSyncPointResult blockInfo tip)) =
+--         processCurrentSync point blockInfo $ fromChainTip tip
+--    in const $ fmap mapResult <$> getCurrentSyncPointHandler

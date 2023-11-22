@@ -76,10 +76,10 @@ type CurrentSyncPointIndexer =
 
 -- | Container for all the queryable indexers of marconi-chain-index.
 data MarconiChainIndexQueryables = MarconiChainIndexQueryables
-  { _queryableEpochState :: !(MVar EpochStateIndexer)
-  , _queryableMintToken :: !(MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents)
-  , _queryableUtxo :: !UtxoIndexer
-  , _queryableCurrentSyncPoint :: !CurrentSyncPointIndexer
+  { -- _queryableEpochState :: !(MVar EpochStateIndexer)
+    -- , _queryableMintToken :: !(MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents)
+    _queryableUtxo :: !UtxoIndexer
+    -- , _queryableCurrentSyncPoint :: !CurrentSyncPointIndexer
   }
 
 makeLenses 'MarconiChainIndexQueryables
@@ -122,8 +122,8 @@ buildIndexers
     StandardWorker blockInfoMVar blockInfoWorker <-
       blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
 
-    Core.WorkerIndexer epochStateMVar epochStateWorker <-
-      epochStateBuilder securityParam catchupConfig epochStateConfig blockEventTextLogger path
+    -- Core.WorkerIndexer epochStateMVar epochStateWorker <-
+    --   epochStateBuilder securityParam catchupConfig epochStateConfig blockEventTextLogger path
 
     StandardWorker utxoMVar utxoWorker <-
       utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
@@ -131,8 +131,8 @@ buildIndexers
       spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
     StandardWorker datumMVar datumWorker <-
       datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-    StandardWorker mintTokenMVar mintTokenWorker <-
-      mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
+    -- StandardWorker mintTokenMVar mintTokenWorker <-
+    --   mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
 
     let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
         getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
@@ -140,11 +140,11 @@ buildIndexers
         toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
           zipWith (getTxBody bn) [0 ..] txs
 
-    coordinatorTxBodyWorkers <-
-      buildTxBodyCoordinator
-        txBodyCoordinatorLogger
-        (pure . Just . fmap toTxBodys)
-        [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
+    -- coordinatorTxBodyWorkers <-
+    --   buildTxBodyCoordinator
+    --     txBodyCoordinatorLogger
+    --     (pure . Just . fmap toTxBodys)
+    --     [utxoWorker, spentWorker, datumWorker]
 
     utxoQueryIndexer <-
       Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
@@ -157,29 +157,29 @@ buildIndexers
       lift $
         buildBlockEventCoordinator
           blockEventLogger
-          [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
+          [blockInfoWorker]
 
-    Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
+    -- Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
 
     mainCoordinator <-
       lift $
         syncStatsCoordinator
           mainLogger
           prettyLogger
-          [blockCoordinator, chainTipWorker]
+          [blockCoordinator]
 
-    let currentSyncPointIndexer =
-          Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
-            CurrentSyncPoint.CurrentSyncPointQueryIndexer
-              mainCoordinator
-              blockInfoMVar
-              chainTipMVar
-        queryables =
+    -- let currentSyncPointIndexer =
+    --       Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
+    --         CurrentSyncPoint.CurrentSyncPointQueryIndexer
+    --           mainCoordinator
+    --           blockInfoMVar
+    --           chainTipMVar
+    let queryables =
           MarconiChainIndexQueryables
-            epochStateMVar
-            (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
+            -- epochStateMVar
+            -- (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
             utxoQueryIndexer
-            currentSyncPointIndexer
+    -- currentSyncPointIndexer
 
     resumePoint <- Core.lastStablePoint mainCoordinator
 
