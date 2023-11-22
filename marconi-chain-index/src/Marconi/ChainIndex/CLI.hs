@@ -78,22 +78,13 @@ commonStartFromParser =
         )
     givenPoint :: Opt.Parser StartingPoint
     givenPoint =
-      StartFrom
-        <$> Opt.hsubparser
-          ( Opt.command
-              "start-from"
-              ( Opt.info
-                  ( C.ChainPoint
-                      <$> slotNoParser
-                      <*> blockHeaderHashParser
-                  )
-                  ( Opt.progDesc
-                      "Start from a given slot and block header hash. Usage: `start-from --slot-no SLOT-NO --block-header-hash BLOCK-HEADER-HASH`"
-                  )
-              )
-              <> Opt.help "start-from (n|--slot-no SLOT-NO) (b|--block-header-hash BLOCK-HEADER-HASH)"
-              <> Opt.metavar "start-from (n|--slot-no SLOT-NO) (b|--block-header-hash BLOCK-HEADER-HASH)"
-          )
+      Opt.flag'
+        ()
+        ( Opt.long "start-from"
+            <> Opt.help
+              "Start from a given slot and block header hash. Usage: `start-from --slot-no SLOT-NO --block-header-hash BLOCK-HEADER-HASH`"
+        )
+        *> (StartFrom <$> (C.ChainPoint <$> slotNoParser <*> blockHeaderHashParser))
       where
         blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
         blockHeaderHashParser =
