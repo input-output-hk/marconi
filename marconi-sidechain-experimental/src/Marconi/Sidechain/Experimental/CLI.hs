@@ -6,6 +6,7 @@ module Marconi.Sidechain.Experimental.CLI (
   parseCliArgs,
   Cli.getVersion,
   programParser,
+  startFromChainPoint,
 ) where
 
 import Cardano.Api qualified as C
@@ -44,7 +45,7 @@ data CliArgs = CliArgs
   -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
   -- synced point.
   , optionsRetryConfig :: !RetryConfig
-  , optionsChainPoint :: !C.ChainPoint
+  , optionsChainPoint :: !Cli.StartFrom
   }
   deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -73,4 +74,9 @@ parserCliArgs =
     <*> Cli.commonMaybeTargetAssetParser
     <*> Cli.commonShouldFailIfResyncParser
     <*> Cli.commonRetryConfigParser
-    <*> Cli.chainPointParser
+    <*> Cli.commonStartFromParser
+
+startFromChainPoint :: Cli.StartFrom -> C.ChainPoint -> C.ChainPoint
+startFromChainPoint Cli.StartFromGenesis _ = C.ChainPointAtGenesis
+startFromChainPoint Cli.StartFromLastSyncPoint lsp = lsp
+startFromChainPoint (Cli.StartFrom cp) _ = cp

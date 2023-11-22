@@ -47,6 +47,7 @@ import Marconi.Sidechain.Experimental.CLI (
     targetAddresses,
     targetAssets
   ),
+  startFromChainPoint,
  )
 import Marconi.Sidechain.Experimental.Indexers (
   SidechainBuildIndexersConfig (SidechainBuildIndexersConfig),
@@ -129,7 +130,7 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
     -- Explicitly does not include the script.
     utxoConfig = UtxoIndexerConfig filteredAddresses False
 
-    runIndexerConfig =
+    runIndexerConfig lastSyncPoint =
       ChainIndex.Runner.RunIndexerConfig
         marconiTrace
         ChainIndex.Runner.withDistanceAndTipPreprocessor
@@ -138,7 +139,7 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
         networkId
         -- Note this will be updated relative to the latest sync point,
         -- in runSidechainIndexers.
-        optionsChainPoint
+        (startFromChainPoint optionsChainPoint lastSyncPoint)
         socketFilePath
 
     -- Used in sidechainBuildIndexers but not passed to the SidechainEnv
@@ -160,7 +161,7 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
   let
     runIndexersConfig =
       updateRunIndexerConfigWithLastStable indexerLastStablePoint $
-        SidechainRunIndexersConfig runIndexerConfig coordinator
+        SidechainRunIndexersConfig (runIndexerConfig indexerLastStablePoint) coordinator
 
   -- Http config
   let

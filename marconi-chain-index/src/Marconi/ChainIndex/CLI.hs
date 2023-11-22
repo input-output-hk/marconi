@@ -42,81 +42,78 @@ import Marconi.ChainIndex.Types (
  )
 import Paths_marconi_chain_index (version)
 
-{- | Allow the user to set a starting point for indexing the user needs to provide both
- a @BlockHeaderHash@ (encoded in RawBytesHex) and a @SlotNo@ (a natural number).
+data StartFrom = StartFromGenesis | StartFromLastSyncPoint | StartFrom ChainPoint
+  deriving (Show, Eq, Generic, ToJSON, FromJSON)
+
+{- | Allow the user to set a starting point for indexing.
+
+  * If the user picks a specific point with the @start-from@ command, they need to provide both
+      a @BlockHeaderHash@ (encoded in RawBytesHex) and a @SlotNo@ (a natural number).
+  * If the chooses either @--start-from-genesis@ or @--start-from-last-sync-points@, no args
+      are required.
+  * Not using any of these commands results in the same behaviour as @--start-from-last-sync-points@
 -}
-chainPointParser :: Opt.Parser C.ChainPoint
-chainPointParser =
-  pure C.ChainPointAtGenesis Opt.<|> (C.ChainPoint <$> slotNoParser <*> blockHeaderHashParser)
+commonStartFromParser :: Opt.Parser StartFrom
+commonStartFromParser =
+  pure StartFromLastSyncPoint
+    Opt.<|> fromGenesis
+    Opt.<|> fromLastSyncPoint
+    Opt.<|> givenPoint
   where
-    blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
-    blockHeaderHashParser =
-      Opt.option
-        (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
-        ( Opt.long "block-header-hash"
-            <> Opt.short 'b'
-            <> Opt.metavar "BLOCK-HEADER-HASH"
-            <> Opt.help
-              "Block header hash of the preferred starting point. Note that you also need to provide the starting point slot number with `--slot-no`. Might fail if the target indexers can't resume from arbitrary points."
+    fromGenesis =
+      Opt.flag'
+        StartFromGenesis
+        ( Opt.long "start-from-genesis"
+            <> Opt.help "Start from genesis"
         )
-    slotNoParser :: Opt.Parser C.SlotNo
-    slotNoParser =
-      Opt.option
-        (C.SlotNo <$> Opt.auto)
-        ( Opt.long "slot-no"
-            <> Opt.short 'n'
-            <> Opt.metavar "SLOT-NO"
-            <> Opt.help
-              "Slot number of the preferred starting point. Note that you also need to provide the starting point block header hash with `--block-header-hash`. Might fail if the target indexers can't resume from arbitrary points."
+    fromLastSyncPoint =
+      Opt.flag'
+        StartFromLastSyncPoint
+        ( Opt.long "start-from-last-sync-points"
+            <> Opt.help "Start from the minimum last sync point"
         )
-    maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
-    maybeParseHashBlockHeader =
-      either (const Nothing) Just
-        . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
-        . C8.pack
-
-startFromOptions2 :: Opt.Parser C.ChainPoint
-startFromOptions2 =
-  C.ChainPoint
-    <$> slotNoParser
-    <*> blockHeaderHashParser
-  where
-    blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
-    blockHeaderHashParser =
-      Opt.option
-        (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
-        ( Opt.long "block-header-hash"
-            <> Opt.short 'b'
-            <> Opt.metavar "BLOCK-HEADER-HASH"
-            <> Opt.help
-              "Block header hash of the preferred starting point. Note that you also need to provide the starting point slot number with `--slot-no`. Might fail if the target indexers can't resume from arbitrary points."
-        )
-    slotNoParser :: Opt.Parser C.SlotNo
-    slotNoParser =
-      Opt.option
-        (C.SlotNo <$> Opt.auto)
-        ( Opt.long "slot-no"
-            <> Opt.short 'n'
-            <> Opt.metavar "SLOT-NO"
-            <> Opt.help
-              "Slot number of the preferred starting point. Note that you also need to provide the starting point block header hash with `--block-header-hash`. Might fail if the target indexers can't resume from arbitrary points."
-        )
-    maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
-    maybeParseHashBlockHeader =
-      either (const Nothing) Just
-        . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
-        . C8.pack
-
-options2 :: Opt.Parser Options
-options2 =
-  Opt.subparser
-    ( Opt.command
-        "start-from"
-        ( Opt.info
-            startFromOptions2
-            (Opt.progDesc "Start from a given slot or block header hash")
-        )
-    )
+    givenPoint :: Opt.Parser StartFrom
+    givenPoint =
+      StartFrom
+        <$> Opt.subparser
+          ( Opt.command
+              "start-from"
+              ( Opt.info
+                  ( C.ChainPoint
+                      <$> slotNoParser
+                      <*> blockHeaderHashParser
+                  )
+                  ( Opt.progDesc
+                      "Start from a given slot and block header hash. Useage: `start-from --slot-no SLOT_NO --block-header-hash BLOCK_HEADER_HASH`"
+                  )
+              )
+          )
+      where
+        blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
+        blockHeaderHashParser =
+          Opt.option
+            (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
+            ( Opt.long "block-header-hash"
+                <> Opt.short 'b'
+                <> Opt.metavar "BLOCK-HEADER-HASH"
+                <> Opt.help
+                  "Block header hash of the preferred starting point. Note that you also need to provide the starting point slot number with `--slot-no`. Might fail if the target indexers can't resume from arbitrary points."
+            )
+        slotNoParser :: Opt.Parser C.SlotNo
+        slotNoParser =
+          Opt.option
+            (C.SlotNo <$> Opt.auto)
+            ( Opt.long "slot-no"
+                <> Opt.short 'n'
+                <> Opt.metavar "SLOT-NO"
+                <> Opt.help
+                  "Slot number of the preferred starting point. Note that you also need to provide the starting point block header hash with `--block-header-hash`. Might fail if the target indexers can't resume from arbitrary points."
+            )
+        maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
+        maybeParseHashBlockHeader =
+          either (const Nothing) Just
+            . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
+            . C8.pack
 
 -- TODO: `pNetworkId` and `pTestnetMagic` are copied from
 -- https://github.com/input-output-hk/cardano-node/blob/988c93085022ed3e2aea5d70132b778cd3e622b9/cardano-cli/src/Cardano/CLI/Shelley/Parsers.hs#L2009-L2027
@@ -169,7 +166,7 @@ data CommonOptions = CommonOptions
   -- ^ POSIX socket file to communicate with cardano node
   , optionsNetworkId :: !NetworkId
   -- ^ cardano network id
-  , optionsChainPoint :: !ChainPoint
+  , optionsChainPoint :: !StartFrom
   -- ^ Required depth of a block before it is indexed
   , optionsMinIndexingDepth :: !IndexingDepth
   -- ^ Required depth of a block before it is indexed
@@ -227,7 +224,7 @@ commonOptionsParser =
   CommonOptions
     <$> commonSocketPathParser
     <*> commonNetworkIdParser
-    <*> chainPointParser
+    <*> commonStartFromParser
     <*> commonMinIndexingDepthParser
     <*> commonRetryConfigParser
 
