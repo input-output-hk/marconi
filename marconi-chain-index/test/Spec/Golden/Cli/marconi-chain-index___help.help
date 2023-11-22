@@ -33,7 +33,7 @@ Available options:
   --start-from-last-sync-points
                            Start from the minimum last sync point
   --start-from             Start from a given slot and block header hash. Usage:
-                           `start-from --slot-no SLOT-NO --block-header-hash
+                           `--start-from --slot-no SLOT-NO --block-header-hash
                            BLOCK-HEADER-HASH`
   -n,--slot-no SLOT-NO     Slot number of the preferred starting point. Note
                            that you also need to provide the starting point
