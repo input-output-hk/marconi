@@ -42,6 +42,7 @@ executable marconi-doc
   -- Local components
   --------------------
   build-depends:
+    , marconi-cardano-core   >=1.2.0
     , marconi-chain-index    >=1.2.0
     , marconi-core           >=1.2.0
     , marconi-core-json-rpc  >=1.2.0

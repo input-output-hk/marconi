@@ -19,6 +19,7 @@ packages: legacy/marconi-core-legacy
           legacy/marconi-chain-index-legacy
           marconi-chain-index
           marconi-core
+          marconi-cardano-core
           marconi-core-json-rpc
           marconi-sidechain
           marconi-sidechain-experimental

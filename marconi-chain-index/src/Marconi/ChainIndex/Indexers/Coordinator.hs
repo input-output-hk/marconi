@@ -11,9 +11,9 @@ module Marconi.ChainIndex.Indexers.Coordinator (
 import Cardano.BM.Tracing (Trace)
 import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Data.Text (Text)
-import Marconi.ChainIndex.Indexers.Orphans qualified ()
-import Marconi.ChainIndex.Transformer.WithSyncLog (WithSyncStats, withSyncStats)
-import Marconi.ChainIndex.Types (MarconiTrace)
+import Marconi.Cardano.Core.Orphans qualified ()
+import Marconi.Cardano.Core.Transformer.WithSyncLog (WithSyncStats, withSyncStats)
+import Marconi.Cardano.Core.Types (MarconiTrace)
 import Marconi.Core qualified as Core
 
 standardCoordinator

@@ -40,18 +40,17 @@ import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as Trace
 import Cardano.BM.Tracing qualified as Trace
 import Data.Void (Void)
-import Marconi.ChainIndex.Indexers.Orphans ()
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Core
-import Marconi.ChainIndex.Logger (mkMarconiTrace)
-import Marconi.ChainIndex.Node.Client.Retry qualified as Core
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Runner qualified as Core
-import Marconi.ChainIndex.Types (
+import Marconi.Cardano.Core.Logger (mkMarconiTrace)
+import Marconi.Cardano.Core.Node.Client.Retry qualified as Core
+import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Runner qualified as Core
+import Marconi.Cardano.Core.Types (
   BlockEvent (BlockEvent),
   MarconiTrace,
   RetryConfig (RetryConfig),
   SecurityParam,
  )
+import Marconi.ChainIndex.Indexers.SyncHelper qualified as Core
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc qualified as Core

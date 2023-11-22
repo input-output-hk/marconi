@@ -23,6 +23,7 @@ import Data.Bifunctor (first)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
+import Marconi.Cardano.Core.Orphans ()
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.ChainIndex.Indexers (queryableMintToken)
 import Marconi.ChainIndex.Indexers.MintTokenEvent (
@@ -38,7 +39,6 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintTokenEvents,
  )
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, hoistHttpHandler, queryErrToRpcErr)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)

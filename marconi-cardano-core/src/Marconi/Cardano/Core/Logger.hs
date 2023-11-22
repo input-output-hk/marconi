@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 -- | Common loggers for marconi
-module Marconi.ChainIndex.Logger (
+module Marconi.Cardano.Core.Logger (
   BM.nullTracer,
   defaultStdOutLogger,
   mkMarconiTrace,
@@ -16,8 +16,8 @@ import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Tracing (contramap)
 import Cardano.BM.Tracing qualified as BM
 import Data.Text (Text)
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (MarconiTrace)
+import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (MarconiTrace)
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
 

@@ -6,7 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.ChainIndex.Transformer.WithSyncLog (
+module Marconi.Cardano.Core.Transformer.WithSyncLog (
   WithSyncStats (..),
   LastSyncStats (..),
   SyncLog (..),
@@ -22,8 +22,8 @@ import Data.Maybe (isJust)
 import Data.Time (defaultTimeLocale, formatTime)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Orphans ()
-import Marconi.ChainIndex.Types (MarconiTrace, TipAndBlock (TipAndBlock))
+import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (MarconiTrace, TipAndBlock (TipAndBlock))
 import Marconi.Core qualified as Core
 import Marconi.Core.Class (
   Closeable,

@@ -10,7 +10,7 @@ import Control.Lens (to, view, (^.))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT, ask)
 import Data.Data (Proxy (Proxy))
-import Marconi.ChainIndex.Indexers.Worker qualified as Core
+import Marconi.Cardano.Core.Indexer.Worker qualified as Core
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc qualified as Core
 import Marconi.Starter.CLI (optionsHttpPort)

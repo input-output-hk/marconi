@@ -23,7 +23,7 @@ import Data.ByteString.Lazy qualified as BS.Lazy
 import Data.ByteString.Short qualified as BS.Short
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Marconi.ChainIndex.Indexers.Orphans ()
+import Marconi.Cardano.Core.Orphans ()
 import Marconi.Core qualified as Core
 
 type instance Core.Point C.ChainTip = C.ChainPoint

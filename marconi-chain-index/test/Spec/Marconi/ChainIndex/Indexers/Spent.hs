@@ -21,7 +21,7 @@ import Hedgehog.Gen qualified
 import Marconi.ChainIndex.Indexers.Spent qualified as Spent
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

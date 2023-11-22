@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 -- | Common worker configuration and creation
-module Marconi.ChainIndex.Indexers.Worker (
+module Marconi.Cardano.Core.Indexer.Worker (
   StandardIndexer,
   StandardSQLiteIndexer,
   StandardWorkerConfig (..),
@@ -21,10 +21,10 @@ import Control.Monad.Cont (MonadIO, MonadTrans (lift))
 import Control.Monad.Except (ExceptT)
 import Data.Text (Text)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
-import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
-import Marconi.ChainIndex.Indexers.Orphans ()
-import Marconi.ChainIndex.Types (SecurityParam)
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
+import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
+import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (SecurityParam)
 import Marconi.Core qualified as Core
 
 -- | An alias for an indexer with catchup and transformation to perform filtering

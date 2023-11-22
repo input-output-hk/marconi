@@ -3,7 +3,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Marconi.ChainIndex.Node.Client.Retry where
+module Marconi.Cardano.Core.Node.Client.Retry where
 
 import Cardano.BM.Trace (
   logError,
@@ -14,7 +14,7 @@ import Control.Concurrent (
  )
 import Control.Exception (Handler (Handler), catches, throwIO)
 import Data.Word (Word64)
-import Marconi.ChainIndex.Types (
+import Marconi.Cardano.Core.Types (
   MarconiTrace,
   RetryConfig,
   baseTimeBeforeNextRetry,

@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
-module Marconi.ChainIndex.Runner (
+module Marconi.Cardano.Core.Runner (
   -- * Runner
   runIndexer,
 
@@ -50,12 +50,12 @@ import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance, getEvent)
-import Marconi.ChainIndex.Extract.WithDistance qualified as Distance
-import Marconi.ChainIndex.Indexers.Orphans qualified ()
-import Marconi.ChainIndex.Logger ()
-import Marconi.ChainIndex.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.ChainIndex.Types (
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, getEvent)
+import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
+import Marconi.Cardano.Core.Logger ()
+import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
+import Marconi.Cardano.Core.Orphans qualified ()
+import Marconi.Cardano.Core.Types (
   BlockEvent (blockInMode),
   MarconiTrace,
   RetryConfig,

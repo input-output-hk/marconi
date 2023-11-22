@@ -17,8 +17,7 @@ import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
-import Marconi.ChainIndex.Indexers.Orphans ()
-import Marconi.ChainIndex.Orphans ()
+import Marconi.Cardano.Core.Orphans ()
 import Marconi.Core qualified as Core
 
 {- | A simple table to store the last stable point of an indexer.

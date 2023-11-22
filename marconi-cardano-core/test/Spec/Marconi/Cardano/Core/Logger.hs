@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.ChainIndex.Logger (tests) where
+module Spec.Marconi.Cardano.Core.Logger (tests) where
 
 import Cardano.Api qualified as C
 import Data.ByteString.Lazy (ByteString)
@@ -8,11 +8,11 @@ import Data.Data (Proxy (Proxy))
 import Data.String (fromString)
 import Data.Text qualified as Text
 import Data.Word (Word64)
-import Marconi.ChainIndex.Logger (
+import Marconi.Cardano.Core.Logger (
   marconiFormatting,
   nullTracer,
  )
-import Marconi.ChainIndex.Transformer.WithSyncLog (
+import Marconi.Cardano.Core.Transformer.WithSyncLog (
   LastSyncStats (LastSyncStats),
   SyncLog (SyncLog),
  )
@@ -27,12 +27,12 @@ tests =
     [ goldenVsStringDiff
         "Golden test for syncing logs when starting from genesis"
         (\expected actual -> ["diff", "--color=always", expected, actual])
-        "test/Spec/Marconi/ChainIndex/Logger/Golden/start-from-genesis-logging.txt"
+        "test/Spec/Marconi/Cardano/Core/Logger/Golden/start-from-genesis-logging.txt"
         goldenStartFromGenesisLogging
     , goldenVsStringDiff
         "Golden test for syncing logs when starting from chain point other than genesis"
         (\expected actual -> ["diff", "--color=always", expected, actual])
-        "test/Spec/Marconi/ChainIndex/Logger/Golden/start-from-later-point-logging.txt"
+        "test/Spec/Marconi/Cardano/Core/Logger/Golden/start-from-later-point-logging.txt"
         goldenStartFromLaterPointLogging
     ]
 

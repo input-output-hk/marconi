@@ -49,11 +49,11 @@ import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.FromRow qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import GHC.Generics (Generic)
+import Marconi.Cardano.Core.Orphans ()
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.ChainIndex.Indexers.Datum (DatumInfo)
 import Marconi.ChainIndex.Indexers.Spent (SpentInfo)
 import Marconi.ChainIndex.Indexers.Utxo (Utxo)
-import Marconi.ChainIndex.Orphans ()
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.SQLiteAggregateQuery (
   SQLiteSourceProvider (SQLiteSourceProvider),

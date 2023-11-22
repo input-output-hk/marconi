@@ -3,7 +3,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Test.Gen.Marconi.ChainIndex.Mockchain (
+module Test.Gen.Marconi.Cardano.Core.Mockchain (
   Mockchain,
   genMockchain,
   MockBlock (..),
@@ -38,9 +38,9 @@ import Hedgehog.Internal.Gen qualified as Hedgehog.Gen
 import Hedgehog.Range qualified
 import Hedgehog.Range qualified as Range
 import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Test.Gen.Marconi.ChainIndex.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
-import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
-import Test.Helpers (emptyTxBodyContent)
+import Test.Gen.Marconi.Cardano.Core.Helpers (emptyTxBodyContent)
+import Test.Gen.Marconi.Cardano.Core.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
+import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
 
 type Mockchain era = [MockBlock era]
 
