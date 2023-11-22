@@ -55,7 +55,6 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Cardano.Core.Extract.WithDistance
-    Marconi.Cardano.Core.Indexer.SyncHelper
     Marconi.Cardano.Core.Indexer.Worker
     Marconi.Cardano.Core.Logger
     Marconi.Cardano.Core.Node.Client.Retry

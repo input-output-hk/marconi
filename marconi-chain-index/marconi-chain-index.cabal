@@ -97,6 +97,7 @@ library
     Marconi.ChainIndex.Indexers.MintTokenEvent
     Marconi.ChainIndex.Indexers.MintTokenEventQuery
     Marconi.ChainIndex.Indexers.Spent
+    Marconi.ChainIndex.Indexers.SyncHelper
     Marconi.ChainIndex.Indexers.Utxo
     Marconi.ChainIndex.Indexers.UtxoQuery
     Marconi.ChainIndex.Run

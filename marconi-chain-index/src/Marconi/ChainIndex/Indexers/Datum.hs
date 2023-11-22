@@ -46,7 +46,6 @@ import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import GHC.Generics (Generic)
-import Marconi.Cardano.Core.Indexer.SyncHelper qualified as Sync
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -54,6 +53,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
+import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 
 data DatumInfo = DatumInfo

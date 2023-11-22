@@ -89,7 +89,6 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Extract.WithDistance (
   WithDistance (WithDistance),
  )
-import Marconi.Cardano.Core.Indexer.SyncHelper qualified as Sync
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorkerConfig (logger, securityParamConfig),
@@ -99,6 +98,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
  )
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam))
+import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (IsSync (lastSyncPoint))
 import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Cardano.Block qualified as O

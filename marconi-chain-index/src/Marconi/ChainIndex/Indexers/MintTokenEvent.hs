@@ -116,7 +116,6 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.Cardano.Core.Indexer.SyncHelper qualified as Sync
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -128,6 +127,7 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
   TxIndexInBlock,
  )
+import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'

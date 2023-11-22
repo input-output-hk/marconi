@@ -69,7 +69,6 @@ import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
-import Marconi.Cardano.Core.Indexer.SyncHelper qualified as Sync
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -78,6 +77,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
  )
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
+import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 
 -- | Indexer representation of an UTxO
