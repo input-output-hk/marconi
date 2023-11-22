@@ -38,12 +38,12 @@ The library does not depend on any Cardano-related libraries, and provides capab
 * running several independent indexers which index events at the same rate
 
 .. note::
-However, the user should expect some significant work to be done in order to adapt it for some blockchain.
+   However, the user should expect some significant work to be done in order to adapt it for some blockchain.
 
 `marconi-cardano-core` is also a core library which reexports everything from `marconi-core`, but specialises the API types and functions to Cardano-specific representations.
 Particularly, it uses the types and functions defined in the Cardano core libraries: `cardano-api <https://github.com/input-output-hk/cardano-api>`_, `ouroboros-network <https://github.com/input-output-hk/ouroboros-network>`_, `ouroboros-consensus <https://github.com/input-output-hk/ouroboros-consensus>`_ and `cardano-ledger <https://github.com/input-output-hk/cardano-ledger>`_.
 However, at the moment, `marconi-cardano-core` mostly uses `cardano-api` as it's a library that integrates the most useful parts, from a client application's perspective, of `ouroboros-network <https://github.com/input-output-hk/ouroboros-network>`_, `ouroboros-consensus <https://github.com/input-output-hk/ouroboros-consensus>`_ and `cardano-ledger <https://github.com/input-output-hk/cardano-ledger>`_.
-In addition, `marconi-cardano-core` provides a runner for indexers ingesting events from the `chain-sync https://docs.cardano.org/explore-cardano/cardano-network/networking-protocol/`_ protocol, as well as some additions to `cardano-api`
+In addition, `marconi-cardano-core` provides a runner for indexers ingesting events from the `chain-sync <https://docs.cardano.org/explore-cardano/cardano-network/networking-protocol>`_ protocol, as well as some additions to `cardano-api`
 in `cardano-api-extended`.
 
 `marconi-core-json-rpc` is a core library which extends the query interface of `marconi-core` of an indexer so that is can be queried through a JSON-RPC HTTP server.
