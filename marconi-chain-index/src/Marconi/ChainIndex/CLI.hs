@@ -88,11 +88,11 @@ commonStartFromParser =
                       <*> blockHeaderHashParser
                   )
                   ( Opt.progDesc
-                      "Start from a given slot and block header hash. Usage: `start-from --slot-no SLOT_NO --block-header-hash BLOCK_HEADER_HASH`"
+                      "Start from a given slot and block header hash. Usage: `start-from --slot-no SLOT-NO --block-header-hash BLOCK-HEADER-HASH`"
                   )
               )
-              <> Opt.help "start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)"
-              <> Opt.metavar "start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)"
+              <> Opt.help "start-from (n|--slot-no SLOT-NO) (b|--block-header-hash BLOCK-HEADER-HASH)"
+              <> Opt.metavar "start-from (n|--slot-no SLOT-NO) (b|--block-header-hash BLOCK-HEADER-HASH)"
           )
       where
         blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
