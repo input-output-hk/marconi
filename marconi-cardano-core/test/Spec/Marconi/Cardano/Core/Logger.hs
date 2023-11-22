@@ -27,12 +27,12 @@ tests =
     [ goldenVsStringDiff
         "Golden test for syncing logs when starting from genesis"
         (\expected actual -> ["diff", "--color=always", expected, actual])
-        "test/Spec/Marconi/ChainIndex/Logger/Golden/start-from-genesis-logging.txt"
+        "test/Spec/Marconi/Cardano/Core/Logger/Golden/start-from-genesis-logging.txt"
         goldenStartFromGenesisLogging
     , goldenVsStringDiff
         "Golden test for syncing logs when starting from chain point other than genesis"
         (\expected actual -> ["diff", "--color=always", expected, actual])
-        "test/Spec/Marconi/ChainIndex/Logger/Golden/start-from-later-point-logging.txt"
+        "test/Spec/Marconi/Cardano/Core/Logger/Golden/start-from-later-point-logging.txt"
         goldenStartFromLaterPointLogging
     ]
 
