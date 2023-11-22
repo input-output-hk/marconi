@@ -42,7 +42,11 @@ import Marconi.ChainIndex.Types (
  )
 import Paths_marconi_chain_index (version)
 
-data StartFrom = StartFromGenesis | StartFromLastSyncPoint | StartFrom ChainPoint
+-- | Represents a specified point from which to start indexing
+data StartFrom
+  = StartFromGenesis
+  | StartFromLastSyncPoint
+  | StartFrom ChainPoint
   deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 {- | Allow the user to set a starting point for indexing.
