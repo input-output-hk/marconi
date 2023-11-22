@@ -3,7 +3,8 @@ option --match-asset-id: Failed to deserialise 1cdc58c3b6d1ab11dd047ac9e3a2ec26a
 Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH) 
                            (--mainnet | --testnet-magic NATURAL) 
                            [--start-from-genesis | 
-                             --start-from-last-sync-points | COMMAND] 
+                             --start-from-last-sync-points | 
+                             start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)]
                            [--max-indexing-depth | --min-indexing-depth NATURAL]
                            [--initial-retry-time NATURAL] 
                            [--no-max-retry-time | --max-retry-time NATURAL]

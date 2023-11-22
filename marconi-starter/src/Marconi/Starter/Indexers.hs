@@ -71,7 +71,7 @@ getStartingPoint
      , Core.IsSync (ExceptT Core.IndexerError m) event indexer
      , Core.Point event ~ C.ChainPoint
      )
-  => CommonCLI.StartFrom
+  => CommonCLI.StartingPoint
   -> indexer event
   -> m C.ChainPoint
 getStartingPoint preferredStartingPoint indexer = do

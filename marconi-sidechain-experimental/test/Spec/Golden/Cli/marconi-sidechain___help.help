@@ -10,7 +10,8 @@ Usage: marconi-sidechain-experimental
          [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
          [--fail-if-resyncing-from-genesis] [--initial-retry-time NATURAL] 
          [--no-max-retry-time | --max-retry-time NATURAL] 
-         [(-n|--slot-no SLOT-NO) (-b|--block-header-hash BLOCK-HEADER-HASH)]
+         [--start-from-genesis | --start-from-last-sync-points | 
+           start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)]
 
   marconi-sidechain
 
@@ -50,13 +51,14 @@ Available options:
   --no-max-retry-time      Unlimited retries.
   --max-retry-time NATURAL Max time (in seconds) allowed after startup for
                            retries. Defaults to 30min.
-  -n,--slot-no SLOT-NO     Slot number of the preferred starting point. Note
-                           that you also need to provide the starting point
-                           block header hash with `--block-header-hash`. Might
-                           fail if the target indexers can't resume from
-                           arbitrary points.
-  -b,--block-header-hash BLOCK-HEADER-HASH
-                           Block header hash of the preferred starting point.
-                           Note that you also need to provide the starting point
-                           slot number with `--slot-no`. Might fail if the
-                           target indexers can't resume from arbitrary points.
+  --start-from-genesis     Start from genesis
+  --start-from-last-sync-points
+                           Start from the minimum last sync point
+  start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)
+                           start-from (n|--slot-no SLOT_NO)
+                           (b|--block-header-hash BLOCK_HEADER_HASH)
+
+Available commands:
+  start-from               Start from a given slot and block header hash. Usage:
+                           `start-from --slot-no SLOT_NO --block-header-hash
+                           BLOCK_HEADER_HASH`

@@ -4,7 +4,8 @@ Cardano blockchain
 Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH) 
                            (--mainnet | --testnet-magic NATURAL) 
                            [--start-from-genesis | 
-                             --start-from-last-sync-points | COMMAND] 
+                             --start-from-last-sync-points | 
+                             start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)]
                            [--max-indexing-depth | --min-indexing-depth NATURAL]
                            [--initial-retry-time NATURAL] 
                            [--no-max-retry-time | --max-retry-time NATURAL]
@@ -30,6 +31,9 @@ Available options:
   --start-from-genesis     Start from genesis
   --start-from-last-sync-points
                            Start from the minimum last sync point
+  start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)
+                           start-from (n|--slot-no SLOT_NO)
+                           (b|--block-header-hash BLOCK_HEADER_HASH)
   --max-indexing-depth     Only index blocks that are not rollbackable
   --min-indexing-depth NATURAL
                            Depth of a block before it is indexed in relation to
@@ -68,6 +72,6 @@ Available options:
                            genesis when it can resume from a later point.
 
 Available commands:
-  start-from               Start from a given slot and block header hash.
-                           Useage: start-from --slot-no SLOT_NO
-                           --block-header-hash BLOCK_HEADER_HASH
+  start-from               Start from a given slot and block header hash. Usage:
+                           `start-from --slot-no SLOT_NO --block-header-hash
+                           BLOCK_HEADER_HASH`

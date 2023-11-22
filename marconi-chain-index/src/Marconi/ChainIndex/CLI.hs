@@ -43,7 +43,7 @@ import Marconi.ChainIndex.Types (
 import Paths_marconi_chain_index (version)
 
 -- | Represents a specified point from which to start indexing
-data StartFrom
+data StartingPoint
   = StartFromGenesis
   | StartFromLastSyncPoint
   | StartFrom ChainPoint
@@ -57,7 +57,7 @@ data StartFrom
       are required.
   * Not using any of these commands results in the same behaviour as @--start-from-last-sync-points@
 -}
-commonStartFromParser :: Opt.Parser StartFrom
+commonStartFromParser :: Opt.Parser StartingPoint
 commonStartFromParser =
   pure StartFromLastSyncPoint
     Opt.<|> fromGenesis
@@ -76,10 +76,10 @@ commonStartFromParser =
         ( Opt.long "start-from-last-sync-points"
             <> Opt.help "Start from the minimum last sync point"
         )
-    givenPoint :: Opt.Parser StartFrom
+    givenPoint :: Opt.Parser StartingPoint
     givenPoint =
       StartFrom
-        <$> Opt.subparser
+        <$> Opt.hsubparser
           ( Opt.command
               "start-from"
               ( Opt.info
@@ -88,9 +88,11 @@ commonStartFromParser =
                       <*> blockHeaderHashParser
                   )
                   ( Opt.progDesc
-                      "Start from a given slot and block header hash. Useage: `start-from --slot-no SLOT_NO --block-header-hash BLOCK_HEADER_HASH`"
+                      "Start from a given slot and block header hash. Usage: `start-from --slot-no SLOT_NO --block-header-hash BLOCK_HEADER_HASH`"
                   )
               )
+              <> Opt.help "start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)"
+              <> Opt.metavar "start-from (n|--slot-no SLOT_NO) (b|--block-header-hash BLOCK_HEADER_HASH)"
           )
       where
         blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
@@ -170,8 +172,8 @@ data CommonOptions = CommonOptions
   -- ^ POSIX socket file to communicate with cardano node
   , optionsNetworkId :: !NetworkId
   -- ^ cardano network id
-  , optionsChainPoint :: !StartFrom
-  -- ^ Required depth of a block before it is indexed
+  , optionsChainPoint :: !StartingPoint
+  -- ^ The starting point of the indexers
   , optionsMinIndexingDepth :: !IndexingDepth
   -- ^ Required depth of a block before it is indexed
   , optionsRetryConfig :: !RetryConfig

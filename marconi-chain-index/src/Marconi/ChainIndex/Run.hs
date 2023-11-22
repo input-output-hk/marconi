@@ -166,7 +166,7 @@ shelleyAddressesToAddressAny Nothing = []
 shelleyAddressesToAddressAny (Just targetAddresses) =
   fmap C.AddressShelley $ NEList.toList $ NESet.toList targetAddresses
 
-getStartingPoint :: Cli.StartFrom -> C.ChainPoint -> C.ChainPoint
+getStartingPoint :: Cli.StartingPoint -> C.ChainPoint -> C.ChainPoint
 getStartingPoint preferredStartingPoint indexerLastSyncPoint =
   case preferredStartingPoint of
     Cli.StartFromGenesis -> C.ChainPointAtGenesis
