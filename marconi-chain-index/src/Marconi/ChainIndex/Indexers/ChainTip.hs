@@ -61,7 +61,7 @@ mkChainTipIndexer tracer cfg = do
 chainTipWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => BM.Trace m (Core.IndexerEvent C.ChainPoint)
-  -> (event -> Maybe C.ChainTip)
+  -> (event -> C.ChainTip)
   -> ChainTipConfig
   -> n
       ( Core.WorkerIndexer
@@ -71,7 +71,7 @@ chainTipWorker
           (Core.WithTrace m Core.LastEventIndexer)
       )
 chainTipWorker tracer extractor cfg =
-  Core.createWorker "chainTip" extractor =<< mkChainTipIndexer tracer cfg
+  Core.createWorker "chainTip" (Just . extractor) =<< mkChainTipIndexer tracer cfg
 
 serialiseTip :: C.ChainTip -> BS.ByteString
 serialiseTip =

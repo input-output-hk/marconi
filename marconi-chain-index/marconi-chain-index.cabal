@@ -108,6 +108,7 @@ library
     Marconi.ChainIndex.Orphans
     Marconi.ChainIndex.Run
     Marconi.ChainIndex.Runner
+    Marconi.ChainIndex.Transformer.WithSyncLog
     Marconi.ChainIndex.Types
     Marconi.ChainIndex.Utils
 
