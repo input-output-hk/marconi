@@ -99,7 +99,9 @@ newtype IndexerTracer m event = IndexerTracer {_unwrapTracer :: Tracer m (Indexe
 makeLenses 'IndexerTracer
 
 -- | A tracer modifier that adds tracing to an existing indexer
-newtype WithTracer m indexer event = WithTracer {_tracerWrapper :: IndexTransformer (IndexerTracer m) indexer event}
+newtype WithTracer m indexer event = WithTracer
+  { _tracerWrapper :: IndexTransformer (IndexerTracer m) indexer event
+  }
 
 -- | A smart constructor for @WithTracer@
 withTracer

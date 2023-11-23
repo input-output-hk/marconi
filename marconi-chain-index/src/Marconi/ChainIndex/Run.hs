@@ -30,7 +30,6 @@ import Marconi.ChainIndex.Api.Types (
  )
 import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Indexers (buildIndexers)
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Utils qualified as Utils
@@ -53,6 +52,8 @@ import System.Posix.Signals (
   installHandler,
   sigTERM,
  )
+import qualified Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator as ExtLedgerState
+import qualified Marconi.Cardano.Core.Extract.WithDistance as Distance
 #endif
 
 run :: Text -> IO ()
@@ -117,9 +118,12 @@ run appName = withGracefulTermination_ $ do
         (Core.mkCatchupConfig batchSize stopCatchupDistance)
         (Utxo.UtxoIndexerConfig filteredAddresses includeScript)
         (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
-        ( EpochState.EpochStateWorkerConfig
-            (EpochState.NodeConfig nodeConfigPath)
+        ( ExtLedgerState.ExtLedgerStateWorkerConfig
+            Distance.getEvent
+            trace
+            nodeConfigPath
             volatileEpochStateSnapshotInterval
+            securityParam
         )
         trace
         marconiTrace

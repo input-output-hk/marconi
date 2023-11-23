@@ -23,9 +23,11 @@ import Data.Char (toLower)
 import GHC.Word (Word64)
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.ChainIndex.Indexers (
-  queryableEpochState,
+  queryableEpochNonce,
+  queryableEpochSDD,
  )
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Indexers.EpochNonce qualified as EpochState
+import Marconi.ChainIndex.Indexers.EpochSDD qualified as EpochState
 import Marconi.ChainIndex.Utils qualified as Util
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, queryHttpReaderHandler)
@@ -106,7 +108,7 @@ getEpochStakePoolDelegationHandler epochNo
       dimapHandler
         toActiveSDDByEpochNoQuery
         toActiveSDDResults
-        (queryHttpReaderHandler (configQueryables . queryableEpochState))
+        (queryHttpReaderHandler (configQueryables . queryableEpochSDD))
         epochNo
   where
     toActiveSDDByEpochNoQuery :: Word64 -> EpochState.ActiveSDDByEpochNoQuery
@@ -139,7 +141,7 @@ getEpochNonceHandler epochNo
       dimapHandler
         toNonceByEpochNoQuery
         toEpochNonceResult
-        (queryHttpReaderHandler (configQueryables . queryableEpochState))
+        (queryHttpReaderHandler (configQueryables . queryableEpochNonce))
         epochNo
   where
     toNonceByEpochNoQuery :: Word64 -> EpochState.NonceByEpochNoQuery

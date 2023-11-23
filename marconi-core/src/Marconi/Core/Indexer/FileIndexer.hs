@@ -107,7 +107,7 @@ data EventInfo meta = EventInfo
 
 deriving stock instance (Show meta) => Show (EventInfo meta)
 
-{- | The dataytpe used to configure the way we store files, including:
+{- | The datatype used to configure the way we store files, including:
 
       - control over which events are saved
       - how many events we keep on disk

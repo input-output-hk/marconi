@@ -14,7 +14,9 @@ import Control.Lens (makeLenses, (?~))
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
 import Data.Function ((&))
+import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
@@ -30,14 +32,15 @@ import Marconi.Cardano.Core.Types (
   SecurityParam,
   TipAndBlock (TipAndBlock),
   TxIndexInBlock,
-  blockInMode,
  )
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
 import Marconi.ChainIndex.Indexers.Coordinator (coordinatorWorker, syncStatsCoordinator)
 import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.ChainIndex.Indexers.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Indexers.EpochNonce qualified as Nonce
+import Marconi.ChainIndex.Indexers.EpochSDD qualified as SDD
+import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerStateCoordinator
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.MintTokenEventQuery (
   MintTokenEventIndexerQuery (MintTokenEventIndexerQuery),
@@ -49,6 +52,9 @@ import Marconi.Core qualified as Core
 import System.FilePath ((</>))
 
 data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
+type instance
+  Core.Point (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent) =
+    C.ChainPoint
 type instance Core.Point (Either C.ChainTip (WithDistance BlockEvent)) = C.ChainPoint
 type instance Core.Point BlockEvent = C.ChainPoint
 type instance Core.Point C.ChainTip = C.ChainPoint
@@ -59,24 +65,19 @@ type Coordinator = Core.WithTrace IO Core.Coordinator TipAndBlock
 type SyncStatsCoordinator = WithSyncStats (Core.WithTrace IO Core.Coordinator) TipAndBlock
 
 type ChainTipIndexer = ChainTip.ChainTipIndexer IO
-type EpochStateIndexer =
-  Core.WithTrace
-    IO
-    EpochState.EpochStateIndexer
-    (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
 type MintTokenEventIndexer =
   StandardIndexer IO Core.SQLiteIndexer MintTokenEvent.MintTokenBlockEvents
 type BlockInfoIndexer = StandardIndexer IO Core.SQLiteIndexer BlockInfo.BlockInfo
 type UtxoIndexer = UtxoQuery.UtxoQueryIndexer IO
 type CurrentSyncPointIndexer =
-  Core.WithTrace
-    IO
-    CurrentSyncPoint.CurrentSyncPointQueryIndexer
-    TipAndBlock
+  Core.WithTrace IO CurrentSyncPoint.CurrentSyncPointQueryIndexer TipAndBlock
+type EpochNonceIndexer = Core.WithTrace IO Core.SQLiteIndexer Nonce.EpochNonce
+type EpochSDDIndexer = Core.WithTrace IO Core.SQLiteIndexer (NonEmpty SDD.EpochSDD)
 
 -- | Container for all the queryable indexers of marconi-chain-index.
 data MarconiChainIndexQueryables = MarconiChainIndexQueryables
-  { _queryableEpochState :: !(MVar EpochStateIndexer)
+  { _queryableEpochNonce :: !(MVar EpochNonceIndexer)
+  , _queryableEpochSDD :: !(MVar EpochSDDIndexer)
   , _queryableMintToken :: !(MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents)
   , _queryableUtxo :: !UtxoIndexer
   , _queryableCurrentSyncPoint :: !CurrentSyncPointIndexer
@@ -93,7 +94,7 @@ buildIndexers
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
-  -> EpochState.EpochStateWorkerConfig
+  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
@@ -104,86 +105,99 @@ buildIndexers
       , MarconiChainIndexQueryables
       , SyncStatsCoordinator
       )
-buildIndexers
-  securityParam
-  catchupConfig
-  utxoConfig
-  mintEventConfig
-  epochStateConfig
-  textLogger
-  prettyLogger
-  path = do
-    let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
-        mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
-        blockEventTextLogger = BM.appendName "blockEvent" textLogger
-        blockEventLogger = BM.appendName "blockEvent" mainLogger
-        txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
+buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateConfig textLogger prettyLogger path = do
+  let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
+      mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      blockEventTextLogger = BM.appendName "blockEvent" textLogger
+      blockEventLogger = BM.appendName "blockEvent" mainLogger
+      txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
+      epochStateTextLogger = BM.appendName "epochState" blockEventTextLogger
+      epochSDDTextLogger = BM.appendName "epochSDD" epochStateTextLogger
+      epochNonceTextLogger = BM.appendName "epochNonce" epochStateTextLogger
 
-    StandardWorker blockInfoMVar blockInfoWorker <-
-      blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
+  StandardWorker blockInfoMVar blockInfoWorker <-
+    blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
 
-    Core.WorkerIndexer epochStateMVar epochStateWorker <-
-      epochStateBuilder securityParam catchupConfig epochStateConfig blockEventTextLogger path
+  Core.WorkerIndexer epochSDDMVar epochSDDWorker <-
+    epochSDDBuilder
+      securityParam
+      catchupConfig
+      epochSDDTextLogger
+      path
 
-    StandardWorker utxoMVar utxoWorker <-
-      utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
-    StandardWorker spentMVar spentWorker <-
-      spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-    StandardWorker datumMVar datumWorker <-
-      datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-    StandardWorker mintTokenMVar mintTokenWorker <-
-      mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
+  Core.WorkerIndexer epochNonceMVar epochNonceWorker <-
+    epochNonceBuilder
+      securityParam
+      catchupConfig
+      epochNonceTextLogger
+      path
 
-    let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
-        getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
-        toTxBodys :: BlockEvent -> [AnyTxBody]
-        toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
-          zipWith (getTxBody bn) [0 ..] txs
+  Core.WorkerIndexer _epochStateMVar epochStateWorker <-
+    ExtLedgerStateCoordinator.extLedgerStateWorker
+      epochStateConfig
+      [epochSDDWorker, epochNonceWorker]
+      path
 
-    coordinatorTxBodyWorkers <-
-      buildTxBodyCoordinator
-        txBodyCoordinatorLogger
-        (pure . Just . fmap toTxBodys)
-        [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
+  StandardWorker utxoMVar utxoWorker <-
+    utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
+  StandardWorker spentMVar spentWorker <-
+    spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+  StandardWorker datumMVar datumWorker <-
+    datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+  StandardWorker mintTokenMVar mintTokenWorker <-
+    mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
 
-    utxoQueryIndexer <-
-      Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
-        <$> ( lift $
-                UtxoQuery.mkUtxoSQLiteQuery $
-                  UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
-            )
+  let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+      getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+      toTxBodys :: BlockEvent -> [AnyTxBody]
+      toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+        zipWith (getTxBody bn) [0 ..] txs
 
-    blockCoordinator <-
-      lift $
-        buildBlockEventCoordinator
-          blockEventLogger
-          [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
+  coordinatorTxBodyWorkers <-
+    buildTxBodyCoordinator
+      txBodyCoordinatorLogger
+      (pure . Just . fmap toTxBodys)
+      [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
-    Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
+  utxoQueryIndexer <-
+    Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
+      <$> ( lift $
+              UtxoQuery.mkUtxoSQLiteQuery $
+                UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
+          )
 
-    mainCoordinator <-
-      lift $
-        syncStatsCoordinator
-          mainLogger
-          prettyLogger
-          [blockCoordinator, chainTipWorker]
+  blockCoordinator <-
+    lift $
+      buildBlockEventCoordinator
+        blockEventLogger
+        [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-    let currentSyncPointIndexer =
-          Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
-            CurrentSyncPoint.CurrentSyncPointQueryIndexer
-              mainCoordinator
-              blockInfoMVar
-              chainTipMVar
-        queryables =
-          MarconiChainIndexQueryables
-            epochStateMVar
-            (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
-            utxoQueryIndexer
-            currentSyncPointIndexer
+  Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
 
-    resumePoint <- Core.lastStablePoint mainCoordinator
+  mainCoordinator <-
+    lift $
+      syncStatsCoordinator
+        mainLogger
+        prettyLogger
+        [blockCoordinator, chainTipWorker]
 
-    pure (resumePoint, queryables, mainCoordinator)
+  let currentSyncPointIndexer =
+        Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
+          CurrentSyncPoint.CurrentSyncPointQueryIndexer
+            mainCoordinator
+            blockInfoMVar
+            chainTipMVar
+      queryables =
+        MarconiChainIndexQueryables
+          epochNonceMVar
+          epochSDDMVar
+          (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
+          utxoQueryIndexer
+          currentSyncPointIndexer
+
+  resumePoint <- Core.lastStablePoint mainCoordinator
+
+  pure (resumePoint, queryables, mainCoordinator)
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildBlockEventCoordinator
@@ -354,29 +368,62 @@ mintBuilder securityParam catchupConfig mintEventConfig textLogger path =
           (BM.appendName indexerName indexerEventLogger)
    in MintTokenEvent.mkMintTokenEventWorker mintTokenWorkerConfig mintEventConfig mintDbPath
 
--- | Configure and start the @EpochState@ indexer
-epochStateBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n)
+-- | Configure and start the @EpochNonce@ indexer
+epochNonceBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
-  -> EpochState.EpochStateWorkerConfig
-  -> BM.Trace IO Text
+  -> BM.Trace m Text
   -> FilePath
   -> n
       ( Core.WorkerIndexer
-          IO
-          (WithDistance BlockEvent)
-          (WithDistance (Maybe EpochState.ExtLedgerState, C.BlockInMode C.CardanoMode))
-          (Core.WithTrace IO EpochState.EpochStateIndexer)
+          m
+          (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent)
+          Nonce.EpochNonce
+          (Core.WithTrace m Core.SQLiteIndexer)
       )
-epochStateBuilder securityParam catchupConfig epochStateConfig textLogger path =
-  let indexerName = "EpochState"
+epochNonceBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "EpochNonce"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
-      epochStateWorkerConfig =
+      epochNonceWorkerConfig =
         StandardWorkerConfig
           indexerName
           securityParam
           catchupConfig
-          (pure . Just . blockInMode)
+          (pure . Nonce.getEpochNonce . fst)
           (BM.appendName indexerName indexerEventLogger)
-   in EpochState.mkEpochStateWorker epochStateWorkerConfig epochStateConfig (path </> "epochState")
+      getEpochNo (ExtLedgerStateCoordinator.ExtLedgerStateEvent ledgerState _) = Nonce.getEpochNo ledgerState
+   in Nonce.epochNonceWorker
+        epochNonceWorkerConfig
+        (Nonce.EpochNonceWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
+        (path </> "epochNonce.db")
+
+-- | Configure and start the @EpochNonce@ indexer
+epochSDDBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> BM.Trace m Text
+  -> FilePath
+  -> n
+      ( Core.WorkerIndexer
+          m
+          (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent)
+          (NonEmpty SDD.EpochSDD)
+          (Core.WithTrace m Core.SQLiteIndexer)
+      )
+epochSDDBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "EpochSDD"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      epochSDDWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfig
+          (pure . SDD.getEpochSDD . fst)
+          (BM.appendName indexerName indexerEventLogger)
+      getEpochNo (ExtLedgerStateCoordinator.ExtLedgerStateEvent ledgerState _) = Nonce.getEpochNo ledgerState
+   in SDD.epochSDDWorker
+        epochSDDWorkerConfig
+        (SDD.EpochSDDWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
+        (path </> "epochSDD.db")

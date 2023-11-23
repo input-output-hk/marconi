@@ -312,11 +312,7 @@ getUtxoEventsFromBlock
 getUtxoEventsFromBlock (C.Block _ txs) =
   zip [0 ..] txs >>= uncurry getUtxosFromTx
 
-getUtxosFromTx
-  :: (C.IsCardanoEra era)
-  => TxIndexInBlock
-  -> C.Tx era
-  -> [Utxo]
+getUtxosFromTx :: (C.IsCardanoEra era) => TxIndexInBlock -> C.Tx era -> [Utxo]
 getUtxosFromTx ix (C.Tx txBody _) = getUtxosFromTxBody ix txBody
 
 {- | Extract TxOut from Cardano TxBodyContent
@@ -334,11 +330,7 @@ getTxOutFromTxBodyContent C.TxBodyContent{C.txOuts, C.txReturnCollateral, C.txSc
     collateral (C.TxReturnCollateral _ txout) = [txout]
 
 -- | Extract Utxos from Cardano TxBody
-getUtxosFromTxBody
-  :: (C.IsCardanoEra era)
-  => TxIndexInBlock
-  -> C.TxBody era
-  -> [Utxo]
+getUtxosFromTxBody :: (C.IsCardanoEra era) => TxIndexInBlock -> C.TxBody era -> [Utxo]
 getUtxosFromTxBody txIndex' txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) =
   fromRight mempty (getUtxos $ getTxOutFromTxBodyContent txBodyContent)
   where
@@ -380,18 +372,14 @@ getUtxoFromTxOut _txIndex _txIn (C.TxOut addr val datum refScript) =
       Just (is, ish) -> (Just is, Just ish)
 
 -- | Get the datum hash and datum or a transaction output.
-getScriptHash
-  :: C.TxOutDatum C.CtxTx era
-  -> Maybe (C.Hash C.ScriptData)
+getScriptHash :: C.TxOutDatum C.CtxTx era -> Maybe (C.Hash C.ScriptData)
 getScriptHash C.TxOutDatumNone = Nothing
 getScriptHash (C.TxOutDatumHash _ h) = Just h
 getScriptHash (C.TxOutDatumInTx _ d) = Just (C.hashScriptDataBytes d)
 getScriptHash (C.TxOutDatumInline _ d) = Just (C.hashScriptDataBytes d)
 
 -- | get the inlineScript and inlineScriptHash
-getRefScriptAndHash
-  :: C.ReferenceScript era
-  -> Maybe (C.ScriptInAnyLang, C.ScriptHash)
+getRefScriptAndHash :: C.ReferenceScript era -> Maybe (C.ScriptInAnyLang, C.ScriptHash)
 getRefScriptAndHash refScript = case refScript of
   C.ReferenceScriptNone -> Nothing
   C.ReferenceScript _ s@(C.ScriptInAnyLang C.SimpleScriptLanguage script) ->
