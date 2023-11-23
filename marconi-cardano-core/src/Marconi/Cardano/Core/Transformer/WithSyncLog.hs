@@ -210,20 +210,20 @@ mkPrometheusBackend :: IO LoggingBackend
 mkPrometheusBackend = do
   processedBlocksCounter <-
     P.register $
-      P.counter (P.Info "processed_blocks_counter" "Number of processed blocks")
+      P.gauge (P.Info "processed_blocks_counter" "Number of processed blocks")
   processedRollbacksCounter <-
     P.register $
-      P.counter (P.Info "processed_rollbacks_counter" "Number of processed rollbacks")
+      P.gauge (P.Info "processed_rollbacks_counter" "Number of processed rollbacks")
   blocksPerSecondCounter <-
     P.register $
       P.gauge (P.Info "processed_blocks_per_second_counter" "Average of processed blocks per second")
   pure $
     LoggingBackend
       (updateMetrics processedBlocksCounter processedRollbacksCounter blocksPerSecondCounter)
-      2
+      60
       emptyLastSyncStats
   where
-    updateMetrics :: P.Counter -> P.Counter -> P.Gauge -> LastSyncStats -> IO ()
+    updateMetrics :: P.Gauge -> P.Gauge -> P.Gauge -> LastSyncStats -> IO ()
     updateMetrics rollforwards rollbacks blocksPerSecondGauge (LastSyncStats fw bw _ _ lastTime) = do
       now <- getCurrentTime
       let timeSinceLastMsg = diffUTCTime now <$> lastTime
@@ -233,8 +233,8 @@ mkPrometheusBackend = do
               0
               (((blocksThisUpdate * 1000000000000) `div`) . fromEnum)
               timeSinceLastMsg
-      _ <- P.addCounter rollforwards (fromInteger . toInteger $ fw)
-      _ <- P.addCounter rollbacks (fromInteger . toInteger $ bw)
+      _ <- P.setGauge rollforwards (fromInteger . toInteger $ fw)
+      _ <- P.setGauge rollbacks (fromInteger . toInteger $ bw)
       _ <- P.setGauge blocksPerSecondGauge (toEnum blocksPerSecondThisUpdate)
       pure ()
 
