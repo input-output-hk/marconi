@@ -12,7 +12,12 @@ import Cardano.BM.Tracing (Trace)
 import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Data.Text (Text)
 import Marconi.Cardano.Core.Orphans qualified ()
-import Marconi.Cardano.Core.Transformer.WithSyncLog (WithSyncStats, withSyncStats)
+import Marconi.Cardano.Core.Transformer.WithSyncLog (
+  WithSyncStats,
+  mkPrintBackend,
+  mkPrometheusBackend,
+  withSyncStats,
+ )
 import Marconi.Cardano.Core.Types (MarconiTrace)
 import Marconi.Core qualified as Core
 
@@ -29,10 +34,12 @@ syncStatsCoordinator
   -> MarconiTrace IO
   -> [Core.Worker event (Core.Point event)]
   -> IO (WithSyncStats (Core.WithTrace IO Core.Coordinator) event)
-syncStatsCoordinator logger prettyLogger =
-  fmap (withSyncStats prettyLogger)
+syncStatsCoordinator logger prettyLogger workers = do
+  prometheus <- mkPrometheusBackend
+  fmap (withSyncStats [mkPrintBackend prettyLogger, prometheus])
     . Core.withTraceM logger
     . Core.mkCoordinator
+    $ workers
 
 coordinatorWorker
   :: (MonadIO m, Ord (Core.Point b))

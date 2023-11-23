@@ -61,6 +61,9 @@ library
     Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses
     Marconi.Sidechain.Experimental.Api.JsonRpc.Routes
     Marconi.Sidechain.Experimental.Api.JsonRpc.Server
+    Marconi.Sidechain.Experimental.Api.Rest.Endpoint.Metrics
+    Marconi.Sidechain.Experimental.Api.Rest.Routes
+    Marconi.Sidechain.Experimental.Api.Rest.Server
     Marconi.Sidechain.Experimental.Api.Types
     Marconi.Sidechain.Experimental.CLI
     Marconi.Sidechain.Experimental.Concurrency
@@ -94,12 +97,14 @@ library
     , aeson
     , async
     , base                  >=4.9 && <5
+    , bytestring
     , directory
     , lens
     , mtl
     , nonempty-containers
     , optparse-applicative
     , pretty-simple
+    , prometheus-client
     , servant
     , servant-server
     , stm                   >=2.5
