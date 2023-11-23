@@ -40,6 +40,7 @@ import Marconi.ChainIndex.Types (
   scriptTxDbName,
   utxoDbName,
  )
+import Options.Applicative (ReadM, eitherReader, execParserPure)
 import Paths_marconi_chain_index (version)
 
 -- | Represents a specified point from which to start indexing
@@ -77,40 +78,43 @@ commonStartFromParser =
             <> Opt.help "Start from the minimum last sync point"
         )
     givenPoint :: Opt.Parser StartingPoint
-    givenPoint =
-      Opt.flag'
-        ()
+    givenPoint = StartFrom . uncurry C.ChainPoint <$> parseStartFrom
+    parseStartFrom :: Opt.Parser (C.SlotNo, C.Hash C.BlockHeader)
+    parseStartFrom =
+      Opt.option
+        parser
         ( Opt.long "start-from"
+            <> Opt.metavar "SLOT-NO:BLOCK-HEADER-HASH"
             <> Opt.help
-              "Start from a given slot and block header hash. Usage: `--start-from --slot-no SLOT-NO --block-header-hash BLOCK-HEADER-HASH`"
+              "Start from a given slot and block header hash. Usage: `--start-from SLOT-NO:BLOCK-HEADER-HASH`. Might fail if the target indexers can't resume from arbitrary points."
         )
-        *> (StartFrom <$> (C.ChainPoint <$> slotNoParser <*> blockHeaderHashParser))
-      where
-        blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
-        blockHeaderHashParser =
-          Opt.option
-            (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
-            ( Opt.long "block-header-hash"
-                <> Opt.short 'b'
-                <> Opt.metavar "BLOCK-HEADER-HASH"
-                <> Opt.help
-                  "Block header hash of the preferred starting point. Note that you also need to provide the starting point slot number with `--slot-no`. Might fail if the target indexers can't resume from arbitrary points."
-            )
-        slotNoParser :: Opt.Parser C.SlotNo
-        slotNoParser =
-          Opt.option
-            (C.SlotNo <$> Opt.auto)
-            ( Opt.long "slot-no"
-                <> Opt.short 'n'
-                <> Opt.metavar "SLOT-NO"
-                <> Opt.help
-                  "Slot number of the preferred starting point. Note that you also need to provide the starting point block header hash with `--block-header-hash`. Might fail if the target indexers can't resume from arbitrary points."
-            )
-        maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
-        maybeParseHashBlockHeader =
-          either (const Nothing) Just
-            . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
-            . C8.pack
+    parser :: ReadM (C.SlotNo, C.Hash C.BlockHeader)
+    parser = eitherReader $ \s ->
+      case break (== ':') s of
+        (l, ':' : r) -> case (exec slotNoParser [l], exec blockHeaderHashParser [r]) of
+          (Opt.Success sn, Opt.Success bhh) -> Right (sn, bhh)
+          (Opt.Failure _, Opt.Success _) -> Left $ badSlotNo l
+          (Opt.Success _, Opt.Failure _) -> Left $ badBhh r
+          (_, _) -> Left $ badSlotNo l ++ ". " ++ badBhh r
+        _ -> Left "Invalid format, expected SLOT-NO:BLOCK-HEADER-HASH"
+    badSlotNo l = "Expected SLOT-NO, got " ++ show l
+    badBhh bhh = "Expected BLOCK-HEADER-HASH, got " ++ show bhh
+    exec p = execParserPure Opt.defaultPrefs (Opt.info p mempty)
+    blockHeaderHashParser :: Opt.Parser (C.Hash C.BlockHeader)
+    blockHeaderHashParser =
+      Opt.argument
+        (Opt.maybeReader maybeParseHashBlockHeader Opt.<|> Opt.readerError "Malformed block header hash")
+        (Opt.metavar "BLOCK-HEADER-HASH")
+    slotNoParser :: Opt.Parser C.SlotNo
+    slotNoParser =
+      Opt.argument
+        (C.SlotNo <$> Opt.auto)
+        (Opt.metavar "SLOT-NO")
+    maybeParseHashBlockHeader :: String -> Maybe (C.Hash C.BlockHeader)
+    maybeParseHashBlockHeader =
+      either (const Nothing) Just
+        . C.deserialiseFromRawBytesHex (C.proxyToAsType Proxy)
+        . C8.pack
 
 -- TODO: `pNetworkId` and `pTestnetMagic` are copied from
 -- https://github.com/input-output-hk/cardano-node/blob/988c93085022ed3e2aea5d70132b778cd3e622b9/cardano-cli/src/Cardano/CLI/Shelley/Parsers.hs#L2009-L2027

@@ -3,9 +3,8 @@ option --match-asset-id: Expected Base16-encoded bytestring, but got deadbeeef; 
 Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH) 
                            (--mainnet | --testnet-magic NATURAL) 
                            [--start-from-genesis | 
-                             --start-from-last-sync-points | --start-from
-                             (-n|--slot-no SLOT-NO)
-                             (-b|--block-header-hash BLOCK-HEADER-HASH)] 
+                             --start-from-last-sync-points | 
+                             --start-from SLOT-NO:BLOCK-HEADER-HASH] 
                            [--max-indexing-depth | --min-indexing-depth NATURAL]
                            [--initial-retry-time NATURAL] 
                            [--no-max-retry-time | --max-retry-time NATURAL]
