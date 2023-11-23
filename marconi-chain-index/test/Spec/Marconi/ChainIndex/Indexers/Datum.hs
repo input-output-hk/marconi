@@ -23,7 +23,7 @@ import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 

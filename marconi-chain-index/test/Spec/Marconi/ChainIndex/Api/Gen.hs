@@ -12,7 +12,7 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
  )
 import Test.Gen.Cardano.Api.Typed qualified as CGen
-import Test.Gen.Marconi.ChainIndex.Types qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
 
 genBurnTokenEventResult :: Maybe C.HashableScriptData -> Gen BurnTokenEventResult
 genBurnTokenEventResult hsd =

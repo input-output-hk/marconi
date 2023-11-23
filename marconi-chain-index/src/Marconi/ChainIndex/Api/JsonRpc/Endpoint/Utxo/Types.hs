@@ -13,10 +13,10 @@ import Control.Applicative ((<|>))
 import Data.Aeson (FromJSON (parseJSON), (.:), (.:?))
 import Data.Aeson qualified as Aeson
 import GHC.Generics (Generic)
+import Marconi.Cardano.Core.Types (TxIndexInBlock)
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult (SpentInfoResult)
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (UtxoTxInput, ValueWrapper)
 import Marconi.ChainIndex.Api.Types ()
-import Marconi.ChainIndex.Types (TxIndexInBlock)
 
 data GetUtxosFromAddressParams = GetUtxosFromAddressParams
   { address :: !String

@@ -17,7 +17,21 @@ import Data.Function ((&))
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Marconi.ChainIndex.Extract.WithDistance (WithDistance)
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
+import Marconi.Cardano.Core.Indexer.Worker (
+  StandardIndexer,
+  StandardWorker (StandardWorker),
+  StandardWorkerConfig (StandardWorkerConfig),
+ )
+import Marconi.Cardano.Core.Transformer.WithSyncLog (WithSyncStats)
+import Marconi.Cardano.Core.Types (
+  BlockEvent (BlockEvent),
+  MarconiTrace,
+  SecurityParam,
+  TipAndBlock (TipAndBlock),
+  TxIndexInBlock,
+  blockInMode,
+ )
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
 import Marconi.ChainIndex.Indexers.Coordinator (coordinatorWorker, syncStatsCoordinator)
@@ -31,20 +45,6 @@ import Marconi.ChainIndex.Indexers.MintTokenEventQuery (
 import Marconi.ChainIndex.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
-import Marconi.ChainIndex.Indexers.Worker (
-  StandardIndexer,
-  StandardWorker (StandardWorker),
-  StandardWorkerConfig (StandardWorkerConfig),
- )
-import Marconi.ChainIndex.Transformer.WithSyncLog (WithSyncStats)
-import Marconi.ChainIndex.Types (
-  BlockEvent (BlockEvent),
-  MarconiTrace,
-  SecurityParam,
-  TipAndBlock (TipAndBlock),
-  TxIndexInBlock,
-  blockInMode,
- )
 import Marconi.Core qualified as Core
 import System.FilePath ((</>))
 

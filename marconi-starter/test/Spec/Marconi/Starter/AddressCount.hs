@@ -38,7 +38,7 @@ import Marconi.Starter.Indexers.AddressCount (
   AddressCountQuery (AddressCountQuery),
   mkAddressCountSqliteIndexer,
  )
-import Test.Gen.Marconi.ChainIndex.Types (genAddressInEra, genBlockNo, genChainPoint', genSlotNo)
+import Test.Gen.Marconi.Cardano.Core.Types (genAddressInEra, genBlockNo, genChainPoint', genSlotNo)
 
 hprop_generator_preconditions :: Property
 hprop_generator_preconditions = H.property $ do

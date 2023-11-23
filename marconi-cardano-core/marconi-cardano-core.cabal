@@ -1,0 +1,284 @@
+cabal-version: 3.0
+name:          marconi-cardano-core
+version:       1.2.0.0
+license:       Apache-2.0
+license-files:
+  LICENSE
+  NOTICE
+
+author:        IOHK
+maintainer:    operations@iohk.io
+homepage:      https://github.com/input-output-hk/marconi#readme
+bug-reports:   https://github.com/input-output-hk/marconi/issues
+description:
+  Please see the README on GitHub at <https://github.com/input-output-hk/marconi#readme>.
+
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/input-output-hk/marconi
+
+flag ci
+  description: Toggle features on/off when in CI
+  manual:      True
+  default:     True
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    FlexibleInstances
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    InstanceSigs
+    MultiParamTypeClasses
+    ScopedTypeVariables
+    StandaloneDeriving
+    TypeApplications
+    TypeFamilies
+
+  ghc-options:
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wmissing-import-lists
+    -Wnoncanonical-monad-instances -Wredundant-constraints
+    -Wunused-packages
+
+library
+  import:          lang
+  hs-source-dirs:  src
+  exposed-modules:
+    Marconi.Cardano.Core.Extract.WithDistance
+    Marconi.Cardano.Core.Indexer.Worker
+    Marconi.Cardano.Core.Logger
+    Marconi.Cardano.Core.Node.Client.Retry
+    Marconi.Cardano.Core.Orphans
+    Marconi.Cardano.Core.Runner
+    Marconi.Cardano.Core.Transformer.WithSyncLog
+    Marconi.Cardano.Core.Types
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api-extended
+    , marconi-core
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                  ^>=8.20
+    , cardano-binary
+    , cardano-ledger-shelley
+    , iohk-monitoring
+    , network-mux
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , base                 >=4.9 && <5
+    , bytestring
+    , cborg
+    , containers
+    , lens
+    , mtl
+    , nonempty-containers
+    , prettyprinter
+    , serialise
+    , sop-core
+    , sqlite-simple
+    , stm
+    , streaming
+    , strict-sop-core
+    , text
+    , time
+
+library cardano-api-extended
+  import:          lang
+  visibility:      public
+  hs-source-dirs:  cardano-api-extended/src
+  exposed-modules:
+    Cardano.Api.Extended
+    Cardano.Api.Extended.Block
+    Cardano.Api.Extended.ExtLedgerState
+    Cardano.Api.Extended.Gen
+    Cardano.Api.Extended.IPC
+    Cardano.Api.Extended.Streaming
+    Cardano.Api.Extended.Streaming.Callback
+    Cardano.Api.Extended.Streaming.ChainSyncEvent
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , async
+    , base
+    , base16-bytestring
+    , bytestring
+    , cardano-api                    ^>=8.20
+    , cardano-crypto-class
+    , cardano-crypto-wrapper
+    , cardano-ledger-byron
+    , cardano-slotting
+    , hedgehog
+    , memory
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-consensus-diffusion
+    , ouroboros-consensus-protocol
+    , ouroboros-network-protocols
+    , streaming
+    , strict-sop-core
+    , text
+    , time
+    , transformers
+    , typed-protocols
+
+library marconi-cardano-core-test-lib
+  import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
+  visibility:      public
+  hs-source-dirs:  test-lib
+  exposed-modules:
+    Test.Gen.Marconi.Cardano.Core.Helpers
+    Test.Gen.Marconi.Cardano.Core.Mockchain
+    Test.Gen.Marconi.Cardano.Core.Types
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api-extended
+    , marconi-cardano-core
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                   ^>=8.20
+    , cardano-api-gen               ^>=8.2
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
+    , iohk-monitoring
+    , ouroboros-network-protocols
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api             ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , async
+    , base             >=4.9 && <5
+    , bytestring
+    , containers
+    , contra-tracer
+    , data-default
+    , directory
+    , filepath
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , mtl
+    , streaming
+    , temporary
+    , text
+    , time
+
+test-suite marconi-cardano-core-test
+  import:         lang
+  ghc-options:    -Wno-unused-packages
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: test
+  other-modules:
+    Spec.Marconi.Cardano.Core.Logger
+    Spec.Marconi.Cardano.Core.Orphans
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , cardano-api-extended
+    , marconi-cardano-core
+    , marconi-cardano-core-test-lib
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                  ^>=8.20
+    , cardano-api-gen              ^>=8.2
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-alonzo        >=1.3.1.1
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-node-emulator
+    , cardano-slotting             ^>=0.1.1.1
+    , hedgehog-extras
+    , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-network
+    , plutus-core
+    , plutus-ledger-api            ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+    , process
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , async
+    , base                  >=4.9 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , comonad
+    , containers
+    , contra-tracer
+    , directory
+    , filepath
+    , hedgehog
+    , lens
+    , mtl
+    , nonempty-containers
+    , optparse-applicative
+    , postgresql-simple
+    , prettyprinter
+    , serialise
+    , sqlite-simple
+    , stm
+    , streaming
+    , tasty
+    , tasty-golden
+    , tasty-hedgehog
+    , temporary
+    , text
+    , time
+    , transformers

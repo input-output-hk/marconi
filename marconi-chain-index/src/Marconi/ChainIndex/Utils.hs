@@ -28,11 +28,11 @@ import Control.Monad.Except (
  )
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Text (pack)
-import Marconi.ChainIndex.Error (IndexerError (CantStartIndexer))
-import Marconi.ChainIndex.Types (
+import Marconi.Cardano.Core.Types (
   SecurityParam,
   TargetAddresses,
  )
+import Marconi.ChainIndex.Error (IndexerError (CantStartIndexer))
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras (EraMismatch)
 
 isBlockRollbackable :: SecurityParam -> C.BlockNo -> C.BlockNo -> Bool

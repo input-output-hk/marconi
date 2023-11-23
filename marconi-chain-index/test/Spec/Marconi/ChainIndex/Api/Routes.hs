@@ -21,6 +21,7 @@ import Hedgehog (
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
  )
@@ -43,7 +44,6 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
   UtxoTxInput (UtxoTxInput),
   ValueWrapper (ValueWrapper),
  )
-import Marconi.ChainIndex.Types (TxIndexInBlock (TxIndexInBlock))
 import Spec.Marconi.ChainIndex.Api.Gen (
   genBurnTokenEventResult,
   genGetBurnTokenEventsParams,

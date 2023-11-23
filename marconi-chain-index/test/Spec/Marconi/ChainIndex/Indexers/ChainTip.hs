@@ -18,7 +18,7 @@ import Marconi.ChainIndex.Indexers.ChainTip (ChainTipIndexer)
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
 import Marconi.Core qualified as Core
 import System.IO.Temp qualified as Tmp
-import Test.Gen.Marconi.ChainIndex.Mockchain qualified as Gen
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
