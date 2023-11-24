@@ -432,6 +432,8 @@ instance
   where
   query point = const $ fmap Just . restoreLedgerState (Just point)
 
+-- Restoration of the LedgerState
+
 restoreLedgerState
   :: ( MonadIO m
      , MonadError (Core.QueryError (Core.EventAtQuery ExtLedgerStateEvent)) m
@@ -545,24 +547,7 @@ buildNextExtLedgerStateEvent extLedgerCfg currentState block =
           Left err -> throw . Core.IndexerInternalError . Text.pack . show $ err
           Right res -> pure $ ExtLedgerStateEvent res (getBlockNo block)
 
-getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
-getBlockNo (C.BlockInMode block _eraInMode) =
-  case C.getBlockHeader block of C.BlockHeader _ _ b -> b
-
-getEpochNo
-  :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
-  -> Maybe C.EpochNo
-getEpochNo extLedgerState' = case O.ledgerState extLedgerState' of
-  O.LedgerStateByron _st -> Nothing
-  O.LedgerStateShelley st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateAllegra st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateMary st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateAlonzo st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateConway st -> getEpochNoFromShelleyBlock st
-  where
-    getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
-
+-- | File Indexer to save the @ExtLedgerState@
 buildExtLedgerStateEventIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -621,6 +606,7 @@ buildExtLedgerStateEventIndexer codecConfig securityParam' path = do
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
     (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState deserialisePoint)
 
+-- | File Indexer to save the @BlockInMode@
 buildBlockIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -735,6 +721,26 @@ deserialiseBlock codecConfig blockToNode _metadata =
     (Just . C.fromConsensusBlock C.CardanoMode . snd)
     . CBOR.deserialiseFromBytes (O.decodeNodeToClient codecConfig blockToNode)
     . BS.fromStrict
+
+-- Data extraction
+
+getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
+getBlockNo (C.BlockInMode block _eraInMode) =
+  case C.getBlockHeader block of C.BlockHeader _ _ b -> b
+
+getEpochNo
+  :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
+  -> Maybe C.EpochNo
+getEpochNo extLedgerState' = case O.ledgerState extLedgerState' of
+  O.LedgerStateByron _st -> Nothing
+  O.LedgerStateShelley st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateAllegra st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateMary st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateAlonzo st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
+  O.LedgerStateConway st -> getEpochNoFromShelleyBlock st
+  where
+    getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
 
 readGenesisFile
   :: (MonadIO m, MonadError Core.IndexerError m)

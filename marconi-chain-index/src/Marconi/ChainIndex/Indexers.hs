@@ -105,99 +105,97 @@ buildIndexers
       , MarconiChainIndexQueryables
       , SyncStatsCoordinator
       )
-buildIndexers securityParam catchupConfig utxoConfig mintEventConfig epochStateConfig textLogger prettyLogger path = do
-  let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
-      mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
-      blockEventTextLogger = BM.appendName "blockEvent" textLogger
-      blockEventLogger = BM.appendName "blockEvent" mainLogger
-      txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
-      epochStateTextLogger = BM.appendName "epochState" blockEventTextLogger
-      epochSDDTextLogger = BM.appendName "epochSDD" epochStateTextLogger
-      epochNonceTextLogger = BM.appendName "epochNonce" epochStateTextLogger
+buildIndexers
+  securityParam
+  catchupConfig
+  utxoConfig
+  mintEventConfig
+  epochStateConfig
+  textLogger
+  prettyLogger
+  path = do
+    let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
+        mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+        blockEventTextLogger = BM.appendName "blockEvent" textLogger
+        blockEventLogger = BM.appendName "blockEvent" mainLogger
+        txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
+        epochStateTextLogger = BM.appendName "epochState" blockEventTextLogger
+        epochSDDTextLogger = BM.appendName "epochSDD" epochStateTextLogger
+        epochNonceTextLogger = BM.appendName "epochNonce" epochStateTextLogger
 
-  StandardWorker blockInfoMVar blockInfoWorker <-
-    blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
+    StandardWorker blockInfoMVar blockInfoWorker <-
+      blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
 
-  Core.WorkerIndexer epochSDDMVar epochSDDWorker <-
-    epochSDDBuilder
-      securityParam
-      catchupConfig
-      epochSDDTextLogger
-      path
+    Core.WorkerIndexer epochSDDMVar epochSDDWorker <-
+      epochSDDBuilder securityParam catchupConfig epochSDDTextLogger path
+    Core.WorkerIndexer epochNonceMVar epochNonceWorker <-
+      epochNonceBuilder securityParam catchupConfig epochNonceTextLogger path
+    Core.WorkerIndexer _epochStateMVar epochStateWorker <-
+      ExtLedgerStateCoordinator.extLedgerStateWorker
+        epochStateConfig
+        [epochSDDWorker, epochNonceWorker]
+        path
 
-  Core.WorkerIndexer epochNonceMVar epochNonceWorker <-
-    epochNonceBuilder
-      securityParam
-      catchupConfig
-      epochNonceTextLogger
-      path
+    StandardWorker utxoMVar utxoWorker <-
+      utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
+    StandardWorker spentMVar spentWorker <-
+      spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+    StandardWorker datumMVar datumWorker <-
+      datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+    StandardWorker mintTokenMVar mintTokenWorker <-
+      mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
 
-  Core.WorkerIndexer _epochStateMVar epochStateWorker <-
-    ExtLedgerStateCoordinator.extLedgerStateWorker
-      epochStateConfig
-      [epochSDDWorker, epochNonceWorker]
-      path
+    let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+        getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+        toTxBodys :: BlockEvent -> [AnyTxBody]
+        toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+          zipWith (getTxBody bn) [0 ..] txs
 
-  StandardWorker utxoMVar utxoWorker <-
-    utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
-  StandardWorker spentMVar spentWorker <-
-    spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-  StandardWorker datumMVar datumWorker <-
-    datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
-  StandardWorker mintTokenMVar mintTokenWorker <-
-    mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
+    coordinatorTxBodyWorkers <-
+      buildTxBodyCoordinator
+        txBodyCoordinatorLogger
+        (pure . Just . fmap toTxBodys)
+        [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
-  let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
-      getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
-      toTxBodys :: BlockEvent -> [AnyTxBody]
-      toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
-        zipWith (getTxBody bn) [0 ..] txs
+    utxoQueryIndexer <-
+      Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
+        <$> ( lift $
+                UtxoQuery.mkUtxoSQLiteQuery $
+                  UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
+            )
 
-  coordinatorTxBodyWorkers <-
-    buildTxBodyCoordinator
-      txBodyCoordinatorLogger
-      (pure . Just . fmap toTxBodys)
-      [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
+    blockCoordinator <-
+      lift $
+        buildBlockEventCoordinator
+          blockEventLogger
+          [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-  utxoQueryIndexer <-
-    Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
-      <$> ( lift $
-              UtxoQuery.mkUtxoSQLiteQuery $
-                UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
-          )
+    Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
 
-  blockCoordinator <-
-    lift $
-      buildBlockEventCoordinator
-        blockEventLogger
-        [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
+    mainCoordinator <-
+      lift $
+        syncStatsCoordinator
+          mainLogger
+          prettyLogger
+          [blockCoordinator, chainTipWorker]
 
-  Core.WorkerIndexer chainTipMVar chainTipWorker <- chainTipBuilder mainLogger path
+    let currentSyncPointIndexer =
+          Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
+            CurrentSyncPoint.CurrentSyncPointQueryIndexer
+              mainCoordinator
+              blockInfoMVar
+              chainTipMVar
+        queryables =
+          MarconiChainIndexQueryables
+            epochNonceMVar
+            epochSDDMVar
+            (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
+            utxoQueryIndexer
+            currentSyncPointIndexer
 
-  mainCoordinator <-
-    lift $
-      syncStatsCoordinator
-        mainLogger
-        prettyLogger
-        [blockCoordinator, chainTipWorker]
+    resumePoint <- Core.lastStablePoint mainCoordinator
 
-  let currentSyncPointIndexer =
-        Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
-          CurrentSyncPoint.CurrentSyncPointQueryIndexer
-            mainCoordinator
-            blockInfoMVar
-            chainTipMVar
-      queryables =
-        MarconiChainIndexQueryables
-          epochNonceMVar
-          epochSDDMVar
-          (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
-          utxoQueryIndexer
-          currentSyncPointIndexer
-
-  resumePoint <- Core.lastStablePoint mainCoordinator
-
-  pure (resumePoint, queryables, mainCoordinator)
+    pure (resumePoint, queryables, mainCoordinator)
 
 -- | Build and start a coordinator of a bunch of workers that takes an @AnyTxBody@ as an input
 buildBlockEventCoordinator
