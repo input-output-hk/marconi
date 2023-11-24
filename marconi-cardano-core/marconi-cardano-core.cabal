@@ -61,6 +61,8 @@ library
     Marconi.Cardano.Core.Orphans
     Marconi.Cardano.Core.Runner
     Marconi.Cardano.Core.Transformer.WithSyncLog
+    Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Printer
+    Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Prometheus
     Marconi.Cardano.Core.Types
 
   --------------------

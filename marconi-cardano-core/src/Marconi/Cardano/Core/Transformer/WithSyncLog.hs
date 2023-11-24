@@ -7,24 +7,35 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Marconi.Cardano.Core.Transformer.WithSyncLog (
-  WithSyncStats (..),
-  LastSyncStats (..),
+  -- * Transformer
+  WithSyncStats,
   withSyncStats,
-  mkPrintBackend,
-  mkPrometheusBackend,
+
+  -- * Stats
+  LastSyncStats (LastSyncStats),
+  syncStatsNumBlocks,
+  syncStatsNumRollbacks,
+  syncStatsChainSyncPoint,
+  syncStatsNodeTip,
+  syncStatsLastMessageTime,
+  emptyLastSyncStats,
+
+  -- * Backend
+  LoggingBackend (LoggingBackend),
+  loggingBackendAction,
+  loggingBackendTimeBetweenActions,
+  loggingBackendState,
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Trace (logInfo)
 import Control.Lens (Lens', makeLenses, traverseOf, (&), (+~), (.~), (?~), (^.))
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Maybe (isJust)
-import Data.Time (defaultTimeLocale, formatTime)
 import Data.Time.Clock (NominalDiffTime, UTCTime, diffUTCTime, getCurrentTime)
 import Data.Word (Word64)
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.Cardano.Core.Types (MarconiTrace, TipAndBlock (TipAndBlock))
+import Marconi.Cardano.Core.Types (TipAndBlock (TipAndBlock))
 import Marconi.Core qualified as Core
 import Marconi.Core.Class (
   Closeable,
@@ -41,9 +52,6 @@ import Marconi.Core.Transformer.IndexTransformer (
   wrappedIndexer,
   wrapperConfig,
  )
-import Prettyprinter (Pretty, pretty, (<+>))
-import Prometheus qualified as P
-import Text.Printf (printf)
 
 -- | Chain synchronisation statistics measured starting from previously measured 'LastSyncStats'.
 data LastSyncStats = LastSyncStats
@@ -67,13 +75,14 @@ newtype WithSyncStatsConfig event = WithSyncStatsConfig
   { _withSyncStatsConfigBackends :: [LoggingBackend]
   }
 
--- SyncLog -> IO ()
--- SyncLog -> IO SyncLog
-
+-- | The data needed to log to an arbitrary backend
 data LoggingBackend = LoggingBackend
-  { _loggingBackendTracer :: LastSyncStats -> IO () -- Tracer IO LastSyncStats
-  , _loggingBackendTimeBetweenMessages :: NominalDiffTime
+  { _loggingBackendAction :: LastSyncStats -> IO ()
+  -- ^ Logging action
+  , _loggingBackendTimeBetweenActions :: NominalDiffTime
+  -- ^ How much time should elapse between calls to the logging action
   , _loggingBackendState :: LastSyncStats
+  -- ^ The state of the stats for this backend
   }
 
 -- | A logging modifier that adds stats logging to the indexer
@@ -133,7 +142,7 @@ instance
             updateIndexerBlocks idx cp =
               idx
                 & incrementDirection syncStatsNumBlocks
-                & setChainPoint cp
+                & setSyncStatsSyncPoint cp
         if isJust block
           then pure $ updateIndexerBlocks updatedTipIndexer p
           else pure updatedTipIndexer
@@ -148,7 +157,7 @@ instance
       updateIndexerRollbacks idx chainPoint =
         idx
           & incrementDirection syncStatsNumRollbacks
-          & setChainPoint chainPoint
+          & setSyncStatsSyncPoint chainPoint
     res <- rollbackVia unwrap cp indexer
     liftIO
       $ traverseOf
@@ -157,6 +166,7 @@ instance
       $ updateIndexerRollbacks res cp
   setLastStablePoint = setLastStablePointVia unwrap
 
+-- | Runs the action if enough time has elapsed that the @LoggingBackend@'s frequency is respected.
 runAction :: LoggingBackend -> IO LoggingBackend
 runAction
   backend@( LoggingBackend
@@ -183,8 +193,12 @@ runAction
         pure $ backend & loggingBackendState .~ resetStats lss
       else pure backend
 
-setChainPoint :: C.ChainPoint -> WithSyncStats indexer event -> WithSyncStats indexer event
-setChainPoint cp =
+{- | Takes a @ChainPoint@ and a @WithSyncStats@ indexer.
+
+    Sets the sync point of the indexer's stats.
+-}
+setSyncStatsSyncPoint :: C.ChainPoint -> WithSyncStats indexer event -> WithSyncStats indexer event
+setSyncStatsSyncPoint cp =
   syncStatsWrapper
     . wrapperConfig
     . withSyncStatsConfigBackends
@@ -193,6 +207,9 @@ setChainPoint cp =
     . syncStatsChainSyncPoint
     .~ cp
 
+{- | Takes a lens intended to be to either @syncStatsNumBlocks@ or @syncStatsNumRollbacks@ and
+    a @WithSyncStats@ indexer, and increments the value of the lens by one.
+-}
 incrementDirection
   :: Lens' LastSyncStats Word64
   -> WithSyncStats indexer event
@@ -205,107 +222,3 @@ incrementDirection direction =
     . loggingBackendState
     . direction
     +~ 1
-
-mkPrometheusBackend :: IO LoggingBackend
-mkPrometheusBackend = do
-  processedBlocksCounter <-
-    P.register $
-      P.gauge (P.Info "processed_blocks_counter" "Number of processed blocks")
-  processedRollbacksCounter <-
-    P.register $
-      P.gauge (P.Info "processed_rollbacks_counter" "Number of processed rollbacks")
-  blocksPerSecondCounter <-
-    P.register $
-      P.gauge (P.Info "processed_blocks_per_second_counter" "Average of processed blocks per second")
-  pure $
-    LoggingBackend
-      (updateMetrics processedBlocksCounter processedRollbacksCounter blocksPerSecondCounter)
-      60
-      emptyLastSyncStats
-  where
-    updateMetrics :: P.Gauge -> P.Gauge -> P.Gauge -> LastSyncStats -> IO ()
-    updateMetrics rollforwards rollbacks blocksPerSecondGauge (LastSyncStats fw bw _ _ lastTime) = do
-      now <- getCurrentTime
-      let timeSinceLastMsg = diffUTCTime now <$> lastTime
-          blocksThisUpdate = fromInteger . toInteger $ fw
-          blocksPerSecondThisUpdate =
-            maybe
-              0
-              (((blocksThisUpdate * 1000000000000) `div`) . fromEnum)
-              timeSinceLastMsg
-      _ <- P.setGauge rollforwards (fromInteger . toInteger $ fw)
-      _ <- P.setGauge rollbacks (fromInteger . toInteger $ bw)
-      _ <- P.setGauge blocksPerSecondGauge (toEnum blocksPerSecondThisUpdate)
-      pure ()
-
-mkPrintBackend :: MarconiTrace IO -> LoggingBackend
-mkPrintBackend tracer = LoggingBackend (printMessage tracer) 10 emptyLastSyncStats
-
-printMessage :: MarconiTrace IO -> LastSyncStats -> IO ()
-printMessage tracer stats = do
-  now <- getCurrentTime
-  let timeSinceLastMsg = diffUTCTime now <$> (stats ^. syncStatsLastMessageTime)
-
-  logInfo tracer $ pretty $ LastSyncStatsOutput stats timeSinceLastMsg
-
-data LastSyncStatsOutput = LastSyncStatsOutput LastSyncStats (Maybe NominalDiffTime)
-
-instance Pretty LastSyncStatsOutput where
-  pretty = \case
-    LastSyncStatsOutput (LastSyncStats numRollForward numRollBackwards cp nt _) timeSinceLastMsgM ->
-      let currentTipMsg Nothing = ""
-          currentTipMsg (Just _) =
-            "Current synced point is"
-              <+> pretty cp
-              <+> "and current node tip is"
-              <+> pretty nt
-              <> "."
-
-          processingSummaryMsg timeSinceLastMsg =
-            "Processed"
-              <+> pretty numRollForward
-              <+> "blocks and"
-              <+> pretty numRollBackwards
-              <+> "rollbacks in the last"
-              <+> pretty (formatTime defaultTimeLocale "%s" timeSinceLastMsg)
-              <> "s"
-       in case (timeSinceLastMsgM, cp, nt) of
-            (Nothing, _, _) ->
-              "Starting from"
-                <+> pretty cp
-                <> "."
-                <+> currentTipMsg timeSinceLastMsgM
-            (Just _, _, C.ChainTipAtGenesis) ->
-              "Not syncing. Node tip is at Genesis"
-            (Just timeSinceLastMsg, C.ChainPointAtGenesis, C.ChainTip{}) ->
-              "Synchronising (0%)."
-                <+> currentTipMsg timeSinceLastMsgM
-                <+> processingSummaryMsg timeSinceLastMsg
-                <> "."
-            ( Just timeSinceLastMsg
-              , C.ChainPoint (C.SlotNo chainSyncSlot) _
-              , C.ChainTip (C.SlotNo nodeTipSlot) _ _
-              )
-                | nodeTipSlot == chainSyncSlot ->
-                    "Fully synchronised."
-                      <+> currentTipMsg timeSinceLastMsgM
-                      <+> processingSummaryMsg timeSinceLastMsg
-                      <> "."
-            ( Just timeSinceLastMsg
-              , C.ChainPoint (C.SlotNo chainSyncSlot) _
-              , C.ChainTip (C.SlotNo nodeTipSlot) _ _
-              ) ->
-                let pct = ((100 :: Double) * fromIntegral chainSyncSlot) / fromIntegral nodeTipSlot
-                    rate = fromIntegral numRollForward / realToFrac timeSinceLastMsg :: Double
-                    {- If the percentage will be rounded up to 100, we want to avoid logging that
-                      as it's not very user friendly (it falsely implies full synchronisation) -}
-                    progressStr =
-                      if pct < 99.995
-                        then pretty (printf "%.2f" pct :: String) <> "%"
-                        else "almost synced"
-                 in "Synchronising ("
-                      <> progressStr
-                      <> ")."
-                      <+> currentTipMsg timeSinceLastMsgM
-                      <+> processingSummaryMsg timeSinceLastMsg
-                      <+> pretty (printf "(%.0f blocks/s)." rate :: String)
