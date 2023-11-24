@@ -3,8 +3,9 @@ Cardano blockchain
 
 Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH) 
                            (--mainnet | --testnet-magic NATURAL) 
-                           [(-n|--slot-no SLOT-NO)
-                             (-b|--block-header-hash BLOCK-HEADER-HASH)] 
+                           [--start-from-genesis | 
+                             --start-from-last-sync-points | 
+                             --start-from SLOT-NO:BLOCK-HEADER-HASH] 
                            [--max-indexing-depth | --min-indexing-depth NATURAL]
                            [--initial-retry-time NATURAL] 
                            [--no-max-retry-time | --max-retry-time NATURAL]
@@ -27,16 +28,14 @@ Available options:
                            Path to node socket.
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
-  -n,--slot-no SLOT-NO     Slot number of the preferred starting point. Note
-                           that you also need to provide the starting point
-                           block header hash with `--block-header-hash`. Might
-                           fail if the target indexers can't resume from
-                           arbitrary points.
-  -b,--block-header-hash BLOCK-HEADER-HASH
-                           Block header hash of the preferred starting point.
-                           Note that you also need to provide the starting point
-                           slot number with `--slot-no`. Might fail if the
-                           target indexers can't resume from arbitrary points.
+  --start-from-genesis     Start from genesis
+  --start-from-last-sync-points
+                           Start from the minimum last sync point
+  --start-from SLOT-NO:BLOCK-HEADER-HASH
+                           Start from a given slot and block header hash. Usage:
+                           `--start-from SLOT-NO:BLOCK-HEADER-HASH`. Might fail
+                           if the target indexers can't resume from arbitrary
+                           points.
   --max-indexing-depth     Only index blocks that are not rollbackable
   --min-indexing-depth NATURAL
                            Depth of a block before it is indexed in relation to
