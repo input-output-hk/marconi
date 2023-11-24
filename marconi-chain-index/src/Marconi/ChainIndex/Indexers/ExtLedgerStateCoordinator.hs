@@ -224,15 +224,6 @@ data ExtLedgerStateWorkerConfig m input = ExtLedgerStateWorkerConfig
   , workerSecurityParam :: SecurityParam
   }
 
-{-
-  p <- max <$> Core.lastStablePoint epochStateIndexer' <*> Core.lastStablePoint epochBlocksIndexer
-  ledgerState <-
-    either
-      (const $ throwError $ Core.IndexerInternalError "Can't resolve the last stable point")
-      pure
-      =<< runExceptT (restoreLedgerStateFromIndexers genesisCfg p epochStateIndexer' epochBlocksIndexer)
--}
-
 extLedgerStateWorker
   :: forall m input
    . ( MonadIO m
