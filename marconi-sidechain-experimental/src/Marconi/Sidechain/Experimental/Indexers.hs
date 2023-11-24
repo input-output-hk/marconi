@@ -9,13 +9,14 @@ import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask)
 import Data.Text (Text)
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Runner (RunIndexerConfig, runIndexerConfigChainPoint)
 import Marconi.Cardano.Core.Runner qualified as ChainIndex.Runner
-import Marconi.Cardano.Core.Types (SecurityParam, TipAndBlock)
+import Marconi.Cardano.Core.Types (BlockEvent, SecurityParam, TipAndBlock)
 import Marconi.ChainIndex.Indexers (MarconiChainIndexQueryables, SyncStatsCoordinator)
 import Marconi.ChainIndex.Indexers qualified as ChainIndex.Indexers
-import Marconi.ChainIndex.Indexers.EpochState qualified as EpochState
+import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator qualified as EpochState
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.Core (CatchupConfig, IndexerError)
@@ -36,7 +37,8 @@ data SidechainBuildIndexersConfig = SidechainBuildIndexersConfig
   , _sidechainBuildIndexersSecurityParam :: !SecurityParam
   , _sidechainBuildIndexersCatchupConfig :: !CatchupConfig
   , _sidechainBuildIndexersDbPath :: !FilePath
-  , _sidechainBuildIndexersEpochStateConfig :: !EpochState.EpochStateWorkerConfig
+  , _sidechainBuildIndexersEpochStateConfig
+      :: !(EpochState.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent))
   , _sidechainBuildIndexersMintTokenEventConfig :: !MintTokenEvent.MintTokenEventConfig
   , _sidechainBuildIndexersUtxoConfig :: !Utxo.UtxoIndexerConfig
   }

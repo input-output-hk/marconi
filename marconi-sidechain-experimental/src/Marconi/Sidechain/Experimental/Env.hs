@@ -18,14 +18,14 @@ import Data.Set.NonEmpty qualified as NESet
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
+import Marconi.Cardano.Core.Extract.WithDistance (getEvent)
 import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner qualified as ChainIndex.Runner
 import Marconi.Cardano.Core.Types (SecurityParam)
 import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
-import Marconi.ChainIndex.Indexers.EpochState (
-  EpochStateWorkerConfig (EpochStateWorkerConfig),
-  NodeConfig (NodeConfig),
+import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
+  ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
  )
 import Marconi.ChainIndex.Indexers.MintTokenEvent (MintTokenEventConfig (MintTokenEventConfig))
 import Marconi.ChainIndex.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig))
@@ -125,7 +125,7 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
     -- Hard-coded with the same values as chain-index
     catchupConfig = Core.mkCatchupConfig 5000 100
     -- Snapshot config hard-coded as in chain-index
-    epochStateConfig = EpochStateWorkerConfig (NodeConfig nodeConfigPath) 100
+    epochStateConfig = ExtLedgerStateWorkerConfig getEvent trace nodeConfigPath 100 securityParam
     mintBurnConfig = MintTokenEventConfig targetAssets
     -- Explicitly does not include the script.
     utxoConfig = UtxoIndexerConfig filteredAddresses False
