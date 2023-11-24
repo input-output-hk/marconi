@@ -43,7 +43,6 @@ module Marconi.Cardano.Core.Types (
   SecurityParam (SecurityParam),
   IndexingDepth (MinIndexingDepth, MaxIndexingDepth),
   TxIndexInBlock (TxIndexInBlock),
-  ShouldFailIfResync (ShouldFailIfResync),
 
   -- * Configuration for index runners
   RunIndexerConfig (RunIndexerConfig),
@@ -118,15 +117,6 @@ type TxOutRef = C.TxIn
 
 txOutRef :: C.TxId -> C.TxIx -> C.TxIn
 txOutRef = C.TxIn
-
-newtype ShouldFailIfResync = ShouldFailIfResync Bool
-  deriving newtype
-    ( Eq
-    , Ord
-    , Show
-    , Aeson.FromJSON
-    , Aeson.ToJSON
-    )
 
 data IndexingDepth = MinIndexingDepth !Word64 | MaxIndexingDepth
   deriving (Eq, Show, Generic, Aeson.FromJSON, Aeson.ToJSON)

@@ -30,7 +30,6 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
   IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   RetryConfig (RetryConfig),
-  ShouldFailIfResync (ShouldFailIfResync),
   TargetAddresses,
   UtxoIndexerConfig (UtxoIndexerConfig),
   addressDatumDbName,
@@ -160,9 +159,6 @@ data Options = Options
   -- separated by @.@.
   , optionsNodeConfigPath :: !(Maybe FilePath)
   -- ^ Path to the node config
-  , optionsFailsIfResync :: !ShouldFailIfResync
-  -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
-  -- synced point.
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -221,7 +217,6 @@ optionsParser =
     <*> commonMaybeTargetAddressParser
     <*> commonMaybeTargetAssetParser
     <*> optional commonNodeConfigPathParser
-    <*> commonShouldFailIfResyncParser
 
 -- * Database paths
 
@@ -385,15 +380,6 @@ commonNodeConfigPathParser =
   Opt.strOption $
     Opt.long "node-config-path"
       <> Opt.help "Path to node configuration which you are connecting to."
-
-commonShouldFailIfResyncParser :: Opt.Parser ShouldFailIfResync
-commonShouldFailIfResyncParser =
-  ShouldFailIfResync
-    <$> Opt.switch
-      ( Opt.long "fail-if-resyncing-from-genesis"
-          <> Opt.help
-            "Fails resuming if one indexer must resync from genesis when it can resume from a later point."
-      )
 
 -- | Allow the user to specify the retry config when the connection to the node is lost.
 commonRetryConfigParser :: Opt.Parser RetryConfig

@@ -16,7 +16,6 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
   IndexingDepth,
   RetryConfig,
-  ShouldFailIfResync,
   TargetAddresses,
  )
 import Marconi.ChainIndex.CLI qualified as Cli
@@ -40,9 +39,6 @@ data CliArgs = CliArgs
   -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
   , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   -- ^ a list of asset to track
-  , optionsFailsIfResync :: !ShouldFailIfResync
-  -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
-  -- synced point.
   , optionsRetryConfig :: !RetryConfig
   , optionsChainPoint :: !C.ChainPoint
   }
@@ -71,6 +67,5 @@ parserCliArgs =
     <*> Cli.commonMinIndexingDepthParser
     <*> Cli.commonMaybeTargetAddressParser
     <*> Cli.commonMaybeTargetAssetParser
-    <*> Cli.commonShouldFailIfResyncParser
     <*> Cli.commonRetryConfigParser
     <*> Cli.chainPointParser

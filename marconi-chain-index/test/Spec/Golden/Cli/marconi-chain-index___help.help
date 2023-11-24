@@ -15,8 +15,7 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
                            [--http-port INT] 
                            [(-a|--addresses-to-index BECH32-ADDRESS)] 
                            [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
-                           [--node-config-path ARG] 
-                           [--fail-if-resyncing-from-genesis]
+                           [--node-config-path ARG]
 
   marconi
 
@@ -70,6 +69,3 @@ Available options:
                            policy-id-2" ..."
   --node-config-path ARG   Path to node configuration which you are connecting
                            to.
-  --fail-if-resyncing-from-genesis
-                           Fails resuming if one indexer must resync from
-                           genesis when it can resume from a later point.
