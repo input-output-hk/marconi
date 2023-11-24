@@ -5,7 +5,6 @@ Usage: marconi-sidechain-experimental
          [--version] (-s|--socket-path FILE-PATH) --node-config-path ARG
          (-d|--db-dir DIR) [--http-port INT] 
          (--mainnet | --testnet-magic NATURAL) 
-         [--max-indexing-depth | --min-indexing-depth NATURAL] 
          [(-a|--addresses-to-index BECH32-ADDRESS)] 
          [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
          [--fail-if-resyncing-from-genesis] [--initial-retry-time NATURAL] 
@@ -27,10 +26,6 @@ Available options:
   --http-port INT          JSON-RPC http port number (default: 3000)
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
-  --max-indexing-depth     Only index blocks that are not rollbackable
-  --min-indexing-depth NATURAL
-                           Depth of a block before it is indexed in relation to
-                           the tip of the local connected node
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
                            "--addresses-to-index address-1 --addresses-to-index
