@@ -41,7 +41,6 @@ module Marconi.Cardano.Core.Types (
   epochStateDbName,
   mintBurnDbName,
   SecurityParam (SecurityParam),
-  IndexingDepth (MinIndexingDepth, MaxIndexingDepth),
   TxIndexInBlock (TxIndexInBlock),
   ShouldFailIfResync (ShouldFailIfResync),
 
@@ -127,9 +126,6 @@ newtype ShouldFailIfResync = ShouldFailIfResync Bool
     , Aeson.FromJSON
     , Aeson.ToJSON
     )
-
-data IndexingDepth = MinIndexingDepth !Word64 | MaxIndexingDepth
-  deriving (Eq, Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
 
 newtype SecurityParam = SecurityParam Word64
   deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show)
