@@ -93,7 +93,9 @@ library
     Marconi.ChainIndex.Indexers.Coordinator
     Marconi.ChainIndex.Indexers.CurrentSyncPointQuery
     Marconi.ChainIndex.Indexers.Datum
-    Marconi.ChainIndex.Indexers.EpochState
+    Marconi.ChainIndex.Indexers.EpochNonce
+    Marconi.ChainIndex.Indexers.EpochSDD
+    Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator
     Marconi.ChainIndex.Indexers.MintTokenEvent
     Marconi.ChainIndex.Indexers.MintTokenEventQuery
     Marconi.ChainIndex.Indexers.Spent
