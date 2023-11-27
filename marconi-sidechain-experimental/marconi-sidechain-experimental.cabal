@@ -131,6 +131,7 @@ test-suite marconi-sidechain-experimental-test
   other-modules:
     Spec.Marconi.Sidechain.Experimental.CLI
     Spec.Marconi.Sidechain.Experimental.CLIInputValidation
+    Spec.Marconi.Sidechain.Experimental.Routes
     Spec.Marconi.Sidechain.Experimental.Utils
 
   --------------------

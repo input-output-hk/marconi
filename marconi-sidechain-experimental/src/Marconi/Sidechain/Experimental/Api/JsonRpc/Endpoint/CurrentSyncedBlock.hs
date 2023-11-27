@@ -2,7 +2,11 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 
-module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock where
+module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+  RpcCurrentSyncedBlockMethod,
+  getCurrentSyncedBlockHandler,
+  ChainIndex.GetCurrentSyncedBlockResult (..),
+) where
 
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock qualified as ChainIndex
 import Marconi.ChainIndex.Orphans ()
