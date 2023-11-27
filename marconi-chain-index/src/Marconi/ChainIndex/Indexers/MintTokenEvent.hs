@@ -97,8 +97,8 @@ import Cardano.Ledger.Mary.Value (
  )
 import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
+import Control.Monad.IO.Class (MonadIO)
 import Data.ByteString.Short qualified as Short
 import Data.Foldable (foldlM)
 import Data.Function (on, (&))

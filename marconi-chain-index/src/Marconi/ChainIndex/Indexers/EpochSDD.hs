@@ -35,9 +35,9 @@ import Cardano.Ledger.UMap qualified as Ledger
 import Control.Arrow ((<<<))
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadTrans (lift))
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Trans (lift)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Coerce (coerce)
 import Data.Foldable (Foldable (toList))

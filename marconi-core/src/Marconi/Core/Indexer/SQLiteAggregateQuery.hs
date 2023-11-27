@@ -21,7 +21,8 @@ import Control.Concurrent qualified as Con
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
-import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Trans (MonadTrans (lift))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Database.SQLite.Simple (NamedParam ((:=)))

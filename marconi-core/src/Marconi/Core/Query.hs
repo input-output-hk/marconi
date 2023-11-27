@@ -27,14 +27,13 @@ import Control.Comonad (Comonad (duplicate, extract))
 import Control.Lens (over)
 import Control.Lens qualified as Lens
 import Control.Lens.Operators ((^.), (^..), (^?))
-import Control.Monad (when)
+import Control.Monad (when, (<=<))
 import Control.Monad.Except (
   ExceptT,
   MonadError (catchError, throwError),
-  MonadIO (liftIO),
   runExceptT,
-  (<=<),
  )
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString qualified as BS
 import Data.Function (on)
 import Data.List (find, sortBy)

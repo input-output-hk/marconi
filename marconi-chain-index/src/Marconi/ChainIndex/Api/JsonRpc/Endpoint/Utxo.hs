@@ -11,8 +11,9 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
 import Cardano.Api qualified as C
 import Control.Lens (view, (^.))
 import Control.Monad (join, unless)
-import Control.Monad.Except (ExceptT, MonadError (throwError), MonadTrans (lift), runExceptT)
+import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans (lift)
 import Data.Bifunctor (bimap, first)
 import Data.Text (pack)
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult (

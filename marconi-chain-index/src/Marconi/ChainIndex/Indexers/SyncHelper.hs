@@ -13,8 +13,8 @@ module Marconi.ChainIndex.Indexers.SyncHelper (
 ) where
 
 import Cardano.Api qualified as C
-import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Marconi.Cardano.Core.Orphans ()

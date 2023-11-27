@@ -16,8 +16,8 @@ import Codec.CBOR.Decoding qualified as CBOR
 import Codec.CBOR.Encoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
-import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BS.Lazy
 import Data.ByteString.Short qualified as BS.Short

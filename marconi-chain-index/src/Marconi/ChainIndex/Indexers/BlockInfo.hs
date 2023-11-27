@@ -36,9 +36,8 @@ import Cardano.BM.Data.Trace (Trace)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (when)
-import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError (throwError))
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
 import Data.String (fromString)

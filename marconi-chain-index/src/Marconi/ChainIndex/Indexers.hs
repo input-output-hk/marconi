@@ -11,8 +11,9 @@ import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar)
 import Control.Lens (makeLenses, (?~))
-import Control.Monad.Cont (MonadIO)
-import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
+import Control.Monad.Except (ExceptT, MonadError)
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Trans (lift)
 import Data.Function ((&))
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
