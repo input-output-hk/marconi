@@ -117,18 +117,6 @@ type TxOutRef = C.TxIn
 txOutRef :: C.TxId -> C.TxIx -> C.TxIn
 txOutRef = C.TxIn
 
-data IndexingDepth = MinIndexingDepth !Word64 | MaxIndexingDepth
-  deriving (Eq, Show, Generic, Aeson.FromJSON, Aeson.ToJSON)
-
-newtype ShouldFailIfResync = ShouldFailIfResync Bool
-  deriving newtype
-    ( Eq
-    , Ord
-    , Show
-    , Aeson.FromJSON
-    , Aeson.ToJSON
-    )
-
 newtype SecurityParam = SecurityParam Word64
   deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show)
 
