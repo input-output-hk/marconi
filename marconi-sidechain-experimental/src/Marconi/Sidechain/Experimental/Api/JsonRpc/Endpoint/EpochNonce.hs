@@ -22,11 +22,11 @@ type RpcEpochNonceMethod =
     "getNonceByEpoch"
     Word64
     String
-    SidechainEpochNonceResult
+    GetEpochNonceResult
 
 {- TYPES -}
 
-type SidechainEpochNonceResult = Maybe NonceResult
+type GetEpochNonceResult = Maybe NonceResult
 
 -- | Result type that determines the JSON shape.
 data NonceResult = NonceResult
@@ -46,10 +46,10 @@ and result types to match the ones of this package.
 getEpochNonceHandler
   :: Word64
   -- ^ EpochNo
-  -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) SidechainEpochNonceResult)
+  -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) GetEpochNonceResult)
 getEpochNonceHandler = withChainIndexHandler . fmap (fmap mapResult) . ChainIndex.EpochState.getEpochNonceHandler
   where
-    mapResult :: ChainIndex.EpochState.EpochNonceResult -> SidechainEpochNonceResult
+    mapResult :: ChainIndex.EpochState.EpochNonceResult -> GetEpochNonceResult
     mapResult (ChainIndex.EpochState.EpochNonceResult hash bn _ sn nc) =
       let nonce' = maybe Ledger.NeutralNonce Ledger.Nonce nc
        in NonceResult nonce' sn hash <$> bn
