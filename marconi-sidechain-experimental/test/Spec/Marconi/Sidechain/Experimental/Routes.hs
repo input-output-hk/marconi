@@ -4,6 +4,7 @@ module Spec.Marconi.Sidechain.Experimental.Routes (tests) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.Crypto.Hash.Class qualified as Crypto
 import Control.Monad (forM)
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
@@ -20,6 +21,9 @@ import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation (
   ActiveSDDResult (ActiveSDDResult),
   GetEpochActiveStakePoolDelegationResult (GetEpochActiveStakePoolDelegationResult),
+ )
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce (
+  NonceResult (NonceResult),
  )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
   AddressUtxoResult (AddressUtxoResult),
@@ -58,16 +62,15 @@ tests =
             "test/Spec/Golden/Routes/mintingpolicyhash-tx-response.json"
             goldenGetBurnTokenEventResult
         , goldenVsStringDiff
-            "Golden test for EpochStakePoolDelegationResult in JSON format"
+            "Golden test for GetEpochStakePoolDelegationResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/epoch-stakepooldelegation-response.json"
             goldenGetEpochActiveStakePoolDelegationResult
-            -- TODO: PLT-8630
-            --        , goldenVsStringDiff
-            --            "Golden test for EpochNonResult in JSON format"
-            --            (\expected actual -> ["diff", "--color=always", expected, actual])
-            --            "test/Spec/Golden/Routes/epoch-nonce-response.json"
-            --            goldenEpochNonceResult
+        , goldenVsStringDiff
+            "Golden test for GetEpochNonceResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/epoch-nonce-response.json"
+            goldenGetEpochNonceResult
         ]
     ]
 
@@ -234,4 +237,31 @@ goldenGetEpochActiveStakePoolDelegationResult = do
 
   let sdds = fmap (\poolId -> ActiveSDDResult poolId lovelace slotNo (Just blockHeaderHash) blockNo) poolIds
       result = GetEpochActiveStakePoolDelegationResult sdds
+  pure $ Aeson.encodePretty result
+
+{- GetEpochNonceResult -}
+
+goldenGetEpochNonceResult :: IO ByteString
+goldenGetEpochNonceResult = do
+  let blockHeaderHashRawBytes = "fdd5eb1b1e9fc278a08aef2f6c0fe9b576efd76966cc552d8c5a59271dc01604"
+  blockHeaderHash <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex
+        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        blockHeaderHashRawBytes
+
+  let nonce =
+        Just $
+          Crypto.castHash $
+            Crypto.hashWith id "162d29c4e1cf6b8a84f2d692e67a3ac6bc7851bc3e6e4afe64d15778bed8bd86"
+
+  let result =
+        Just $
+          NonceResult
+            nonce
+            (Just $ C.SlotNo 518400)
+            (Just blockHeaderHash)
+            (C.BlockNo 21645)
   pure $ Aeson.encodePretty result
