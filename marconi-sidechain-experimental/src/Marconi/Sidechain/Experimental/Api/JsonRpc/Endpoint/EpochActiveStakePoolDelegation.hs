@@ -14,8 +14,8 @@ import Cardano.Api.Shelley qualified as C
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
+import Marconi.Cardano.Core.Orphans ()
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState qualified as ChainIndex
-import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)

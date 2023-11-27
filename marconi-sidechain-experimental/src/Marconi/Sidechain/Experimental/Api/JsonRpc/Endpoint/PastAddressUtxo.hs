@@ -3,11 +3,18 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE StrictData #-}
 
-module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo where
+module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
+  RpcPastAddressUtxoMethod,
+  getPastAddressUtxoHandler,
+  ChainIndex.GetUtxosFromAddressResult (..),
+  ChainIndex.AddressUtxoResult (..),
+  ChainIndex.UtxoTxInput (..),
+) where
 
+import Marconi.Cardano.Core.Orphans ()
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo qualified as ChainIndex
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
-import Marconi.ChainIndex.Orphans ()
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers qualified as ChainIndex
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
