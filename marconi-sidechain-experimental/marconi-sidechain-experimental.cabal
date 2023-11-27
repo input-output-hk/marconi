@@ -83,7 +83,8 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api          ^>=8.20
+    , cardano-api           ^>=8.20
+    , cardano-crypto-class
     , cardano-ledger-core
     , iohk-monitoring
 
