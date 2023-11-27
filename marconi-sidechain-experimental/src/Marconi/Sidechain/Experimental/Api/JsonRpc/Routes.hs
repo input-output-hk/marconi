@@ -14,6 +14,9 @@ import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolD
   RpcEpochActiveStakePoolDelegationMethod,
  )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce (RpcEpochNonceMethod)
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
+  RpcPastAddressUtxoMethod,
+ )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses (
   RpcTargetAddressesMethod,
  )
@@ -27,9 +30,7 @@ type RpcAPI =
   RpcEchoMethod
     :<|> RpcTargetAddressesMethod
     :<|> RpcCurrentSyncedBlockMethod
+    :<|> RpcPastAddressUtxoMethod
     :<|> RpcGetBurnTokenEventsMethod
     :<|> RpcEpochActiveStakePoolDelegationMethod
     :<|> RpcEpochNonceMethod
-
--- TODO:
--- :<|> RpcPastAddressUtxoMethod

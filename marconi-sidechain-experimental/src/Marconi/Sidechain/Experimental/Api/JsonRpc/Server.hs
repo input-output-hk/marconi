@@ -12,6 +12,9 @@ import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolD
   getEpochActiveStakePoolDelegationHandler,
  )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochNonce (getEpochNonceHandler)
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
+  getPastAddressUtxoHandler,
+ )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses (
   getTargetAddressesQueryHandler,
  )
@@ -25,6 +28,7 @@ jsonRpcServer =
   echo
     :<|> getTargetAddressesQueryHandler
     :<|> getCurrentSyncedBlockHandler
+    :<|> getPastAddressUtxoHandler
     :<|> getBurnTokenEventsHandler
     :<|> getEpochActiveStakePoolDelegationHandler
     :<|> getEpochNonceHandler

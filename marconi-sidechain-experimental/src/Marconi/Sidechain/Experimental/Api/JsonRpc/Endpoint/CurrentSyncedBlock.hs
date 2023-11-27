@@ -1,13 +1,10 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock where
 
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock qualified as ChainIndex
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip qualified as ChainIndex
 import Marconi.ChainIndex.Orphans ()
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
