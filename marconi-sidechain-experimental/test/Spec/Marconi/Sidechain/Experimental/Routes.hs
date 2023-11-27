@@ -7,6 +7,10 @@ import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
 import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent (
+  BurnTokenEventResult (BurnTokenEventResult),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
+ )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
   Tip (Tip),
@@ -31,23 +35,23 @@ tests =
             "Golden test for GetCurrentSyncedBlockResult in JSON format when chain point is at genesis"
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/current-synced-point-response-1.json"
-            goldenGetCurrentChainPointGenesisResult
+            goldenGetCurrentSyncedBlockChainPointGenesisResult
         , goldenVsStringDiff
-            "Golden test for CurrentSyncedBlockResult in JSON format when chain point is at point other than genesis"
+            "Golden test for GetCurrentSyncedBlockResult in JSON format when chain point is at point other than genesis"
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/current-synced-point-response-2.json"
-            goldenCurrentChainPointResult
+            goldenCurrentSyncedBlockChainPointResult
         , goldenVsStringDiff
-            "Golden test for AddressUtxoResult in JSON format"
+            "Golden test for GetUtxosFromAddressResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
             "test/Spec/Golden/Routes/address-utxo-response.json"
             goldenGetUtxosFromAddressResult
+        , goldenVsStringDiff
+            "Golden test for GetBurnTokenEventsResult in JSON format"
+            (\expected actual -> ["diff", "--color=always", expected, actual])
+            "test/Spec/Golden/Routes/mintingpolicyhash-tx-response.json"
+            goldenGetBurnTokenEventResult
             -- TODO: PLT-8630
-            --        , goldenVsStringDiff
-            --            "Golden test for MintingPolicyHashTxResult in JSON format"
-            --            (\expected actual -> ["diff", "--color=always", expected, actual])
-            --            "test/Spec/Golden/Routes/mintingpolicyhash-tx-response.json"
-            --            goldenMintingPolicyHashTxResult
             --        , goldenVsStringDiff
             --            "Golden test for EpochStakePoolDelegationResult in JSON format"
             --            (\expected actual -> ["diff", "--color=always", expected, actual])
@@ -66,11 +70,11 @@ tests =
 emptyGetCurrentSyncedBlockResult :: GetCurrentSyncedBlockResult
 emptyGetCurrentSyncedBlockResult = GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing Nothing Nothing
 
-goldenGetCurrentChainPointGenesisResult :: IO ByteString
-goldenGetCurrentChainPointGenesisResult = pure $ Aeson.encodePretty emptyGetCurrentSyncedBlockResult
+goldenGetCurrentSyncedBlockChainPointGenesisResult :: IO ByteString
+goldenGetCurrentSyncedBlockChainPointGenesisResult = pure $ Aeson.encodePretty emptyGetCurrentSyncedBlockResult
 
-goldenCurrentChainPointResult :: IO ByteString
-goldenCurrentChainPointResult = do
+goldenCurrentSyncedBlockChainPointResult :: IO ByteString
+goldenCurrentSyncedBlockChainPointResult = do
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
       epochNo = C.EpochNo 6
       blockNo = C.BlockNo 64903
@@ -157,4 +161,39 @@ goldenGetUtxosFromAddressResult = do
             [UtxoTxInput txId (C.TxIx 0)]
         ]
       result = GetUtxosFromAddressResult utxos
+  pure $ Aeson.encodePretty result
+
+{- GetBurnTokenEvent -}
+goldenGetBurnTokenEventResult :: IO ByteString
+goldenGetBurnTokenEventResult = do
+  let redeemerData = C.ScriptDataNumber 34
+  let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
+  txId <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex C.AsTxId txIdRawBytes
+
+  let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
+  blockHeaderHash <-
+    either
+      (error . show)
+      pure
+      $ C.deserialiseFromRawBytesHex
+        (C.AsHash (C.proxyToAsType $ Proxy @C.BlockHeader))
+        blockHeaderHashRawBytes
+
+  let mints =
+        [ BurnTokenEventResult
+            (Just $ C.SlotNo 1)
+            (Just blockHeaderHash)
+            (C.BlockNo 1047)
+            txId
+            (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
+            (Just redeemerData)
+            (C.AssetName "")
+            (C.Quantity 10)
+            True
+        ]
+      result = GetBurnTokenEventsResult mints
   pure $ Aeson.encodePretty result

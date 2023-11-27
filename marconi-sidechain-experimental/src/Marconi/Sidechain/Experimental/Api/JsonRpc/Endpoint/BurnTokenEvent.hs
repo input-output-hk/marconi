@@ -6,7 +6,13 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
 
-module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent where
+module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent (
+  RpcGetBurnTokenEventsMethod,
+  GetBurnTokenEventsParams (..),
+  ChainIndex.GetBurnTokenEventsResult (..),
+  ChainIndex.BurnTokenEventResult (..),
+  getBurnTokenEventsHandler,
+) where
 
 import Cardano.Api qualified as C
 import Data.Aeson (FromJSON, ToJSON)
