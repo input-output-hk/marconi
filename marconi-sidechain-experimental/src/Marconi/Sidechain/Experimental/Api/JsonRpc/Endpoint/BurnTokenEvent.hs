@@ -25,8 +25,6 @@ type RpcGetBurnTokenEventsMethod =
     "getBurnTokenEvents"
     GetBurnTokenEventsParams
     String
-    -- NOTE: record field names and thus JSON shape identical to existing
-    -- marconi-sidechain version of this result type.
     ChainIndex.GetBurnTokenEventsResult
 
 {- TYPES -}
@@ -55,9 +53,6 @@ sidechainParamsToChainIndexParams GetBurnTokenEventsParams{..} =
 
 {- HANDLER -}
 
-{- | TODO: PLT-8630 check again that the results are the same. need to compare directly from code
-in absence of tests.
--}
 getBurnTokenEventsHandler
   :: GetBurnTokenEventsParams
   -> ReaderHandler

@@ -17,12 +17,10 @@ type RpcCurrentSyncedBlockMethod =
     "getCurrentSyncedBlock"
     UnusedRequestParams
     String
-    -- TODO: PLT-8630 do we need to model WithOrigin from marconi-sidechain version?
     ChainIndex.GetCurrentSyncedBlockResult
 
 {- HANDLER -}
 
--- | TODO: PLT-8630 be sure it is the same as for marconi-sidechain
 getCurrentSyncedBlockHandler
   :: UnusedRequestParams
   -- ^ Will be an empty string, empty object, or null, as we are ignoring this param, and returning everything

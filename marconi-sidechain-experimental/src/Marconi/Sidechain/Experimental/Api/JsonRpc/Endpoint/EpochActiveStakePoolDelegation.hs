@@ -57,7 +57,6 @@ sidechainActiveSDDResultFromChainIndex ChainIndex.ActiveSDDResult{..} =
 
 {- HANDLER -}
 
--- | TODO: PLT-8630 compare marconi-sidechain and marconi-chain-index implementations
 getEpochActiveStakePoolDelegationHandler
   :: Word64
   -> ReaderHandler
