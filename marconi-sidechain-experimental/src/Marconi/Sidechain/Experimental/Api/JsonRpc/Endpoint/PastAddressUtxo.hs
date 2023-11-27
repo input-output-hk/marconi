@@ -9,6 +9,8 @@ module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
   ChainIndex.GetUtxosFromAddressResult (..),
   ChainIndex.AddressUtxoResult (..),
   ChainIndex.UtxoTxInput (..),
+  ChainIndex.ValueWrapper (..),
+  ChainIndex.SpentInfoResult (..),
 ) where
 
 import Marconi.Cardano.Core.Orphans ()
