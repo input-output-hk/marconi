@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Printer (
+module Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer (
   LastSyncStatsOutput (..),
   mkPrintBackend,
 ) where
@@ -10,9 +10,9 @@ import Cardano.Api qualified as C
 import Cardano.BM.Trace (logInfo)
 import Control.Lens ((^.))
 import Data.Time (NominalDiffTime, defaultTimeLocale, diffUTCTime, formatTime, getCurrentTime)
-import Marconi.Cardano.Core.Transformer.WithSyncLog (
+import Marconi.Cardano.Core.Transformer.WithSyncStats (
   LastSyncStats (LastSyncStats),
-  LoggingBackend (LoggingBackend),
+  StatsBackend (StatsBackend),
   emptyLastSyncStats,
   syncStatsLastMessageTime,
  )
@@ -26,9 +26,9 @@ import Text.Printf (printf)
 		Takes a @NominalDiffTime@ which determines how frequently we send stats to Prometheus and a
 		@MarconiTrace IO@ with which it performs the tracing.
 -}
-mkPrintBackend :: MarconiTrace IO -> NominalDiffTime -> LoggingBackend
+mkPrintBackend :: MarconiTrace IO -> NominalDiffTime -> StatsBackend
 mkPrintBackend tracer timeBetween =
-  LoggingBackend
+  StatsBackend
     (printMessage tracer)
     timeBetween
     emptyLastSyncStats

@@ -60,9 +60,9 @@ library
     Marconi.Cardano.Core.Node.Client.Retry
     Marconi.Cardano.Core.Orphans
     Marconi.Cardano.Core.Runner
-    Marconi.Cardano.Core.Transformer.WithSyncLog
-    Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Printer
-    Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Prometheus
+    Marconi.Cardano.Core.Transformer.WithSyncStats
+    Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer
+    Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Prometheus
     Marconi.Cardano.Core.Types
 
   --------------------

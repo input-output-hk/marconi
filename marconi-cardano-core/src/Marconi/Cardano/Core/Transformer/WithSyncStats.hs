@@ -6,7 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.Cardano.Core.Transformer.WithSyncLog (
+module Marconi.Cardano.Core.Transformer.WithSyncStats (
   -- * Transformer
   WithSyncStats,
   withSyncStats,
@@ -21,10 +21,10 @@ module Marconi.Cardano.Core.Transformer.WithSyncLog (
   emptyLastSyncStats,
 
   -- * Backend
-  LoggingBackend (LoggingBackend),
-  loggingBackendAction,
-  loggingBackendTimeBetweenActions,
-  loggingBackendState,
+  StatsBackend (StatsBackend),
+  statsBackendAction,
+  statsBackendTimeBetweenActions,
+  statsBackendState,
 ) where
 
 import Cardano.Api qualified as C
@@ -72,20 +72,20 @@ emptyLastSyncStats :: LastSyncStats
 emptyLastSyncStats = LastSyncStats 0 0 C.ChainPointAtGenesis C.ChainTipAtGenesis Nothing
 
 newtype WithSyncStatsConfig event = WithSyncStatsConfig
-  { _withSyncStatsConfigBackends :: [LoggingBackend]
+  { _withSyncStatsConfigBackends :: [StatsBackend]
   }
 
--- | The data needed to log to an arbitrary backend
-data LoggingBackend = LoggingBackend
-  { _loggingBackendAction :: LastSyncStats -> IO ()
-  -- ^ Logging action
-  , _loggingBackendTimeBetweenActions :: NominalDiffTime
-  -- ^ How much time should elapse between calls to the logging action
-  , _loggingBackendState :: LastSyncStats
+-- | The data needed to act upon stats with an arbitrary backend
+data StatsBackend = StatsBackend
+  { _statsBackendAction :: LastSyncStats -> IO ()
+  -- ^ Action upon stats
+  , _statsBackendTimeBetweenActions :: NominalDiffTime
+  -- ^ How much time should elapse between calls to the action
+  , _statsBackendState :: LastSyncStats
   -- ^ The state of the stats for this backend
   }
 
--- | A logging modifier that adds stats logging to the indexer
+-- | A modifier that adds sync stats to the indexer
 newtype WithSyncStats indexer event = WithSyncStats
   { _syncStatsWrapper :: IndexTransformer WithSyncStatsConfig indexer event
   }
@@ -93,7 +93,7 @@ newtype WithSyncStats indexer event = WithSyncStats
 makeLenses 'LastSyncStats
 makeLenses 'WithSyncStats
 makeLenses 'WithSyncStatsConfig
-makeLenses 'LoggingBackend
+makeLenses 'StatsBackend
 
 deriving via
   (IndexTransformer WithSyncStatsConfig indexer)
@@ -112,7 +112,7 @@ deriving via
 
 -- | A smart constructor for @WithSyncStats@
 withSyncStats
-  :: [LoggingBackend]
+  :: [StatsBackend]
   -> indexer event
   -> WithSyncStats indexer event
 withSyncStats backends = WithSyncStats . IndexTransformer (WithSyncStatsConfig backends)
@@ -136,7 +136,7 @@ instance
                   . wrapperConfig
                   . withSyncStatsConfigBackends
                   . traverse
-                  . loggingBackendState
+                  . statsBackendState
                   . syncStatsNodeTip
                   .~ tip
             updateIndexerBlocks idx cp =
@@ -166,10 +166,10 @@ instance
       $ updateIndexerRollbacks res cp
   setLastStablePoint = setLastStablePointVia unwrap
 
--- | Runs the action if enough time has elapsed that the @LoggingBackend@'s frequency is respected.
-runAction :: LoggingBackend -> IO LoggingBackend
+-- | Runs the action if enough time has elapsed that the @StatsBackend@'s frequency is respected.
+runAction :: StatsBackend -> IO StatsBackend
 runAction
-  backend@( LoggingBackend
+  backend@( StatsBackend
               action
               timeBetweenActions
               lss@(LastSyncStats _ _ _ _ timeOfLastMsg)
@@ -190,7 +190,7 @@ runAction
     if shouldPrint
       then do
         action lss
-        pure $ backend & loggingBackendState .~ resetStats lss
+        pure $ backend & statsBackendState .~ resetStats lss
       else pure backend
 
 {- | Takes a @ChainPoint@ and a @WithSyncStats@ indexer.
@@ -203,7 +203,7 @@ setSyncStatsSyncPoint cp =
     . wrapperConfig
     . withSyncStatsConfigBackends
     . traverse
-    . loggingBackendState
+    . statsBackendState
     . syncStatsChainSyncPoint
     .~ cp
 
@@ -219,6 +219,6 @@ incrementDirection direction =
     . wrapperConfig
     . withSyncStatsConfigBackends
     . traverse
-    . loggingBackendState
+    . statsBackendState
     . direction
     +~ 1

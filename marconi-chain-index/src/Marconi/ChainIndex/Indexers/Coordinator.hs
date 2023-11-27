@@ -12,12 +12,12 @@ import Cardano.BM.Tracing (Trace)
 import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
 import Data.Text (Text)
 import Marconi.Cardano.Core.Orphans qualified ()
-import Marconi.Cardano.Core.Transformer.WithSyncLog (
+import Marconi.Cardano.Core.Transformer.WithSyncStats (
   WithSyncStats,
   withSyncStats,
  )
-import Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Printer (mkPrintBackend)
-import Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Prometheus (mkPrometheusBackend)
+import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer (mkPrintBackend)
+import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Prometheus (mkPrometheusBackend)
 import Marconi.Cardano.Core.Types (MarconiTrace)
 import Marconi.Core qualified as Core
 

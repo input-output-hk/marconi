@@ -11,10 +11,10 @@ import Data.Word (Word64)
 import Marconi.Cardano.Core.Logger (
   marconiFormatting,
  )
-import Marconi.Cardano.Core.Transformer.WithSyncLog (
+import Marconi.Cardano.Core.Transformer.WithSyncStats (
   LastSyncStats (LastSyncStats),
  )
-import Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Printer (
+import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer (
   LastSyncStatsOutput (LastSyncStatsOutput),
  )
 import Prettyprinter (Pretty (pretty))

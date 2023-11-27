@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Marconi.Cardano.Core.Transformer.WithSyncLog.Backend.Prometheus where
+module Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Prometheus where
 
 import Data.Time (NominalDiffTime)
-import Marconi.Cardano.Core.Transformer.WithSyncLog (
+import Marconi.Cardano.Core.Transformer.WithSyncStats (
   LastSyncStats (LastSyncStats),
-  LoggingBackend (LoggingBackend),
+  StatsBackend (StatsBackend),
   emptyLastSyncStats,
  )
 import Prometheus qualified as P
@@ -15,7 +15,7 @@ import Prometheus qualified as P
 
 		Takes a @NominalDiffTime@ which determines how frequently we send stats to Prometheus.
 -}
-mkPrometheusBackend :: NominalDiffTime -> IO LoggingBackend
+mkPrometheusBackend :: NominalDiffTime -> IO StatsBackend
 mkPrometheusBackend timeBetween = do
   processedBlocksCounter <-
     P.register $
@@ -24,7 +24,7 @@ mkPrometheusBackend timeBetween = do
     P.register $
       P.gauge (P.Info "processed_rollbacks_counter" "Number of processed rollbacks")
   pure $
-    LoggingBackend
+    StatsBackend
       (updateMetrics processedBlocksCounter processedRollbacksCounter)
       timeBetween
       emptyLastSyncStats
