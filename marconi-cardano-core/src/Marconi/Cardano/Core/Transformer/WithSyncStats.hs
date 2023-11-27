@@ -175,7 +175,7 @@ runAction
               lss@(LastSyncStats _ _ _ _ timeOfLastMsg)
             ) = do
     now <- getCurrentTime
-    let shouldPrint =
+    let shouldAct =
           case timeOfLastMsg of
             Nothing -> True
             Just t
@@ -187,7 +187,7 @@ runAction
             & syncStatsNumRollbacks .~ 0
             & syncStatsLastMessageTime ?~ now
 
-    if shouldPrint
+    if shouldAct
       then do
         action lss
         pure $ backend & statsBackendState .~ resetStats lss
