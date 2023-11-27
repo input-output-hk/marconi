@@ -6,7 +6,7 @@ Usage: marconi-sidechain-experimental
          (--mainnet | --testnet-magic NATURAL) 
          [(-a|--addresses-to-index BECH32-ADDRESS)] 
          [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
-         [--fail-if-resyncing-from-genesis] [--initial-retry-time NATURAL] 
+         [--initial-retry-time NATURAL] 
          [--no-max-retry-time | --max-retry-time NATURAL] 
          [--start-from-genesis | --start-from-last-sync-points | 
            --start-from SLOT-NO:BLOCK-HEADER-HASH]
