@@ -1,7 +1,9 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Marconi.Starter.Indexers where
 
+import Cardano.Api qualified as C
 import Cardano.BM.Trace (logError)
 import Control.Lens (view, (^.))
 import Control.Monad.Except (ExceptT, runExceptT)
@@ -64,18 +66,19 @@ runIndexers = do
 
 getStartingPoint
   :: forall event indexer m
-   . ( Core.HasGenesis (Core.Point event)
-     , Ord (Core.Point event)
-     , MonadIO m
+   . ( MonadIO m
      , MonadReader Env m
      , Core.IsSync (ExceptT Core.IndexerError m) event indexer
+     , Core.Point event ~ C.ChainPoint
      )
-  => Core.Point event
+  => CommonCLI.StartingPoint
   -> indexer event
-  -> m (Core.Point event)
+  -> m C.ChainPoint
 getStartingPoint preferredStartingPoint indexer = do
-  if preferredStartingPoint == Core.genesis
-    then do
+  case preferredStartingPoint of
+    CommonCLI.StartFromGenesis -> pure Core.genesis
+    CommonCLI.StartFrom cp -> pure cp
+    CommonCLI.StartFromLastSyncPoint -> do
       (indexerLastSyncPointE :: Either Core.IndexerError (Core.Point event)) <-
         runExceptT $ Core.lastSyncPoint indexer
       case indexerLastSyncPointE of
@@ -85,5 +88,3 @@ getStartingPoint preferredStartingPoint indexer = do
             logError stdoutTrace $ Pretty.viaShow err
             exitFailure
         Right result -> pure result
-    else do
-      pure preferredStartingPoint
