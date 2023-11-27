@@ -37,7 +37,7 @@ data InvalidArgTestInput = InvalidArgTestInput
   }
 
 goldenFileDir :: FilePath
-goldenFileDir = "test/Spec/Marconi/Sidechain/Experimental/CLIInputValidation/Golden"
+goldenFileDir = "test/Spec/Golden/CLIInputValidation"
 
 invalidOptionalCliFlagsWithExpectedErrors :: [InvalidArgTestInput]
 invalidOptionalCliFlagsWithExpectedErrors =
