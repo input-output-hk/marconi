@@ -7,7 +7,12 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
 
-module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation where
+module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation (
+  RpcEpochActiveStakePoolDelegationMethod,
+  GetEpochActiveStakePoolDelegationResult (..),
+  ActiveSDDResult (..),
+  getEpochActiveStakePoolDelegationHandler,
+) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
