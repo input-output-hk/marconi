@@ -28,7 +28,6 @@ import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
-  IndexingDepth (MaxIndexingDepth, MinIndexingDepth),
   RetryConfig (RetryConfig),
   ShouldFailIfResync (ShouldFailIfResync),
   TargetAddresses,
@@ -169,8 +168,6 @@ data CommonOptions = CommonOptions
   -- ^ cardano network id
   , optionsChainPoint :: !StartingPoint
   -- ^ The starting point of the indexers
-  , optionsMinIndexingDepth :: !IndexingDepth
-  -- ^ Required depth of a block before it is indexed
   , optionsRetryConfig :: !RetryConfig
   }
   deriving stock (Show, Generic)
@@ -226,7 +223,6 @@ commonOptionsParser =
     <$> commonSocketPathParser
     <*> commonNetworkIdParser
     <*> commonStartFromParser
-    <*> commonMinIndexingDepthParser
     <*> commonRetryConfigParser
 
 optionsParser :: Opt.Parser Options
@@ -402,24 +398,6 @@ parseAsset arg = do
       (,Nothing) <$> parsePolicyId rawPolicyId
     _other ->
       fail $ "Invalid format: expected POLICY_ID[.ASSET_NAME]. Got " <> Text.unpack arg
-
--- | Allow the user to specify how deep must be a block before we index it.
-commonMinIndexingDepthParser :: Opt.Parser IndexingDepth
-commonMinIndexingDepthParser =
-  let maxIndexingDepth =
-        Opt.flag'
-          MaxIndexingDepth
-          (Opt.long "max-indexing-depth" <> Opt.help "Only index blocks that are not rollbackable")
-      givenIndexingDepth =
-        MinIndexingDepth
-          <$> Opt.option
-            Opt.auto
-            ( Opt.long "min-indexing-depth"
-                <> Opt.metavar "NATURAL"
-                <> Opt.help "Depth of a block before it is indexed in relation to the tip of the local connected node"
-                <> Opt.value 0
-            )
-   in maxIndexingDepth Opt.<|> givenIndexingDepth
 
 commonNodeConfigPathParser :: Opt.Parser FilePath
 commonNodeConfigPathParser =

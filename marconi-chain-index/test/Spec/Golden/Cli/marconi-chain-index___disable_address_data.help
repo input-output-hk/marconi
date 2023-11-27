@@ -8,7 +8,6 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
                            [--start-from-genesis | 
                              --start-from-last-sync-points | 
                              --start-from SLOT-NO:BLOCK-HEADER-HASH] 
-                           [--max-indexing-depth | --min-indexing-depth NATURAL]
                            [--initial-retry-time NATURAL] 
                            [--no-max-retry-time | --max-retry-time NATURAL]
                            (-d|--db-dir DIR) [--enable-txoutref] 

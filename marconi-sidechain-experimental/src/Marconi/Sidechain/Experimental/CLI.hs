@@ -15,7 +15,6 @@ import Data.List.NonEmpty (NonEmpty)
 import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
-  IndexingDepth,
   RetryConfig,
   ShouldFailIfResync,
   TargetAddresses,
@@ -35,8 +34,6 @@ data CliArgs = CliArgs
   -- ^ TCP/IP port number for JSON-RPC http server
   , networkId :: !C.NetworkId
   -- ^ cardano network id
-  , minIndexingDepth :: !IndexingDepth
-  -- ^ Required depth of a block before it is indexed
   , targetAddresses :: !(Maybe TargetAddresses)
   -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
   , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
@@ -69,7 +66,6 @@ parserCliArgs =
     <*> Cli.commonDbDirParser
     <*> Cli.commonPortParser
     <*> Cli.commonNetworkIdParser
-    <*> Cli.commonMinIndexingDepthParser
     <*> Cli.commonMaybeTargetAddressParser
     <*> Cli.commonMaybeTargetAssetParser
     <*> Cli.commonShouldFailIfResyncParser

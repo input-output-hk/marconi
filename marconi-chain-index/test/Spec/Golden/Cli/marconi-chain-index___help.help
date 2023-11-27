@@ -6,7 +6,6 @@ Usage: marconi-chain-index [--version] (-s|--socket-path FILE-PATH)
                            [--start-from-genesis | 
                              --start-from-last-sync-points | 
                              --start-from SLOT-NO:BLOCK-HEADER-HASH] 
-                           [--max-indexing-depth | --min-indexing-depth NATURAL]
                            [--initial-retry-time NATURAL] 
                            [--no-max-retry-time | --max-retry-time NATURAL]
                            (-d|--db-dir DIR) [--enable-txoutref] 
@@ -36,10 +35,6 @@ Available options:
                            `--start-from SLOT-NO:BLOCK-HEADER-HASH`. Might fail
                            if the target indexers can't resume from arbitrary
                            points.
-  --max-indexing-depth     Only index blocks that are not rollbackable
-  --min-indexing-depth NATURAL
-                           Depth of a block before it is indexed in relation to
-                           the tip of the local connected node
   --initial-retry-time NATURAL
                            Initial time (in seconds) before retry after a failed
                            node connection. Defaults to 30s.
