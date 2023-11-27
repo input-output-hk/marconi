@@ -3,7 +3,7 @@
 
 module Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer (
   LastSyncStatsOutput (..),
-  mkPrintBackend,
+  mkLogBackend,
 ) where
 
 import Cardano.Api qualified as C
@@ -26,15 +26,15 @@ import Text.Printf (printf)
 		Takes a @NominalDiffTime@ which determines how frequently we send stats to Prometheus and a
 		@MarconiTrace IO@ with which it performs the tracing.
 -}
-mkPrintBackend :: MarconiTrace IO -> NominalDiffTime -> StatsBackend
-mkPrintBackend tracer timeBetween =
+mkLogBackend :: MarconiTrace IO -> NominalDiffTime -> StatsBackend
+mkLogBackend tracer timeBetween =
   StatsBackend
-    (printMessage tracer)
+    (logLastSyncStats tracer)
     timeBetween
     emptyLastSyncStats
 
-printMessage :: MarconiTrace IO -> LastSyncStats -> IO ()
-printMessage tracer stats = do
+logLastSyncStats :: MarconiTrace IO -> LastSyncStats -> IO ()
+logLastSyncStats tracer stats = do
   now <- getCurrentTime
   let timeSinceLastMsg = diffUTCTime now <$> (stats ^. syncStatsLastMessageTime)
 

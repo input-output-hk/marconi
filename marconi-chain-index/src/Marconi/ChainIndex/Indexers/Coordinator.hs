@@ -16,7 +16,7 @@ import Marconi.Cardano.Core.Transformer.WithSyncStats (
   WithSyncStats,
   withSyncStats,
  )
-import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer (mkPrintBackend)
+import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer (mkLogBackend)
 import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Prometheus (mkPrometheusBackend)
 import Marconi.Cardano.Core.Types (MarconiTrace)
 import Marconi.Core qualified as Core
@@ -36,7 +36,7 @@ syncStatsCoordinator
   -> IO (WithSyncStats (Core.WithTrace IO Core.Coordinator) event)
 syncStatsCoordinator logger prettyLogger workers = do
   prometheus <- mkPrometheusBackend 60
-  fmap (withSyncStats [mkPrintBackend prettyLogger 10, prometheus])
+  fmap (withSyncStats [mkLogBackend prettyLogger 10, prometheus])
     . Core.withTraceM logger
     . Core.mkCoordinator
     $ workers
