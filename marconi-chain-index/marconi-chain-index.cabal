@@ -103,6 +103,7 @@ library
     Marconi.ChainIndex.Indexers.Utxo
     Marconi.ChainIndex.Indexers.UtxoQuery
     Marconi.ChainIndex.Run
+    Marconi.ChainIndex.Snapshot.Run
     Marconi.ChainIndex.Utils
 
   other-modules:   Paths_marconi_chain_index
@@ -334,3 +335,19 @@ library marconi-chain-index-test-lib
     , temporary
     , text
     , time
+
+executable marconi-chain-snapshot
+  import:         lang
+  hs-source-dirs: snapshot
+  main-is:        Main.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-chain-index
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:  base >=4.9 && <5
