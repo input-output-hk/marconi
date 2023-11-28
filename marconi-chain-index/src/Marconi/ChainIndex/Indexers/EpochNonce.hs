@@ -34,9 +34,9 @@ import Cardano.Protocol.TPraos.Rules.Tickn qualified as Shelley
 import Control.Arrow ((<<<))
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadTrans (lift))
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Trans (lift)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Maybe (listToMaybe)
 import Database.SQLite.Simple qualified as SQL

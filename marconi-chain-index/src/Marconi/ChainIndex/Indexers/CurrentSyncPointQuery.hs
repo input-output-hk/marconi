@@ -15,8 +15,8 @@ module Marconi.ChainIndex.Indexers.CurrentSyncPointQuery (
 import Cardano.Api qualified as C
 import Control.Concurrent qualified as Con
 import Control.Lens ((^.))
-import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text qualified as Text
 import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
 import Marconi.ChainIndex.Indexers.ChainTip ()

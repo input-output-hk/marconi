@@ -27,8 +27,8 @@ import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Function (on)
 import Data.List.NonEmpty (NonEmpty ((:|)))

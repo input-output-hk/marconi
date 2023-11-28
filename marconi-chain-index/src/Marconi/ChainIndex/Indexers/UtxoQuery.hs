@@ -35,7 +35,7 @@ import Control.Applicative (Alternative ((<|>)))
 import Control.Concurrent (MVar)
 import Control.Lens ((^.), (^?))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadIO (liftIO))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (FromJSON, ToJSON, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)

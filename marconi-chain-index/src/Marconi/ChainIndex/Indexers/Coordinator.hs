@@ -9,7 +9,8 @@ module Marconi.ChainIndex.Indexers.Coordinator (
 ) where
 
 import Cardano.BM.Tracing (Trace)
-import Control.Monad.Cont (MonadIO (liftIO), MonadTrans (lift))
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Trans (lift)
 import Data.Text (Text)
 import Marconi.Cardano.Core.Orphans qualified ()
 import Marconi.Cardano.Core.Transformer.WithSyncLog (WithSyncStats, withSyncStats)

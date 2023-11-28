@@ -11,8 +11,8 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
 import Cardano.Api qualified as C
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (runExceptT)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader ()
 import Data.Aeson ()
 import Data.Aeson.TH (Options (omitNothingFields), defaultOptions, deriveJSON, fieldLabelModifier)

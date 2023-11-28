@@ -18,8 +18,8 @@ module Marconi.Core.Indexer.LastEventIndexer (
 import Control.Lens (Lens', (&), (.~), (?~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void, when)
-import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Foldable (toList)

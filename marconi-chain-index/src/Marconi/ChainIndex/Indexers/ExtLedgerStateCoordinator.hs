@@ -43,9 +43,10 @@ import Control.Exception (throw)
 import Control.Lens (Lens', (%~), (&), (-~), (.=), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (foldM, (<=<))
-import Control.Monad.Except (ExceptT, MonadError (throwError), MonadTrans (lift), runExceptT)
+import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State.Strict (MonadState (put), gets)
+import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.ByteString qualified as BS
