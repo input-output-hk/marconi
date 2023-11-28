@@ -425,3 +425,53 @@ epochSDDBuilder securityParam catchupConfig textLogger path =
         epochSDDWorkerConfig
         (SDD.EpochSDDWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
         (path </> "epochSDD.db")
+
+buildIndexersForSnapshot
+  :: SecurityParam
+  -> Core.CatchupConfig
+  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
+  -> BM.Trace IO Text
+  -> MarconiTrace IO
+  -> FilePath
+  -> ExceptT
+      Core.IndexerError
+      IO
+      SyncStatsCoordinator
+buildIndexersForSnapshot
+  securityParam
+  catchupConfig
+  epochStateConfig
+  textLogger
+  prettyLogger
+  path = do
+    let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
+        mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+        blockEventTextLogger = BM.appendName "blockEvent" textLogger
+        blockEventLogger = BM.appendName "blockEvent" mainLogger
+        epochStateTextLogger = BM.appendName "epochState" blockEventTextLogger
+        epochSDDTextLogger = BM.appendName "epochSDD" epochStateTextLogger
+        epochNonceTextLogger = BM.appendName "epochNonce" epochStateTextLogger
+
+    Core.WorkerIndexer _epochSDDMVar epochSDDWorker <-
+      -- TODO: this should be a new indexer
+      epochSDDBuilder securityParam catchupConfig epochSDDTextLogger path
+    Core.WorkerIndexer _epochNonceMVar epochNonceWorker <-
+      -- TODO: this should be removed?
+      epochNonceBuilder securityParam catchupConfig epochNonceTextLogger path
+    Core.WorkerIndexer _epochStateMVar epochStateWorker <-
+      ExtLedgerStateCoordinator.extLedgerStateWorker
+        epochStateConfig
+        [epochSDDWorker, epochNonceWorker]
+        path
+
+    blockCoordinator <-
+      lift $
+        buildBlockEventCoordinator
+          blockEventLogger
+          [epochStateWorker]
+
+    lift $
+      syncStatsCoordinator
+        mainLogger
+        prettyLogger
+        [blockCoordinator]
