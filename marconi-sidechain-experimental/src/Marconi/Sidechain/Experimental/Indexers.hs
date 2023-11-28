@@ -14,11 +14,11 @@ import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Runner (RunIndexerConfig, runIndexerConfigChainPoint)
 import Marconi.Cardano.Core.Runner qualified as ChainIndex.Runner
 import Marconi.Cardano.Core.Types (BlockEvent, SecurityParam, TipAndBlock)
-import Marconi.ChainIndex.Indexers (MarconiChainIndexQueryables, SyncStatsCoordinator)
-import Marconi.ChainIndex.Indexers qualified as ChainIndex.Indexers
-import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator qualified as EpochState
-import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Marconi.Cardano.Indexers (MarconiCardanoQueryables, SyncStatsCoordinator)
+import Marconi.Cardano.Indexers qualified as ChainIndex.Indexers
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as EpochState
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core (CatchupConfig, IndexerError)
 
 {- TYPE -}
@@ -54,7 +54,7 @@ similarly to the marconi-chain-index application.
 sidechainBuildIndexers
   :: (MonadIO m)
   => SidechainBuildIndexersConfig
-  -> m (Either IndexerError (C.ChainPoint, MarconiChainIndexQueryables, SyncStatsCoordinator))
+  -> m (Either IndexerError (C.ChainPoint, MarconiCardanoQueryables, SyncStatsCoordinator))
 sidechainBuildIndexers config =
   liftIO . runExceptT $
     ChainIndex.Indexers.buildIndexers

@@ -50,7 +50,7 @@ import Marconi.Cardano.Core.Types (
   RetryConfig (RetryConfig),
   SecurityParam,
  )
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Core
+import Marconi.Cardano.Indexers.SyncHelper qualified as Core
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc qualified as Core

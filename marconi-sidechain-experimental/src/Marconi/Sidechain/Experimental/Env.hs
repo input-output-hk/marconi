@@ -23,12 +23,12 @@ import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner qualified as ChainIndex.Runner
 import Marconi.Cardano.Core.Types (SecurityParam)
-import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
-import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
  )
-import Marconi.ChainIndex.Indexers.MintTokenEvent (MintTokenEventConfig (MintTokenEventConfig))
-import Marconi.ChainIndex.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig))
+import Marconi.Cardano.Indexers.MintTokenEvent (MintTokenEventConfig (MintTokenEventConfig))
+import Marconi.Cardano.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig))
+import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.ChainIndex.Utils qualified as ChainIndex.Utils
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.Types (

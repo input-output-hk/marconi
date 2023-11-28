@@ -36,7 +36,7 @@ import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
-import Marconi.ChainIndex.Indexers.SyncHelper (mkSyncedSqliteIndexer)
+import Marconi.Cardano.Indexers.SyncHelper (mkSyncedSqliteIndexer)
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core (
   IndexerError,
