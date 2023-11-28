@@ -7,7 +7,7 @@
 
 module Marconi.ChainIndex.CLI where
 
-import Control.Applicative (optional, some)
+import Control.Applicative (many, optional, some)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString.Char8 qualified as C8
 import Data.List (nub)
@@ -19,6 +19,7 @@ import Data.Text.Encoding qualified as Text
 import Data.Version (showVersion)
 import Options.Applicative qualified as Opt
 import System.FilePath ((</>))
+import Text.Read (readEither)
 
 import Cardano.Api (ChainPoint, NetworkId)
 import Cardano.Api qualified as C
@@ -28,6 +29,7 @@ import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
+  BlockRange,
   RetryConfig (RetryConfig),
   ShouldFailIfResync (ShouldFailIfResync),
   TargetAddresses,
@@ -35,6 +37,7 @@ import Marconi.Cardano.Core.Types (
   addressDatumDbName,
   epochStateDbName,
   mintBurnDbName,
+  mkBlockRange,
   scriptTxDbName,
   utxoDbName,
  )
@@ -208,6 +211,9 @@ data Options = Options
 parseOptions :: IO Options
 parseOptions = Opt.execParser programParser
 
+parseSnapshotOptions :: IO SnapshotOptions
+parseSnapshotOptions = Opt.execParser snapshotProgramParser
+
 getVersion :: String
 getVersion = showVersion version <> "-" <> Text.unpack gitRev
 
@@ -215,6 +221,12 @@ programParser :: Opt.ParserInfo Options
 programParser =
   Opt.info
     (Opt.helper <*> commonVersionOptionParser <*> optionsParser)
+    (marconiDescr "marconi")
+
+snapshotProgramParser :: Opt.ParserInfo SnapshotOptions
+snapshotProgramParser =
+  Opt.info
+    (Opt.helper <*> snapshotOptionsParser)
     (marconiDescr "marconi")
 
 commonOptionsParser :: Opt.Parser CommonOptions
@@ -310,6 +322,14 @@ commonDbDirParser =
       <> Opt.long "db-dir"
       <> Opt.metavar "DIR"
       <> Opt.help "Directory path where all Marconi-related SQLite databases are located."
+
+snapshotDirParser :: Opt.Parser String
+snapshotDirParser =
+  Opt.strOption $
+    Opt.short 'd'
+      <> Opt.long "snapshot-dir"
+      <> Opt.metavar "DIR"
+      <> Opt.help "Directory path containing the resulting snapshot files for each sub-chain."
 
 commonVersionOptionParser :: Opt.Parser (a -> a)
 commonVersionOptionParser = Opt.infoOption getVersion $ Opt.long "version" <> Opt.help "Show marconi version"
@@ -447,3 +467,64 @@ commonRetryConfigParser =
 -- | Extract UtxoIndexerConfig from CLI Options
 mkUtxoIndexerConfig :: Options -> UtxoIndexerConfig
 mkUtxoIndexerConfig o = UtxoIndexerConfig (optionsTargetAddresses o) (optionsEnableUtxoTxOutRef o)
+
+-- TODO: the reason why we're parsing [BlockRange] is because we can create the sub-directory names
+-- based on the block ranges, so the user doesn't have to specify a name for each range
+data SnapshotOptions = SnapshotOptions
+  { snapshotOptionsSocketPath :: !String
+  -- ^ POSIX socket file to communicate with cardano node
+  , snapshotOptionsNetworkId :: !NetworkId
+  -- ^ Cardano network id
+  , snapshotOptionsRetryConfig :: !RetryConfig
+  -- ^ Time to wait until retrying socket connection
+  , snapshotOptionsSnapshotDir :: !FilePath
+  -- ^ Directory path containing the files for each snapshot
+  , snapshotOptionsNodeConfigPath :: !(Maybe FilePath)
+  -- ^ Path to the node config
+  , snapshotOptionsBlockRanges :: ![BlockRange]
+  -- ^ A list of block ranges to snapshot
+  }
+  deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+snapshotOptionsParser :: Opt.Parser SnapshotOptions
+snapshotOptionsParser =
+  SnapshotOptions
+    <$> commonSocketPathParser
+    <*> commonNetworkIdParser
+    <*> commonRetryConfigParser
+    <*> snapshotDirParser
+    <*> optional commonNodeConfigPathParser
+    <*> snapshotBlockRangesParser
+
+snapshotBlockRangesParser :: Opt.Parser [BlockRange]
+snapshotBlockRangesParser = many blockRangeParser
+  where
+    blockRangeParser :: Opt.Parser BlockRange
+    blockRangeParser =
+      Opt.option
+        (Opt.auto >>= readBlockRange)
+        ( Opt.long "block-range"
+            <> Opt.help
+              "Specify one or multiple block ranges to snapshot. \
+              \For example, \"--block-range 10,200 --block-range 210,1000\"."
+        )
+
+readBlockRange :: Text -> Opt.ReadM BlockRange
+readBlockRange rawBlockRange =
+  worker (Text.split isComma rawBlockRange)
+  where
+    isComma ',' = True
+    isComma _ = False
+
+    worker :: [Text] -> Opt.ReadM BlockRange
+    worker [] = fail "No block range specified."
+    worker [x, y] = do
+      i1 <- either fail pure $ readEither $ Text.unpack x
+      i2 <- either fail pure $ readEither $ Text.unpack y
+      either fail pure $ mkBlockRange i1 i2
+    worker _ =
+      fail $
+        "Block range is not formatted correctly. "
+          <> "Please provide a pair of positive numbers, "
+          <> "without any spaces."

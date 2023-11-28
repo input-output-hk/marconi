@@ -7,6 +7,7 @@ module Marconi.ChainIndex.Snapshot.Run (
 import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError)
+import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -19,6 +20,8 @@ import Marconi.Cardano.Core.Runner (
   runIndexer,
   withDistanceAndTipPreprocessor,
  )
+import Marconi.ChainIndex.CLI (parseSnapshotOptions)
+import Marconi.ChainIndex.CLI qualified as Cli
 import Marconi.ChainIndex.Indexers (buildIndexersForSnapshot)
 import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
@@ -27,6 +30,7 @@ import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Transformer.WithCatchup qualified as Core (
   mkCatchupConfig,
  )
+import System.Directory (doesFileExist)
 import System.Exit (exitFailure)
 
 appName :: Text
@@ -35,17 +39,23 @@ appName = "marconi-chain-snapshot"
 run :: IO ()
 run = do
   (trace, sb) <- defaultStdOutLogger appName
-  -- TODO:
-  --   - parse --testnet-magic, --node-config-path, --socket-path from CL
-  --   - parse [(BlockRange, FilePath)] from CL in some nice way
-  --   - implicit parsing: RetryConfig
+  options <- parseSnapshotOptions
+  nodeConfigPath <- case Cli.snapshotOptionsNodeConfigPath options of
+    Just cfg -> do
+      exists <- doesFileExist cfg
+      unless exists $
+        withLogFullError exitFailure sb trace $
+          Text.pack $
+            "Config file does not exist at the provided path: " <> cfg
+      pure cfg
+    Nothing -> withLogFullError exitFailure sb trace "No node config path provided"
+
   let marconiTrace = mkMarconiTrace trace
-      retryConfig = undefined
-      networkId = undefined -- I believe this is the testnet-magic, see commonNetworkIdParser
-      socketPath = undefined
-      nodeConfigPath = undefined
+      retryConfig = Cli.snapshotOptionsRetryConfig options
+      networkId = Cli.snapshotOptionsNetworkId options
+      socketPath = Cli.snapshotOptionsSocketPath options
+      snapshotDir = Cli.snapshotOptionsSnapshotDir options -- I don't know about this, it looks like mkExtLedgerStateCoordinator create some FileIndexer which creates files in a certain way; if it's currently creating SQLite files, how does it know, in my case, to create .cbor files?
       volatileEpochStateSnapshotInterval = 100 -- What is this?
-      topDirectoryForResult = undefined -- I don't know about this, it looks like mkExtLedgerStateCoordinator create some FileIndexer which creates files in a certain way; if it's currently creating SQLite files, how does it know, in my case, to create .cbor files?
       batchSize = 5000
       stopCatchupDistance = 100
   securityParam <-
@@ -75,11 +85,11 @@ run = do
     runExceptT $
       buildIndexersForSnapshot
         securityParam
-        (Core.mkCatchupConfig batchSize stopCatchupDistance) -- hwat is this?
+        (Core.mkCatchupConfig batchSize stopCatchupDistance) -- what is this?
         extLedgerStateConfig
         trace
         marconiTrace
-        topDirectoryForResult
+        snapshotDir
   snapshotCoordinator <-
     case mSnapshotCoordinator of
       Left err -> withLogFullError exitFailure sb trace $ Text.pack $ show err

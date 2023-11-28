@@ -52,6 +52,12 @@ module Marconi.Cardano.Core.Types (
   runIndexerConfigNetworkId,
   runIndexerConfigChainPoint,
   runIndexerConfigSocketPath,
+
+  -- * Block range type for specifying a sub-chain
+  BlockRange,
+  mkBlockRange,
+  blockRangeFst,
+  blockRangeSnd,
 ) where
 
 import Cardano.Api qualified as C
@@ -175,3 +181,21 @@ epochStateDbName = "epochstate.db"
 
 mintBurnDbName :: FilePath
 mintBurnDbName = "mintburn.db"
+
+data BlockRange = BlockRange
+  { _blockRangeFst :: !Int
+  , _blockRangeSnd :: !Int
+  }
+  deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+Lens.makeLenses ''BlockRange
+
+mkBlockRange :: Int -> Int -> Either String BlockRange
+mkBlockRange x y
+  | x <= 0 || y <= 0 = Left "Expected positive arguments in block range."
+  | x <= y = Right $ BlockRange x y
+  | otherwise =
+      Left $
+        "Expected left hand side of the block range "
+          <> "to be smaller than or equal to the right hand side."
