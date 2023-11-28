@@ -75,8 +75,8 @@ type CurrentSyncPointIndexer =
 type EpochNonceIndexer = Core.WithTrace IO Core.SQLiteIndexer Nonce.EpochNonce
 type EpochSDDIndexer = Core.WithTrace IO Core.SQLiteIndexer (NonEmpty SDD.EpochSDD)
 
--- | Container for all the queryable indexers of marconi-chain-index.
-data MarconiChainIndexQueryables = MarconiChainIndexQueryables
+-- | Container for all the queryable indexers of marconi-cardano-indexers
+data MarconiCardanoQueryables = MarconiCardanoQueryables
   { _queryableEpochNonce :: !(MVar EpochNonceIndexer)
   , _queryableEpochSDD :: !(MVar EpochSDDIndexer)
   , _queryableMintToken :: !(MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents)
@@ -84,10 +84,9 @@ data MarconiChainIndexQueryables = MarconiChainIndexQueryables
   , _queryableCurrentSyncPoint :: !CurrentSyncPointIndexer
   }
 
-makeLenses 'MarconiChainIndexQueryables
+makeLenses 'MarconiCardanoQueryables
 
-{- | Build all the indexers of marconi-chain-index
-(all those which are available with the new implementation)
+{- | Build all the indexers of marconi-cardano-indexers
 and expose a single coordinator to operate them
 -}
 buildIndexers
@@ -103,7 +102,7 @@ buildIndexers
       Core.IndexerError
       IO
       ( C.ChainPoint
-      , MarconiChainIndexQueryables
+      , MarconiCardanoQueryables
       , SyncStatsCoordinator
       )
 buildIndexers
@@ -187,7 +186,7 @@ buildIndexers
               blockInfoMVar
               chainTipMVar
         queryables =
-          MarconiChainIndexQueryables
+          MarconiCardanoQueryables
             epochNonceMVar
             epochSDDMVar
             (MintTokenEventIndexerQuery securityParam mintTokenMVar blockInfoMVar)
