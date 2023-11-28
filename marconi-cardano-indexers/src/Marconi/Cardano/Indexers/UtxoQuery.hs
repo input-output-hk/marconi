@@ -8,7 +8,7 @@
 to provide the UTxO information with resolved datum and information about the TxIn used to produce
 an UTxO.
 -}
-module Marconi.ChainIndex.Indexers.UtxoQuery (
+module Marconi.Cardano.Indexers.UtxoQuery (
   -- * Indexer
   UtxoQueryIndexer,
   UtxoQueryAggregate (..),
@@ -50,10 +50,10 @@ import Database.SQLite.Simple.FromRow qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
-import Marconi.ChainIndex.Indexers.Datum (DatumInfo)
-import Marconi.ChainIndex.Indexers.Spent (SpentInfo)
-import Marconi.ChainIndex.Indexers.Utxo (Utxo)
+import Marconi.Cardano.Indexers.BlockInfo (BlockInfo (BlockInfo))
+import Marconi.Cardano.Indexers.Datum (DatumInfo)
+import Marconi.Cardano.Indexers.Spent (SpentInfo)
+import Marconi.Cardano.Indexers.Utxo (Utxo)
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.SQLiteAggregateQuery (
   SQLiteSourceProvider (SQLiteSourceProvider),

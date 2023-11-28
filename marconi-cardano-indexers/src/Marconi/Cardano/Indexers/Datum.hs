@@ -7,7 +7,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Marconi.ChainIndex.Indexers.Datum (
+module Marconi.Cardano.Indexers.Datum (
   -- * Event
   DatumInfo (DatumInfo),
   DatumEvent,
@@ -53,7 +53,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
+import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 
 data DatumInfo = DatumInfo

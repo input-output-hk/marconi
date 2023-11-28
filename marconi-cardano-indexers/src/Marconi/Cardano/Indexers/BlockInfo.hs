@@ -7,7 +7,7 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- | An Indexer that stores BlockInfo
-module Marconi.ChainIndex.Indexers.BlockInfo (
+module Marconi.Cardano.Indexers.BlockInfo (
   -- * Event
   BlockInfo (BlockInfo),
   blockNo,
@@ -57,7 +57,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
+import Marconi.Cardano.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.Core qualified as Core
 
 data BlockInfo = BlockInfo

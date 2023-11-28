@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.ChainIndex.Indexers where
+module Marconi.Cardano.Indexers where
 
 import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
@@ -34,21 +34,21 @@ import Marconi.Cardano.Core.Types (
   TipAndBlock (TipAndBlock),
   TxIndexInBlock,
  )
-import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
-import Marconi.ChainIndex.Indexers.Coordinator (coordinatorWorker, syncStatsCoordinator)
-import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
-import Marconi.ChainIndex.Indexers.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.EpochNonce qualified as Nonce
-import Marconi.ChainIndex.Indexers.EpochSDD qualified as SDD
-import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerStateCoordinator
-import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Indexers.MintTokenEventQuery (
+import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Cardano.Indexers.ChainTip qualified as ChainTip
+import Marconi.Cardano.Indexers.Coordinator (coordinatorWorker, syncStatsCoordinator)
+import Marconi.Cardano.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
+import Marconi.Cardano.Indexers.Datum qualified as Datum
+import Marconi.Cardano.Indexers.EpochNonce qualified as Nonce
+import Marconi.Cardano.Indexers.EpochSDD qualified as SDD
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerStateCoordinator
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Cardano.Indexers.MintTokenEventQuery (
   MintTokenEventIndexerQuery (MintTokenEventIndexerQuery),
  )
-import Marconi.ChainIndex.Indexers.Spent qualified as Spent
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
+import Marconi.Cardano.Indexers.Spent qualified as Spent
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
 import System.FilePath ((</>))
 

@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | An indexer that tracks the chainTip of the ledger, storing the tip in a file.
-module Marconi.ChainIndex.Indexers.ChainTip (
+module Marconi.Cardano.Indexers.ChainTip (
   ChainTipIndexer,
   mkChainTipIndexer,
   ChainTipConfig (ChainTipConfig),

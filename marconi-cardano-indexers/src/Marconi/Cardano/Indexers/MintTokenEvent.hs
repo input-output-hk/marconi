@@ -28,7 +28,7 @@ table 'minting_policy_events' with the following fields:
 )
 @
 -}
-module Marconi.ChainIndex.Indexers.MintTokenEvent (
+module Marconi.Cardano.Indexers.MintTokenEvent (
   -- * Events
   MintTokenBlockEvents (MintTokenBlockEvents),
   mintTokenEvents,
@@ -127,7 +127,7 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
   TxIndexInBlock,
  )
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
+import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'

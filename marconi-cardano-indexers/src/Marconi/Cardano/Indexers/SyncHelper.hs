@@ -3,7 +3,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 -- | Provide standard query and helper functions to track the last sync points of an indexer
-module Marconi.ChainIndex.Indexers.SyncHelper (
+module Marconi.Cardano.Indexers.SyncHelper (
   syncTableCreation,
   syncSetStablePoint,
   syncLastPointQuery,

@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 -- | Helper to create a worker for a Coordinator
-module Marconi.ChainIndex.Indexers.Coordinator (
+module Marconi.Cardano.Indexers.Coordinator (
   coordinatorWorker,
   standardCoordinator,
   syncStatsCoordinator,

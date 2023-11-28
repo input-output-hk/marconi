@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 -- | Store SDD in a SQLIte table
-module Marconi.ChainIndex.Indexers.EpochSDD (
+module Marconi.Cardano.Indexers.EpochSDD (
   -- * Event types and lenses
   EpochSDD (EpochSDD),
   sddEpochNo,
@@ -55,11 +55,11 @@ import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorkerConfig (eventExtractor, logger, workerName),
  )
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateEvent (ExtLedgerStateEvent),
   newEpochPreprocessor,
  )
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
+import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O

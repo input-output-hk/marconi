@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Marconi.ChainIndex.Indexers.MintTokenEventQuery (
+module Marconi.Cardano.Indexers.MintTokenEventQuery (
   -- * Indexer
   MintTokenEventIndexerQuery (..),
 ) where
@@ -17,9 +17,9 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text qualified as Text
 import Marconi.Cardano.Core.Indexer.Worker (StandardIndexer)
 import Marconi.Cardano.Core.Types (SecurityParam)
-import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
-import Marconi.ChainIndex.Indexers.BlockInfo qualified as BI
-import Marconi.ChainIndex.Indexers.MintTokenEvent (
+import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
+import Marconi.Cardano.Indexers.BlockInfo qualified as BI
+import Marconi.Cardano.Indexers.MintTokenEvent (
   MintTokenBlockEvents,
   QueryByAssetId (QueryByAssetId),
   mintTokenEventBlockNo,

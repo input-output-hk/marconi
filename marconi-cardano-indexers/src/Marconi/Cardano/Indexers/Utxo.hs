@@ -18,7 +18,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Marconi.ChainIndex.Indexers.Utxo (
+module Marconi.Cardano.Indexers.Utxo (
   -- * Event
   Utxo (Utxo),
   UtxoEvent,
@@ -78,7 +78,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
  )
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
+import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 
 -- | Indexer representation of an UTxO

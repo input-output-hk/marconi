@@ -5,7 +5,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Marconi.ChainIndex.Indexers.Spent (
+module Marconi.Cardano.Indexers.Spent (
   -- * Event
   SpentInfo (SpentInfo),
   SpentInfoEvent,
@@ -48,7 +48,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Indexers.SyncHelper qualified as Sync
+import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
 
 data SpentInfo = SpentInfo

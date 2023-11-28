@@ -53,24 +53,49 @@ common lang
 library
   import:          lang
   hs-source-dirs:  src
-  exposed-modules: Marconi.Cardano.Indexers
+  exposed-modules:
+    Marconi.Cardano.Indexers
+    Marconi.Cardano.Indexers.BlockInfo
+    Marconi.Cardano.Indexers.ChainTip
+    Marconi.Cardano.Indexers.Coordinator
+    Marconi.Cardano.Indexers.CurrentSyncPointQuery
+    Marconi.Cardano.Indexers.Datum
+    Marconi.Cardano.Indexers.EpochNonce
+    Marconi.Cardano.Indexers.EpochSDD
+    Marconi.Cardano.Indexers.ExtLedgerStateCoordinator
+    Marconi.Cardano.Indexers.MintTokenEvent
+    Marconi.Cardano.Indexers.MintTokenEventQuery
+    Marconi.Cardano.Indexers.Spent
+    Marconi.Cardano.Indexers.SyncHelper
+    Marconi.Cardano.Indexers.Utxo
+    Marconi.Cardano.Indexers.UtxoQuery
 
   --------------------
   -- Local components
   --------------------
-  build-depends:   marconi-core
+  build-depends:
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
+    , marconi-core
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                  ^>=8.20
+    , cardano-api                   ^>=8.20
     , cardano-binary
+    , cardano-ledger-alonzo         >=1.3.1.1
+    , cardano-ledger-api
+    , cardano-ledger-babbage        >=1.4.0.1
+    , cardano-ledger-conway         >=1.5
+    , cardano-ledger-core
+    , cardano-ledger-mary           >=1.3.0.2
     , cardano-ledger-shelley
+    , cardano-protocol-tpraos       >=1.0.3.3
     , iohk-monitoring
     , network-mux
     , ouroboros-consensus
     , ouroboros-consensus-cardano
+    , ouroboros-consensus-protocol
 
   ------------------------
   -- Non-IOG dependencies
@@ -78,9 +103,12 @@ library
   build-depends:
     , aeson
     , base                 >=4.9 && <5
+    , base16-bytestring
     , bytestring
     , cborg
     , containers
+    , directory
+    , filepath
     , lens
     , mtl
     , nonempty-containers
@@ -93,6 +121,8 @@ library
     , strict-sop-core
     , text
     , time
+    , transformers
+    , vector-map
 
 test-suite marconi-cardano-indexers-test
   import:         lang

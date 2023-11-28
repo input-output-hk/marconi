@@ -6,7 +6,7 @@
 {- | Gather several indexers to expose a query that can provide you block information about the
 current last synced block and the chain tip.
 -}
-module Marconi.ChainIndex.Indexers.CurrentSyncPointQuery (
+module Marconi.Cardano.Indexers.CurrentSyncPointQuery (
   CurrentSyncPointQueryIndexer (..),
   CurrentSyncPointQuery (..),
   CurrentSyncPointResult (..),
@@ -18,8 +18,8 @@ import Control.Lens ((^.))
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Text qualified as Text
-import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
-import Marconi.ChainIndex.Indexers.ChainTip ()
+import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
+import Marconi.Cardano.Indexers.ChainTip ()
 import Marconi.Core qualified as Core
 
 data CurrentSyncPointEvent

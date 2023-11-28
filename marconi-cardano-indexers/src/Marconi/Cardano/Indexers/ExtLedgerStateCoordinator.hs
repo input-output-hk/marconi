@@ -9,7 +9,7 @@
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- | A coordinator that also maintains the @ExtLedgerState@.
-module Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
+module Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   -- * Types
   ExtLedgerState,
   ExtLedgerStateEvent (..),
