@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 
 -- | Run the HTTP server for the JSON-RPC API.
 module Marconi.Sidechain.Experimental.Api.HttpServer where
@@ -15,6 +16,8 @@ import Marconi.Core.JsonRpc (
  )
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Routes (JsonRpcAPI)
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Server (jsonRpcServer)
+import Marconi.Sidechain.Experimental.Api.Rest.Routes (RestAPI)
+import Marconi.Sidechain.Experimental.Api.Rest.Server (restApiServer)
 import Marconi.Sidechain.Experimental.Api.Types (
   SidechainHttpServerConfig,
   chainIndexHttpServerConfig,
@@ -22,6 +25,7 @@ import Marconi.Sidechain.Experimental.Api.Types (
   configTrace,
  )
 import Network.Wai.Handler.Warp (defaultSettings, runSettings, setPort)
+import Servant.API ((:<|>) ((:<|>)))
 import Servant.Server (
   Application,
   Handler,
@@ -46,6 +50,6 @@ sidechainApp config = do
     hoistServer (Proxy @API) wrapHandler httpServer
 
 httpServer :: ReaderServer SidechainHttpServerConfig API
-httpServer = jsonRpcServer
+httpServer = jsonRpcServer :<|> restApiServer
 
-type API = JsonRpcAPI
+type API = JsonRpcAPI :<|> RestAPI

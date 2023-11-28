@@ -26,7 +26,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
-import Marconi.Cardano.Core.Transformer.WithSyncLog (WithSyncStats)
+import Marconi.Cardano.Core.Transformer.WithSyncStats (WithSyncStats)
 import Marconi.Cardano.Core.Types (
   BlockEvent (BlockEvent),
   MarconiTrace,
