@@ -193,7 +193,7 @@ runBlockInfoSqliteIndexerHttp = do
 -- BLOCKSTART event
 
 -- Marconi reads the blocks from the local node through the chain-sync protocol in
--- 'Marconi.ChainIndex.Runner.runIndexer' (in `marconi-chain-index`).
+-- @Marconi.Cardano.Core.Runner.'runIndexer'@ (in `marconi-cardano-core`).
 --
 -- These blocks are forwarded to each indexer, and each indexer defines how a
 -- block gets translated to an event (which is what we are defining below).

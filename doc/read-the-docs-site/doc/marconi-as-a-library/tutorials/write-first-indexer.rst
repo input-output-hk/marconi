@@ -9,13 +9,13 @@ In order to understand the tutorial, you need to understand:
 
 * Cardano blockchain (specifically `cardano-node <https://github.com/input-output-hk/cardano-node>`_)
 * Haskell (mainly the `cardano-api <https://github.com/input-output-hk/cardano-api>`_, `lens <https://hackage.haskell.org/package/lens>`_, `sqlite-simple <https://hackage.haskell.org/package/sqlite-simple>`_ libraries)
-* how chain-indexing works in general
+* How chain-indexing works in general
 
 The main building blocks of an indexer are:
 
 1) the event: the information you want to extract from a block and store it
-2) the instanciation of the indexer: particuarly the specification of the storage engine
-3) the instanciation of the worker: in order to be able to run the indexer in a separate thread so that we can run several indexers simultaneously
+2) the instantiation of the indexer: particuarly the specification of the storage engine
+3) the instantiation of the worker: in order to be able to run the indexer in a separate thread so that we can run several indexers simultaneously
 4) the query interface: specifies the queries supported by the indexer and how to run the query against some storage
 
 For reference, the import list is:
@@ -32,16 +32,16 @@ Now, let's start with the definition of the event.
    :start-after: BLOCKSTART event
    :end-before: BLOCKEND event
 
-Given this event, we can instanciate the storage.
+Given this event, we can instantiate the storage.
 Let's start with the one that requires the least amount of code: the ``ListIndexer``.
-The ``ListIndexer`` storage stores each event inside a ``Data.List``, and it is instanciated with ``Core.mkListIndexer``.
+The ``ListIndexer`` storage stores each event inside a ``Data.List``, and it is instantiated with ``Core.mkListIndexer``.
 
 .. literalinclude:: BasicApp.hs
    :language: haskell
    :start-after: BLOCKSTART ListIndexer
    :end-before: BLOCKEND ListIndexer
 
-Once we have instanciated the backend with event type (``BlockInfoEvent``), we can wrap the indexer inside a ``Core.WorkerIndexer`` which is used to spin up a concurrent thread when reading blocks from the local Cardano node using the chain-sync protocol.
+Once we have instantiated the backend with event type (``BlockInfoEvent``), we can wrap the indexer inside a ``Core.WorkerIndexer`` which is used to spin up a concurrent thread when reading blocks from the local Cardano node using the chain-sync protocol.
 
 .. literalinclude:: BasicApp.hs
    :language: haskell
