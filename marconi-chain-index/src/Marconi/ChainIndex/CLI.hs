@@ -411,8 +411,8 @@ commonRetryConfigParser =
         Opt.auto
         ( Opt.long "initial-retry-time"
             <> Opt.metavar "NATURAL"
-            <> Opt.help "Initial time (in seconds) before retry after a failed node connection. Defaults to 30s."
-            <> Opt.value 30
+            <> Opt.help "Initial time (in seconds) before a retry after a failed node connection. Defaults to 1s."
+            <> Opt.value 1
         )
 
     noMaxRetryTimeParser :: Opt.Parser (Maybe Word64)

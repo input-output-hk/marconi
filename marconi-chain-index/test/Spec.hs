@@ -15,8 +15,8 @@ tests :: TestTree
 tests =
   testGroup
     "Marconi"
-    [ Routes.tests
-    , CLIInput.tests
+    [ CLIInput.tests
     , CLI.tests
+    , Routes.tests
     , Api.Routes.tests
     ]
