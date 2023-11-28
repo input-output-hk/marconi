@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Spec.Marconi.ChainIndex.Indexers.Datum (
+module Spec.Marconi.Cardano.Indexers.Datum (
   tests,
   getDatumsEvents,
 ) where
@@ -11,7 +11,7 @@ module Spec.Marconi.ChainIndex.Indexers.Datum (
 import Control.Lens ((^.), (^..))
 import Data.Maybe (mapMaybe)
 
-import Marconi.ChainIndex.Indexers.Datum qualified as Datum
+import Marconi.Cardano.Indexers.Datum qualified as Datum
 import Marconi.Core qualified as Core
 
 import Cardano.Api qualified as C
@@ -30,7 +30,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed)
 tests :: TestTree
 tests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.Datum"
+    "Spec.Marconi.Cardano.Indexers.Datum"
     [ testGroup
         "Indexer"
         [ testPropertyNamed

@@ -3,7 +3,7 @@
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-}
 
 -- | Generators related to 'MintTokenEvent' indexer and queries.
-module Test.Gen.Marconi.ChainIndex.MintTokenEvent where
+module Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent where
 
 import Cardano.Api.Shelley qualified as C
 import Control.Monad (replicateM)

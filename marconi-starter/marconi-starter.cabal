@@ -108,7 +108,7 @@ test-suite marconi-starter-test
   build-depends:
     , cardano-api
     , marconi-cardano-core:marconi-cardano-core-test-lib
-    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}
+    , marconi-chain-index
     , marconi-core
     , marconi-starter
 

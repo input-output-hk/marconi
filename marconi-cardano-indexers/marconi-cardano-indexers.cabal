@@ -131,13 +131,23 @@ test-suite marconi-cardano-indexers-test
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
-
-  --Spec.Marconi.Cardano.Core.Logger
+    Spec.Marconi.Cardano.Indexers
+    Spec.Marconi.Cardano.Indexers.BlockInfo
+    Spec.Marconi.Cardano.Indexers.ChainTip
+    Spec.Marconi.Cardano.Indexers.Datum
+    Spec.Marconi.Cardano.Indexers.MintTokenEvent
+    Spec.Marconi.Cardano.Indexers.Spent
+    Spec.Marconi.Cardano.Indexers.Utxo
+    Spec.Marconi.Cardano.Indexers.UtxoQuery
 
   --------------------
   -- Local components
   --------------------
-  build-depends:  marconi-cardano-indexers
+  build-depends:
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
+    , marconi-cardano-indexers
+    , marconi-cardano-indexers-test-lib
+    , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
   -- Other IOG dependencies
@@ -197,3 +207,65 @@ test-suite marconi-cardano-indexers-test
     , text
     , time
     , transformers
+
+library marconi-cardano-indexers-test-lib
+  import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
+  visibility:      public
+  hs-source-dirs:  test-lib
+  exposed-modules:
+    Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent
+    Test.Helpers
+    Test.Integration
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
+    , marconi-cardano-indexers
+    , marconi-core
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                   ^>=8.20
+    , cardano-api-gen               ^>=8.2
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
+    , iohk-monitoring
+    , ouroboros-network-protocols
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api             ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , async
+    , base             >=4.9 && <5
+    , bytestring
+    , containers
+    , contra-tracer
+    , data-default
+    , directory
+    , filepath
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , mtl
+    , streaming
+    , temporary
+    , text
+    , time

@@ -211,7 +211,6 @@ test-suite marconi-chain-index-test
   build-depends:
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
     , marconi-chain-index
-    , marconi-chain-index-test-lib
     , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
@@ -272,65 +271,3 @@ test-suite marconi-chain-index-test
     , text
     , time
     , transformers
-
-library marconi-chain-index-test-lib
-  import:          lang
-
-  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
-  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
-  -- components that depend on this library like `marconi-sidechain`.
-  ghc-options:     -Wno-unused-packages
-  visibility:      public
-  hs-source-dirs:  test-lib
-  exposed-modules:
-    Test.Gen.Marconi.ChainIndex.MintTokenEvent
-    Test.Helpers
-    Test.Integration
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:
-    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
-    , marconi-chain-index
-    , marconi-core
-
-  --------------------------
-  -- Other IOG dependencies
-  --------------------------
-  build-depends:
-    , cardano-api                   ^>=8.20
-    , cardano-api-gen               ^>=8.2
-    , cardano-binary
-    , cardano-crypto-class
-    , cardano-ledger-core
-    , cardano-node-emulator
-    , cardano-node-socket-emulator
-    , iohk-monitoring
-    , ouroboros-network-protocols
-    , plutus-core
-    , plutus-ledger
-    , plutus-ledger-api             ^>=1.9
-    , plutus-tx
-    , plutus-tx-plugin
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , async
-    , base             >=4.9 && <5
-    , bytestring
-    , containers
-    , contra-tracer
-    , data-default
-    , directory
-    , filepath
-    , hedgehog
-    , hedgehog-extras
-    , lens
-    , mtl
-    , streaming
-    , temporary
-    , text
-    , time

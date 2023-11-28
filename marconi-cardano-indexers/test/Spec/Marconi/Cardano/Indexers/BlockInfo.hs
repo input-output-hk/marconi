@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Spec.Marconi.ChainIndex.Indexers.BlockInfo (
+module Spec.Marconi.Cardano.Indexers.BlockInfo (
   propTests,
   unitTests,
   getBlockInfoEvents,
@@ -28,9 +28,9 @@ import Hedgehog.Range qualified
 import Marconi.Cardano.Core.Indexer.Worker (StandardWorker (StandardWorker))
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Runner qualified as Runner
-import Marconi.ChainIndex.Indexers (blockInfoBuilder)
-import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo (BlockInfo))
-import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Cardano.Indexers (blockInfoBuilder)
+import Marconi.Cardano.Indexers.BlockInfo (BlockInfo (BlockInfo))
+import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Gen.Marconi.Cardano.Core.Types qualified as CGen
@@ -45,7 +45,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed)
 propTests :: TestTree
 propTests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.BlockInfo"
+    "Spec.Marconi.Cardano.Indexers.BlockInfo"
     [ testGroup
         "Indexer"
         [ testPropertyNamed
@@ -74,7 +74,7 @@ propTests =
 unitTests :: TestTree
 unitTests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.BlockInfo"
+    "Spec.Marconi.Cardano.Indexers.BlockInfo"
     [ testGroup
         "End-to-end indexer tests with cardano-node-emulator"
         [ testPropertyNamed

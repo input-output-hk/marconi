@@ -6,7 +6,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Spec.Marconi.ChainIndex.Indexers.MintTokenEvent (
+module Spec.Marconi.Cardano.Indexers.MintTokenEvent (
   propTests,
   unitTests,
 ) where
@@ -47,9 +47,9 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types (SecurityParam, TxIndexInBlock (TxIndexInBlock))
 import Marconi.Cardano.Core.Types qualified as Core
-import Marconi.ChainIndex.Indexers (mintBuilder)
-import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.ChainIndex.Indexers.MintTokenEvent (
+import Marconi.Cardano.Indexers (mintBuilder)
+import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Cardano.Indexers.MintTokenEvent (
   EventType (BurnEventType, MintEventType),
   MintAsset (MintAsset),
   MintAssetRedeemer (MintAssetRedeemer),
@@ -66,10 +66,10 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintTokenEventAsset,
   mintTokenEvents,
  )
-import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Indexers.MintTokenEventQuery qualified as MintTokenEventQuery
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Cardano.Indexers.MintTokenEventQuery qualified as MintTokenEventQuery
 import Marconi.Core qualified as Core
-import Spec.Marconi.ChainIndex.Indexers.BlockInfo qualified as Test.BlockInfo
+import Spec.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -83,7 +83,7 @@ import Test.Gen.Marconi.Cardano.Core.Mockchain (
   mockchainWithInfoAsMockchain,
  )
 import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
-import Test.Gen.Marconi.ChainIndex.MintTokenEvent qualified as Gen
+import Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent qualified as Gen
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
@@ -95,7 +95,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed)
 propTests :: TestTree
 propTests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.MintTokenEvent"
+    "Spec.Marconi.Cardano.Indexers.MintTokenEvent"
     [ testGroup
         "ListIndexer properties"
         [ testPropertyNamed
@@ -189,7 +189,7 @@ propTests =
 unitTests :: TestTree
 unitTests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.MintTokenEvent"
+    "Spec.Marconi.Cardano.Indexers.MintTokenEvent"
     [ testGroup
         "End-to-end indexer tests with cardano-node-emulator"
         [ testPropertyNamed

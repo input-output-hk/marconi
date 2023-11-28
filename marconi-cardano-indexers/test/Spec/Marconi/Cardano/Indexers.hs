@@ -1,20 +1,20 @@
-module Spec.Marconi.ChainIndex.Indexers (tests) where
+module Spec.Marconi.Cardano.Indexers (tests) where
 
 import Test.Tasty (TestTree, localOption, testGroup)
 
-import Spec.Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
-import Spec.Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
-import Spec.Marconi.ChainIndex.Indexers.Datum qualified as Datum
-import Spec.Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Spec.Marconi.ChainIndex.Indexers.Spent qualified as Spent
-import Spec.Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Spec.Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
+import Spec.Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Spec.Marconi.Cardano.Indexers.ChainTip qualified as ChainTip
+import Spec.Marconi.Cardano.Indexers.Datum qualified as Datum
+import Spec.Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Spec.Marconi.Cardano.Indexers.Spent qualified as Spent
+import Spec.Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Spec.Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 
 tests :: TestTree
 tests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexer"
+    "Spec.Marconi.Cardano.Indexers"
     [ unitTests
     , propTests
     ]
@@ -24,7 +24,7 @@ propTests :: TestTree
 propTests =
   localOption (HedgehogTestLimit $ Just 200) $
     testGroup
-      "Spec.Marconi.ChainIndex.Indexer.propTests"
+      "Spec.Marconi.Cardano.Indexers.propTests"
       [ Utxo.tests
       , Spent.tests
       , Datum.tests
@@ -38,7 +38,7 @@ propTests =
 unitTests :: TestTree
 unitTests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexer.unitTests"
+    "Spec.Marconi.Cardano.Indexers.unitTests"
     [ BlockInfo.unitTests
     , MintTokenEvent.unitTests
     ]

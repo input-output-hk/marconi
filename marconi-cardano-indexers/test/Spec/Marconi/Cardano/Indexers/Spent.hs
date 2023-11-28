@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Spec.Marconi.ChainIndex.Indexers.Spent (
+module Spec.Marconi.Cardano.Indexers.Spent (
   tests,
   getSpentsEvents,
   genSpent,
@@ -18,7 +18,7 @@ import Data.Maybe (mapMaybe)
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
-import Marconi.ChainIndex.Indexers.Spent qualified as Spent
+import Marconi.Cardano.Indexers.Spent qualified as Spent
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
@@ -28,7 +28,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed)
 tests :: TestTree
 tests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.Spent"
+    "Spec.Marconi.Cardano.Indexers.Spent"
     [ testGroup
         "Indexer"
         [ testPropertyNamed

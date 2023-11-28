@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.ChainIndex.Indexers.Utxo (
+module Spec.Marconi.Cardano.Indexers.Utxo (
   tests,
   getTimedUtxosEvents,
   genUtxo,
@@ -30,7 +30,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
  )
 import Marconi.Cardano.Core.Logger (nullTracer)
 import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
@@ -40,7 +40,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed)
 tests :: TestTree
 tests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.Utxo"
+    "Spec.Marconi.Cardano.Indexers.Utxo"
     [ testGroup
         "Indexer"
         [ testPropertyNamed

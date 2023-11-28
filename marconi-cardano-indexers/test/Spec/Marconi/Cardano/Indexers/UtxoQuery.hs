@@ -1,17 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 
-module Spec.Marconi.ChainIndex.Indexers.UtxoQuery (
+module Spec.Marconi.Cardano.Indexers.UtxoQuery (
   tests,
   mkUtxoQuery,
 ) where
 
-import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.ChainIndex.Indexers.Datum qualified as Datum
-import Marconi.ChainIndex.Indexers.Spent qualified as Spent
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Indexers.UtxoQuery (UtxoQueryEvent)
-import Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
+import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Cardano.Indexers.Datum qualified as Datum
+import Marconi.Cardano.Indexers.Spent qualified as Spent
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.Cardano.Indexers.UtxoQuery (UtxoQueryEvent)
+import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
 
 import Cardano.Api qualified as C
@@ -31,11 +31,11 @@ import Hedgehog (Property)
 import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
-import Spec.Marconi.ChainIndex.Indexers.BlockInfo (genBlockInfo)
-import Spec.Marconi.ChainIndex.Indexers.BlockInfo qualified as Test.BlockInfo
-import Spec.Marconi.ChainIndex.Indexers.Datum qualified as Test.Datum
-import Spec.Marconi.ChainIndex.Indexers.Spent qualified as Test.Spent
-import Spec.Marconi.ChainIndex.Indexers.Utxo qualified as Test.Utxo
+import Spec.Marconi.Cardano.Indexers.BlockInfo (genBlockInfo)
+import Spec.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
+import Spec.Marconi.Cardano.Indexers.Datum qualified as Test.Datum
+import Spec.Marconi.Cardano.Indexers.Spent qualified as Test.Spent
+import Spec.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Gen.Marconi.Cardano.Core.Types qualified as CGen
@@ -45,7 +45,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed)
 tests :: TestTree
 tests =
   testGroup
-    "Spec.Marconi.ChainIndex.Indexers.UtxoQuery"
+    "Spec.Marconi.Cardano.Indexers.UtxoQuery"
     [ testGroup
         "Indexer"
         [ testPropertyNamed
