@@ -21,13 +21,13 @@ import Control.Lens.Getter qualified as Lens
 import Data.Aeson.TH (defaultOptions, deriveJSON, fieldLabelModifier)
 import Data.Char (toLower)
 import GHC.Word (Word64)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Indexers (
+import Marconi.Cardano.Indexers (
   queryableEpochNonce,
   queryableEpochSDD,
  )
-import Marconi.ChainIndex.Indexers.EpochNonce qualified as EpochState
-import Marconi.ChainIndex.Indexers.EpochSDD qualified as EpochState
+import Marconi.Cardano.Indexers.EpochNonce qualified as EpochState
+import Marconi.Cardano.Indexers.EpochSDD qualified as EpochState
+import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.ChainIndex.Utils qualified as Util
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, queryHttpReaderHandler)

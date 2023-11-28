@@ -16,7 +16,7 @@ import Control.Lens (makeLenses)
 import Data.Aeson qualified as Aeson
 import Data.Text (Text)
 import Marconi.Cardano.Core.Types (SecurityParam)
-import Marconi.ChainIndex.Indexers (MarconiChainIndexQueryables)
+import Marconi.Cardano.Indexers (MarconiCardanoQueryables)
 
 data HttpServerConfig = HttpServerConfig
   { _configTrace :: !(Trace IO Text)
@@ -24,7 +24,7 @@ data HttpServerConfig = HttpServerConfig
   , _configSecurityParam :: !SecurityParam
   , _configTrackedAddresses :: ![AddressAny]
   , _configParams :: !Aeson.Value
-  , _configQueryables :: !MarconiChainIndexQueryables
+  , _configQueryables :: !MarconiCardanoQueryables
   }
 
 makeLenses 'HttpServerConfig
