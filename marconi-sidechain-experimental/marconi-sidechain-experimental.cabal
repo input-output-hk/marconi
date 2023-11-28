@@ -83,7 +83,8 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api          ^>=8.20
+    , cardano-api           ^>=8.20
+    , cardano-crypto-class
     , cardano-ledger-core
     , iohk-monitoring
 
@@ -131,6 +132,7 @@ test-suite marconi-sidechain-experimental-test
   other-modules:
     Spec.Marconi.Sidechain.Experimental.CLI
     Spec.Marconi.Sidechain.Experimental.CLIInputValidation
+    Spec.Marconi.Sidechain.Experimental.Routes
     Spec.Marconi.Sidechain.Experimental.Utils
 
   --------------------
@@ -143,10 +145,11 @@ test-suite marconi-sidechain-experimental-test
   -- Local components
   --------------------
   build-depends:
+    , marconi-cardano-core                                                     >=1.2.0
     , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}  >=1.2.0
     , marconi-core
     , marconi-core-json-rpc                                                    >=1.2.0
-    , marconi-sidechain-experimental                                           >=1.2.0
+    , marconi-sidechain-experimental
 
   --------------------------
   -- Other IOG dependencies

@@ -80,7 +80,6 @@ updateRunIndexerConfigWithLastStable lastStable =
     updateStartingPoint stablePoint C.ChainPointAtGenesis = stablePoint
     updateStartingPoint _ pt = pt
 
--- TODO: Should implement failsIfResync from original sidechain
 runIndexers :: ReaderT SidechainRunIndexersConfig IO ()
 runIndexers = do
   config <- ask
