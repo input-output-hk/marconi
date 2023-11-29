@@ -503,16 +503,16 @@ snapshotBlockRangesParser = many blockRangeParser
     blockRangeParser :: Opt.Parser BlockRange
     blockRangeParser =
       Opt.option
-        (Opt.auto >>= readBlockRange)
+        (Opt.str >>= readBlockRange)
         ( Opt.long "block-range"
             <> Opt.help
               "Specify one or multiple block ranges to snapshot. \
               \For example, \"--block-range 10,200 --block-range 210,1000\"."
         )
 
-readBlockRange :: Text -> Opt.ReadM BlockRange
+readBlockRange :: String -> Opt.ReadM BlockRange
 readBlockRange rawBlockRange =
-  worker (Text.split isComma rawBlockRange)
+  worker (Text.split isComma (Text.pack rawBlockRange))
   where
     isComma ',' = True
     isComma _ = False
