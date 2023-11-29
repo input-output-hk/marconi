@@ -22,6 +22,9 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types (TargetAddresses)
+import Marconi.Cardano.Indexers (buildIndexers)
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Api.HttpServer (
   runHttpServer,
  )
@@ -29,9 +32,6 @@ import Marconi.ChainIndex.Api.Types (
   HttpServerConfig (HttpServerConfig),
  )
 import Marconi.ChainIndex.CLI qualified as Cli
-import Marconi.ChainIndex.Indexers (buildIndexers)
-import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core qualified as Core
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -52,7 +52,7 @@ import System.Posix.Signals (
   installHandler,
   sigTERM,
  )
-import qualified Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator as ExtLedgerState
+import qualified Marconi.Cardano.Indexers.ExtLedgerStateCoordinator as ExtLedgerState
 import qualified Marconi.Cardano.Core.Extract.WithDistance as Distance
 #endif
 

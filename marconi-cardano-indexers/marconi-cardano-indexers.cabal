@@ -1,13 +1,13 @@
 cabal-version: 3.0
-name:          marconi-chain-index
+name:          marconi-cardano-indexers
 version:       1.2.0.0
 license:       Apache-2.0
 license-files:
   LICENSE
   NOTICE
 
-author:        Markus Läll
-maintainer:    markus.lall@iohk.io
+author:        IOHK
+maintainer:    operations@iohk.io
 homepage:      https://github.com/input-output-hk/marconi#readme
 bug-reports:   https://github.com/input-output-hk/marconi/issues
 description:
@@ -50,130 +50,95 @@ common lang
     -Wnoncanonical-monad-instances -Wredundant-constraints
     -Wunused-packages
 
-common maybe-unix
-  if !os(windows)
-    build-depends: unix
-
 library
-  import:
-    lang
-    , maybe-unix
-
+  import:          lang
   hs-source-dirs:  src
-  c-sources:       cbits/rev.c
   exposed-modules:
-    Marconi.ChainIndex.Api.HttpServer
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers
-    Marconi.ChainIndex.Api.JsonRpc.Routes
-    Marconi.ChainIndex.Api.JsonRpc.Server
-    Marconi.ChainIndex.Api.Rest.Endpoint.Metrics
-    Marconi.ChainIndex.Api.Rest.Endpoint.Params
-    Marconi.ChainIndex.Api.Rest.Endpoint.TargetAddresses
-    Marconi.ChainIndex.Api.Rest.Endpoint.Time
-    Marconi.ChainIndex.Api.Rest.Routes
-    Marconi.ChainIndex.Api.Rest.Server
-    Marconi.ChainIndex.Api.Routes
-    Marconi.ChainIndex.Api.Types
-    Marconi.ChainIndex.CLI
-    Marconi.ChainIndex.Error
-    Marconi.ChainIndex.Git.Rev
-    Marconi.ChainIndex.Git.RevFromGit
-    Marconi.ChainIndex.Run
-    Marconi.ChainIndex.Utils
-
-  other-modules:   Paths_marconi_chain_index
-  autogen-modules: Paths_marconi_chain_index
+    Marconi.Cardano.Indexers
+    Marconi.Cardano.Indexers.BlockInfo
+    Marconi.Cardano.Indexers.ChainTip
+    Marconi.Cardano.Indexers.Coordinator
+    Marconi.Cardano.Indexers.CurrentSyncPointQuery
+    Marconi.Cardano.Indexers.Datum
+    Marconi.Cardano.Indexers.EpochNonce
+    Marconi.Cardano.Indexers.EpochSDD
+    Marconi.Cardano.Indexers.ExtLedgerStateCoordinator
+    Marconi.Cardano.Indexers.MintTokenEvent
+    Marconi.Cardano.Indexers.MintTokenEventQuery
+    Marconi.Cardano.Indexers.Spent
+    Marconi.Cardano.Indexers.SyncHelper
+    Marconi.Cardano.Indexers.Utxo
+    Marconi.Cardano.Indexers.UtxoQuery
 
   --------------------
   -- Local components
   --------------------
   build-depends:
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
-    , marconi-cardano-indexers
     , marconi-core
-    , marconi-core-json-rpc
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api             ^>=8.20
-    , cardano-crypto-class
+    , cardano-api                   ^>=8.20
+    , cardano-ledger-alonzo         >=1.3.1.1
+    , cardano-ledger-api
+    , cardano-ledger-babbage        >=1.4.0.1
+    , cardano-ledger-conway         >=1.5
+    , cardano-ledger-core
+    , cardano-ledger-mary           >=1.3.0.2
     , cardano-ledger-shelley
-    , cardano-slotting        ^>=0.1.1.1
+    , cardano-protocol-tpraos       >=1.0.3.3
     , iohk-monitoring
     , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-consensus-protocol
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
   build-depends:
     , aeson
-    , async
-    , base                  >=4.9 && <5
+    , base               >=4.9 && <5
+    , base16-bytestring
     , bytestring
-    , comonad
+    , cborg
+    , containers
     , directory
     , filepath
     , lens
     , mtl
-    , nonempty-containers
-    , optparse-applicative
-    , pretty-simple
-    , process
-    , prometheus-client
-    , servant
-    , servant-server
+    , prettyprinter
     , sqlite-simple
-    , template-haskell
     , text
     , time
-    , warp
+    , transformers
+    , vector-map
 
-executable marconi-chain-index
-  import:         lang
-  hs-source-dirs: app
-  main-is:        Main.hs
-  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:  marconi-chain-index >=1.2.0
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:  base >=4.9 && <5
-
-test-suite marconi-chain-index-test
+test-suite marconi-cardano-indexers-test
   import:         lang
   ghc-options:    -Wno-unused-packages
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
-    Spec.Marconi.ChainIndex.Api.Gen
-    Spec.Marconi.ChainIndex.Api.Routes
-    Spec.Marconi.ChainIndex.CLI
-    Spec.Marconi.ChainIndex.CLIInputValidation
-    Spec.Marconi.ChainIndex.Utils
+    Spec.Marconi.Cardano.Indexers
+    Spec.Marconi.Cardano.Indexers.BlockInfo
+    Spec.Marconi.Cardano.Indexers.ChainTip
+    Spec.Marconi.Cardano.Indexers.Datum
+    Spec.Marconi.Cardano.Indexers.MintTokenEvent
+    Spec.Marconi.Cardano.Indexers.Spent
+    Spec.Marconi.Cardano.Indexers.Utxo
+    Spec.Marconi.Cardano.Indexers.UtxoQuery
 
   --------------------
   -- Local components
   --------------------
   build-depends:
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
-    , marconi-chain-index
+    , marconi-cardano-indexers
+    , marconi-cardano-indexers-test-lib
     , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
@@ -182,7 +147,6 @@ test-suite marconi-chain-index-test
   build-depends:
     , cardano-api                  ^>=8.20
     , cardano-api-gen              ^>=8.2
-    , cardano-binary
     , cardano-crypto-class
     , cardano-ledger-alonzo        >=1.3.1.1
     , cardano-ledger-core
@@ -219,14 +183,10 @@ test-suite marconi-chain-index-test
     , hedgehog
     , lens
     , mtl
-    , nonempty-containers
     , optparse-applicative
     , postgresql-simple
     , prettyprinter
-    , serialise
     , sqlite-simple
-    , stm
-    , streaming
     , tasty
     , tasty-golden
     , tasty-hedgehog
@@ -234,3 +194,64 @@ test-suite marconi-chain-index-test
     , text
     , time
     , transformers
+
+library marconi-cardano-indexers-test-lib
+  import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
+  visibility:      public
+  hs-source-dirs:  test-lib
+  exposed-modules:
+    Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent
+    Test.Helpers
+    Test.Integration
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
+    , marconi-cardano-indexers
+    , marconi-core
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                   ^>=8.20
+    , cardano-api-gen               ^>=8.2
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
+    , iohk-monitoring
+    , ouroboros-network-protocols
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api             ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , async
+    , base             >=4.9 && <5
+    , bytestring
+    , containers
+    , contra-tracer
+    , data-default
+    , directory
+    , filepath
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , mtl
+    , streaming
+    , temporary
+    , text
+    , time

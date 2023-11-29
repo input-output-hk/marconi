@@ -20,6 +20,7 @@ packages: legacy/marconi-core-legacy
           marconi-chain-index
           marconi-core
           marconi-cardano-core
+          marconi-cardano-indexers
           marconi-core-json-rpc
           marconi-sidechain
           marconi-sidechain-experimental
