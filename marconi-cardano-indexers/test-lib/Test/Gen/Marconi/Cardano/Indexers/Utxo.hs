@@ -1,0 +1,58 @@
+-- | Generators and utilities for testing the 'UtxoIndexer'.
+module Test.Gen.Marconi.Cardano.Indexers.Utxo where
+
+import Cardano.Api qualified as C
+import Control.Monad (join)
+import Data.List.NonEmpty (NonEmpty, nonEmpty)
+import Hedgehog (Gen)
+import Hedgehog.Gen qualified
+import Hedgehog.Range qualified
+import Marconi.Cardano.Core.Types qualified as Cardano.Core
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.Core qualified as Core
+import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
+
+-- | Generate a list of timed events for indexing with the @Utxo.'UtxoIndexer'@.
+genTimedUtxosEvents :: Gen [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)]
+genTimedUtxosEvents = getTimedUtxosEvents <$> Mockchain.genMockchain
+
+-- | Generate a random 'Utxo'
+genUtxo :: Hedgehog.Gen Utxo.Utxo
+genUtxo = do
+  script <- CGen.genScriptInAnyLang
+  let genAddressAny :: Hedgehog.Gen C.AddressAny
+      genAddressAny = do
+        (C.AddressInEra _ addr) <- CGen.genAddressInEra C.BabbageEra
+        pure $ C.toAddressAny addr
+      hashScriptInAnyLang :: C.ScriptInAnyLang -> C.ScriptHash
+      hashScriptInAnyLang (C.ScriptInAnyLang _ s) = C.hashScript s
+      scriptHash :: C.ScriptHash
+      scriptHash = hashScriptInAnyLang script
+  Utxo.Utxo
+    <$> genAddressAny -- address
+    <*> (Cardano.Core.TxIndexInBlock <$> Hedgehog.Gen.integral_ (Hedgehog.Range.constant 0 100)) -- txIndex
+    <*> CGen.genTxIn -- txIn
+    <*> Hedgehog.Gen.maybe CGen.genHashScriptData -- datumHash
+    <*> CGen.genValue CGen.genAssetId (CGen.genQuantity $ Hedgehog.Range.constant 0 100) -- value
+    <*> Hedgehog.Gen.maybe (pure script) -- inlineScript
+    <*> Hedgehog.Gen.maybe (pure scriptHash) -- inlineScriptHash
+
+{- HELPERS -}
+
+-- | Generate a list of @Utxo@ event from a mock chain
+getTimedUtxosEvents
+  :: (C.IsCardanoEra era)
+  => Mockchain.Mockchain era
+  -> [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)]
+getTimedUtxosEvents =
+  let getBlockTimedUtxosEvent block = Core.Timed (extractChainPoint block) $ getBlockUtxosEvent block
+   in fmap getBlockTimedUtxosEvent
+
+getBlockUtxosEvent :: (C.IsCardanoEra era) => Mockchain.MockBlock era -> Maybe (NonEmpty Utxo.Utxo)
+getBlockUtxosEvent (Mockchain.MockBlock _ txs) =
+  nonEmpty $ join $ zipWith Utxo.getUtxosFromTx [0 ..] txs
+
+extractChainPoint :: Mockchain.MockBlock era -> C.ChainPoint
+extractChainPoint (Mockchain.MockBlock (C.BlockHeader slotNo blockHeaderHash _) _) =
+  C.ChainPoint slotNo blockHeaderHash

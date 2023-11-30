@@ -35,10 +35,10 @@ import Spec.Marconi.Cardano.Indexers.BlockInfo (genBlockInfo)
 import Spec.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import Spec.Marconi.Cardano.Indexers.Datum qualified as Test.Datum
 import Spec.Marconi.Cardano.Indexers.Spent qualified as Test.Spent
-import Spec.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Gen.Marconi.Cardano.Core.Types qualified as CGen
+import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -71,7 +71,7 @@ tests =
 propAllUnspent :: Property
 propAllUnspent = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchainWithInfo
-  let utxoEvents = Test.Utxo.getTimedUtxosEvents $ Gen.mockchainWithInfoAsMockchain events
+  let utxoEvents = Gen.getTimedUtxosEvents $ Gen.mockchainWithInfoAsMockchain events
   event <- Hedgehog.forAll $ Hedgehog.Gen.element utxoEvents
   let point = event ^. Core.point
   address <-
@@ -89,7 +89,7 @@ propAllUnspent = Hedgehog.property $ do
 propResolvedDatum :: Property
 propResolvedDatum = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchainWithInfo
-  let utxoEvents = Test.Utxo.getTimedUtxosEvents $ Gen.mockchainWithInfoAsMockchain events
+  let utxoEvents = Gen.getTimedUtxosEvents $ Gen.mockchainWithInfoAsMockchain events
       datumEvents = Test.Datum.getDatumsEvents $ Gen.mockchainWithInfoAsMockchain events
   event <- Hedgehog.forAll $ Hedgehog.Gen.element utxoEvents
   let point = event ^. Core.point
@@ -142,7 +142,7 @@ propResolvedDatum = Hedgehog.property $ do
 propFutureSpentAreTxIn :: Property
 propFutureSpentAreTxIn = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchainWithInfo
-  let utxoEvents = Test.Utxo.getTimedUtxosEvents $ Gen.mockchainWithInfoAsMockchain events
+  let utxoEvents = Gen.getTimedUtxosEvents $ Gen.mockchainWithInfoAsMockchain events
       geTxId (C.TxIn txId' _) = txId'
       txIds =
         utxoEvents
@@ -192,7 +192,7 @@ indexMockchain
   chainWithInfo = do
     let chain = Gen.mockchainWithInfoAsMockchain chainWithInfo
     Concurrent.modifyMVar_ utxoVar $
-      fmap (either (error . show) id) . Core.indexAllEither (Test.Utxo.getTimedUtxosEvents chain)
+      fmap (either (error . show) id) . Core.indexAllEither (Gen.getTimedUtxosEvents chain)
     Concurrent.modifyMVar_ spentVar $
       fmap (either (error . show) id) . Core.indexAllEither (Test.Spent.getSpentsEvents chain)
     Concurrent.modifyMVar_ datumVar $
@@ -263,7 +263,7 @@ genTimed gen = Core.Timed <$> CGen.genChainPoint <*> gen
 genUtxoResult :: Hedgehog.Gen UtxoQuery.UtxoResult
 genUtxoResult =
   UtxoQuery.UtxoResult
-    <$> Test.Utxo.genUtxo
+    <$> Gen.genUtxo
     <*> Hedgehog.Gen.maybe (C.getScriptData <$> CGen.genHashableScriptData)
     <*> genTimed genBlockInfo
     <*> Hedgehog.Gen.maybe (genTimed $ (,) <$> Test.BlockInfo.genBlockInfo <*> CGen.genTxId)

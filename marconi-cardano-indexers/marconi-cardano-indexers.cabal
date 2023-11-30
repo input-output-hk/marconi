@@ -206,6 +206,7 @@ library marconi-cardano-indexers-test-lib
   hs-source-dirs:  test-lib
   exposed-modules:
     Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent
+    Test.Gen.Marconi.Cardano.Indexers.Utxo
     Test.Helpers
     Test.Integration
 
