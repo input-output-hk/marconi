@@ -96,6 +96,7 @@ library
     , aeson
     , async
     , base           >=4.7 && <5
+    , bifunctors
     , bytestring
     , comonad
     , containers
@@ -106,6 +107,7 @@ library
     , mtl
     , sqlite-simple
     , stm
+    , streaming
     , text
     , transformers
 
