@@ -1,21 +1,24 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Spec.Marconi.Sidechain.Integration (tests) where
 
+import Cardano.Api qualified as C
 import Control.Lens ((<&>))
 import Control.Monad (unless)
 import Control.Monad.Catch (MonadCatch)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Resource (MonadResource)
-import Hedgehog (Property, assert)
+import Hedgehog (Property, assert, (===))
 import Hedgehog qualified as H
 import Hedgehog.Extras qualified as H
+import Helpers qualified as Help
 import Network.JsonRpc.Client.Types ()
 import Spec.Marconi.Sidechain.Utils qualified as U
-import System.Environment qualified as IO
+import System.Exit qualified as IO
 import System.IO qualified as IO
 import System.Process qualified as IO
 import Test.Tasty (TestTree, testGroup)
@@ -60,42 +63,47 @@ validOptionalCliFlags =
 startMarconiSideChainTest :: [String] -> String -> Property
 startMarconiSideChainTest optionalCliArgs description =
   U.runIntegrationTest $ H.workspace ("start-marconi-sidechain-" <> description) $ \tempPath -> do
-    (nodeDbDir, nodeStdoutFile, nodeStderrFile, nodePHandle) <-
-      startMarconiSidechain optionalCliArgs tempPath
+    (_, networkId, socketPath) <- Help.startTestnet tempPath 1000
+
+    (marconiDbDir, marconiStdoutFile, marconiStderrFile, marconiPHandle) <-
+      startMarconiSidechain optionalCliArgs tempPath socketPath networkId
 
     -- wait for stdout log to show successful synchronising or fail after 30 seconds
-    logsSynchronising <- liftIO $ U.waitForExpectedContentInLogFile nodeStdoutFile 30 ["Synchronising"]
+    logsSynchronising <-
+      liftIO $
+        U.waitForExpectedContentInLogFile marconiStdoutFile 30 ["Synchronising", "Fully synchronised."]
     unless logsSynchronising H.failure
 
-    -- check that each db file exists and ledgerStates dir is not empty
-    utxoDbFileExists <- H.doesFileExists $ nodeDbDir <> "/utxo.db"
-    mintBurnDbFileExists <- H.doesFileExists $ nodeDbDir <> "/mintburn.db"
-    epochStateDbFileExists <- H.doesFileExists $ nodeDbDir <> "/epochstate.db"
-    ledgerStateDirIsNotEmpty <- not . null <$> H.listDirectory (nodeDbDir <> "/ledgerStates")
+    socketExists <- H.doesFileExists socketPath
+    assert socketExists
+
+    -- check that each db file exists
+    utxoDbFileExists <- H.doesFileExists $ marconiDbDir <> "/utxo.db"
+    mintBurnDbFileExists <- H.doesFileExists $ marconiDbDir <> "/mintburn.db"
     assert $
       all
         (== True)
-        [utxoDbFileExists, mintBurnDbFileExists, epochStateDbFileExists, ledgerStateDirIsNotEmpty]
+        [utxoDbFileExists, mintBurnDbFileExists]
 
     -- terminate process with SIGINT (Ctrl+C)
-    H.evalIO $ IO.interruptProcessGroupOf nodePHandle
+    H.evalIO $ IO.interruptProcessGroupOf marconiPHandle
 
     -- check correct log output on shutdown
     stopLogContainsShuttingDown <-
       H.evalIO $
         U.waitForExpectedContentInLogFile
-          nodeStdoutFile
+          marconiStdoutFile
           5
-          ["Marconi is shutting down. Waiting for indexers to finish their work..."]
-    stopLogContainsDone <- H.evalIO $ U.waitForExpectedContentInLogFile nodeStdoutFile 15 ["Done!"]
-    H.annotate =<< liftIO (IO.readFile nodeStdoutFile)
+          ["Stopping indexing. Waiting for indexers to finish their work"]
+    stopLogContainsDone <- H.evalIO $ U.waitForExpectedContentInLogFile marconiStdoutFile 15 ["Done!"]
+    H.annotate =<< liftIO (IO.readFile marconiStdoutFile)
     assert $ all (== True) [stopLogContainsShuttingDown, stopLogContainsDone]
 
-    _mExitCode <- H.evalIO $ IO.getProcessExitCode nodePHandle
-    -- mExitCode === Just IO.ExitSuccess -- skipping failing assertion, see PLT-7045
+    mExitCode <- H.evalIO $ IO.getProcessExitCode marconiPHandle
+    mExitCode === Just (IO.ExitFailure 130)
 
     -- check for no errors exist in stderr
-    assert . null =<< liftIO (IO.readFile nodeStderrFile)
+    assert . null =<< liftIO (IO.readFile marconiStderrFile)
 
 -- TODO: re-start marconi and check recovery
 
@@ -105,30 +113,39 @@ startMarconiSideChainTest optionalCliArgs description =
 startMarconiSidechain
   :: (H.MonadTest m, MonadCatch m, MonadResource m)
   => [String]
-  -> String
+  -> FilePath
+  -> FilePath
+  -> C.NetworkId
   -> m (FilePath, FilePath, FilePath, IO.ProcessHandle)
-startMarconiSidechain optionalCliArgs tempPath = do
+startMarconiSidechain optionalCliArgs tempPath socketPath networkId = do
+  magicId <- case networkId of
+    C.Testnet (C.NetworkMagic magic) -> pure $ show magic
+    _ -> do
+      H.annotate "Expected a testnet network ID"
+      H.failure
+
+  let nodeConfigFile = "../config/cardano-node/preview/config.json"
   marconiStdoutFile <- H.noteTempFile tempPath "marconi-sidechain.stdout.log"
   marconiStderrFile <- H.noteTempFile tempPath "marconi-sidechain.stderr.log"
   hStdout <- H.openFile marconiStdoutFile IO.WriteMode
   hStderr <- H.openFile marconiStderrFile IO.WriteMode
   let marconiDbDir = tempPath <> "/marconi-databases"
   H.createDirectoryIfMissing_ marconiDbDir
-  nodeWorkingDir :: FilePath <- H.nothingFailM (liftIO $ IO.lookupEnv "CARDANO_NODE_WORKING_DIR")
-  magicId <- liftIO $ IO.readFile $ nodeWorkingDir <> "/db/protocolMagicId"
   cp <-
     H.procFlex
       "marconi-sidechain"
       "MARCONI_SIDECHAIN"
       ( -- mandatory cli args
         [ "--socket-path"
-        , nodeWorkingDir <> "/ipc/node.socket"
+        , socketPath
         , "--node-config-path"
-        , nodeWorkingDir <> "/config.json"
+        , nodeConfigFile
         , "--db-dir"
         , marconiDbDir
         , "--testnet-magic"
         , magicId
+        , -- because the epoch state indexer is too strict for the cardano node emulator:
+          "--disable-epoch-stakepool-size"
         ]
           <> optionalCliArgs
       )
