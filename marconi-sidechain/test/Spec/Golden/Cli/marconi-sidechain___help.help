@@ -8,6 +8,7 @@ Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
                          [(-a|--addresses-to-index BECH32-ADDRESS)] 
                          [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
                          [--fail-if-resyncing-from-genesis] 
+                         [--disable-epoch-stakepool-size] 
                          [--initial-retry-time NATURAL] 
                          [--no-max-retry-time | --max-retry-time NATURAL] 
                          [(-n|--slot-no SLOT-NO)
@@ -45,6 +46,8 @@ Available options:
   --fail-if-resyncing-from-genesis
                            Fails resuming if one indexer must resync from
                            genesis when it can resume from a later point.
+  --disable-epoch-stakepool-size
+                           disable epoch stakepool size indexers.
   --initial-retry-time NATURAL
                            Initial time (in seconds) before retry after a failed
                            node connection. Defaults to 30s.
