@@ -344,7 +344,7 @@ rewind = H.property $ do
 -}
 endToEnd :: Property
 endToEnd = H.withShrinks 0 $ H.propertyOnce $ (liftIO Help.setDarwinTmpdir >>) $ H.runFinallies $ H.workspace "." $ \tempPath -> do
-  (localNodeConnectInfo, networkId, socketPath) <- Help.startTestnet tempPath
+  (localNodeConnectInfo, networkId, socketPath) <- Help.startTestnet tempPath 10
 
   -- This is the channel we wait on to know if the event has been indexed
   indexerChan <- liftIO IO.newChan
