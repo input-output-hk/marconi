@@ -2,6 +2,8 @@
 
 module Spec.Marconi.Sidechain.Experimental.Utils where
 
+import Cardano.Api qualified as C
+import Cardano.BM.Trace (Trace)
 import Control.Concurrent qualified as IO
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
@@ -12,12 +14,47 @@ import Data.Monoid (getLast)
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger)
+import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig))
+import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
+import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs))
+import Marconi.Sidechain.Experimental.Env (SidechainEnv, mkSidechainEnvFromCliArgs)
 import System.Directory qualified as IO
 import System.Environment qualified as IO
 import System.FilePath qualified as IO
 import System.FilePath.Posix ((</>))
 import System.IO qualified as IO
 import System.Process qualified as IO
+
+{- QUERY TEST UTILS -}
+
+{- | Dummy CLI arguments from which to create a 'SidechainEnv' used in testing via
+'mkSidechainEnvFromCliArgs'. Fields can be updated as needed for different tests.
+-}
+initTestingCliArgs :: CliArgs
+initTestingCliArgs =
+  CliArgs
+    "cardano-node.socket"
+    ""
+    "."
+    8080
+    C.Mainnet
+    Nothing
+    Nothing
+    retryConfig
+    StartFromGenesis
+  where
+    retryConfig = RetryConfig 1 (Just 16)
+
+{- | Quick-start version of 'mkSidechainEnvFromCliArgs' for use in testing.
+Security parameter set to 0, meaning rollbacks are not supported.
+-}
+mkTestSidechainEnvFromCliArgs :: CliArgs -> IO SidechainEnv
+mkTestSidechainEnvFromCliArgs cliArgs =
+  defaultStdOutLogger "marconi-sidechain-experimental-test"
+    >>= \(trace, sb) -> mkSidechainEnvFromCliArgs trace sb cliArgs 0
+
+{- GOLDEN TEST UTILS -}
 
 -- Capture handle contents in a separate thread (e.g. stderr)
 captureHandleContents :: IO.Handle -> IO BSL.ByteString

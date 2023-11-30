@@ -69,7 +69,6 @@ import Marconi.Cardano.Indexers.MintTokenEvent (
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.MintTokenEventQuery qualified as MintTokenEventQuery
 import Marconi.Core qualified as Core
-import Spec.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -83,6 +82,7 @@ import Test.Gen.Marconi.Cardano.Core.Mockchain (
   mockchainWithInfoAsMockchain,
  )
 import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
+import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent qualified as Gen
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration
