@@ -1,7 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Marconi.Sidechain.Node.Run where
 
@@ -9,11 +8,12 @@ import Cardano.Crypto.Init qualified as Crypto
 import Cardano.Node.Configuration.POM (PartialNodeConfiguration)
 import Cardano.Node.Handlers.TopLevel (toplevelExceptionHandler)
 import Cardano.Node.LedgerEvent (
-  AnchoredEvent (AnchoredEvent),
+  AnchoredEvents (AnchoredEvents),
   LedgerEvent (LedgerNewEpochEvent),
-  LedgerEventReader,
-  LedgerEventWriter,
+  LedgerEventsReader,
+  LedgerEventsWriter,
   LedgerNewEpochEvent (LedgerStakeDistEvent),
+  Versioned (Versioned),
   mkLedgerEventHandler,
   withLedgerEventsChan,
  )
@@ -31,6 +31,7 @@ import Cardano.Node.Tracing.Documentation (
  )
 import Control.Concurrent.Async (race_)
 import Control.Monad (forever)
+import Data.Foldable (for_)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Version (showVersion)
@@ -138,15 +139,16 @@ command' c descr p =
     , Opt.metavar c
     ]
 
-runNode :: PartialNodeConfiguration -> LedgerEventWriter -> IO ()
+runNode :: PartialNodeConfiguration -> LedgerEventsWriter -> IO ()
 runNode config writer = Node.runNode config [mkLedgerEventHandler writer]
 
-runSidechainChainIndex :: LedgerEventReader -> IO ()
+runSidechainChainIndex :: LedgerEventsReader -> IO ()
 runSidechainChainIndex reader = do
   putStrLn "Getting SDD..."
   forever $ do
-    reader >>= \case
-      (_, AnchoredEvent _ _ _ _ (LedgerNewEpochEvent (LedgerStakeDistEvent e))) ->
+    Versioned _ (AnchoredEvents _ _ _ _ events) <- reader
+    for_ events $ \case
+      LedgerNewEpochEvent (LedgerStakeDistEvent e) ->
         putStrLn $ "LedgerStakeDistEvent " <> show e
       _otherEvent ->
         pure ()
