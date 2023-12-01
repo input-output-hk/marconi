@@ -106,17 +106,29 @@ module Marconi.CoreSpec (
 
   -- ** Instances internal
   sqliteModelIndexer,
+
+  -- ** WithStability
   withStabilityTestGroup,
+
+  -- ** withStream
+  withStreamTestGroup,
 ) where
 
 import Control.Applicative (Const (Const))
 import Control.Category qualified as Category
 import Control.Comonad (Comonad (extract))
-import Control.Concurrent (MVar)
+import Control.Concurrent (MVar, forkIO, threadDelay)
 import Control.Concurrent qualified as Con
+import Control.Concurrent.STM (TChan, dupTChan, newBroadcastTChanIO, readTChan)
 import Control.Lens (
   Getter,
   Lens',
+  makePrisms,
+  over,
+  toListOf,
+  traverseOf,
+  traversed,
+  view,
   (%=),
   (%~),
   (-~),
@@ -124,19 +136,23 @@ import Control.Lens (
   (.~),
   (^.),
   (^..),
+  _2,
+  _Just,
  )
 import Control.Lens qualified as Lens
-import Control.Monad (foldM, replicateM, void)
+import Control.Monad (foldM, foldM_, replicateM, void)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
+import Data.Binary
 import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
 import Data.Foldable qualified as Foldable
 import Data.Function ((&))
+import Data.IORef (newIORef)
 import Data.List qualified as List
 import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Monoid (Sum (Sum))
@@ -152,10 +168,18 @@ import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.FromRow qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
-import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
+import GHC.Conc (ThreadStatus (ThreadFinished), atomically, threadStatus)
 import GHC.Generics (Generic)
+import Marconi.Core (Point, Timed, event, unwrap)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
+import Marconi.Core.Indexer.ListIndexer (events)
+import Marconi.Core.Transformer.WithStream.Socket (streamFromSocket)
+import Marconi.Core.Transformer.WithStream.Socket qualified as Socket
+import Marconi.Core.Transformer.WithStream.TChan qualified as TChan
+import Streaming (Of, Stream)
+import Streaming.Prelude (drained)
+import Streaming.Prelude qualified as S
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.ModelBased qualified as Model
 import Test.QuickCheck (Arbitrary, Gen, Property, (===), (==>))
@@ -206,6 +230,8 @@ data Item event
   | Rollback !TestPoint
   | StableAt !TestPoint
   deriving stock (Show, Eq)
+
+makePrisms ''Item
 
 testPoint :: Lens' (Item event) TestPoint
 testPoint = Lens.lens getter setter
@@ -410,7 +436,9 @@ instance (Arbitrary event) => Arbitrary (ChainWithoutEmptyEvents event) where
 newtype TestEvent = TestEvent Int
   deriving stock (Generic)
   deriving newtype (Arbitrary, Eq, Ord, Show, Num, Enum, Real, Integral, FromField, ToField)
-  deriving anyclass (SQL.FromRow, SQL.ToRow)
+  deriving anyclass (SQL.FromRow, SQL.ToRow, Binary)
+
+makePrisms ''TestEvent
 
 type instance Core.Point TestEvent = TestPoint
 
@@ -1635,6 +1663,52 @@ withRollbackFailureTest =
   Tasty.testProperty "Rollback failure in a worker exit nicely" $
     Test.withMaxSuccess 10_000 $
       checkOutOfRollback (Lens.view defaultChain <$> Test.arbitrary)
+
+-- * withStream
+
+withStreamTestGroup :: Tasty.TestTree
+withStreamTestGroup =
+  Tasty.testGroup
+    "StreamTests"
+    [ Tasty.testGroup
+        "Stream"
+        [ Tasty.testGroup
+            "withStreamTChan"
+            [ Tasty.testProperty "tchan streaming works" withStreamTChan
+            ]
+        , Tasty.testGroup
+            "withStreamSocket"
+            []
+        ]
+    ]
+
+withStreamTChan :: Property
+withStreamTChan = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+  let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+  writeChan <- liftIO newBroadcastTChanIO
+  readChan <- liftIO $ atomically $ dupTChan writeChan
+  _ <- liftIO $ forkIO $ do
+    result <- runExceptT $ do
+      let toInt = view (event . _TestEvent)
+      initialIdx <- liftIO $ TChan.withStream toInt writeChan Core.mkListIndexer
+      foldM_ (flip process) initialIdx chainSubset
+    case result of
+      Left _ -> pure ()
+      Right _ -> pure ()
+
+  let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
+      stream = S.take (length testEvents) $ TChan.streamFromTChan readChan
+      combined =
+        S.all (\(x, y) -> TestEvent x == y) $
+          S.zip stream (S.each testEvents)
+  (res S.:> _) <- liftIO combined
+  GenM.stop res
+
+-- withStreamSocket :: Property
+-- withStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+--   (indexer, events) <- processCommonParts args
+--   withActionIndexer <- liftIO $ Socket.withStream id Nothing "3000" indexer
+--   GenM.stop $ undefined -- not (any isStable eventsWithStab)
 
 -- * Query modification - Stability
 withStabilityTestGroup :: Tasty.TestTree

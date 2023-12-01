@@ -468,6 +468,12 @@ module Marconi.Core (
   Prunable (..),
   HasPruningConfig (securityParam, pruneEvery),
 
+  -- ** Arbitrary action on events
+  WithAction (..),
+  WithActionConfig (..),
+  withActionConfigAction,
+  withActionWrapper,
+
   -- ** Caching
   WithCache,
   withCache,
@@ -652,6 +658,12 @@ import Marconi.Core.Transformer.IndexTransformer (
   setLastStablePointVia,
   wrappedIndexer,
   wrapperConfig,
+ )
+import Marconi.Core.Transformer.WithAction (
+  WithAction (..),
+  WithActionConfig (..),
+  withActionConfigAction,
+  withActionWrapper,
  )
 import Marconi.Core.Transformer.WithCache (
   HasCacheConfig (cache),
