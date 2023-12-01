@@ -205,6 +205,7 @@ library marconi-cardano-indexers-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
+    Test.Gen.Marconi.Cardano.Indexers
     Test.Gen.Marconi.Cardano.Indexers.BlockInfo
     Test.Gen.Marconi.Cardano.Indexers.Datum
     Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent
