@@ -11,7 +11,7 @@ import Marconi.Core.Transformer.WithAction (
   WithAction (WithAction),
   WithActionConfig (WithActionConfig),
  )
-import Network.Run.TCP (runTCPClient, runTCPServer)
+import Network.Run.TCP (runTCPClient)
 import Network.Socket (HostName, ServiceName, Socket)
 import Network.Socket.ByteString (sendAll)
 import Network.Socket.ByteString qualified as SBS
@@ -20,25 +20,20 @@ import Streaming.Prelude (Of, Stream, repeatM)
 -- | Stream from a given @Socket@
 streamFromSocket
   :: (MonadIO m, Binary r)
-  => HostName
-  -> ServiceName
-  -> IO (Stream (Of r) m ())
-streamFromSocket hostName serviceName = do
-  runTCPClient hostName serviceName (pure . stream)
-  where
-    stream sock = repeatM $ liftIO $ fmap (decode . BL.fromStrict) (SBS.recv sock 4096)
+  => Socket
+  -> Stream (Of r) m ()
+streamFromSocket sock = repeatM $ liftIO $ fmap (decode . BL.fromStrict) (SBS.recv sock 4096)
 
 -- | A smart constructor for @WithStream@
 withStream
   :: (Binary r)
   => (Timed (Point event) event -> r)
-  -> Maybe HostName
-  -> ServiceName
+  -> Socket
   -> indexer event
   -> IO (WithAction indexer event)
-withStream mapping hostName serviceName idx = do
-  let overSocket event = runTCPServer hostName serviceName (send $ mapping event)
+withStream mapping sock idx = do
+  let overSocket event = send (mapping event) sock
   pure $ WithAction $ IndexTransformer (WithActionConfig overSocket) idx
   where
     send :: (Binary r) => r -> Socket -> IO ()
-    send r sock = sendAll sock $ BL.toStrict $ encode r
+    send r s = sendAll s $ BL.toStrict $ encode r
