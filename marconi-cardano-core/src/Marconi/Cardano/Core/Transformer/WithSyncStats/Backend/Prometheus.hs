@@ -31,6 +31,6 @@ mkPrometheusBackend timeBetween = do
   where
     updateMetrics :: P.Gauge -> P.Gauge -> LastSyncStats -> IO ()
     updateMetrics rollforwards rollbacks (LastSyncStats fw bw _ _ _) = do
-      _ <- P.setGauge rollforwards (fromInteger . toInteger $ fw)
-      _ <- P.setGauge rollbacks (fromInteger . toInteger $ bw)
+      _ <- P.addGauge rollforwards (fromInteger . toInteger $ fw)
+      _ <- P.addGauge rollbacks (fromInteger . toInteger $ bw)
       pure ()
