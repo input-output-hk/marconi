@@ -1,30 +1,47 @@
-{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Spec.Marconi.Sidechain.Experimental.Utils where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Control.Concurrent qualified as IO
-import Control.Monad.IO.Class (liftIO)
+import Control.Exception (throwIO)
+import Control.Lens (folded, (^.), (^..))
+import Control.Monad.Except (runExceptT)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function ((&))
 import Data.List qualified as L
+import Data.List.NonEmpty qualified as NEList
+import Data.Maybe (mapMaybe)
 import Data.Monoid (getLast)
+import Data.Set qualified as Set
+import Data.Set.NonEmpty qualified as NESet
+import Data.Text (Text)
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
-import Marconi.Cardano.Core.Logger (defaultStdOutLogger)
-import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig))
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig), TargetAddresses)
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
-import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs))
-import Marconi.Sidechain.Experimental.Env (SidechainEnv, mkSidechainEnvFromCliArgs)
+import Marconi.Core qualified as Core
+import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig (..))
+import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs, dbDir, targetAddresses))
+import Marconi.Sidechain.Experimental.Env (
+  SidechainEnv,
+  mkSidechainBuildIndexersConfig,
+  mkSidechainEnvFromCliArgs,
+ )
+import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
 import System.Directory qualified as IO
 import System.Environment qualified as IO
 import System.FilePath qualified as IO
 import System.FilePath.Posix ((</>))
 import System.IO qualified as IO
 import System.Process qualified as IO
+import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 
 {- QUERY TEST UTILS -}
 
@@ -46,13 +63,65 @@ initTestingCliArgs =
   where
     retryConfig = RetryConfig 1 (Just 16)
 
+{- | Combines mkSidechainBuildIndexersConfig and sidechainBuildIndexers into one,
+but using the 'Test.Indexers.buildIndexers' instead so as to expose the individual
+indexers for the purpose of indexing generated events.
+
+  A convenience for testing indexers using the same inputs as what the CLI sees.
+-}
+buildTestIndexersFromCliArgs
+  :: (MonadIO m)
+  => Trace IO Text
+  -> CliArgs
+  -> m Test.Indexers.TestBuildIndexersResult
+buildTestIndexersFromCliArgs trace cliArgs = do
+  let
+    -- Fixing security param at 0. No rollbacks.
+    config = mkSidechainBuildIndexersConfig trace cliArgs 0
+
+  res <-
+    liftIO . runExceptT $
+      Test.Indexers.buildIndexers
+        (config ^. Indexers.sidechainBuildIndexersSecurityParam)
+        (config ^. Indexers.sidechainBuildIndexersCatchupConfig)
+        (config ^. Indexers.sidechainBuildIndexersUtxoConfig)
+        (config ^. Indexers.sidechainBuildIndexersMintTokenEventConfig)
+        (config ^. Indexers.sidechainBuildIndexersEpochStateConfig)
+        trace
+        (mkMarconiTrace trace)
+        (config ^. Indexers.sidechainBuildIndexersDbPath)
+
+  liftIO $ either throwIO pure res
+
+-- TODO: PLT-8634 conveniece function for building indexers that can easily be indexed with
+-- generated events. useful for testing handlers.
+mkTestSidechainHttpServerConfigFromCliArgs
+  :: (MonadIO m) => CliArgs -> m (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
+mkTestSidechainHttpServerConfigFromCliArgs = undefined
+
+-- TODO: PLT-8634 this can be deleted i think
+
 {- | Quick-start version of 'mkSidechainEnvFromCliArgs' for use in testing.
 Security parameter set to 0, meaning rollbacks are not supported.
 -}
-mkTestSidechainEnvFromCliArgs :: CliArgs -> IO SidechainEnv
+mkTestSidechainEnvFromCliArgs :: (MonadIO m) => CliArgs -> m SidechainEnv
 mkTestSidechainEnvFromCliArgs cliArgs =
-  defaultStdOutLogger "marconi-sidechain-experimental-test"
-    >>= \(trace, sb) -> mkSidechainEnvFromCliArgs trace sb cliArgs 0
+  liftIO $
+    defaultStdOutLogger "marconi-sidechain-experimental-test"
+      >>= \(trace, sb) -> mkSidechainEnvFromCliArgs trace sb cliArgs 0
+
+-- | List of unique addresses from a list of timed 'UtxoEvent'.
+addressesFromTimedUtxoEvents :: [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)] -> [C.AddressAny]
+addressesFromTimedUtxoEvents = L.nub . concatMap getAddrs
+  where
+    getAddrs :: Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent) -> [C.AddressAny]
+    getAddrs e = e ^. Core.event ^.. folded . folded . Utxo.address
+
+addressAnysToTargetAddresses :: [C.AddressAny] -> Maybe TargetAddresses
+addressAnysToTargetAddresses = NESet.nonEmptySet . Set.fromList . mapMaybe op
+  where
+    op (C.AddressShelley addr) = Just addr
+    op _ = Nothing
 
 {- GOLDEN TEST UTILS -}
 

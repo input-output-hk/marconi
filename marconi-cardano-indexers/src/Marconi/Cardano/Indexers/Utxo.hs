@@ -37,6 +37,8 @@ module Marconi.Cardano.Indexers.Utxo (
   StandardUtxoIndexer,
   utxoWorker,
   catchupConfigEventHook,
+  trackedAddresses,
+  includeScript,
 
   -- * Extractors
   getUtxoEventsFromBlock,
