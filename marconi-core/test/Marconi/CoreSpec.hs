@@ -147,7 +147,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
-import Data.Binary
+import Data.Binary (Binary)
 import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
 import Data.Foldable qualified as Foldable
@@ -170,13 +170,14 @@ import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
 import GHC.Conc (ThreadStatus (ThreadFinished), atomically, threadStatus)
 import GHC.Generics (Generic)
-import Marconi.Core (Point, Timed, event, unwrap)
+import Marconi.Core (Point, Timed, unwrap)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
 import Marconi.Core.Indexer.ListIndexer (events)
 import Marconi.Core.Transformer.WithStream.Socket (streamFromSocket)
 import Marconi.Core.Transformer.WithStream.Socket qualified as Socket
 import Marconi.Core.Transformer.WithStream.TChan qualified as TChan
+import Network.Socket (AddrInfo (AddrInfo), openSocket)
 import Streaming (Of, Stream)
 import Streaming.Prelude (drained)
 import Streaming.Prelude qualified as S
@@ -197,6 +198,7 @@ data TestPoint = TestPoint
   -- ^ Represents the block header hash of the point.
   }
   deriving stock (Eq, Generic, Show)
+  deriving anyclass (Binary)
 
 instance Ord TestPoint where
   compare (TestPoint s1 _) (TestPoint s2 _) = s1 `compare` s2
@@ -1689,7 +1691,7 @@ withStreamTChan = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ 
   readChan <- liftIO $ atomically $ dupTChan writeChan
   _ <- liftIO $ forkIO $ do
     result <- runExceptT $ do
-      let toInt = view (event . _TestEvent)
+      let toInt = view (Core.event . _TestEvent)
       initialIdx <- liftIO $ TChan.withStream toInt writeChan Core.mkListIndexer
       foldM_ (flip process) initialIdx chainSubset
     case result of
@@ -1706,9 +1708,24 @@ withStreamTChan = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ 
 
 -- withStreamSocket :: Property
 -- withStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
---   (indexer, events) <- processCommonParts args
---   withActionIndexer <- liftIO $ Socket.withStream id Nothing "3000" indexer
---   GenM.stop $ undefined -- not (any isStable eventsWithStab)
+--   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+--   _ <- liftIO $ forkIO $ do
+--     result <- runExceptT $ do
+--       let toInt = view (Core.event . _TestEvent)
+--       initialIdx <- liftIO $ Socket.withStream toInt Nothing "3000" Core.mkListIndexer
+--       foldM_ (flip process) initialIdx chainSubset
+--     case result of
+--       Left _ -> pure ()
+--       Right _ -> pure ()
+
+--   openSocket $ AddrInfo
+--   let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
+--       stream = S.take (length testEvents) $ Socket.streamFromSocket readChan
+--       combined =
+--         S.all (\(x, y) -> TestEvent x == y) $
+--           S.zip stream (S.each testEvents)
+--   (res S.:> _) <- liftIO combined
+--   GenM.stop res
 
 -- * Query modification - Stability
 withStabilityTestGroup :: Tasty.TestTree

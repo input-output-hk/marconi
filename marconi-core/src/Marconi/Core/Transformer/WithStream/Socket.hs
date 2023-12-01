@@ -1,8 +1,7 @@
 module Marconi.Core.Transformer.WithStream.Socket where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Binary (Binary, encode)
-import Data.ByteString.Char8 qualified as B
+import Data.Binary (Binary, decode, encode)
 import Data.ByteString.Lazy qualified as BL
 import Marconi.Core (Point, Timed)
 import Marconi.Core.Transformer.IndexTransformer (
@@ -12,15 +11,22 @@ import Marconi.Core.Transformer.WithAction (
   WithAction (WithAction),
   WithActionConfig (WithActionConfig),
  )
-import Network.Run.TCP (runTCPServer)
+import Network.Run.TCP (runTCPClient, runTCPServer)
 import Network.Socket (HostName, ServiceName, Socket)
 import Network.Socket.ByteString (sendAll)
 import Network.Socket.ByteString qualified as SBS
 import Streaming.Prelude (Of, Stream, repeatM)
 
 -- | Stream from a given @Socket@
-streamFromSocket :: (MonadIO m) => Socket -> Stream (Of String) m ()
-streamFromSocket sock = repeatM $ liftIO $ fmap B.unpack (SBS.recv sock 4096)
+streamFromSocket
+  :: (MonadIO m, Binary r)
+  => HostName
+  -> ServiceName
+  -> IO (Stream (Of r) m ())
+streamFromSocket hostName serviceName = do
+  runTCPClient hostName serviceName (pure . stream)
+  where
+    stream sock = repeatM $ liftIO $ fmap (decode . BL.fromStrict) (SBS.recv sock 4096)
 
 -- | A smart constructor for @WithStream@
 withStream
