@@ -19,18 +19,18 @@ mkPrometheusBackend :: NominalDiffTime -> IO StatsBackend
 mkPrometheusBackend timeBetween = do
   processedBlocksCounter <-
     P.register $
-      P.gauge (P.Info "processed_blocks_counter" "Number of processed blocks")
+      P.counter (P.Info "processed_blocks_counter" "Number of processed blocks")
   processedRollbacksCounter <-
     P.register $
-      P.gauge (P.Info "processed_rollbacks_counter" "Number of processed rollbacks")
+      P.counter (P.Info "processed_rollbacks_counter" "Number of processed rollbacks")
   pure $
     StatsBackend
       (updateMetrics processedBlocksCounter processedRollbacksCounter)
       timeBetween
       emptyLastSyncStats
   where
-    updateMetrics :: P.Gauge -> P.Gauge -> LastSyncStats -> IO ()
+    updateMetrics :: P.Counter -> P.Counter -> LastSyncStats -> IO ()
     updateMetrics rollforwards rollbacks (LastSyncStats fw bw _ _ _) = do
-      _ <- P.setGauge rollforwards (fromInteger . toInteger $ fw)
-      _ <- P.setGauge rollbacks (fromInteger . toInteger $ bw)
+      _ <- P.addCounter rollforwards (fromInteger . toInteger $ fw)
+      _ <- P.addCounter rollbacks (fromInteger . toInteger $ bw)
       pure ()
