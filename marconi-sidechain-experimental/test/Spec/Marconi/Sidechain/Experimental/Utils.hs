@@ -25,15 +25,17 @@ import Hedgehog.Extras.Stock qualified as OS
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig), TargetAddresses)
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig (..))
-import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs, dbDir, targetAddresses))
+import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs, targetAssets))
 import Marconi.Sidechain.Experimental.Env (
   SidechainEnv,
   mkSidechainBuildIndexersConfig,
   mkSidechainEnvFromCliArgs,
  )
+import Marconi.Sidechain.Experimental.Indexers (sidechainBuildIndexers)
 import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
 import System.Directory qualified as IO
 import System.Environment qualified as IO
@@ -63,22 +65,21 @@ initTestingCliArgs =
   where
     retryConfig = RetryConfig 1 (Just 16)
 
-{- | Combines mkSidechainBuildIndexersConfig and sidechainBuildIndexers into one,
-but using the 'Test.Indexers.buildIndexers' instead so as to expose the individual
-indexers for the purpose of indexing generated events.
-
-  A convenience for testing indexers using the same inputs as what the CLI sees.
+{- | Utility for testing JSON RPC handlers, mainly.
+ - Construct the 'SidechainHttpServerConfig' and indexers in the same way as 'mkSidechainEnvFromCliArgs',
+ - including some hard-coded parameters in 'mkSidechainBuildIndexersConfig',
+ - except using @Test.Indexers.'buildIndexers'@. We need to expose the underlying indexers for direct indexing with
+ - randomly generated events. Fixes the security parameter to 0 since this assumes no rollbacks are
+ - tested.
 -}
-buildTestIndexersFromCliArgs
-  :: (MonadIO m)
-  => Trace IO Text
-  -> CliArgs
-  -> m Test.Indexers.TestBuildIndexersResult
-buildTestIndexersFromCliArgs trace cliArgs = do
+mkTestSidechainConfigsFromCliArgs
+  :: (MonadIO m) => CliArgs -> m (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
+mkTestSidechainConfigsFromCliArgs cliArgs = do
+  (trace, _) <- liftIO $ defaultStdOutLogger "marconi-sidechain-experimental-test"
   let
     -- Fixing security param at 0. No rollbacks.
-    config = mkSidechainBuildIndexersConfig trace cliArgs 0
-
+    securityParam = 0
+    config = mkSidechainBuildIndexersConfig trace cliArgs securityParam
   res <-
     liftIO . runExceptT $
       Test.Indexers.buildIndexers
@@ -91,24 +92,20 @@ buildTestIndexersFromCliArgs trace cliArgs = do
         (mkMarconiTrace trace)
         (config ^. Indexers.sidechainBuildIndexersDbPath)
 
-  liftIO $ either throwIO pure res
+  buildIndexersConfig <- either (liftIO . throwIO) pure res
 
--- TODO: PLT-8634 conveniece function for building indexers that can easily be indexed with
--- generated events. useful for testing handlers.
-mkTestSidechainHttpServerConfigFromCliArgs
-  :: (MonadIO m) => CliArgs -> m (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
-mkTestSidechainHttpServerConfigFromCliArgs = undefined
+  let
+    httpConfig =
+      ChainIndex.Types.HttpServerConfig
+        trace
+        8080
+        0
+        (config ^. Indexers.sidechainBuildIndexersUtxoConfig . Utxo.trackedAddresses)
+        (A.toJSON cliArgs)
+        (buildIndexersConfig ^. Test.Indexers.testBuildIndexersResultQueryables)
+    sidechainHttpConfig = SidechainHttpServerConfig httpConfig (targetAssets cliArgs)
 
--- TODO: PLT-8634 this can be deleted i think
-
-{- | Quick-start version of 'mkSidechainEnvFromCliArgs' for use in testing.
-Security parameter set to 0, meaning rollbacks are not supported.
--}
-mkTestSidechainEnvFromCliArgs :: (MonadIO m) => CliArgs -> m SidechainEnv
-mkTestSidechainEnvFromCliArgs cliArgs =
-  liftIO $
-    defaultStdOutLogger "marconi-sidechain-experimental-test"
-      >>= \(trace, sb) -> mkSidechainEnvFromCliArgs trace sb cliArgs 0
+  pure (sidechainHttpConfig, buildIndexersConfig)
 
 -- | List of unique addresses from a list of timed 'UtxoEvent'.
 addressesFromTimedUtxoEvents :: [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)] -> [C.AddressAny]
