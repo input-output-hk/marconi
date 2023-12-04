@@ -7,6 +7,7 @@ import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Types qualified as Cardano.Core
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
@@ -16,6 +17,16 @@ import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 -- | Generate a list of timed events for indexing with the @Utxo.'UtxoIndexer'@.
 genTimedUtxosEvents :: Gen [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)]
 genTimedUtxosEvents = getTimedUtxosEvents <$> Mockchain.genMockchain
+
+{- | Generate a list of timed events with a distince in blocks to the chain tip. For example,
+can be used as a base to generate events for indexing directly with
+@Marconi.Cardano.Core.Indexer.Worker.'StandardIndexer'@.
+-}
+genTimedUtxosEventsWithDistance
+  :: Gen [Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent))]
+genTimedUtxosEventsWithDistance =
+  getTimedUtxosEventsWithDistance . Mockchain.mockchainWithInfoAsMockchainWithDistance
+    <$> Mockchain.genMockchainWithInfoAndDistance
 
 -- | Generate a random 'Utxo'
 genUtxo :: Hedgehog.Gen Utxo.Utxo
@@ -48,6 +59,16 @@ getTimedUtxosEvents
 getTimedUtxosEvents =
   let getBlockTimedUtxosEvent block = Core.Timed (extractChainPoint block) $ getBlockUtxosEvent block
    in fmap getBlockTimedUtxosEvent
+
+-- | Generate a list of @Utxo@ events with distance from a mock chain with distance.
+getTimedUtxosEventsWithDistance
+  :: (C.IsCardanoEra era)
+  => Mockchain.MockchainWithDistance era
+  -> [Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent))]
+getTimedUtxosEventsWithDistance =
+  let getBlockTimedUtxosEvent block = Core.Timed (getChainPoint block) $ fmap getBlockUtxosEvent block
+      getChainPoint (WithDistance _ block) = extractChainPoint block
+   in map getBlockTimedUtxosEvent
 
 getBlockUtxosEvent :: (C.IsCardanoEra era) => Mockchain.MockBlock era -> Maybe (NonEmpty Utxo.Utxo)
 getBlockUtxosEvent (Mockchain.MockBlock _ txs) =
