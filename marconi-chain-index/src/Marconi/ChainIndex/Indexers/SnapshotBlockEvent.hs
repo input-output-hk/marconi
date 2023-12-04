@@ -15,8 +15,9 @@ import Control.Monad.IO.Class (MonadIO)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorkerConfig (eventExtractor, logger, workerName),
  )
-import Marconi.Cardano.Core.Types (BlockEvent, BlockRange)
+import Marconi.Cardano.Core.Types (BlockEvent, BlockRange, isInBlockRange)
 import Marconi.Core qualified as Core
+import Marconi.Core.Preprocessor qualified as Core
 
 data SnapshotBlockEventWorkerConfig input = SnapshotBlockEventWorkerConfig
   { currentBlockNo :: input -> C.BlockNo
@@ -59,4 +60,10 @@ snapshotBlockEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig pat
 
 inBlockRangePreprocessor
   :: (Monad m) => (a -> C.BlockNo) -> BlockRange -> Core.Preprocessor m C.ChainPoint a a
-inBlockRangePreprocessor getBlockNo blockRange = undefined
+inBlockRangePreprocessor getBlockNo br =
+  Core.scanMaybeEvent filterWithinBlockRange Nothing
+  where
+    filterWithinBlockRange input =
+      if isInBlockRange (getBlockNo input) br
+        then pure . Just $ input
+        else pure Nothing

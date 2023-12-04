@@ -58,6 +58,7 @@ module Marconi.Cardano.Core.Types (
   mkBlockRange,
   blockRangeFst,
   blockRangeSnd,
+  isInBlockRange,
 ) where
 
 import Cardano.Api qualified as C
@@ -183,15 +184,15 @@ mintBurnDbName :: FilePath
 mintBurnDbName = "mintburn.db"
 
 data BlockRange = BlockRange
-  { _blockRangeFst :: !Int
-  , _blockRangeSnd :: !Int
+  { _blockRangeFst :: !Word64
+  , _blockRangeSnd :: !Word64
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
 Lens.makeLenses ''BlockRange
 
-mkBlockRange :: Int -> Int -> Either String BlockRange
+mkBlockRange :: Word64 -> Word64 -> Either String BlockRange
 mkBlockRange x y
   | x <= 0 || y <= 0 = Left "Expected positive arguments in block range."
   | x <= y = Right $ BlockRange x y
@@ -199,3 +200,7 @@ mkBlockRange x y
       Left $
         "Expected left hand side of the block range "
           <> "to be smaller than or equal to the right hand side."
+
+isInBlockRange :: C.BlockNo -> BlockRange -> Bool
+isInBlockRange (C.BlockNo bNo) (BlockRange left right) =
+  left <= bNo && bNo <= right
