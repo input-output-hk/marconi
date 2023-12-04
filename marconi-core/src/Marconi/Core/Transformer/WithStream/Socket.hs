@@ -1,7 +1,9 @@
 module Marconi.Core.Transformer.WithStream.Socket where
 
+import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Binary (Binary, decode, encode)
+import Data.Binary (Binary, decode, decodeOrFail, encode)
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Marconi.Core (Point, Timed)
 import Marconi.Core.Transformer.IndexTransformer (
@@ -14,24 +16,43 @@ import Marconi.Core.Transformer.WithAction (
 import Network.Socket (Socket)
 import Network.Socket.ByteString (sendAll)
 import Network.Socket.ByteString qualified as SBS
-import Streaming.Prelude (Of, Stream, repeatM)
+import Streaming.Prelude (Of, Stream, yield)
 
 -- | Stream from a given @Socket@
 streamFromSocket
   :: (MonadIO m, Binary r)
   => Socket
   -> Stream (Of r) m ()
-streamFromSocket sock = repeatM $ liftIO $ fmap (decode . BL.fromStrict) (SBS.recv sock 4096)
+streamFromSocket sock = loop BL.empty
+  where
+    loop buffer = do
+      chunk <- liftIO $ SBS.recv sock 4096
+      unless (BS.null chunk) $ do
+        let newBuffer = buffer <> BS.fromStrict chunk
+        processBuffer newBuffer
+
+    processBuffer buffer =
+      case decodeOrFail buffer of
+        Left _ -> loop buffer
+        Right (rest, _, res) -> do
+          yield res
+          if BL.null rest
+            then loop BL.empty
+            else processBuffer rest
 
 -- | A smart constructor for @WithStream@, using @Socket@
 withStream
-  :: (Binary r)
+  :: (Binary r, Show event, Show (Point event))
   => (Timed (Point event) event -> r)
   -> Socket
   -> indexer event
   -> IO (WithAction indexer event)
 withStream mapping sock idx = do
-  let overSocket event = send (mapping event) sock
+  let overSocket event = do
+        print ("pushing" ++ show event)
+        send (mapping event) sock
+        print "pushed"
+
   pure $ WithAction $ IndexTransformer (WithActionConfig overSocket) idx
   where
     send :: (Binary r) => r -> Socket -> IO ()

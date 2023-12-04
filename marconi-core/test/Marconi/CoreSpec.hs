@@ -117,8 +117,21 @@ module Marconi.CoreSpec (
 import Control.Applicative (Const (Const))
 import Control.Category qualified as Category
 import Control.Comonad (Comonad (extract))
-import Control.Concurrent (MVar, forkIO, killThread, threadDelay, throwTo)
+import Control.Concurrent (
+  MVar,
+  forkIO,
+  killThread,
+  newEmptyMVar,
+  newQSem,
+  putMVar,
+  readMVar,
+  signalQSem,
+  threadDelay,
+  throwTo,
+  waitQSem,
+ )
 import Control.Concurrent qualified as Con
+import Control.Concurrent.Async (race, race_)
 import Control.Concurrent.STM (
   TChan,
   dupTChan,
@@ -149,7 +162,7 @@ import Control.Lens (
   _Just,
  )
 import Control.Lens qualified as Lens
-import Control.Monad (foldM, foldM_, forever, replicateM, void)
+import Control.Monad (foldM, foldM_, forever, replicateM, void, when)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Class (lift)
@@ -157,6 +170,7 @@ import Control.Monad.Trans.Except (ExceptT)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
 import Data.Binary (Binary (get, put))
+import Data.ByteString qualified as BS
 import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
 import Data.Foldable qualified as Foldable
@@ -204,6 +218,7 @@ import Network.Socket (
   setSocketOption,
   socket,
  )
+import Network.Socket.ByteString (recv, sendAll)
 import Streaming (Of, Stream)
 import Streaming.Prelude (drained)
 import Streaming.Prelude qualified as S
@@ -1723,35 +1738,41 @@ withStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability 
 
   let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
       stream = S.take (length testEvents) $ TBQueue.streamFromTBQueue q
-      combined =
-        S.all (\(x, y) -> TestEvent x == y) $
-          S.zip stream (S.each testEvents)
-  (res S.:> _) <- liftIO combined
-  GenM.stop res
 
--- withStreamSocket :: Property
--- withStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
---   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
---   tid <- liftIO $ forkIO $ server chainSubset
---   res <- liftIO $ client chainSubset
---   liftIO $ killThread tid
---   GenM.stop res
---   where
---     server chainSubset = runTCPServer (Just "127.0.0.1") "5046" $ \s -> do
---       _ <- runExceptT $ do
---         let toInt = view (Core.event . _TestEvent)
---         initialIdx <- liftIO $ Socket.withStream toInt s Core.mkListIndexer
---         foldM_ (flip process) initialIdx chainSubset
---       close s
---     client chainSubset = runTCPClient "127.0.0.1" "5046" $ \s -> do
---       let stream = Socket.streamFromSocket s
---       let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
---           combined =
---             S.all (\(x, y) -> TestEvent x == y) $
---               S.zip (S.take (length testEvents) stream) (S.each testEvents)
---       (res S.:> _) <- liftIO combined
---       close s
---       pure res
+  l <- S.toList_ stream
+  l' <- S.toList_ (S.each testEvents)
+
+  GenM.stop (l == fmap (\(TestEvent x) -> x) l')
+
+withStreamSocket :: Property
+withStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+  let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+  serverStarted <- liftIO $ newQSem 1
+  Right (str, es) <-
+    liftIO $ race (server chainSubset serverStarted) (client chainSubset serverStarted)
+
+  liftIO $ print (str, es)
+  GenM.stop (str == fmap (view _TestEvent) es)
+  where
+    server chainSubset serverStarted = do
+      runTCPServer Nothing "3005" serve
+      where
+        serve :: Socket -> IO ()
+        serve s = do
+          signalQSem serverStarted
+          _ <- runExceptT $ do
+            let toInt = view (Core.event . _TestEvent)
+            initialIdx <- liftIO $ Socket.withStream toInt s Core.mkListIndexer
+            foldM_ (flip process) initialIdx chainSubset
+          sendAll s BS.empty
+    client chainSubset serverStarted = do
+      waitQSem serverStarted
+      runTCPClient "127.0.0.1" "3005" $ \s -> do
+        let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
+            stream :: Stream (Of Int) IO () = Socket.streamFromSocket s
+        str <- S.toList_ stream
+        es <- S.toList_ (S.each testEvents)
+        pure (str, es)
 
 -- * Query modification - Stability
 withStabilityTestGroup :: Tasty.TestTree
