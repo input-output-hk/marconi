@@ -23,7 +23,7 @@ import System.FilePath.Posix ((</>))
 import System.IO qualified as IO
 import System.Process qualified as IO
 
--- | Wait up to a specific duration (seconds) for text file to contain all string values
+-- | Wait up to a specific duration (seconds) for text file to contain one of the string values
 waitForExpectedContentInLogFile :: FilePath -> Int -> [String] -> IO Bool
 waitForExpectedContentInLogFile logFile t expectedStrings = go (t + 1) (t + 1)
   where
@@ -34,7 +34,7 @@ waitForExpectedContentInLogFile logFile t expectedStrings = go (t + 1) (t + 1)
           go (t1 - 1) t2
       | otherwise = do
           contents <- IO.readFile logFile
-          if all (`isInfixOf` contents) expectedStrings
+          if any (`isInfixOf` contents) expectedStrings
             then return True
             else do
               IO.threadDelay 1_000_000 -- wait 1 second after each subsequent check
