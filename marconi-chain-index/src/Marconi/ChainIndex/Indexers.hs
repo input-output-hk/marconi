@@ -10,7 +10,8 @@ module Marconi.ChainIndex.Indexers where
 import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar)
-import Control.Lens (makeLenses, (?~))
+import Control.Lens (makeLenses, (&), (?~))
+import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
 import Data.Function ((&))
@@ -20,6 +21,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
+import Marconi.Cardano.Core.Extract.WithDistance qualified as WithDistance
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardIndexer,
   StandardWorker (StandardWorker),
@@ -40,15 +42,23 @@ import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyn
 import Marconi.ChainIndex.Indexers.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.EpochNonce qualified as Nonce
 import Marconi.ChainIndex.Indexers.EpochSDD qualified as SDD
+import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent)
 import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerStateCoordinator
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.MintTokenEventQuery (
   MintTokenEventIndexerQuery (MintTokenEventIndexerQuery),
  )
+import Marconi.ChainIndex.Indexers.SnapshotBlockEvent (
+  SnapshotBlockEvent (SnapshotBlockEvent),
+  SnapshotBlockEventMetadata,
+  SnapshotBlockEventWorkerConfig (SnapshotBlockEventWorkerConfig),
+ )
+import Marconi.ChainIndex.Indexers.SnapshotBlockEvent qualified as SnapshotBlockEvent
 import Marconi.ChainIndex.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
+import Ouroboros.Consensus.Ledger.Extended (ExtLedgerCfg (ExtLedgerCfg))
 import System.FilePath ((</>))
 
 data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
@@ -396,7 +406,7 @@ epochNonceBuilder securityParam catchupConfig textLogger path =
         (Nonce.EpochNonceWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
         (path </> "epochNonce.db")
 
--- | Configure and start the @EpochNonce@ indexer
+-- | Configure and start the @EpochSDD@ indexer
 epochSDDBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
@@ -426,6 +436,46 @@ epochSDDBuilder securityParam catchupConfig textLogger path =
         (SDD.EpochSDDWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
         (path </> "epochSDD.db")
 
+-- | Configure and start the @SnapshotBlockEvent@ indexer
+snapshotBlockEventBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> BM.Trace m Text
+  -> FilePath
+  -> n
+      ( Core.WorkerIndexer
+          m
+          (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent)
+          SnapshotBlockEvent
+          ( Core.WithTrace
+              m
+              (Core.FileIndexer SnapshotBlockEventMetadata)
+          )
+      )
+snapshotBlockEventBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "SnapshotBlockEvent"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      standardWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfig
+          extractSnapshotBlockEvent
+          (BM.appendName indexerName indexerEventLogger)
+   in SnapshotBlockEvent.snapshotBlockEventWorker
+        standardWorkerConfig
+        -- TODO: send block range
+        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) undefined)
+        path
+
+extractSnapshotBlockEvent
+  :: (Applicative f)
+  => (ExtLedgerStateEvent, WithDistance BlockEvent)
+  -> f (Maybe SnapshotBlockEvent)
+extractSnapshotBlockEvent =
+  pure . Just . SnapshotBlockEvent . WithDistance.getEvent . snd
+
 buildIndexersForSnapshot
   :: SecurityParam
   -> Core.CatchupConfig
@@ -448,20 +498,16 @@ buildIndexersForSnapshot
         mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
         blockEventTextLogger = BM.appendName "blockEvent" textLogger
         blockEventLogger = BM.appendName "blockEvent" mainLogger
-        epochStateTextLogger = BM.appendName "epochState" blockEventTextLogger
-        epochSDDTextLogger = BM.appendName "epochSDD" epochStateTextLogger
-        epochNonceTextLogger = BM.appendName "epochNonce" epochStateTextLogger
+        snapshotBlockEventTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
 
-    Core.WorkerIndexer _epochSDDMVar epochSDDWorker <-
-      -- TODO: this should be a new indexer
-      epochSDDBuilder securityParam catchupConfig epochSDDTextLogger path
-    Core.WorkerIndexer _epochNonceMVar epochNonceWorker <-
-      -- TODO: this should be removed?
-      epochNonceBuilder securityParam catchupConfig epochNonceTextLogger path
+    Core.WorkerIndexer _snapshotBlockEventMVar snapshotBlockEventWorker <-
+      snapshotBlockEventBuilder securityParam catchupConfig snapshotBlockEventTextLogger path
     Core.WorkerIndexer _epochStateMVar epochStateWorker <-
+      -- TODO: we need to create a separate indexer for each block range
+      -- that the user specifies
       ExtLedgerStateCoordinator.extLedgerStateWorker
         epochStateConfig
-        [epochSDDWorker, epochNonceWorker]
+        [snapshotBlockEventWorker]
         path
 
     blockCoordinator <-

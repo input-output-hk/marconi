@@ -25,6 +25,7 @@ module Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
   -- * Utils
   newEpochPreprocessor,
   readGenesisFile,
+  extractBlockEvent,
 ) where
 
 import Cardano.Api qualified as C
