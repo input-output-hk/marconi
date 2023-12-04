@@ -8,11 +8,15 @@ module Test.Gen.Marconi.Cardano.Core.Mockchain (
   genMockchain,
   MockBlock (..),
   MockchainWithInfo,
+  MockchainWithDistance,
+  MockchainWithInfoAndDistance,
   genMockchainWithInfo,
+  genMockchainWithInfoAndDistance,
   MockBlockWithInfo (..),
   C.BlockHeader (..),
   genMockchainWithTxBodyGen,
   mockchainWithInfoAsMockchain,
+  mockchainWithInfoAsMockchainWithDistance,
   genTxBodyContentFromTxIns,
   genTxBodyContentFromTxInsWithPhase2Validation,
   DatumLocation (..),
@@ -28,7 +32,9 @@ import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Monad (foldM, forM)
 import Control.Monad.State (MonadState (get), MonadTrans (lift), StateT, evalStateT, put)
+import Data.List qualified as List
 import Data.Maybe (catMaybes)
+import Data.Ord qualified
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Time.Clock.POSIX (POSIXTime)
@@ -37,6 +43,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Internal.Gen qualified as Hedgehog.Gen
 import Hedgehog.Range qualified
 import Hedgehog.Range qualified as Range
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, attachDistance)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Helpers (emptyTxBodyContent)
 import Test.Gen.Marconi.Cardano.Core.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
@@ -63,8 +70,15 @@ data MockBlockWithInfo era = MockBlockWithInfo
   }
   deriving (Show)
 
+type MockchainWithInfoAndDistance era = [WithDistance (MockBlockWithInfo era)]
+type MockchainWithDistance era = [WithDistance (MockBlock era)]
+
 mockchainWithInfoAsMockchain :: MockchainWithInfo era -> Mockchain era
 mockchainWithInfoAsMockchain = fmap mockBlockWithInfoAsMockBlock
+
+mockchainWithInfoAsMockchainWithDistance
+  :: MockchainWithInfoAndDistance era -> MockchainWithDistance era
+mockchainWithInfoAsMockchainWithDistance = fmap (fmap mockBlockWithInfoAsMockBlock)
 
 mockBlockWithInfoAsMockBlock :: MockBlockWithInfo era -> MockBlock era
 mockBlockWithInfoAsMockBlock block =
@@ -105,6 +119,27 @@ genMockchainWithInfo =
         let startInfo = MockChainInfo startEpochNo startTime C.ChainTipAtGenesis
         traverse attachInfoToBlock chain `evalStateT` startInfo
    in genMockchain >>= attachInfoToChain
+
+{- | Generate a MockchainWithInfoAndDistance. "Distance" is distance from the current chain tip,
+which is given by the chain tip of the latest block. Ensures the result is sorted ascending by
+block number, as is currently implemented in 'genMockchainWithTxBodyGen'.
+-}
+genMockchainWithInfoAndDistance :: Gen (MockchainWithInfoAndDistance C.BabbageEra)
+genMockchainWithInfoAndDistance =
+  List.reverse . attachDistanceToMockChainReversed . revSortChain
+    <$> genMockchainWithInfo
+  where
+    getBlockNo (C.BlockHeader _ _ blockNo) = blockNo
+    revSortChain = List.sortOn (Data.Ord.Down . getBlockNo . mockBlockWithInfoChainPoint)
+    attachDistanceToMockChainReversed
+      :: MockchainWithInfo C.BabbageEra -> MockchainWithInfoAndDistance C.BabbageEra
+    attachDistanceToMockChainReversed [] = []
+    attachDistanceToMockChainReversed (b : bs) =
+      map
+        (\b' -> attachDistance (getBlockNo $ mockBlockWithInfoChainPoint b') tip b')
+        (b : bs)
+      where
+        tip = mockBlockInfoChainTip b
 
 bumpChainTip :: C.ChainTip -> StateT MockChainInfo Gen C.ChainTip
 bumpChainTip tip = do
