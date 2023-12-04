@@ -11,8 +11,7 @@ import Marconi.Core.Transformer.WithAction (
   WithAction (WithAction),
   WithActionConfig (WithActionConfig),
  )
-import Network.Run.TCP (runTCPClient)
-import Network.Socket (HostName, ServiceName, Socket)
+import Network.Socket (Socket)
 import Network.Socket.ByteString (sendAll)
 import Network.Socket.ByteString qualified as SBS
 import Streaming.Prelude (Of, Stream, repeatM)
@@ -24,7 +23,7 @@ streamFromSocket
   -> Stream (Of r) m ()
 streamFromSocket sock = repeatM $ liftIO $ fmap (decode . BL.fromStrict) (SBS.recv sock 4096)
 
--- | A smart constructor for @WithStream@
+-- | A smart constructor for @WithStream@, using @Socket@
 withStream
   :: (Binary r)
   => (Timed (Point event) event -> r)

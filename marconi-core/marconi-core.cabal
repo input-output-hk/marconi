@@ -79,7 +79,7 @@ library
     Marconi.Core.Transformer.WithFold
     Marconi.Core.Transformer.WithPruning
     Marconi.Core.Transformer.WithStream.Socket
-    Marconi.Core.Transformer.WithStream.TChan
+    Marconi.Core.Transformer.WithStream.TBQueue
     Marconi.Core.Transformer.WithTracer
     Marconi.Core.Transformer.WithTransform
     Marconi.Core.Type

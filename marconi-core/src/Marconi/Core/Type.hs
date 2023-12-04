@@ -74,7 +74,6 @@ deriving stock instance Traversable (Timed point)
 deriving stock instance Generic (Timed point event)
 deriving anyclass instance (FromJSON event, FromJSON point) => FromJSON (Timed point event)
 deriving anyclass instance (ToJSON event, ToJSON point) => ToJSON (Timed point event)
-deriving anyclass instance (Binary event, Binary point) => Binary (Timed point event)
 
 {- | The different types of input event that should be handled by an indexer
 used to map the chain incoming events to something that an indexer should be able to digest.

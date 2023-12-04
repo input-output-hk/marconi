@@ -1,7 +1,6 @@
-module Marconi.Core.Transformer.WithStream.TChan where
+module Marconi.Core.Transformer.WithStream.TBQueue where
 
-import Control.Concurrent.STM (atomically, newBroadcastTChan, readTChan)
-import Control.Concurrent.STM.TChan (TChan, dupTChan, writeTChan)
+import Control.Concurrent.STM (TBQueue, atomically, readTBQueue, writeTBQueue)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Marconi.Core (Point, Timed)
 import Marconi.Core.Transformer.IndexTransformer (
@@ -14,24 +13,24 @@ import Marconi.Core.Transformer.WithAction (
 import Streaming (Of, Stream)
 import Streaming.Prelude (repeatM)
 
--- | Stream from a given @TChan@
-streamFromTChan
+-- | Stream from a given @TBQueue@
+streamFromTBQueue
   :: forall m r
    . (MonadIO m)
-  => TChan r
+  => TBQueue r
   -> Stream (Of r) m ()
-streamFromTChan chan = repeatM . liftIO . atomically $ readTChan chan
+streamFromTBQueue q = repeatM . liftIO . atomically $ readTBQueue q
 
--- | A smart constructor for @WithAction@
+-- | A smart constructor for @WithAction@, using @TBQueue@
 withStream
   :: (Show event, Show (Point event))
   => (Timed (Point event) event -> r)
-  -> TChan r
+  -> TBQueue r
   -> indexer event
   -> IO (WithAction indexer event)
-withStream mapping chan idx = do
+withStream mapping q idx = do
   let pushEvent x = do
         liftIO $ print ("pushing" ++ show x)
-        liftIO $ atomically $ writeTChan chan (mapping x)
+        liftIO $ atomically $ writeTBQueue q (mapping x)
         liftIO $ print "pushed"
   pure $ WithAction $ IndexTransformer (WithActionConfig pushEvent) idx
