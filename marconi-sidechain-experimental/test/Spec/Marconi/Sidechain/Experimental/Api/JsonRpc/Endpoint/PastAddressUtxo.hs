@@ -3,52 +3,99 @@ see Spec.Marconi.Sidechain.Experimental.Routes.
 -}
 module Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo where
 
-import Control.Concurrent (readMVar)
+import Cardano.Api qualified as C
+import Control.Concurrent (withMVar)
+import Control.Exception (throwIO)
 import Control.Lens ((^.))
+import Control.Monad.Except (runExceptT)
+import Control.Monad.Reader (runReaderT)
+import Data.Maybe (mapMaybe)
+import Data.Text qualified as Text
 import Hedgehog qualified
 import Hedgehog.Gen qualified
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Indexers qualified as Indexers
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.ChainIndex.Api.Types qualified as ChainIndex
 import Marconi.Core qualified as Core
+import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo qualified as Sidechain
 import Marconi.Sidechain.Experimental.Api.Types qualified as Sidechain
 import Marconi.Sidechain.Experimental.CLI qualified as CLI
 import Marconi.Sidechain.Experimental.Env qualified as Sidechain
 import Spec.Marconi.Sidechain.Experimental.Utils qualified as Utils
 import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
-import Test.Tasty (TestTree, testGroup)
+import Test.Tasty (TestTree, localOption, testGroup)
+import Test.Tasty.Hedgehog (
+  HedgehogShrinkLimit (HedgehogShrinkLimit),
+  HedgehogTestLimit (HedgehogTestLimit),
+  testPropertyNamed,
+ )
+
+-- TODO: PLT-8634 need to treat this as an integration test and clean up local dir manually.
+-- indexers create files at least one file that is not cleaned up: chainTip/latestStable.cbor
+-- indexers also don't seem to shut down properly: the sqlite temp files are not cleaned up, it
+-- seems, which based on the sqlite docs suggests the connections are not closed after each test
+-- (meaning each randomly generated value is compared).
 
 tests :: TestTree
 tests =
-  testGroup
-    "Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo"
-    []
+  -- TODO: PLT-8634 investigating issue with open files
+  localOption (HedgehogTestLimit $ Just 1) $
+    localOption (HedgehogShrinkLimit $ Just 1) $
+      testGroup
+        "Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo"
+        [ testPropertyNamed
+            "Handler returns Utxos from queried address"
+            "propQueryTargetAddresses"
+            propQueryTargetAddresses
+        ]
 
 -- TODO: PLT-8634 change test name to be more descriptive
 propQueryTargetAddresses :: Hedgehog.Property
 propQueryTargetAddresses = Hedgehog.property $ do
-  events <- Hedgehog.forAll Test.Utxo.genTimedUtxosEvents
+  events <- Hedgehog.forAll Test.Utxo.genTimedUtxosEventsWithDistance
 
-  -- Subset of the unique addresses generated to query
-  targetAddresses <-
-    Hedgehog.forAll $
-      Utils.addressAnysToTargetAddresses . Utils.addressesFromTimedUtxoEvents
-        <$> Hedgehog.Gen.subsequence events
+  -- Select a single address from the sampled events
+  addr <-
+    Hedgehog.forAll $ do
+      addrs <- Utils.addressesFromTimedUtxoEvent <$> Hedgehog.Gen.element events
+      Hedgehog.Gen.element addrs
 
-  let args = Utils.initTestingCliArgs{CLI.targetAddresses = targetAddresses}
+  let
+    args = Utils.initTestingCliArgs{CLI.targetAddresses = Utils.addressAnysToTargetAddresses [addr]}
+    -- Serialise to Bech32-format string as required by handler
+    addrText = C.serialiseAddress addr
+
+  -- TODO: PLT-8634
+  Hedgehog.evalIO $ putStrLn "Print address............"
+  Hedgehog.evalIO $ print addr
+  Hedgehog.evalIO $ print addrText
 
   -- Make the http and build indexers configs (with indexers exposed)
   -- just as you would with the sidechain app.
   (httpConfig, indexersConfig) <- Utils.mkTestSidechainConfigsFromCliArgs args
 
   -- Index the utxo events directly
-  indexer <-
+  _ <-
     Hedgehog.evalIO $
-      readMVar $
-        indexersConfig
-          ^. Test.Indexers.testBuildIndexersResultUtxo
+      withMVar (indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo) $
+        -- TODO: PLT-8634 seems weird to have Maybe (WithDistance (Maybe event)).
+        -- The first is required by indexAllDescending, the second by StandardIndexer.
+        \idx -> runExceptT $ Core.indexAllDescending (map (fmap Just) events) idx
 
-  -- TODO: PLT-8634 sample addresses, then populate cli args, then create indexer
-  -- and index events, then query
+  -- TODO: PLT-8634 add coverage
+  let
+    params = ChainIndex.GetUtxosFromAddressParams addrText Nothing Nothing
 
-  undefined
+  res <-
+    Hedgehog.evalIO $
+      flip runReaderT httpConfig . runExceptT $
+        Sidechain.getPastAddressUtxoHandler params
+
+  actual <- Hedgehog.evalIO $ either throwIO pure res >>= either (fail . show) pure
+
+  let
+    expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) events
+
+  Hedgehog.assert $ Utils.compareGetUtxosFromAddressResult addr expected actual

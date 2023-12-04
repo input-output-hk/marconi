@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Network.JsonRpc.Client.Types ()
+import Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo qualified as PastAddressUtxo
 import Spec.Marconi.Sidechain.Experimental.CLI qualified as CLI
 import Spec.Marconi.Sidechain.Experimental.CLIInputValidation qualified as CLIInputValidation
 import Spec.Marconi.Sidechain.Experimental.Routes qualified as Routes
@@ -15,7 +16,8 @@ tests :: TestTree
 tests =
   testGroup
     "marconi-sidechain-experimental"
-    [ CLI.tests
+    [ PastAddressUtxo.tests
+    , CLI.tests
     , CLIInputValidation.tests
     , Routes.tests
     ]

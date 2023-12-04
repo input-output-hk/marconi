@@ -13,6 +13,7 @@ import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function ((&))
 import Data.List qualified as L
+import Data.List qualified as List
 import Data.List.NonEmpty qualified as NEList
 import Data.Maybe (mapMaybe)
 import Data.Monoid (getLast)
@@ -22,9 +23,15 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig), TargetAddresses)
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
+  AddressUtxoResult (AddressUtxoResult, txId, txIx, value),
+  GetUtxosFromAddressResult (unAddressUtxosResult),
+ )
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (ValueWrapper (unValueWrapper))
 import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
 import Marconi.Core qualified as Core
@@ -53,9 +60,11 @@ import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 initTestingCliArgs :: CliArgs
 initTestingCliArgs =
   CliArgs
-    "cardano-node.socket"
     ""
-    "."
+    -- TODO: PLT-8634 this needs to be valid since ExtLedgerStateCoordinator builder calls readGenesisFile.
+    "../config/cardano-node/mainnet/config.json"
+    -- dbPath "" uses temporary dbs
+    ""
     8080
     C.Mainnet
     Nothing
@@ -107,18 +116,34 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
 
   pure (sidechainHttpConfig, buildIndexersConfig)
 
--- | List of unique addresses from a list of timed 'UtxoEvent'.
-addressesFromTimedUtxoEvents :: [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)] -> [C.AddressAny]
-addressesFromTimedUtxoEvents = L.nub . concatMap getAddrs
+-- | Get the addresses from a timed 'UtxoEvent' with distance.
+addressesFromTimedUtxoEvent
+  :: Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent)) -> [C.AddressAny]
+addressesFromTimedUtxoEvent = L.nub . getAddrs
   where
-    getAddrs :: Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent) -> [C.AddressAny]
-    getAddrs e = e ^. Core.event ^.. folded . folded . Utxo.address
+    getAddrs :: Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent)) -> [C.AddressAny]
+    getAddrs e = e ^. Core.event ^.. folded . folded . folded . Utxo.address
 
 addressAnysToTargetAddresses :: [C.AddressAny] -> Maybe TargetAddresses
 addressAnysToTargetAddresses = NESet.nonEmptySet . Set.fromList . mapMaybe op
   where
     op (C.AddressShelley addr) = Just addr
     op _ = Nothing
+
+{- | Compare results from the named query by checking that the Utxos associated with the provided
+address are returned. It is the caller's job to ensure the query in fact did use the provided
+address, since that is not in the result. Utxos are considered equal here if they are associated
+with the same address (assumed), have the same @C.'TxIn'@ and the same 'value'.
+-}
+compareGetUtxosFromAddressResult
+  :: C.AddressAny -> [Utxo.UtxoEvent] -> GetUtxosFromAddressResult -> Bool
+compareGetUtxosFromAddressResult target inputs result = sortUniqueOnTxIn expected == sortUniqueOnTxIn actual
+  where
+    sortUniqueOnTxIn = List.sortOn fst . List.nub
+    actual = map (\x -> (C.TxIn (txId x) (txIx x), unValueWrapper $ value x)) $ unAddressUtxosResult result
+    blockUtxosToExpected :: Utxo.UtxoEvent -> [(C.TxIn, C.Value)]
+    blockUtxosToExpected = map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.filter (\x -> x ^. Utxo.address == target)
+    expected = concatMap blockUtxosToExpected inputs
 
 {- GOLDEN TEST UTILS -}
 
