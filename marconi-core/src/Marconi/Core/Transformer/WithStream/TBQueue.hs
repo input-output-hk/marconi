@@ -1,8 +1,8 @@
 module Marconi.Core.Transformer.WithStream.TBQueue where
 
-import Control.Concurrent.STM (TBQueue, atomically, readTBQueue, writeTBQueue)
+import Control.Concurrent.STM (TBQueue, atomically, isFullTBQueue, readTBQueue, writeTBQueue)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Marconi.Core (Point, Timed)
 import Marconi.Core.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
  )
@@ -10,6 +10,7 @@ import Marconi.Core.Transformer.WithAction (
   WithAction (WithAction),
   WithActionConfig (WithActionConfig),
  )
+import Marconi.Core.Type (Point, Timed)
 import Streaming (Of, Stream)
 import Streaming.Prelude (repeatM)
 
@@ -28,5 +29,8 @@ withStream
   -> indexer event
   -> WithAction indexer event
 withStream mapping q idx =
-  let pushEvent x = liftIO $ atomically $ writeTBQueue q (mapping x)
+  let pushEvent x = atomically $ do
+        isFull <- isFullTBQueue q
+        when isFull (void $ readTBQueue q)
+        writeTBQueue q (mapping x)
    in WithAction $ IndexTransformer (WithActionConfig pushEvent) idx
