@@ -25,6 +25,30 @@ getTimedBlockInfoEvents
   -> [Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)]
 getTimedBlockInfoEvents = map getBlockInfoEvent
 
+-- TODO: PLT-8634 some note about why this is here. or make an issue.
+getTimedBlockInfoEventsFixedBlockNos
+  :: Mockchain.MockchainWithInfo era
+  -> [Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)]
+getTimedBlockInfoEventsFixedBlockNos =
+  let getChainPoint :: C.BlockHeader -> C.ChainPoint
+      getChainPoint (C.BlockHeader slotNo blockHeaderHash _blockNo) =
+        C.ChainPoint slotNo blockHeaderHash
+
+      getBlockInfoFixedBlockNo :: C.BlockNo -> Mockchain.MockBlockWithInfo era -> BlockInfo.BlockInfo
+      getBlockInfoFixedBlockNo bno (Mockchain.MockBlockWithInfo _bh epochNo timestamp _tip _txs) =
+        let timestampAsWord = fst $ properFraction $ Time.nominalDiffTimeToSeconds timestamp
+         in BlockInfo.BlockInfo bno timestampAsWord epochNo
+
+      getBlockInfoEventFixedBlockNo
+        :: C.BlockNo
+        -> Mockchain.MockBlockWithInfo era
+        -> Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)
+      getBlockInfoEventFixedBlockNo bno block =
+        Core.Timed (getChainPoint $ Mockchain.mockBlockWithInfoChainPoint block)
+          . pure
+          $ getBlockInfoFixedBlockNo bno block
+   in zipWith getBlockInfoEventFixedBlockNo [0 ..]
+
 -- | Generate a list of events from a mock chain with info and distance.
 getTimedBlockInfoEventsWithInfoAndDistance
   :: Mockchain.MockchainWithInfoAndDistance era
