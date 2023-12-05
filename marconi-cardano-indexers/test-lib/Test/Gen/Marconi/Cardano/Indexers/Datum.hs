@@ -11,7 +11,7 @@ import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 
 -- | Generate events for indexing with @Datum.'DatumIndexer'@.
 genDatumInfoEvents :: Hedgehog.Gen [Core.Timed C.ChainPoint (Maybe (NonEmpty Datum.DatumInfo))]
-genDatumInfoEvents = undefined
+genDatumInfoEvents = getDatumsEvents <$> Mockchain.genMockchain
 
 -- | Generate a list of events from a mock chain
 getDatumsEvents

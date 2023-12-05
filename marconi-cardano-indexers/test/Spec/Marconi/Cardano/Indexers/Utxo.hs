@@ -117,7 +117,7 @@ propRunnerTracksSelectedAddress :: Hedgehog.Property
 propRunnerTracksSelectedAddress = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchain
   let utxoEvents = Gen.getTimedUtxosEvents events
-      timedEvents = fmap (\evt -> Core.Timed (Gen.extractChainPoint evt) evt) events
+      timedEvents = fmap (\evt -> Core.Timed (Gen.getChainPointFromBlockHeader $ Gen.mockBlockHeader evt) evt) events
       chainAddresses = utxoEvents ^.. traverse . Core.event . traverse . traverse . Utxo.address
       attachDistance dist = Just . WithDistance dist
       eventsWithDistance
@@ -170,7 +170,7 @@ propRunnerDoesntTrackUnselectedAddress :: Hedgehog.Property
 propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchain
   let utxoEvents = Gen.getTimedUtxosEvents events
-      timedEvents = fmap (\evt -> Core.Timed (Gen.extractChainPoint evt) evt) events
+      timedEvents = fmap (\evt -> Core.Timed (Gen.getChainPointFromBlockHeader $ Gen.mockBlockHeader evt) evt) events
       chainAddresses = utxoEvents ^.. traverse . Core.event . traverse . traverse . Utxo.address
       attachDistance dist = Just . WithDistance dist
       eventsWithDistance

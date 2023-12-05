@@ -29,6 +29,7 @@ import Marconi.Cardano.Core.Types (
   TxIndexInBlock,
  )
 import Marconi.Cardano.Indexers qualified as Indexers
+import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Cardano.Indexers.Coordinator (syncStatsCoordinator)
 import Marconi.Cardano.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
@@ -41,11 +42,13 @@ import Marconi.Cardano.Indexers.MintTokenEventQuery (
   MintTokenEventIndexerQuery (MintTokenEventIndexerQuery),
  )
 import Marconi.Cardano.Indexers.Spent qualified as Spent
+import Marconi.Cardano.Indexers.Utxo (UtxoEvent)
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Utxo
 
 data TestBuildIndexersResult = TestBuildIndexersResult
   { _testBuildIndexersResultChainPoint :: C.ChainPoint
@@ -93,13 +96,26 @@ indexAllWithMockchain
 indexAllWithMockchain indexers chain = do
   -- Conversions needed for different indexers
   let
+    chainNoInfo :: Mockchain.MockchainWithDistance C.BabbageEra
+    chainNoInfo = Mockchain.mockchainWithInfoAsMockchainWithDistance chain
+
+    toBlockInfoEvents
+      :: Mockchain.MockchainWithInfoAndDistance C.BabbageEra
+      -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe BlockInfo)))]
     toBlockInfoEvents = map (fmap Just) . BlockInfo.getTimedBlockInfoEventsWithInfoAndDistance
-  -- TODO: PLT-8634
+
+    toUtxoEvents
+      :: Mockchain.MockchainWithDistance C.BabbageEra
+      -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe UtxoEvent)))]
+    toUtxoEvents = map (fmap Just) . Utxo.getTimedUtxosEventsWithDistance
+
+  -- TODO: PLT-8634 Remove the 'close' statements and fill with indexing
   withMVar (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
     void . (Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure)
   withMVar (indexers ^. testBuildIndexersResultEpochSDD) Core.close
   withMVar (indexers ^. testBuildIndexersResultEpochNonce) Core.close
-  withMVar (indexers ^. testBuildIndexersResultUtxo) Core.close
+  withMVar (indexers ^. testBuildIndexersResultUtxo) $
+    void . (Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure)
   withMVar (indexers ^. testBuildIndexersResultSpent) Core.close
   withMVar (indexers ^. testBuildIndexersResultDatum) Core.close
   withMVar (indexers ^. testBuildIndexersResultMintTokenEvent) Core.close

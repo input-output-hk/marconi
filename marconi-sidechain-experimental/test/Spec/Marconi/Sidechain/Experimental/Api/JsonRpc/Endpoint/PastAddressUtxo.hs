@@ -25,6 +25,7 @@ import Marconi.Sidechain.Experimental.Env qualified as Sidechain
 import Spec.Marconi.Sidechain.Experimental.Utils qualified as Utils
 import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
+import Test.Gen.Marconi.Cardano.Indexers.UtxoQuery qualified as Test.UtxoQuery
 import Test.Tasty (TestTree, localOption, testGroup)
 import Test.Tasty.Hedgehog (
   HedgehogShrinkLimit (HedgehogShrinkLimit),
@@ -66,6 +67,11 @@ propQueryTargetAddresses = Hedgehog.property $ do
   -- Make the http and build indexers configs (with indexers exposed)
   -- just as you would with the sidechain app.
   (httpConfig, indexersConfig) <- Utils.mkTestSidechainConfigsFromCliArgs args
+
+  -- Wrap UtxoQuery elements in UtxoQueryIndexers from test-lib
+  let
+    utxoIndexers =
+      Test.UtxoQuery.UtxoQueryIndexers (indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo)
 
   -- Index the utxo events directly
   _ <-

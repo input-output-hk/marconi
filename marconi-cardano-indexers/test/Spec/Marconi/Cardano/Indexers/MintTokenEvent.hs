@@ -932,7 +932,7 @@ stabilityTestBase assertion upperSlotNo securityParam = H.property $ do
   policy <- H.forAll CGen.genPolicyId
   events <- H.forAll genMockchainWithInfo
   mintEvents <- H.forAll $ genMintTokenEvents $ mockchainWithInfoAsMockchain events
-  let blockEvents = Test.BlockInfo.getBlockInfoEvents events
+  let blockEvents = Test.BlockInfo.getTimedBlockInfoEvents events
   let event = maximumBy (comparing $ view Core.point) mintEvents
       point = event ^. Core.point
       usn = do
@@ -1113,7 +1113,7 @@ indexMockchain
     Concurrent.modifyMVar_
       blockInfoVar
       ( withGen
-          (pure $ Test.BlockInfo.getBlockInfoEvents chainWithInfo)
+          (pure $ Test.BlockInfo.getTimedBlockInfoEvents chainWithInfo)
       )
 
 isStable :: Core.Stability a -> Bool
