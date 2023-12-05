@@ -58,8 +58,8 @@ constraints:
 source-repository-package
   type: git
   location: https://github.com/input-output-hk/marconi
-  tag: e5004fdd3b23c6b9fd78986a2783de689df86fc7
-  --sha256: sha256-IMAUEBux1pzlHNVhwbWulzFR0nAsWbD7QiX1lQDozEk=
+  tag: 25670eb6f2d89b26b6e173de268bdfb33c49a2d2
+  --sha256: sha256-XGZLSeZDHyg8ni2aEyPFLKWYbsl05Y027B6aVh86vhY=
   subdir:
     marconi-core
     -- We need to use compatible cardano-api versions
