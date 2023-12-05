@@ -68,8 +68,8 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/cardano-node
-  tag: 517eae2e0105d4bcd0c568abca09e0e6b3c6c9d3
-  --sha256: sha256-OXtK/9CTEnsJm/RgZWbWqp9koWFJqBZmK23bG4OQj4I=
+  tag: a28540f690f485fc28283528e824652c17ce62c0
+  --sha256: 0i0jyl3h798dwjq4f68jcfagm7dj4nzpw1h0kpjy9rdz6pikm61l
   subdir:
     cardano-node
     trace-dispatcher
@@ -80,8 +80,8 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/ouroboros-consensus
-  tag: 019a99b71f9d009e1a2101d09f6be0e75a33ea96
-  --sha256: sha256-hD96X9Z9bs5RHtbyjhhEfSgqOUe2aG2Lygs9dH9Rafg=
+  tag: 79da9a368cb6d2e7ed5ff5e89bb318b94c3c606d
+  --sha256: 02wjbvgbfdr5rybncxgx6slxh4gzx1vh4i34n6h834qghiq4yykb
   subdir:
     ouroboros-consensus
     ouroboros-consensus-cardano

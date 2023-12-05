@@ -5,13 +5,17 @@
 module Marconi.Sidechain.Node.Run where
 
 import Cardano.Crypto.Init qualified as Crypto
-import Cardano.Node.Configuration.POM (PartialNodeConfiguration (pncLedgerEventHandlerPort))
+import Cardano.Node.Configuration.POM (PartialNodeConfiguration)
 import Cardano.Node.Handlers.TopLevel (toplevelExceptionHandler)
 import Cardano.Node.LedgerEvent (
-  AnchoredEvent (AnchoredEvent),
+  AnchoredEvents (AnchoredEvents),
   LedgerEvent (LedgerNewEpochEvent),
+  LedgerEventsReader,
+  LedgerEventsWriter,
   LedgerNewEpochEvent (LedgerStakeDistEvent),
-  foldEvent,
+  Versioned (Versioned),
+  mkLedgerEventHandler,
+  withLedgerEventsChan,
  )
 import Cardano.Node.Parsers (
   nodeCLIParser,
@@ -25,19 +29,15 @@ import Cardano.Node.Tracing.Documentation (
   parseTraceDocumentationCmd,
   runTraceDocumentationCmd,
  )
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
-import Control.Exception (bracket, bracketOnError)
-import Data.Monoid (Last (getLast))
+import Control.Monad (forever)
+import Data.Foldable (for_)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Data.Version (showVersion)
-import Network.Socket (HostName, ServiceName, Socket)
-import Network.Socket qualified as Socket
 import Options.Applicative qualified as Opt
 import Options.Applicative.Help ((<$$>))
 import Paths_marconi_sidechain_node (version)
-import System.IO (IOMode (ReadMode))
 import System.Info (arch, compilerName, compilerVersion, os)
 
 {- | Most of this is copied from the `Main` file of cardano-node. If we upgrade the cardano-node
@@ -51,16 +51,13 @@ run = do
     cmd <- Opt.customExecParser p opts
 
     case cmd of
-      RunCmd args ->
-        -- TODO We should remove the ledgerEventHandler from the node's 'PartialNodeConfiguration'
-        -- and instead it put it in our custom CLI datatype. That way, the type will be 'PortNumber'
-        -- instead of 'Maybe PortNumber'.
-        case getLast $ pncLedgerEventHandlerPort args of
-          Nothing -> error "--ledger-event-handler option not provided"
-          Just portNumber ->
-            race_ (runSidechainChainIndex portNumber) (Node.runNode args)
-      TraceDocumentation tdc -> runTraceDocumentationCmd tdc
       VersionCmd -> runVersionCommand
+      TraceDocumentation tdc -> runTraceDocumentationCmd tdc
+      RunCmd config ->
+        withLedgerEventsChan $ \writer reader ->
+          race_
+            (runNode config writer)
+            (runSidechainChainIndex reader)
   where
     p = Opt.prefs Opt.showHelpOnEmpty
 
@@ -90,34 +87,6 @@ run = do
         parserHelpHeader "marconi-sidechain-node" nodeCLIParser
           <$$> ""
           <$$> parserHelpOptions nodeCLIParser
-
-runSidechainChainIndex :: Socket.PortNumber -> IO ()
-runSidechainChainIndex portNumber = do
-  -- TODO Client should wait for socket connection to be established instead of this random
-  -- threadDelay.
-  -- Or better, we should use LedgerEventHandler directly instead of relying in a socket connection.
-  -- This is planned.
-  threadDelay 5000000
-  runTCPClient "localhost" (show portNumber) $ \sock -> do
-    h <- Socket.socketToHandle sock ReadMode
-
-    putStrLn "Getting SDD..."
-    foldEvent h () $ \() -> \case
-      AnchoredEvent _ _ _ _ (LedgerNewEpochEvent (LedgerStakeDistEvent e)) -> print e
-      _otherEvent -> pure ()
-  where
-    runTCPClient :: HostName -> ServiceName -> (Socket -> IO a) -> IO a
-    runTCPClient host port client = Socket.withSocketsDo $ do
-      addrInfo <- resolve
-      putStrLn $ "Connecting to " <> show addrInfo
-      bracket (open addrInfo) Socket.close client
-      where
-        resolve = do
-          let hints = Socket.defaultHints{Socket.addrSocketType = Socket.Stream, Socket.addrFamily = Socket.AF_INET}
-          head <$> Socket.getAddrInfo (Just hints) (Just host) (Just port)
-        open addr = bracketOnError (Socket.openSocket addr) Socket.close $ \sock -> do
-          Socket.connect sock $ Socket.addrAddress addr
-          return sock
 
 data Command
   = RunCmd PartialNodeConfiguration
@@ -169,3 +138,17 @@ command' c descr p =
     [ Opt.command c (Opt.info (p Opt.<**> Opt.helper) $ mconcat [Opt.progDesc descr])
     , Opt.metavar c
     ]
+
+runNode :: PartialNodeConfiguration -> LedgerEventsWriter -> IO ()
+runNode config writer = Node.runNode config [mkLedgerEventHandler writer]
+
+runSidechainChainIndex :: LedgerEventsReader -> IO ()
+runSidechainChainIndex reader = do
+  putStrLn "Getting SDD..."
+  forever $ do
+    Versioned _ (AnchoredEvents _ _ _ _ events) <- reader
+    for_ events $ \case
+      LedgerNewEpochEvent (LedgerStakeDistEvent e) ->
+        putStrLn $ "LedgerStakeDistEvent " <> show e
+      _otherEvent ->
+        pure ()
