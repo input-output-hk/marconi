@@ -23,14 +23,10 @@ streamFromTBQueue q = repeatM . liftIO . atomically $ readTBQueue q
 
 -- | A smart constructor for @WithAction@, using @TBQueue@
 withStream
-  :: (Show event, Show (Point event))
-  => (Timed (Point event) event -> r)
+  :: (Timed (Point event) event -> r)
   -> TBQueue r
   -> indexer event
-  -> IO (WithAction indexer event)
-withStream mapping q idx = do
-  let pushEvent x = do
-        liftIO $ print ("pushing" ++ show x)
-        liftIO $ atomically $ writeTBQueue q (mapping x)
-        liftIO $ print "pushed"
-  pure $ WithAction $ IndexTransformer (WithActionConfig pushEvent) idx
+  -> WithAction indexer event
+withStream mapping q idx =
+  let pushEvent x = liftIO $ atomically $ writeTBQueue q (mapping x)
+   in WithAction $ IndexTransformer (WithActionConfig pushEvent) idx

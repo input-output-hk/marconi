@@ -2,7 +2,7 @@ module Marconi.Core.Transformer.WithStream.Socket where
 
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Binary (Binary, decode, decodeOrFail, encode)
+import Data.Binary (Binary, decodeOrFail, encode)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Marconi.Core (Point, Timed)
@@ -42,18 +42,13 @@ streamFromSocket sock = loop BL.empty
 
 -- | A smart constructor for @WithStream@, using @Socket@
 withStream
-  :: (Binary r, Show event, Show (Point event))
+  :: (Binary r)
   => (Timed (Point event) event -> r)
   -> Socket
   -> indexer event
-  -> IO (WithAction indexer event)
-withStream mapping sock idx = do
-  let overSocket event = do
-        print ("pushing" ++ show event)
-        send (mapping event) sock
-        print "pushed"
-
-  pure $ WithAction $ IndexTransformer (WithActionConfig overSocket) idx
-  where
-    send :: (Binary r) => r -> Socket -> IO ()
-    send r s = sendAll s $ BL.toStrict $ encode r
+  -> WithAction indexer event
+withStream mapping sock idx =
+  let overSocket event = send (mapping event) sock
+      send :: (Binary r) => r -> Socket -> IO ()
+      send r s = sendAll s $ BL.toStrict $ encode r
+   in WithAction $ IndexTransformer (WithActionConfig overSocket) idx

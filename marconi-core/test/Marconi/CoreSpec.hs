@@ -120,35 +120,19 @@ import Control.Comonad (Comonad (extract))
 import Control.Concurrent (
   MVar,
   forkIO,
-  killThread,
-  newEmptyMVar,
   newQSem,
-  putMVar,
-  readMVar,
   signalQSem,
-  threadDelay,
-  throwTo,
   waitQSem,
  )
 import Control.Concurrent qualified as Con
-import Control.Concurrent.Async (race, race_)
+import Control.Concurrent.Async (race)
 import Control.Concurrent.STM (
-  TChan,
-  dupTChan,
-  newBroadcastTChanIO,
-  newTBQueue,
   newTBQueueIO,
-  readTChan,
  )
-import Control.Exception (Exception, SomeAsyncException, SomeException)
-import Control.Exception qualified as E
 import Control.Lens (
   Getter,
   Lens',
   makePrisms,
-  over,
-  toListOf,
-  traverseOf,
   traversed,
   view,
   (%=),
@@ -162,20 +146,18 @@ import Control.Lens (
   _Just,
  )
 import Control.Lens qualified as Lens
-import Control.Monad (foldM, foldM_, forever, replicateM, void, when)
+import Control.Monad (foldM, foldM_, replicateM, void)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
-import Data.Binary (Binary (get, put))
 import Data.ByteString qualified as BS
 import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
 import Data.Foldable qualified as Foldable
 import Data.Function ((&))
-import Data.IORef (newIORef)
 import Data.List qualified as List
 import Data.Maybe (catMaybes, listToMaybe, mapMaybe)
 import Data.Monoid (Sum (Sum))
@@ -191,36 +173,19 @@ import Database.SQLite.Simple.FromField qualified as SQL
 import Database.SQLite.Simple.FromRow qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
-import GHC.Conc (ThreadStatus (ThreadFinished), atomically, threadStatus)
+import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
 import GHC.Generics (Generic)
-import Marconi.Core (Point, Timed, unwrap)
+import Marconi.Core (unwrap)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
-import Marconi.Core.Indexer.ListIndexer (events)
-import Marconi.Core.Transformer.WithStream.Socket (streamFromSocket)
 import Marconi.Core.Transformer.WithStream.Socket qualified as Socket
 import Marconi.Core.Transformer.WithStream.TBQueue qualified as TBQueue
 import Network.Run.TCP (runTCPClient, runTCPServer)
 import Network.Socket (
-  AddrInfo (AddrInfo, addrFlags, addrSocketType),
-  Family (AF_INET),
-  HostName,
-  ServiceName,
-  SockAddr (SockAddrInet),
   Socket,
-  SocketOption (ReuseAddr),
-  SocketType (Stream),
-  accept,
-  bind,
-  close,
-  listen,
-  openSocket,
-  setSocketOption,
-  socket,
  )
-import Network.Socket.ByteString (recv, sendAll)
+import Network.Socket.ByteString (sendAll)
 import Streaming (Of, Stream)
-import Streaming.Prelude (drained)
 import Streaming.Prelude qualified as S
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.ModelBased qualified as Model
@@ -1716,43 +1681,47 @@ withStreamTestGroup =
         "Stream"
         [ Tasty.testGroup
             "withStreamTBQueue"
-            [ Tasty.testProperty "TBQueue streaming works" withStreamTBQueue
+            [ Tasty.testProperty "TBQueue streaming works" propWithStreamTBQueue
             ]
         , Tasty.testGroup
             "withStreamSocket"
-            [ Tasty.testProperty "Socket streaming works" withStreamSocket
+            [ Tasty.testProperty "Socket streaming works" propWithStreamSocket
             ]
         ]
     ]
 
-withStreamTBQueue :: Property
-withStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+{- | Test that a stream from a @TBQueue@ is isomorphic to the original list that was used to create
+     the stream.
+-}
+propWithStreamTBQueue :: Property
+propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
   q <- liftIO $ newTBQueueIO 10
   _ <- liftIO $ forkIO $ do
-    _ <- runExceptT $ do
+    void $ runExceptT $ do
       let toInt = view (Core.event . _TestEvent)
-      initialIdx <- liftIO $ TBQueue.withStream toInt q Core.mkListIndexer
-      foldM_ (flip process) initialIdx chainSubset
-    pure ()
+      let indexer = TBQueue.withStream toInt q Core.mkListIndexer
+      foldM_ (flip process) indexer chainSubset
 
   let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
       stream = S.take (length testEvents) $ TBQueue.streamFromTBQueue q
 
   l <- S.toList_ stream
-  l' <- S.toList_ (S.each testEvents)
 
-  GenM.stop (l == fmap (\(TestEvent x) -> x) l')
+  GenM.stop (l == fmap (\(TestEvent x) -> x) testEvents)
 
-withStreamSocket :: Property
-withStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+{- | Test that a concurrent server and client pair can send and receive over a socket, respectively,
+     such that the client can consume from the socket as a stream.
+-}
+propWithStreamSocket :: Property
+propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
   serverStarted <- liftIO $ newQSem 1
-  Right (str, es) <-
+  Right (stream, testEvents) <-
     liftIO $ race (server chainSubset serverStarted) (client chainSubset serverStarted)
 
-  liftIO $ print (str, es)
-  GenM.stop (str == fmap (view _TestEvent) es)
+  liftIO $ print (stream, testEvents)
+  GenM.stop (stream == fmap (view _TestEvent) testEvents)
   where
     server chainSubset serverStarted = do
       runTCPServer Nothing "3005" serve
@@ -1762,8 +1731,8 @@ withStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $
           signalQSem serverStarted
           _ <- runExceptT $ do
             let toInt = view (Core.event . _TestEvent)
-            initialIdx <- liftIO $ Socket.withStream toInt s Core.mkListIndexer
-            foldM_ (flip process) initialIdx chainSubset
+                indexer = Socket.withStream toInt s Core.mkListIndexer
+            foldM_ (flip process) indexer chainSubset
           sendAll s BS.empty
     client chainSubset serverStarted = do
       waitQSem serverStarted
@@ -1771,8 +1740,7 @@ withStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $
         let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
             stream :: Stream (Of Int) IO () = Socket.streamFromSocket s
         str <- S.toList_ stream
-        es <- S.toList_ (S.each testEvents)
-        pure (str, es)
+        pure (str, testEvents)
 
 -- * Query modification - Stability
 withStabilityTestGroup :: Tasty.TestTree
