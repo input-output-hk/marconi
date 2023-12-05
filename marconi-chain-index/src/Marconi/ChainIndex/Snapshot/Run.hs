@@ -55,6 +55,7 @@ run = do
       networkId = Cli.snapshotOptionsNetworkId options
       socketPath = Cli.snapshotOptionsSocketPath options
       snapshotDir = Cli.snapshotOptionsSnapshotDir options -- I don't know about this, it looks like mkExtLedgerStateCoordinator create some FileIndexer which creates files in a certain way; if it's currently creating SQLite files, how does it know, in my case, to create .cbor files?
+      blockRanges = Cli.snapshotOptionsBlockRanges options
       volatileEpochStateSnapshotInterval = 100 -- What is this?
       batchSize = 5000
       stopCatchupDistance = 100
@@ -81,6 +82,11 @@ run = do
           networkId
           C.ChainPointAtGenesis -- we should always start from genesis
           socketPath
+  let blockRange =
+        case blockRanges of
+          [] -> error "TODO: add response"
+          [br] -> br
+          _ -> error "TODO: implement"
   mSnapshotCoordinator <-
     runExceptT $
       buildIndexersForSnapshot
@@ -90,6 +96,8 @@ run = do
         trace
         marconiTrace
         snapshotDir
+        blockRange
+        nodeConfigPath
   snapshotCoordinator <-
     case mSnapshotCoordinator of
       Left err -> withLogFullError exitFailure sb trace $ Text.pack $ show err

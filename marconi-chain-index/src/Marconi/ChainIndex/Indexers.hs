@@ -30,6 +30,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
 import Marconi.Cardano.Core.Transformer.WithSyncLog (WithSyncStats)
 import Marconi.Cardano.Core.Types (
   BlockEvent (BlockEvent),
+  BlockRange,
   MarconiTrace,
   SecurityParam,
   TipAndBlock (TipAndBlock),
@@ -443,6 +444,8 @@ snapshotBlockEventBuilder
   -> Core.CatchupConfig
   -> BM.Trace m Text
   -> FilePath
+  -> BlockRange
+  -> FilePath
   -> n
       ( Core.WorkerIndexer
           m
@@ -453,7 +456,7 @@ snapshotBlockEventBuilder
               (Core.FileIndexer SnapshotBlockEventMetadata)
           )
       )
-snapshotBlockEventBuilder securityParam catchupConfig textLogger path =
+snapshotBlockEventBuilder securityParam catchupConfig textLogger path blockRange nodeConfig =
   let indexerName = "SnapshotBlockEvent"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       standardWorkerConfig =
@@ -465,8 +468,7 @@ snapshotBlockEventBuilder securityParam catchupConfig textLogger path =
           (BM.appendName indexerName indexerEventLogger)
    in SnapshotBlockEvent.snapshotBlockEventWorker
         standardWorkerConfig
-        -- TODO: send block range
-        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) undefined)
+        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange nodeConfig)
         path
 
 extractSnapshotBlockEvent
@@ -483,6 +485,8 @@ buildIndexersForSnapshot
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
+  -> BlockRange
+  -> FilePath
   -> ExceptT
       Core.IndexerError
       IO
@@ -493,7 +497,9 @@ buildIndexersForSnapshot
   epochStateConfig
   textLogger
   prettyLogger
-  path = do
+  path
+  blockRange
+  nodeConfig = do
     let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
         mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
         blockEventTextLogger = BM.appendName "blockEvent" textLogger
@@ -501,7 +507,13 @@ buildIndexersForSnapshot
         snapshotBlockEventTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
 
     Core.WorkerIndexer _snapshotBlockEventMVar snapshotBlockEventWorker <-
-      snapshotBlockEventBuilder securityParam catchupConfig snapshotBlockEventTextLogger path
+      snapshotBlockEventBuilder
+        securityParam
+        catchupConfig
+        snapshotBlockEventTextLogger
+        path
+        blockRange
+        nodeConfig
     Core.WorkerIndexer _epochStateMVar epochStateWorker <-
       -- TODO: we need to create a separate indexer for each block range
       -- that the user specifies

@@ -9,6 +9,7 @@ module Marconi.ChainIndex.Indexers.SnapshotBlockEvent (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.ExtLedgerState qualified as CE
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
 import Cardano.Api.Shelley qualified as C
 import Codec.CBOR.Decoding qualified as CBOR
@@ -17,8 +18,8 @@ import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Arrow ((<<<))
 import Control.Monad.Cont (MonadTrans (lift))
-import Control.Monad.Except (MonadError)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Except (MonadError (throwError), runExceptT)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
@@ -26,6 +27,7 @@ import Data.ByteString.Lazy qualified as BS.Lazy
 import Data.ByteString.Short qualified as BS.Short
 import Data.Data (Proxy (Proxy))
 import Data.Fixed (Fixed (MkFixed))
+import Data.Map qualified as Map
 import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -35,7 +37,7 @@ import Data.Time.Clock (secondsToNominalDiffTime)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorkerConfig (eventExtractor, logger, workerName),
  )
-import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), BlockRange, isInBlockRange)
+import Marconi.Cardano.Core.Types (BlockRange, isInBlockRange)
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.FileIndexer (mkFileIndexer)
 import Marconi.Core.Preprocessor qualified as Core
@@ -45,12 +47,12 @@ import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Ouroboros.Consensus.Node.NetworkProtocolVersion qualified as O
 import Ouroboros.Consensus.Node.Serialisation qualified as O
-import Ouroboros.Consensus.Storage.Serialisation qualified as O
 import Text.Read qualified as Text
 
 data SnapshotBlockEventWorkerConfig input = SnapshotBlockEventWorkerConfig
   { currentBlockNo :: input -> C.BlockNo
   , blockRange :: BlockRange
+  , nodeConfig :: FilePath
   }
 
 -- TODO: I think this is a structured representation of the filename?
@@ -69,8 +71,14 @@ type instance Core.Point SnapshotBlockEvent = C.ChainPoint
 mkSnapshotBlockEventIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath
+  -> O.CodecConfig
+      (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> m (Core.FileIndexer SnapshotBlockEventMetadata SnapshotBlockEvent)
-mkSnapshotBlockEventIndexer path =
+mkSnapshotBlockEventIndexer path codecConfig = do
+  blockNodeToNodeVersion <-
+    case blockNodeToNodeVersionM of
+      Nothing -> throwError $ Core.IndexerInternalError "Can't finde block to Node version"
+      Just v -> pure v
   let fileStorageConfig =
         Core.FileStorageConfig
           False
@@ -81,15 +89,47 @@ mkSnapshotBlockEventIndexer path =
           "block"
           "cbor"
           metadataAsText
-          (serializeSnapshotBlockEvent codecConfig blockToNode)
+          (serializeSnapshotBlockEvent codecConfig blockNodeToNodeVersion)
           serializeChainPoint
       eventBuilder =
         Core.EventBuilder
           deserializeMetadata
           blockMetadataChainpoint
-          (deserializeSnapshotBlockEvent codecConfig blockToNode)
+          (deserializeSnapshotBlockEvent codecConfig blockNodeToNodeVersion)
           deserializeChainPoint
    in mkFileIndexer path Nothing fileStorageConfig fileBuilder eventBuilder
+  where
+    blockNodeToNodeVersionM = do
+      nodeToClientVersion <- snd $ O.latestReleasedNodeVersion (Proxy @(O.CardanoBlock O.StandardCrypto))
+      Map.lookup nodeToClientVersion $
+        O.supportedNodeToClientVersions (Proxy @(O.CardanoBlock O.StandardCrypto))
+
+getConfigCodec
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => SnapshotBlockEventWorkerConfig input
+  -> m
+      ( O.CodecConfig
+          (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+      )
+getConfigCodec cfg = do
+  genesisCfg <- readGenesisFile (nodeConfig cfg)
+  let extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
+      configCodec = O.configCodec . O.getExtLedgerCfg $ extLedgerCfg
+  return configCodec
+
+readGenesisFile
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => FilePath
+  -> m C.GenesisConfig
+readGenesisFile nodeConfigPath = do
+  nodeCfgE <- liftIO $ runExceptT $ C.readNodeConfig (C.File nodeConfigPath)
+  nodeCfg <- case nodeCfgE of
+    Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
+    Right cfg -> pure cfg
+  genesisConfigE <- liftIO $ runExceptT $ C.readCardanoGenesisConfig nodeCfg
+  case genesisConfigE of
+    Left err -> throwError . Core.IndexerInternalError . Text.pack . show . C.renderGenesisConfigError $ err
+    Right cfg -> pure cfg
 
 deserializeSnapshotBlockEvent
   :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -169,7 +209,9 @@ snapshotBlockEventWorker
           (Core.WithTrace n (Core.FileIndexer SnapshotBlockEventMetadata))
       )
 snapshotBlockEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig path = do
-  indexer <- Core.withTrace (logger standardWorkerConfig) <$> mkSnapshotBlockEventIndexer path
+  codecConfig <- getConfigCodec snapshotBlockEventWorkerConfig
+  indexer <-
+    Core.withTrace (logger standardWorkerConfig) <$> mkSnapshotBlockEventIndexer path codecConfig
   let preprocessor =
         Core.traverseMaybeEvent (lift . eventExtractor standardWorkerConfig)
           <<< inBlockRangePreprocessor
@@ -179,11 +221,11 @@ snapshotBlockEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig pat
 
 inBlockRangePreprocessor
   :: (Monad m) => (a -> C.BlockNo) -> BlockRange -> Core.Preprocessor m C.ChainPoint a a
-inBlockRangePreprocessor getBlockNo br =
+inBlockRangePreprocessor toBlockNo br =
   Core.scanMaybeEvent filterWithinBlockRange Nothing
   where
     filterWithinBlockRange input =
-      if isInBlockRange (getBlockNo input) br
+      if isInBlockRange (toBlockNo input) br
         then pure . Just $ input
         else pure Nothing
 
