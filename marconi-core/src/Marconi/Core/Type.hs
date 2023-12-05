@@ -36,7 +36,6 @@ module Marconi.Core.Type (
 import Control.Exception (Exception)
 import Control.Lens (Lens, Lens', makePrisms)
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Binary (Binary)
 import Data.Data (Typeable)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
