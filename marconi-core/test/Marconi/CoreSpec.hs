@@ -127,6 +127,7 @@ import Control.Concurrent (
 import Control.Concurrent qualified as Con
 import Control.Concurrent.Async (race)
 import Control.Concurrent.STM (
+  TBQueue,
   newTBQueueIO,
  )
 import Control.Lens (
@@ -175,11 +176,9 @@ import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
 import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
 import GHC.Generics (Generic)
-import Marconi.Core (unwrap)
+import Marconi.Core (Streamable (streamFrom), unwrap, withStream)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
-import Marconi.Core.Transformer.WithStream.Socket qualified as Socket
-import Marconi.Core.Transformer.WithStream.TBQueue qualified as TBQueue
 import Network.Run.TCP (runTCPClient, runTCPServer)
 import Network.Socket (
   Socket,
@@ -1696,21 +1695,22 @@ withStreamTestGroup =
 propWithStreamTBQueue :: Property
 propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
-  q <- liftIO $ newTBQueueIO 10
+  q :: TBQueue Int <- liftIO $ newTBQueueIO 10
   _ <- liftIO $
     forkIO $
       void $
         runExceptT $ do
           let toInt = view (Core.event . _TestEvent)
-          let indexer = TBQueue.withStream toInt q Core.mkListIndexer
+          let indexer = withStream toInt q Core.mkListIndexer
           foldM_ (flip process) indexer chainSubset
 
   let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
-      stream = S.take (length testEvents) $ TBQueue.streamFromTBQueue q
+      expected = fmap (view _TestEvent) testEvents
+      stream = S.take (length testEvents) $ streamFrom q
 
-  l <- S.toList_ stream
+  actual <- liftIO $ S.toList_ stream
 
-  GenM.stop (l == fmap (\(TestEvent x) -> x) testEvents)
+  GenM.stop (actual == expected)
 
 {- | Test that a concurrent server and client pair can send and receive over a socket, respectively,
      such that the client can consume from the socket as a stream.
@@ -1719,11 +1719,10 @@ propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
   serverStarted <- liftIO $ newQSem 1
-  Right (stream, testEvents) <-
+  Right (actual, expected) <-
     liftIO $ race (server chainSubset serverStarted) (client chainSubset serverStarted)
 
-  liftIO $ print (stream, testEvents)
-  GenM.stop (stream == fmap (view _TestEvent) testEvents)
+  GenM.stop (actual == expected)
   where
     server chainSubset serverStarted = do
       runTCPServer Nothing "3005" serve
@@ -1733,16 +1732,16 @@ propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabili
           signalQSem serverStarted
           _ <- runExceptT $ do
             let toInt = view (Core.event . _TestEvent)
-                indexer = Socket.withStream toInt s Core.mkListIndexer
+                indexer = withStream toInt s Core.mkListIndexer
             foldM_ (flip process) indexer chainSubset
           sendAll s BS.empty
     client chainSubset serverStarted = do
       waitQSem serverStarted
       runTCPClient "127.0.0.1" "3005" $ \s -> do
         let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
-            stream :: Stream (Of Int) IO () = Socket.streamFromSocket s
+            stream :: Stream (Of Int) IO () = streamFrom s
         str <- S.toList_ stream
-        pure (str, testEvents)
+        pure (str, fmap (view _TestEvent) testEvents)
 
 -- * Query modification - Stability
 withStabilityTestGroup :: Tasty.TestTree

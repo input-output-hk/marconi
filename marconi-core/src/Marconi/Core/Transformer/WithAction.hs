@@ -1,6 +1,20 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE RankNTypes #-}
 
+{- |
+  A transformer that fans events into an arbitrary action.
+
+ The configuration is a function @Timed (Point event) event -> IO ()@
+
+ See Marconi.Core.Transformer.WithStream.Socket and Marconi.Core.Transformer.WithStream.TBQueue
+ for example usages.
+
+ Once we are close enough to the tip of the chain, `WithCatchup` deactivate itself and pass directly
+ the blocks to the indexer.
+
+ When you use several workers and coordinators, you may want to put the catchup on the final
+ indexers and not on the coordinators to improve performances.
+-}
 module Marconi.Core.Transformer.WithAction (
   WithAction (..),
   withActionWrapper,
@@ -28,10 +42,12 @@ import Marconi.Core.Transformer.IndexTransformer (
  )
 import Marconi.Core.Type (IndexerError, Point, Timed)
 
+-- | Configuration is a function @Timed (Point event) event -> IO ()@
 newtype WithActionConfig event = WithActionConfig
   { _withActionConfigAction :: Timed (Point event) event -> IO ()
   }
 
+-- | An indexer which runs an action on events during indexing
 newtype WithAction indexer event = WithAction
   { _withActionWrapper :: IndexTransformer WithActionConfig indexer event
   }

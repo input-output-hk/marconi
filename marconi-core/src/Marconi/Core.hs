@@ -474,6 +474,10 @@ module Marconi.Core (
   withActionConfigAction,
   withActionWrapper,
 
+  -- ** Streaming
+  Streamable (streamFrom, streamTo),
+  withStream,
+
   -- ** Caching
   WithCache,
   withCache,
@@ -705,6 +709,12 @@ import Marconi.Core.Transformer.WithPruning (
   securityParam,
   stepsBeforeNext,
   withPruning,
+ )
+import Marconi.Core.Transformer.WithStream (
+  withStream,
+ )
+import Marconi.Core.Transformer.WithStream.Streamable (
+  Streamable (streamFrom, streamTo),
  )
 import Marconi.Core.Transformer.WithTracer (
   HasTraceConfig (trace),

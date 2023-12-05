@@ -78,8 +78,8 @@ library
     Marconi.Core.Transformer.WithDelay
     Marconi.Core.Transformer.WithFold
     Marconi.Core.Transformer.WithPruning
-    Marconi.Core.Transformer.WithStream.Socket
-    Marconi.Core.Transformer.WithStream.TBQueue
+    Marconi.Core.Transformer.WithStream
+    Marconi.Core.Transformer.WithStream.Streamable
     Marconi.Core.Transformer.WithTracer
     Marconi.Core.Transformer.WithTransform
     Marconi.Core.Type
@@ -99,7 +99,6 @@ library
     , aeson
     , async
     , base           >=4.7 && <5
-    , bifunctors
     , binary
     , bytestring
     , comonad
@@ -110,7 +109,6 @@ library
     , lens
     , mtl
     , network
-    , network-run
     , sqlite-simple
     , stm
     , streaming
@@ -146,7 +144,6 @@ test-suite marconi-core-test
   build-depends:
     , async
     , base                   >=4.7    && <5
-    , binary
     , bytestring
     , comonad
     , containers
