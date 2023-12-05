@@ -57,7 +57,10 @@ getTimedUtxosEvents
   => Mockchain.Mockchain era
   -> [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)]
 getTimedUtxosEvents =
-  let getBlockTimedUtxosEvent block = Core.Timed (extractChainPoint block) $ getBlockUtxosEvent block
+  let getBlockTimedUtxosEvent block =
+        Core.Timed
+          (Mockchain.getChainPointFromBlockHeader . Mockchain.mockBlockHeader $ block)
+          $ getBlockUtxosEvent block
    in fmap getBlockTimedUtxosEvent
 
 -- | Generate a list of @Utxo@ events with distance from a mock chain with distance.
@@ -67,13 +70,10 @@ getTimedUtxosEventsWithDistance
   -> [Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent))]
 getTimedUtxosEventsWithDistance =
   let getBlockTimedUtxosEvent block = Core.Timed (getChainPoint block) $ fmap getBlockUtxosEvent block
-      getChainPoint (WithDistance _ block) = extractChainPoint block
+      getChainPoint (WithDistance _ block) =
+        Mockchain.getChainPointFromBlockHeader . Mockchain.mockBlockHeader $ block
    in map getBlockTimedUtxosEvent
 
 getBlockUtxosEvent :: (C.IsCardanoEra era) => Mockchain.MockBlock era -> Maybe (NonEmpty Utxo.Utxo)
 getBlockUtxosEvent (Mockchain.MockBlock _ txs) =
   nonEmpty $ join $ zipWith Utxo.getUtxosFromTx [0 ..] txs
-
-extractChainPoint :: Mockchain.MockBlock era -> C.ChainPoint
-extractChainPoint (Mockchain.MockBlock (C.BlockHeader slotNo blockHeaderHash _) _) =
-  C.ChainPoint slotNo blockHeaderHash

@@ -13,7 +13,6 @@ module Test.Gen.Marconi.Cardano.Core.Mockchain (
   genMockchainWithInfo,
   genMockchainWithInfoAndDistance,
   MockBlockWithInfo (..),
-  C.BlockHeader (..),
   genMockchainWithTxBodyGen,
   mockchainWithInfoAsMockchain,
   mockchainWithInfoAsMockchainWithDistance,
@@ -26,6 +25,8 @@ module Test.Gen.Marconi.Cardano.Core.Mockchain (
   genTxsWithAddresses,
   genTxBodyWithAddresses,
   genTxBodyContentWithAddresses,
+  getChainPointFromBlockHeader,
+  getBlockNoFromBlockHeader,
 ) where
 
 import Cardano.Api qualified as C
@@ -261,6 +262,13 @@ getDatumFromDatumLocation (TxOutDatumHashLocation _ d) = Just d
 getDatumFromDatumLocation (TxOutDatumInTxLocation _ d) = Just d
 getDatumFromDatumLocation (TxOutDatumInlineLocation _ d) = Just d
 getDatumFromDatumLocation (PlutusScriptDatumLocation _ d) = Just d
+
+getChainPointFromBlockHeader :: C.BlockHeader -> C.ChainPoint
+getChainPointFromBlockHeader (C.BlockHeader slotNo blockHeaderHash _blockNo) =
+  C.ChainPoint slotNo blockHeaderHash
+
+getBlockNoFromBlockHeader :: C.BlockHeader -> C.BlockNo
+getBlockNoFromBlockHeader (C.BlockHeader _ _ blockNo) = blockNo
 
 genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.AddressInEra C.BabbageEra, DatumLocation)]
 genAddressesWithDatum genDatumLocation = do
