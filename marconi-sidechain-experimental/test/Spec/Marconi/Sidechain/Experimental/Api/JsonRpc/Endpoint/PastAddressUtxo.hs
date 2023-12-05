@@ -32,11 +32,7 @@ import Test.Tasty.Hedgehog (
   testPropertyNamed,
  )
 
--- TODO: PLT-8634 need to treat this as an integration test and clean up local dir manually.
--- indexers create files at least one file that is not cleaned up: chainTip/latestStable.cbor
--- indexers also don't seem to shut down properly: the sqlite temp files are not cleaned up, it
--- seems, which based on the sqlite docs suggests the connections are not closed after each test
--- (meaning each randomly generated value is compared).
+-- TODO: PLT8634 remove the option setting
 
 tests :: TestTree
 tests =
@@ -65,12 +61,7 @@ propQueryTargetAddresses = Hedgehog.property $ do
   let
     args = Utils.initTestingCliArgs{CLI.targetAddresses = Utils.addressAnysToTargetAddresses [addr]}
     -- Serialise to Bech32-format string as required by handler
-    addrText = C.serialiseAddress addr
-
-  -- TODO: PLT-8634
-  Hedgehog.evalIO $ putStrLn "Print address............"
-  Hedgehog.evalIO $ print addr
-  Hedgehog.evalIO $ print addrText
+    addrString = Text.unpack $ C.serialiseAddress addr
 
   -- Make the http and build indexers configs (with indexers exposed)
   -- just as you would with the sidechain app.
@@ -79,14 +70,16 @@ propQueryTargetAddresses = Hedgehog.property $ do
   -- Index the utxo events directly
   _ <-
     Hedgehog.evalIO $
-      withMVar (indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo) $
+      withMVar
+        (indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo)
         -- TODO: PLT-8634 seems weird to have Maybe (WithDistance (Maybe event)).
         -- The first is required by indexAllDescending, the second by StandardIndexer.
-        \idx -> runExceptT $ Core.indexAllDescending (map (fmap Just) events) idx
+        (\idx -> runExceptT $ Core.indexAllDescending (map (fmap Just) events) idx)
+        >>= either throwIO pure
 
   -- TODO: PLT-8634 add coverage
   let
-    params = ChainIndex.GetUtxosFromAddressParams addrText Nothing Nothing
+    params = ChainIndex.GetUtxosFromAddressParams addrString Nothing Nothing
 
   res <-
     Hedgehog.evalIO $
