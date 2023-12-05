@@ -1725,7 +1725,7 @@ propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabili
   GenM.stop (actual == expected)
   where
     server chainSubset serverStarted = do
-      runTCPServer Nothing "3005" serve
+      runTCPServer (Just "127.0.0.1") "3005" serve
       where
         serve :: Socket -> IO ()
         serve s = do
