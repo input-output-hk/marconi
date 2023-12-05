@@ -8,12 +8,6 @@
 
  See Marconi.Core.Transformer.WithStream.Socket and Marconi.Core.Transformer.WithStream.TBQueue
  for example usages.
-
- Once we are close enough to the tip of the chain, `WithCatchup` deactivate itself and pass directly
- the blocks to the indexer.
-
- When you use several workers and coordinators, you may want to put the catchup on the final
- indexers and not on the coordinators to improve performances.
 -}
 module Marconi.Core.Transformer.WithAction (
   WithAction (..),
