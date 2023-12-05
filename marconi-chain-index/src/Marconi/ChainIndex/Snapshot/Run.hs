@@ -36,6 +36,7 @@ import System.Exit (exitFailure)
 appName :: Text
 appName = "marconi-chain-snapshot"
 
+-- TODO: add nice logging, when ranges start and when they finish serializing
 run :: IO ()
 run = do
   (trace, sb) <- defaultStdOutLogger appName
@@ -82,11 +83,10 @@ run = do
           networkId
           C.ChainPointAtGenesis -- we should always start from genesis
           socketPath
-  let blockRange =
+  let blockRanges' =
         case blockRanges of
           [] -> error "TODO: add response"
-          [br] -> br
-          _ -> error "TODO: implement"
+          _ -> blockRanges
   mSnapshotCoordinator <-
     runExceptT $
       buildIndexersForSnapshot
@@ -96,7 +96,7 @@ run = do
         trace
         marconiTrace
         snapshotDir
-        blockRange
+        blockRanges'
         nodeConfigPath
   snapshotCoordinator <-
     case mSnapshotCoordinator of

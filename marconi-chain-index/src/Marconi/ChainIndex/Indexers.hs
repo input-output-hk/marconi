@@ -20,6 +20,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Traversable (for)
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as WithDistance
 import Marconi.Cardano.Core.Indexer.Worker (
@@ -485,7 +486,7 @@ buildIndexersForSnapshot
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
-  -> BlockRange
+  -> [BlockRange]
   -> FilePath
   -> ExceptT
       Core.IndexerError
@@ -498,7 +499,7 @@ buildIndexersForSnapshot
   textLogger
   prettyLogger
   path
-  blockRange
+  blockRanges
   nodeConfig = do
     let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
         mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
@@ -506,20 +507,24 @@ buildIndexersForSnapshot
         blockEventLogger = BM.appendName "blockEvent" mainLogger
         snapshotBlockEventTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
 
-    Core.WorkerIndexer _snapshotBlockEventMVar snapshotBlockEventWorker <-
-      snapshotBlockEventBuilder
-        securityParam
-        catchupConfig
-        snapshotBlockEventTextLogger
-        path
-        blockRange
-        nodeConfig
+    snapshotWorkers <-
+      -- TODO: better directory naming
+      for (zip blockRanges [1 ..]) $ \(blockRange, no) -> do
+        Core.WorkerIndexer _snapshotBlockEventMVar snapshotBlockEventWorker <-
+          snapshotBlockEventBuilder
+            securityParam
+            catchupConfig
+            snapshotBlockEventTextLogger
+            (path </> show no)
+            blockRange
+            nodeConfig
+        return snapshotBlockEventWorker
     Core.WorkerIndexer _epochStateMVar epochStateWorker <-
       -- TODO: we need to create a separate indexer for each block range
       -- that the user specifies
       ExtLedgerStateCoordinator.extLedgerStateWorker
         epochStateConfig
-        [snapshotBlockEventWorker]
+        snapshotWorkers
         path
 
     blockCoordinator <-
