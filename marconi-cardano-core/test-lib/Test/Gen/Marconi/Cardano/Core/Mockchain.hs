@@ -270,9 +270,10 @@ getChainPointFromBlockHeader (C.BlockHeader slotNo blockHeaderHash _blockNo) =
 getBlockNoFromBlockHeader :: C.BlockHeader -> C.BlockNo
 getBlockNoFromBlockHeader (C.BlockHeader _ _ blockNo) = blockNo
 
-genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.AddressInEra C.BabbageEra, DatumLocation)]
+genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.Address C.ShelleyAddr, DatumLocation)]
 genAddressesWithDatum genDatumLocation = do
-  addresses <- Gen.list (Range.linear 1 3) $ CGen.genAddressInEra C.BabbageEra
+  -- TODO: PLT-8634 need to call out this change. required for query via utxo handler.
+  addresses <- Gen.list (Range.linear 1 3) CGen.genAddressShelley
   -- We do 'addresses ++ addresses' to generate duplicate addresses so that we can test that we
   -- correctly index different datums for the same address.
   forM (addresses ++ addresses) $ \addr -> do
