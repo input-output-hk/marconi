@@ -67,7 +67,7 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/input-output-hk/cardano-node-emulator
-    tag: 3a13a6311f297636391d4d94c2e8e9b4c7911bb9
+    tag: 3a43d5cfea9a5f01ec68e5d1aeea7429394d1191
     --sha256: sha256-3reCwN9mWAJZoep8qEzCcHw3JcgLyLd2XW3JUIIfnhQ=
     subdir:
       plutus-ledger
