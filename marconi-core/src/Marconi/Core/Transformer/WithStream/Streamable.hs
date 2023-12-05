@@ -88,8 +88,12 @@ instance (Binary r) => Streamable Socket r where
               else processBuffer rest
   streamTo mapping sock = sendAll sock . encode . mapping
 
-{- | An experimental streaming implementation using @TBQueue@. Here's an example of how
-  to use it, in the form of a property test:
+{- | An experimental streaming implementation using @TBQueue@.
+
+    IMPORTANT: Note that this will block when used with @withStream@ if you have slow or
+               non-existent consumers!
+
+    Here's an example of how to use it, in the form of a property test:
 
     propWithStreamTBQueue :: Property
     propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
