@@ -1697,11 +1697,13 @@ propWithStreamTBQueue :: Property
 propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
   q <- liftIO $ newTBQueueIO 10
-  _ <- liftIO $ forkIO $ do
-    void $ runExceptT $ do
-      let toInt = view (Core.event . _TestEvent)
-      let indexer = TBQueue.withStream toInt q Core.mkListIndexer
-      foldM_ (flip process) indexer chainSubset
+  _ <- liftIO $
+    forkIO $
+      void $
+        runExceptT $ do
+          let toInt = view (Core.event . _TestEvent)
+          let indexer = TBQueue.withStream toInt q Core.mkListIndexer
+          foldM_ (flip process) indexer chainSubset
 
   let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
       stream = S.take (length testEvents) $ TBQueue.streamFromTBQueue q
