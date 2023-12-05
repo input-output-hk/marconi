@@ -11,13 +11,13 @@ import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 
 -- | Generate events for indexing with @Spent.'SpentIndexer'@.
 genSpentInfoEvents :: Hedgehog.Gen [Core.Timed C.ChainPoint (Maybe (NonEmpty Spent.SpentInfo))]
-genSpentInfoEvents = getSpentsEvents <$> Mockchain.genMockchain
+genSpentInfoEvents = getTimedSpentsEvents <$> Mockchain.genMockchain
 
 -- | Generate a list of events from a mock chain
-getSpentsEvents
+getTimedSpentsEvents
   :: Mockchain.Mockchain era
   -> [Core.Timed C.ChainPoint (Maybe (NonEmpty Spent.SpentInfo))]
-getSpentsEvents =
+getTimedSpentsEvents =
   let getTxBody :: C.Tx era -> C.TxBody era
       getTxBody (C.Tx txBody _) = txBody
 
