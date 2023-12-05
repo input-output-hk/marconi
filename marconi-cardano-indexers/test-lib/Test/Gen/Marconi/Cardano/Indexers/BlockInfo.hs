@@ -17,19 +17,21 @@ import Test.Gen.Marconi.Cardano.Core.Types qualified as Test.Core
 
 -- | Generate events for indexing with @BlockInfo.'BlockInfoIndexer'@.
 genBlockInfoEvents :: Hedgehog.Gen [Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)]
-genBlockInfoEvents = getBlockInfoEvents <$> Mockchain.genMockchainWithInfo
+genBlockInfoEvents = getTimedBlockInfoEvents <$> Mockchain.genMockchainWithInfo
 
 -- | Generate a list of events from a mock chain
-getBlockInfoEvents
-  :: Mockchain.MockchainWithInfo C.BabbageEra
+getTimedBlockInfoEvents
+  :: Mockchain.MockchainWithInfo era
   -> [Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)]
-getBlockInfoEvents = map getBlockInfoEvent
+getTimedBlockInfoEvents = map getBlockInfoEvent
 
 -- | Generate a list of events from a mock chain with info and distance.
-getBlockInfoEventsWithInfoAndDistance
-  :: Mockchain.MockchainWithInfoAndDistance C.BabbageEra
+getTimedBlockInfoEventsWithInfoAndDistance
+  :: Mockchain.MockchainWithInfoAndDistance era
   -> [Core.Timed C.ChainPoint (WithDistance (Maybe BlockInfo.BlockInfo))]
-getBlockInfoEventsWithInfoAndDistance = undefined
+getTimedBlockInfoEventsWithInfoAndDistance = map op
+  where
+    op (WithDistance d block) = WithDistance d <$> getBlockInfoEvent block
 
 getBlockInfo :: Mockchain.MockBlockWithInfo era -> BlockInfo.BlockInfo
 getBlockInfo (Mockchain.MockBlockWithInfo bh epochNo timestamp _tip _txs) =

@@ -8,8 +8,10 @@ module Test.Gen.Marconi.Cardano.Indexers where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
-import Control.Concurrent (MVar)
-import Control.Lens (makeLenses)
+import Control.Concurrent (MVar, withMVar)
+import Control.Exception (throwIO)
+import Control.Lens (makeLenses, (^.))
+import Control.Monad (void, (>=>))
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Trans (lift)
 import Data.List.NonEmpty (NonEmpty)
@@ -42,6 +44,8 @@ import Marconi.Cardano.Indexers.Spent qualified as Spent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
+import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 
 data TestBuildIndexersResult = TestBuildIndexersResult
   { _testBuildIndexersResultChainPoint :: C.ChainPoint
@@ -62,6 +66,43 @@ data TestBuildIndexersResult = TestBuildIndexersResult
   }
 
 makeLenses ''TestBuildIndexersResult
+
+-- | Close all indexers manually.
+closeIndexers
+  :: TestBuildIndexersResult
+  -> IO ()
+closeIndexers indexers = do
+  withMVar (indexers ^. testBuildIndexersResultBlockInfoIndexer) Core.close
+  withMVar (indexers ^. testBuildIndexersResultEpochSDD) Core.close
+  withMVar (indexers ^. testBuildIndexersResultEpochNonce) Core.close
+  withMVar (indexers ^. testBuildIndexersResultUtxo) Core.close
+  withMVar (indexers ^. testBuildIndexersResultSpent) Core.close
+  withMVar (indexers ^. testBuildIndexersResultDatum) Core.close
+  withMVar (indexers ^. testBuildIndexersResultMintTokenEvent) Core.close
+  -- TODO: PLT-8634 does closing the coordinator close all indexers?
+  Core.close (indexers ^. testBuildIndexersResultCoordinator)
+
+{- | Index all with a given Mockchain. For tests, you must index each individual indexer
+rather than indexing the coordinator. The coordinator takes 'BlockEvent's coming from the
+chain-sync stream, which we cannot construct directly.
+-}
+indexAllWithMockchain
+  :: TestBuildIndexersResult
+  -> Mockchain.MockchainWithInfoAndDistance C.BabbageEra
+  -> IO ()
+indexAllWithMockchain indexers chain = do
+  -- Conversions needed for different indexers
+  let
+    toBlockInfoEvents = map (fmap Just) . BlockInfo.getTimedBlockInfoEventsWithInfoAndDistance
+  -- TODO: PLT-8634
+  withMVar (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
+    void . (Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure)
+  withMVar (indexers ^. testBuildIndexersResultEpochSDD) Core.close
+  withMVar (indexers ^. testBuildIndexersResultEpochNonce) Core.close
+  withMVar (indexers ^. testBuildIndexersResultUtxo) Core.close
+  withMVar (indexers ^. testBuildIndexersResultSpent) Core.close
+  withMVar (indexers ^. testBuildIndexersResultDatum) Core.close
+  withMVar (indexers ^. testBuildIndexersResultMintTokenEvent) Core.close
 
 {- | This is a copy-paste version of @Marconi.Cardano.Indexers.'buildIndexers'@
 whose sole purpose is to expose the elementary indexer workers inside. That allows us to index

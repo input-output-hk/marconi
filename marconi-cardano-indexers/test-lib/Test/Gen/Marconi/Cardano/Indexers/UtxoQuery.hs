@@ -65,7 +65,7 @@ indexMockchain
       fmap (either (error . show) id) . Core.indexAllEither (Datum.getDatumsEvents chain)
     Concurrent.modifyMVar_ blockInfoVar $
       fmap (either (error . show) id)
-        . Core.indexAllEither (BlockInfo.getBlockInfoEvents chainWithInfo)
+        . Core.indexAllEither (BlockInfo.getTimedBlockInfoEvents chainWithInfo)
 
 closeIndexers
   :: (MonadIO m)
