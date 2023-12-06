@@ -104,7 +104,6 @@ data MarconiCardanoQueryables = MarconiCardanoQueryables
 makeLenses 'MarconiCardanoQueryables
 
 {- | Build all the indexers of marconi-chain-index
-(all those which are available with the new implementation)
 and expose a single coordinator to operate them
 -}
 buildIndexers
