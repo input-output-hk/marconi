@@ -6,12 +6,15 @@
 -}
 module Test.Gen.Marconi.Cardano.Indexers where
 
+-- TODO: PLT-8634
+import Debug.Trace qualified as Debug
+
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
-import Control.Concurrent (MVar, withMVar)
+import Control.Concurrent (MVar, modifyMVar_, withMVar)
 import Control.Exception (throwIO)
 import Control.Lens (makeLenses, (^.))
-import Control.Monad (void, (>=>))
+import Control.Monad ((>=>))
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Trans (lift)
 import Data.List.NonEmpty (NonEmpty)
@@ -108,24 +111,29 @@ indexAllWithMockchain indexers chain = do
     toUtxoEvents
       :: Test.Mockchain.MockchainWithDistance C.BabbageEra
       -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe UtxoEvent)))]
-    toUtxoEvents = map (fmap Just) . Test.Utxo.getTimedUtxosEventsWithDistance
+    toUtxoEvents es =
+      Debug.trace
+        ("Mockchain events passed to Utxo: " ++ show es)
+        (Debug.trace ("UtxoEvents resulting: " ++ show res) res)
+      where
+        res = map (fmap Just) $ Test.Utxo.getTimedUtxosEventsWithDistance es
 
     toSpentsEvents
       :: Test.Mockchain.MockchainWithDistance C.BabbageEra
       -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe (NonEmpty Spent.SpentInfo))))]
     toSpentsEvents = map (fmap Just) . Test.Spent.getTimedSpentsEventsWithDistance
 
-  -- TODO: PLT-8634 Remove the 'close' statements and fill with indexing
-  withMVar (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
-    void . (Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure)
-  withMVar (indexers ^. testBuildIndexersResultEpochSDD) Core.close
-  withMVar (indexers ^. testBuildIndexersResultEpochNonce) Core.close
-  withMVar (indexers ^. testBuildIndexersResultUtxo) $
-    void . (Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure)
-  withMVar (indexers ^. testBuildIndexersResultSpent) $
-    void . (Core.indexAllEither (toSpentsEvents chainNoInfo) >=> either throwIO pure)
-  withMVar (indexers ^. testBuildIndexersResultDatum) Core.close
-  withMVar (indexers ^. testBuildIndexersResultMintTokenEvent) Core.close
+  -- TODO: PLT-8634 Remove the 'pure' statements and fill with indexing
+  modifyMVar_ (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
+    Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultEpochSDD) pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultEpochNonce) pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultUtxo) $
+    Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultSpent) $
+    Core.indexAllEither (toSpentsEvents chainNoInfo) >=> either throwIO pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultDatum) pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultMintTokenEvent) pure
 
 {- | This is a copy-paste version of @Marconi.Cardano.Indexers.'buildIndexers'@
 whose sole purpose is to expose the elementary indexer workers inside. That allows us to index
