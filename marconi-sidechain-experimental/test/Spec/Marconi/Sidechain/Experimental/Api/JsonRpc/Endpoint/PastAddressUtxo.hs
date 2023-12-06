@@ -1,11 +1,13 @@
+{-# LANGUAGE NumericUnderscores #-}
+
 {- | Tests of queries and handlers in PastAddressUtxo. For tests of output JSON shapes,
 see Spec.Marconi.Sidechain.Experimental.Routes.
 -}
 module Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (withMVar)
-import Control.Exception (throwIO)
+import Control.Concurrent (threadDelay, withMVar)
+import Control.Exception (finally, throwIO)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
@@ -23,9 +25,11 @@ import Marconi.Sidechain.Experimental.Api.Types qualified as Sidechain
 import Marconi.Sidechain.Experimental.CLI qualified as CLI
 import Marconi.Sidechain.Experimental.Env qualified as Sidechain
 import Spec.Marconi.Sidechain.Experimental.Utils qualified as Utils
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
 import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 import Test.Gen.Marconi.Cardano.Indexers.UtxoQuery qualified as Test.UtxoQuery
+import Test.Helpers qualified
 import Test.Tasty (TestTree, localOption, testGroup)
 import Test.Tasty.Hedgehog (
   HedgehogShrinkLimit (HedgehogShrinkLimit),
@@ -38,29 +42,43 @@ import Test.Tasty.Hedgehog (
 tests :: TestTree
 tests =
   -- TODO: PLT-8634 investigating issue with open files
-  localOption (HedgehogTestLimit $ Just 1) $
-    localOption (HedgehogShrinkLimit $ Just 1) $
-      testGroup
-        "Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo"
-        [ testPropertyNamed
-            "Handler returns Utxos from queried address"
-            "propQueryTargetAddresses"
-            propQueryTargetAddresses
-        ]
+  -- localOption (HedgehogTestLimit $ Just 1) $
+  localOption (HedgehogShrinkLimit $ Just 5) $
+    testGroup
+      "Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo"
+      [ testPropertyNamed
+          "Handler returns Utxos from queried address"
+          "propQueryTargetAddresses"
+          propQueryTargetAddresses
+      ]
 
 -- TODO: PLT-8634 change test name to be more descriptive
 propQueryTargetAddresses :: Hedgehog.Property
-propQueryTargetAddresses = Hedgehog.property $ do
-  events <- Hedgehog.forAll Test.Utxo.genTimedUtxosEventsWithDistance
+propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp -> do
+  events <- Hedgehog.forAll Test.Mockchain.genMockchainWithInfoAndDistance
 
+  -- TODO: PLT-8634 ensure the result is nonempty or otherwise deal with this
   -- Select a single address from the sampled events
-  addr <-
-    Hedgehog.forAll $ do
-      addrs <- Utils.addressesFromTimedUtxoEvent <$> Hedgehog.Gen.element events
-      Hedgehog.Gen.element addrs
+  let
+    utxoEvents@(e : _) =
+      Test.Utxo.getTimedUtxosEventsWithDistance $
+        Test.Mockchain.mockchainWithInfoAsMockchainWithDistance events
+
+  Hedgehog.evalIO $ putStrLn "UTxO I got" >> print e
+
+  -- TODO: PLT-8634
+  addr <- Hedgehog.forAll $ Hedgehog.Gen.element (Utils.addressesFromTimedUtxoEvent e)
+  -- Hedgehog.forAll $ do
+  --  addrs <-
+  --    Utils.addressesFromTimedUtxoEvent <$> Hedgehog.Gen.element utxoEvents
+  --  Hedgehog.Gen.element addrs
 
   let
-    args = Utils.initTestingCliArgs{CLI.targetAddresses = Utils.addressAnysToTargetAddresses [addr]}
+    args =
+      Utils.initTestingCliArgs
+        { CLI.targetAddresses = Utils.addressAnysToTargetAddresses [addr]
+        , CLI.dbDir = tmp
+        }
     -- Serialise to Bech32-format string as required by handler
     addrString = Text.unpack $ C.serialiseAddress addr
 
@@ -68,20 +86,10 @@ propQueryTargetAddresses = Hedgehog.property $ do
   -- just as you would with the sidechain app.
   (httpConfig, indexersConfig) <- Utils.mkTestSidechainConfigsFromCliArgs args
 
-  -- Wrap UtxoQuery elements in UtxoQueryIndexers from test-lib
-  let
-    utxoIndexers =
-      Test.UtxoQuery.UtxoQueryIndexers (indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo)
-
   -- Index the utxo events directly
-  _ <-
-    Hedgehog.evalIO $
-      withMVar
-        (indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo)
-        -- TODO: PLT-8634 seems weird to have Maybe (WithDistance (Maybe event)).
-        -- The first is required by indexAllDescending, the second by StandardIndexer.
-        (\idx -> runExceptT $ Core.indexAllDescending (map (fmap Just) events) idx)
-        >>= either throwIO pure
+  Hedgehog.evalIO $ Test.Indexers.indexAllWithMockchain indexersConfig events
+
+  Hedgehog.evalIO $ threadDelay 1_000_000
 
   -- TODO: PLT-8634 add coverage
   let
@@ -92,9 +100,12 @@ propQueryTargetAddresses = Hedgehog.property $ do
       flip runReaderT httpConfig . runExceptT $
         Sidechain.getPastAddressUtxoHandler params
 
+  -- TODO: PLT-8634 manually close the indexers needed?
+
   actual <- Hedgehog.evalIO $ either throwIO pure res >>= either (fail . show) pure
 
   let
-    expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) events
+    expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) utxoEvents
 
-  Hedgehog.assert $ Utils.compareGetUtxosFromAddressResult addr expected actual
+  Hedgehog.assert $
+    Utils.compareGetUtxosFromAddressResult addr expected actual

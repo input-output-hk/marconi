@@ -46,9 +46,10 @@ import Marconi.Cardano.Indexers.Utxo (UtxoEvent)
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
-import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
-import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
-import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
+import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
+import Test.Gen.Marconi.Cardano.Indexers.Spent qualified as Test.Spent
+import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 
 data TestBuildIndexersResult = TestBuildIndexersResult
   { _testBuildIndexersResultChainPoint :: C.ChainPoint
@@ -91,23 +92,28 @@ chain-sync stream, which we cannot construct directly.
 -}
 indexAllWithMockchain
   :: TestBuildIndexersResult
-  -> Mockchain.MockchainWithInfoAndDistance C.BabbageEra
+  -> Test.Mockchain.MockchainWithInfoAndDistance C.BabbageEra
   -> IO ()
 indexAllWithMockchain indexers chain = do
   -- Conversions needed for different indexers
   let
-    chainNoInfo :: Mockchain.MockchainWithDistance C.BabbageEra
-    chainNoInfo = Mockchain.mockchainWithInfoAsMockchainWithDistance chain
+    chainNoInfo :: Test.Mockchain.MockchainWithDistance C.BabbageEra
+    chainNoInfo = Test.Mockchain.mockchainWithInfoAsMockchainWithDistance chain
 
     toBlockInfoEvents
-      :: Mockchain.MockchainWithInfoAndDistance C.BabbageEra
+      :: Test.Mockchain.MockchainWithInfoAndDistance C.BabbageEra
       -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe BlockInfo)))]
-    toBlockInfoEvents = map (fmap Just) . BlockInfo.getTimedBlockInfoEventsWithInfoAndDistance
+    toBlockInfoEvents = map (fmap Just) . Test.BlockInfo.getTimedBlockInfoEventsWithInfoAndDistance
 
     toUtxoEvents
-      :: Mockchain.MockchainWithDistance C.BabbageEra
+      :: Test.Mockchain.MockchainWithDistance C.BabbageEra
       -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe UtxoEvent)))]
-    toUtxoEvents = map (fmap Just) . Utxo.getTimedUtxosEventsWithDistance
+    toUtxoEvents = map (fmap Just) . Test.Utxo.getTimedUtxosEventsWithDistance
+
+    toSpentsEvents
+      :: Test.Mockchain.MockchainWithDistance C.BabbageEra
+      -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe (NonEmpty Spent.SpentInfo))))]
+    toSpentsEvents = map (fmap Just) . Test.Spent.getTimedSpentsEventsWithDistance
 
   -- TODO: PLT-8634 Remove the 'close' statements and fill with indexing
   withMVar (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
@@ -116,7 +122,8 @@ indexAllWithMockchain indexers chain = do
   withMVar (indexers ^. testBuildIndexersResultEpochNonce) Core.close
   withMVar (indexers ^. testBuildIndexersResultUtxo) $
     void . (Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure)
-  withMVar (indexers ^. testBuildIndexersResultSpent) Core.close
+  withMVar (indexers ^. testBuildIndexersResultSpent) $
+    void . (Core.indexAllEither (toSpentsEvents chainNoInfo) >=> either throwIO pure)
   withMVar (indexers ^. testBuildIndexersResultDatum) Core.close
   withMVar (indexers ^. testBuildIndexersResultMintTokenEvent) Core.close
 
