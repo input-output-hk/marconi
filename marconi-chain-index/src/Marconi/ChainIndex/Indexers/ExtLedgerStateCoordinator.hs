@@ -17,10 +17,12 @@ module Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateCoordinator (ExtLedgerStateCoordinator),
   ExtLedgerStateCoordinatorConfig (ExtLedgerStateCoordinatorConfig),
   ExtLedgerStateWorkerConfig (..),
+  EpochMetadata,
 
   -- * Constructors
   mkExtLedgerStateCoordinator,
   extLedgerStateWorker,
+  buildExtLedgerStateEventIndexer,
 
   -- * Utils
   newEpochPreprocessor,

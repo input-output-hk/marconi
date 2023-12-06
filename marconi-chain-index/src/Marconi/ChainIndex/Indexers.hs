@@ -9,12 +9,13 @@ module Marconi.ChainIndex.Indexers where
 
 import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
+import Control.Arrow ((<<<))
 import Control.Concurrent (MVar)
 import Control.Lens (makeLenses, (&), (?~))
 import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
-import Data.Function ((&))
+import Data.Function (on, (&))
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (fromMaybe)
@@ -26,7 +27,7 @@ import Marconi.Cardano.Core.Extract.WithDistance qualified as WithDistance
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardIndexer,
   StandardWorker (StandardWorker),
-  StandardWorkerConfig (StandardWorkerConfig),
+  StandardWorkerConfig (StandardWorkerConfig, eventExtractor, logger, workerName),
  )
 import Marconi.Cardano.Core.Transformer.WithSyncLog (WithSyncStats)
 import Marconi.Cardano.Core.Types (
@@ -36,6 +37,7 @@ import Marconi.Cardano.Core.Types (
   SecurityParam,
   TipAndBlock (TipAndBlock),
   TxIndexInBlock,
+  blockRangeFst,
  )
 import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Indexers.ChainTip qualified as ChainTip
@@ -44,7 +46,11 @@ import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyn
 import Marconi.ChainIndex.Indexers.Datum qualified as Datum
 import Marconi.ChainIndex.Indexers.EpochNonce qualified as Nonce
 import Marconi.ChainIndex.Indexers.EpochSDD qualified as SDD
-import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent)
+import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator (
+  EpochMetadata,
+  ExtLedgerStateEvent,
+  buildExtLedgerStateEventIndexer,
+ )
 import Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerStateCoordinator
 import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.ChainIndex.Indexers.MintTokenEventQuery (
@@ -53,13 +59,15 @@ import Marconi.ChainIndex.Indexers.MintTokenEventQuery (
 import Marconi.ChainIndex.Indexers.SnapshotBlockEvent (
   SnapshotBlockEvent (SnapshotBlockEvent),
   SnapshotBlockEventMetadata,
-  SnapshotBlockEventWorkerConfig (SnapshotBlockEventWorkerConfig),
+  SnapshotBlockEventWorkerConfig (SnapshotBlockEventWorkerConfig, blockRange, currentBlockNo),
+  getConfigCodec,
  )
 import Marconi.ChainIndex.Indexers.SnapshotBlockEvent qualified as SnapshotBlockEvent
 import Marconi.ChainIndex.Indexers.Spent qualified as Spent
 import Marconi.ChainIndex.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
+import Marconi.Core.Preprocessor qualified as Core
 import Ouroboros.Consensus.Ledger.Extended (ExtLedgerCfg (ExtLedgerCfg))
 import System.FilePath ((</>))
 
@@ -457,7 +465,7 @@ snapshotBlockEventBuilder
               (Core.FileIndexer SnapshotBlockEventMetadata)
           )
       )
-snapshotBlockEventBuilder securityParam catchupConfig textLogger path blockRange nodeConfig =
+snapshotBlockEventBuilder securityParam catchupConfig textLogger path blockRange' nodeConfig =
   let indexerName = "SnapshotBlockEvent"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       standardWorkerConfig =
@@ -469,7 +477,7 @@ snapshotBlockEventBuilder securityParam catchupConfig textLogger path blockRange
           (BM.appendName indexerName indexerEventLogger)
    in SnapshotBlockEvent.snapshotBlockEventWorker
         standardWorkerConfig
-        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange nodeConfig)
+        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange' nodeConfig)
         path
 
 extractSnapshotBlockEvent
@@ -509,22 +517,29 @@ buildIndexersForSnapshot
 
     snapshotWorkers <-
       -- TODO: better directory naming
-      for (zip blockRanges [1 ..]) $ \(blockRange, no) -> do
+      for (zip blockRanges [1 ..]) $ \(blockRange', no) -> do
         Core.WorkerIndexer _snapshotBlockEventMVar snapshotBlockEventWorker <-
           snapshotBlockEventBuilder
             securityParam
             catchupConfig
             snapshotBlockEventTextLogger
             (path </> show no)
-            blockRange
+            blockRange'
             nodeConfig
-        return snapshotBlockEventWorker
+        Core.WorkerIndexer _snapshotExtLedgerStateEventMVar snapshotExtLedgerStateWorker <-
+          snapshotExtLedgerStateEventBuilder
+            securityParam
+            catchupConfig
+            snapshotBlockEventTextLogger
+            (path </> show no)
+            blockRange'
+            nodeConfig
+        return [snapshotExtLedgerStateWorker, snapshotBlockEventWorker]
+
     Core.WorkerIndexer _epochStateMVar epochStateWorker <-
-      -- TODO: we need to create a separate indexer for each block range
-      -- that the user specifies
       ExtLedgerStateCoordinator.extLedgerStateWorker
         epochStateConfig
-        snapshotWorkers
+        (concat snapshotWorkers)
         path
 
     blockCoordinator <-
@@ -538,3 +553,79 @@ buildIndexersForSnapshot
         mainLogger
         prettyLogger
         [blockCoordinator]
+
+snapshotExtLedgerStateEventBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> BM.Trace m Text
+  -> FilePath
+  -> BlockRange
+  -> FilePath
+  -> n
+      ( Core.WorkerIndexer
+          m
+          (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent)
+          ExtLedgerStateEvent
+          ( Core.WithTrace
+              m
+              (Core.FileIndexer EpochMetadata)
+          )
+      )
+snapshotExtLedgerStateEventBuilder securityParam catchupConfig textLogger path blockRange' nodeConfig =
+  let indexerName = "SnapshotExtLedgerStateEvent"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      standardWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfig
+          (pure . Just . fst)
+          (BM.appendName indexerName indexerEventLogger)
+   in snapshotExtLedgerStateEventWorker
+        securityParam
+        standardWorkerConfig
+        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange' nodeConfig)
+        path
+
+snapshotExtLedgerStateEventWorker
+  :: forall input m n
+   . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
+  => SecurityParam
+  -> StandardWorkerConfig n input ExtLedgerStateEvent
+  -> SnapshotBlockEventWorkerConfig input
+  -> FilePath
+  -> m
+      ( Core.WorkerIndexer
+          n
+          input
+          ExtLedgerStateEvent
+          (Core.WithTrace n (Core.FileIndexer EpochMetadata))
+      )
+snapshotExtLedgerStateEventWorker securityParam standardWorkerConfig snapshotBlockEventWorkerConfig path = do
+  codecConfig <- getConfigCodec snapshotBlockEventWorkerConfig
+  indexer <-
+    Core.withTrace (logger standardWorkerConfig)
+      <$> buildExtLedgerStateEventIndexer codecConfig securityParam path
+  let preprocessor =
+        Core.traverseMaybeEvent (lift . eventExtractor standardWorkerConfig)
+          <<< justBeforeBlockRangePreprocessor
+            (currentBlockNo snapshotBlockEventWorkerConfig)
+            (blockRange snapshotBlockEventWorkerConfig)
+  Core.createWorkerWithPreprocessing (workerName standardWorkerConfig) preprocessor indexer
+
+justBeforeBlockRangePreprocessor
+  :: (Monad m) => (a -> C.BlockNo) -> BlockRange -> Core.Preprocessor m C.ChainPoint a a
+justBeforeBlockRangePreprocessor toBlockNo br =
+  Core.scanMaybeEvent filterJustBeforeBlockRange Nothing
+  where
+    filterJustBeforeBlockRange input
+      | inputWord == leftRange - offset =
+          pure . Just $ input
+      | otherwise = pure Nothing
+      where
+        offset
+          | leftRange == 0 = 0
+          | otherwise = 1
+        leftRange = Lens.view blockRangeFst br
+        inputWord = C.unBlockNo . toBlockNo $ input

@@ -6,6 +6,7 @@ module Marconi.ChainIndex.Indexers.SnapshotBlockEvent (
   SnapshotBlockEvent (..),
   SnapshotBlockEventWorkerConfig (..),
   SnapshotBlockEventMetadata,
+  getConfigCodec,
 ) where
 
 import Cardano.Api qualified as C
@@ -77,7 +78,7 @@ mkSnapshotBlockEventIndexer
 mkSnapshotBlockEventIndexer path codecConfig = do
   blockNodeToNodeVersion <-
     case blockNodeToNodeVersionM of
-      Nothing -> throwError $ Core.IndexerInternalError "Can't finde block to Node version"
+      Nothing -> throwError $ Core.IndexerInternalError "Can't find block to Node version"
       Just v -> pure v
   let fileStorageConfig =
         Core.FileStorageConfig
