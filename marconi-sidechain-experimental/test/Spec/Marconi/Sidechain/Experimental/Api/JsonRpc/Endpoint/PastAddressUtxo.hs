@@ -111,6 +111,10 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
       readMVar $
         indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo
 
+  Hedgehog.evalIO $
+    runExceptT (Core.lastSyncPoint indexer)
+      >>= either undefined (\r -> putStrLn "Last sync: " >> print r)
+
   allUtxo :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
     Hedgehog.evalIO $
       runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexer) >>= either throwIO pure
