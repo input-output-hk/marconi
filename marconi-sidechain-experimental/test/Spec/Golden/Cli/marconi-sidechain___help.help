@@ -38,8 +38,8 @@ Available options:
                            ..." or "--match-asset-id "assetname-1.policy-id-1
                            policy-id-2" ..."
   --initial-retry-time NATURAL
-                           Initial time (in seconds) before retry after a failed
-                           node connection. Defaults to 30s.
+                           Initial time (in seconds) before a retry after a
+                           failed node connection. Defaults to 1s.
   --no-max-retry-time      Unlimited retries.
   --max-retry-time NATURAL Max time (in seconds) allowed after startup for
                            retries. Defaults to 30min.

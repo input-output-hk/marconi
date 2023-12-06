@@ -35,8 +35,8 @@ Available options:
                            if the target indexers can't resume from arbitrary
                            points.
   --initial-retry-time NATURAL
-                           Initial time (in seconds) before retry after a failed
-                           node connection. Defaults to 30s.
+                           Initial time (in seconds) before a retry after a
+                           failed node connection. Defaults to 1s.
   --no-max-retry-time      Unlimited retries.
   --max-retry-time NATURAL Max time (in seconds) allowed after startup for
                            retries. Defaults to 30min.
