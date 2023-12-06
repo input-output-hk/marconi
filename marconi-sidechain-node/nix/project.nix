@@ -19,8 +19,8 @@ let
 
       sha256map = {
         "https://github.com/input-output-hk/marconi"."25670eb6f2d89b26b6e173de268bdfb33c49a2d2" = "05my78gmd6hyxhv8vrblr5p9i99cqlii76idkqy2h7s3wr4lnrjw";
-        "https://github.com/input-output-hk/cardano-node"."5071bf4b88a035a843e20ebb5fbdefdc99ab839e" = "1c4vqh6hk7hbwja7v3fl918bhdr94r4jn439n8c20nxcin5l0zai";
-        "https://github.com/input-output-hk/ouroboros-consensus"."26cfb9666efd78692912fbdcc41e927f64f282ae" = "0p4axag77by7bwc3wnbdphpc6ib57b0di4clzcb8c0za0gf1sw46";
+        "https://github.com/input-output-hk/cardano-node"."f118fa8c34c601bb8148ad33cc99afa915001d13" = "1qccckj57z95nlgzc3a358g0bl9cqllk9sapyrsll122agqm2my1";
+        "https://github.com/input-output-hk/ouroboros-consensus"."79da9a368cb6d2e7ed5ff5e89bb318b94c3c606d" = "02wjbvgbfdr5rybncxgx6slxh4gzx1vh4i34n6h834qghiq4yykb";
       };
 
       inputMap = {
