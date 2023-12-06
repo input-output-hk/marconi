@@ -43,9 +43,7 @@ tests :: SidechainEnv -> RpcClientAction -> TestTree
 tests env rpcClientAction =
   testGroup
     "marconi-sidechain"
-    [ Integration.tests
-    , CLIInputValidation.tests
-    , localOption (HedgehogTestLimit $ Just 200) $
+    [ localOption (HedgehogTestLimit $ Just 200) $
         testGroup
           "marconi-sidechain"
           [ Env.tests env
@@ -54,6 +52,8 @@ tests env rpcClientAction =
           , Api.Query.Indexers.Utxo.tests rpcClientAction
           , Api.Query.Indexers.MintBurn.tests rpcClientAction
           ]
+    , CLIInputValidation.tests
+    , Integration.tests
     ]
 
 mkCliArgs :: FilePath -> IO CLI.CliArgs
