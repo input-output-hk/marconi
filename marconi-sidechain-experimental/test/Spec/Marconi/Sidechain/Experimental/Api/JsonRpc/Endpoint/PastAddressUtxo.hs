@@ -11,6 +11,7 @@ import Control.Exception (finally, throwIO)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
+import Data.List.NonEmpty qualified as NEList
 import Data.Maybe (mapMaybe)
 import Data.Text qualified as Text
 import Hedgehog ((===))
@@ -119,14 +120,13 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
   -- TODO: PLT-8634
   Hedgehog.evalIO $ do
     putStrLn "Tmp dir: " >> print tmp
-  --  putStrLn "Actual raw: "
-  --  print actual
-  --  putStrLn "Expected raw: "
-  --  print expected
-  --  putStrLn "Addr raw: "
-  --  print addr
-  --  putStrLn "Query from Utxo db directly: "
-  --  print allUtxo
+    putStrLn "Actual raw: " >> print actual
+    putStrLn "Expected raw: " >> print expected
+    putStrLn "Addr raw: " >> print addr
+    putStrLn "Query from Utxo db directly: " >> print allUtxo
+    -- TODO: PLT-8634 compare this to the expected result from hedgehog
+    putStrLn "Uniformized direct query result: "
+      >> print (map (fmap (map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.toList)) allUtxo)
 
   uncurry (===) $
     Utils.uniformGetUtxosFromAddressResult addr actual expected

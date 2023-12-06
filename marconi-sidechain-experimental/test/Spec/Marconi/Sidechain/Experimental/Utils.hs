@@ -6,7 +6,7 @@ import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Control.Concurrent qualified as IO
 import Control.Exception (throwIO)
-import Control.Lens (folded, (^.), (^..))
+import Control.Lens (folded, set, (^.), (^..))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson qualified as A
@@ -88,7 +88,10 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
   let
     -- Fixing security param at 0. No rollbacks.
     securityParam = 0
-    config = mkSidechainBuildIndexersConfig trace cliArgs securityParam
+    -- Set the catchup params to those appropriate for indexing few events.
+    config =
+      set Indexers.sidechainBuildIndexersCatchupConfig (Core.mkCatchupConfig 1 0) $
+        mkSidechainBuildIndexersConfig trace cliArgs securityParam
   res <-
     liftIO . runExceptT $
       Test.Indexers.buildIndexers

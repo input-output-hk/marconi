@@ -306,7 +306,7 @@ instance
         upperBoundFilter = case q ^. upperBound <|> C.chainPointToSlotNo point of
           -- TODO: PLT-8634 if investigating no such column error: this could be a copy-paste error
           -- from the legacy code. make it u.slotNo?
-          Nothing -> (["s.slotNo IS NULL"], [])
+          Nothing -> (["u.slotNo IS NULL"], [])
           Just hi ->
             ( -- created before the upperBound
 
