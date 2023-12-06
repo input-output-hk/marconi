@@ -44,8 +44,7 @@ import Test.Tasty.Hedgehog (
 
 tests :: TestTree
 tests =
-  -- TODO: PLT-8634 investigating issue with open files
-  -- localOption (HedgehogTestLimit $ Just 1) $
+  -- TODO: PLT-8634 remove shrink limit?
   localOption (HedgehogShrinkLimit $ Just 5) $
     testGroup
       "Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo"
@@ -87,21 +86,20 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
   -- just as you would with the sidechain app.
   (httpConfig, indexersConfig) <- Utils.mkTestSidechainConfigsFromCliArgs args
 
-  -- Index the utxo events directly
+  -- Index the events directly
   Hedgehog.evalIO $ Test.Indexers.indexAllWithMockchain indexersConfig events
 
   Hedgehog.evalIO $ threadDelay 1_000_000
 
   -- TODO: PLT-8634 add coverage
   let
-    params = ChainIndex.GetUtxosFromAddressParams addrString Nothing Nothing
+    params = ChainIndex.GetUtxosFromAddressParams addrString (Just 10) Nothing
 
   res <-
     Hedgehog.evalIO $
       flip runReaderT httpConfig . runExceptT $
         Sidechain.getPastAddressUtxoHandler params
 
-  -- TODO: PLT-8634 manually close the indexers needed?
   actual <- Hedgehog.evalIO $ either throwIO pure res >>= either (fail . show) pure
 
   let
@@ -127,6 +125,8 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
     -- TODO: PLT-8634 compare this to the expected result from hedgehog
     putStrLn "Uniformized direct query result: "
       >> print (map (fmap (map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.toList)) allUtxo)
+
+  Hedgehog.evalIO $ Test.Indexers.closeIndexers indexersConfig
 
   uncurry (===) $
     Utils.uniformGetUtxosFromAddressResult addr actual expected
