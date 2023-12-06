@@ -6,17 +6,19 @@ see Spec.Marconi.Sidechain.Experimental.Routes.
 module Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (threadDelay, withMVar)
+import Control.Concurrent (readMVar, threadDelay, withMVar)
 import Control.Exception (finally, throwIO)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
 import Data.Maybe (mapMaybe)
 import Data.Text qualified as Text
+import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Indexers qualified as Indexers
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.ChainIndex.Api.Types qualified as ChainIndex
 import Marconi.Core qualified as Core
@@ -64,8 +66,6 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
       Test.Utxo.getTimedUtxosEventsWithDistance $
         Test.Mockchain.mockchainWithInfoAsMockchainWithDistance events
 
-  Hedgehog.evalIO $ putStrLn "UTxO I got" >> print e
-
   -- TODO: PLT-8634
   addr <- Hedgehog.forAll $ Hedgehog.Gen.element (Utils.addressesFromTimedUtxoEvent e)
   -- Hedgehog.forAll $ do
@@ -107,5 +107,26 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
   let
     expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) utxoEvents
 
-  Hedgehog.assert $
-    Utils.compareGetUtxosFromAddressResult addr expected actual
+  -- TODO: PLT-8634 trying direct query
+  indexer <-
+    Hedgehog.evalIO $
+      readMVar $
+        indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo
+
+  allUtxo :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
+    Hedgehog.evalIO $
+      runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexer) >>= either throwIO pure
+
+  -- TODO: PLT-8634
+  Hedgehog.evalIO $ do
+    putStrLn "Actual raw: "
+    print actual
+    putStrLn "Expected raw: "
+    print expected
+    putStrLn "Addr raw: "
+    print addr
+    putStrLn "Query from Utxo db directly: "
+    print allUtxo
+
+  uncurry (===) $
+    Utils.uniformGetUtxosFromAddressResult addr actual expected

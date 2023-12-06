@@ -130,14 +130,18 @@ addressAnysToTargetAddresses = NESet.nonEmptySet . Set.fromList . mapMaybe op
     op (C.AddressShelley addr) = Just addr
     op _ = Nothing
 
-{- | Compare results from the named query by checking that the Utxos associated with the provided
-address are returned. It is the caller's job to ensure the query in fact did use the provided
-address, since that is not in the result. Utxos are considered equal here if they are associated
-with the same address (assumed), have the same @C.'TxIn'@ and the same 'value'.
+{- | Create uniform actual/expected results from the GetUtxosFromAddressResult query, for comparison
+ - with equality. This is to give better counterexample reporting with '==='.
+   It is the caller's job to ensure the query in fact did use the provided address, since that is not in the result.
+   Utxos are considered equal here if they are associated with the same address (assumed),
+   have the same @C.'TxIn'@ and the same 'value'.
 -}
-compareGetUtxosFromAddressResult
-  :: C.AddressAny -> [Utxo.UtxoEvent] -> GetUtxosFromAddressResult -> Bool
-compareGetUtxosFromAddressResult target inputs result = sortUniqueOnTxIn expected == sortUniqueOnTxIn actual
+uniformGetUtxosFromAddressResult
+  :: C.AddressAny
+  -> GetUtxosFromAddressResult
+  -> [Utxo.UtxoEvent]
+  -> ([(C.TxIn, C.Value)], [(C.TxIn, C.Value)])
+uniformGetUtxosFromAddressResult target result inputs = (sortUniqueOnTxIn actual, sortUniqueOnTxIn expected)
   where
     sortUniqueOnTxIn = List.sortOn fst . List.nub
     actual = map (\x -> (C.TxIn (txId x) (txIx x), unValueWrapper $ value x)) $ unAddressUtxosResult result
