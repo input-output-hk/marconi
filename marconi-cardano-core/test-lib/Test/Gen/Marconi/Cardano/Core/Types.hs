@@ -302,13 +302,18 @@ genExecutionUnits =
     <$> Gen.integral (Range.constant 0 1000)
     <*> Gen.integral (Range.constant 0 1000)
 
-genTxOutTxContext :: C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
+genTxOutTxContext :: (C.IsShelleyBasedEra era) => C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
 genTxOutTxContext era =
   C.TxOut
-    <$> genAddressInEra era
+    -- TODO: PLT-8634 call out this change
+    <$> genShelleyAddressInEra era
     <*> genTxOutValue era
     <*> genSimpleTxOutDatumHashTxContext era
     <*> constantReferenceScript era
+
+-- TODO: PLT-8634 revisit and try to use something from cardano-api
+genShelleyAddressInEra :: (C.IsShelleyBasedEra era) => C.CardanoEra era -> Gen (C.AddressInEra era)
+genShelleyAddressInEra _ = C.shelleyAddressInEra <$> CGen.genAddressShelley
 
 -- Copied from cardano-api. Delete when this function is reexported
 genAddressInEra :: C.CardanoEra era -> Gen (C.AddressInEra era)

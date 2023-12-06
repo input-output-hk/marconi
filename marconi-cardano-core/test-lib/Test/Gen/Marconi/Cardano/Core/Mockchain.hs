@@ -121,6 +121,8 @@ genMockchainWithInfo =
         traverse attachInfoToBlock chain `evalStateT` startInfo
    in genMockchain >>= attachInfoToChain
 
+-- TODO: PLT-8634 review this. distances seem too large.
+
 {- | Generate a MockchainWithInfoAndDistance. "Distance" is distance from the current chain tip,
 which is given by the chain tip of the latest block. Ensures the result is sorted ascending by
 block number, as is currently implemented in 'genMockchainWithTxBodyGen'.
@@ -272,7 +274,7 @@ getBlockNoFromBlockHeader (C.BlockHeader _ _ blockNo) = blockNo
 
 genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.Address C.ShelleyAddr, DatumLocation)]
 genAddressesWithDatum genDatumLocation = do
-  -- TODO: PLT-8634 need to call out this change. required for query via utxo handler.
+  -- TODO: PLT-8634 need to call out this change to gen shelley addresses. required for query via utxo handler.
   addresses <- Gen.list (Range.linear 1 3) CGen.genAddressShelley
   -- We do 'addresses ++ addresses' to generate duplicate addresses so that we can test that we
   -- correctly index different datums for the same address.
