@@ -6,34 +6,23 @@ see Spec.Marconi.Sidechain.Experimental.Routes.
 module Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (readMVar, threadDelay, withMVar)
-import Control.Exception (finally, throwIO)
+import Control.Concurrent (readMVar, threadDelay)
+import Control.Exception (throwIO)
 import Control.Lens ((^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
-import Data.List.NonEmpty qualified as NEList
-import Data.Maybe (mapMaybe)
-import Data.Text qualified as Text
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
-import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
-import Marconi.Cardano.Indexers qualified as Indexers
-import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock qualified as ChainIndex
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
-import Marconi.ChainIndex.Api.Types qualified as ChainIndex
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock qualified as Sidechain
-import Marconi.Sidechain.Experimental.Api.Types qualified as Sidechain
 import Marconi.Sidechain.Experimental.CLI qualified as CLI
-import Marconi.Sidechain.Experimental.Env qualified as Sidechain
 import Network.JsonRpc.Types (UnusedRequestParams (UnusedRequestParams))
 import Spec.Marconi.Sidechain.Experimental.Utils qualified as Utils
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
 import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
-import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
-import Test.Gen.Marconi.Cardano.Indexers.UtxoQuery qualified as Test.UtxoQuery
 import Test.Helpers qualified
 import Test.Tasty (TestTree, localOption, testGroup)
 import Test.Tasty.Hedgehog (
@@ -74,6 +63,19 @@ propCurrentSyncedBlock = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp -
   Hedgehog.evalIO $ Test.Indexers.indexAllWithMockchain indexersConfig events
 
   Hedgehog.evalIO $ threadDelay 1_000_000
+  --
+  -- TODO: PLT-8634 trying direct query
+  indexer <-
+    Hedgehog.evalIO $
+      readMVar $
+        indexersConfig ^. Test.Indexers.testBuildIndexersResultBlockInfoIndexer
+
+  allBlockInfo :: [Core.Timed C.ChainPoint BlockInfo.BlockInfo] <-
+    Hedgehog.evalIO $
+      runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexer) >>= either throwIO pure
+
+  -- TODO: PLT-8634
+  Hedgehog.evalIO $ putStrLn "allBlockInfo direct query : " >> print allBlockInfo
 
   res <-
     Hedgehog.evalIO $
