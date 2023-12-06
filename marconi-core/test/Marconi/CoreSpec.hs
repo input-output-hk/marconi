@@ -106,17 +106,38 @@ module Marconi.CoreSpec (
 
   -- ** Instances internal
   sqliteModelIndexer,
+
+  -- ** WithStability
   withStabilityTestGroup,
+
+  -- ** withStream
+  withStreamTestGroup,
 ) where
 
 import Control.Applicative (Const (Const))
 import Control.Category qualified as Category
 import Control.Comonad (Comonad (extract))
-import Control.Concurrent (MVar)
+import Control.Concurrent (
+  MVar,
+  forkIO,
+  newQSem,
+  signalQSem,
+  threadDelay,
+  waitQSem,
+ )
 import Control.Concurrent qualified as Con
+import Control.Concurrent.Async (concurrently)
+import Control.Concurrent.STM (
+  TBQueue,
+  newTBQueueIO,
+ )
+import Control.Exception (bracket, finally)
 import Control.Lens (
   Getter,
   Lens',
+  makePrisms,
+  traversed,
+  view,
   (%=),
   (%~),
   (-~),
@@ -124,15 +145,18 @@ import Control.Lens (
   (.~),
   (^.),
   (^..),
+  _2,
+  _Just,
  )
 import Control.Lens qualified as Lens
-import Control.Monad (foldM, replicateM, void)
+import Control.Monad (foldM, foldM_, replicateM, void)
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
+import Data.ByteString qualified as BS
 import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
 import Data.Foldable qualified as Foldable
@@ -145,6 +169,7 @@ import Data.Sequence (Seq ((:<|), (:|>)))
 import Data.Sequence qualified as Seq
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
+import Data.UUID.V4 (nextRandom)
 import Data.Word (Word64)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
@@ -154,8 +179,25 @@ import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField)
 import GHC.Conc (ThreadStatus (ThreadFinished), threadStatus)
 import GHC.Generics (Generic)
+import Marconi.Core (Streamable (streamFrom), unwrap, withStream)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
+import Network.Socket (
+  Family (AF_UNIX),
+  SockAddr (SockAddrUnix),
+  SocketType (Stream),
+  accept,
+  bind,
+  close,
+  connect,
+  defaultProtocol,
+  listen,
+  socket,
+ )
+import Network.Socket.ByteString (sendAll)
+import Streaming (Of, Stream)
+import Streaming.Prelude qualified as S
+import System.Directory (removeFile)
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.ModelBased qualified as Model
 import Test.QuickCheck (Arbitrary, Gen, Property, (===), (==>))
@@ -206,6 +248,8 @@ data Item event
   | Rollback !TestPoint
   | StableAt !TestPoint
   deriving stock (Show, Eq)
+
+makePrisms ''Item
 
 testPoint :: Lens' (Item event) TestPoint
 testPoint = Lens.lens getter setter
@@ -411,6 +455,8 @@ newtype TestEvent = TestEvent Int
   deriving stock (Generic)
   deriving newtype (Arbitrary, Eq, Ord, Show, Num, Enum, Real, Integral, FromField, ToField)
   deriving anyclass (SQL.FromRow, SQL.ToRow)
+
+makePrisms ''TestEvent
 
 type instance Core.Point TestEvent = TestPoint
 
@@ -1635,6 +1681,101 @@ withRollbackFailureTest =
   Tasty.testProperty "Rollback failure in a worker exit nicely" $
     Test.withMaxSuccess 10_000 $
       checkOutOfRollback (Lens.view defaultChain <$> Test.arbitrary)
+
+-- * withStream
+
+withStreamTestGroup :: Tasty.TestTree
+withStreamTestGroup =
+  Tasty.testGroup
+    "StreamTests"
+    [ Tasty.testGroup
+        "Stream"
+        [ Tasty.testGroup
+            "withStreamTBQueue"
+            [ Tasty.testProperty "TBQueue streaming works" propWithStreamTBQueue
+            ]
+        , Tasty.testGroup
+            "withStreamSocket"
+            [ Tasty.testProperty "Socket streaming works" propWithStreamSocket
+            ]
+        ]
+    ]
+
+{- | Test that a stream from a @TBQueue@ is isomorphic to the original list that was used to create
+     the stream.
+-}
+propWithStreamTBQueue :: Property
+propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+  let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+  q :: TBQueue Int <- liftIO $ newTBQueueIO 10
+  _ <- liftIO $
+    forkIO $
+      void $
+        runExceptT $ do
+          let toInt = view (Core.event . _TestEvent)
+          let indexer = withStream toInt q Core.mkListIndexer
+          foldM_ (flip process) indexer chainSubset
+
+  let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
+      expected = fmap (view _TestEvent) testEvents
+      stream = S.take (length testEvents) $ streamFrom q
+
+  actual <- liftIO $ S.toList_ stream
+
+  GenM.stop (actual == expected)
+
+{- | Test that a concurrent server and client pair can send and receive over a socket, respectively,
+     such that the client can consume from the socket as a stream.
+-}
+propWithStreamSocket :: Property
+propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+  let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+
+  serverStarted <- liftIO $ newQSem 1
+  guid <- liftIO nextRandom
+
+  let socketPath = "/tmp/prop-with-stream-socket:" ++ show guid ++ ".sock"
+
+  (_, (actual, expected)) <-
+    liftIO
+      ( concurrently
+          (server socketPath chainSubset serverStarted)
+          (client socketPath chainSubset serverStarted)
+          `finally` removeFile socketPath
+      )
+
+  GenM.stop (actual == expected)
+  where
+    server socketPath chainSubset serverStarted = bracket (runUnixSocketServer socketPath) close $ \s -> do
+      signalQSem serverStarted
+      (conn, _) <- accept s
+      _ <- runExceptT $ do
+        let toInt = view (Core.event . _TestEvent)
+            indexer = withStream toInt conn Core.mkListIndexer
+        foldM_ (flip process) indexer chainSubset
+      sendAll conn BS.empty
+      close conn
+
+    client socketPath chainSubset serverStarted = do
+      waitQSem serverStarted
+
+      -- We need to delay because otherwise we might try to connect before @accept s@ runs
+      threadDelay 100
+      bracket (runUnixSocketClient socketPath) close $ \s -> do
+        let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
+            stream :: Stream (Of Int) IO () = streamFrom s
+        str <- S.toList_ stream
+        pure (str, fmap (view _TestEvent) testEvents)
+
+    runUnixSocketServer socketPath = do
+      sock <- socket AF_UNIX Stream defaultProtocol
+      bind sock (SockAddrUnix socketPath)
+      listen sock 1
+      pure sock
+    runUnixSocketClient socketPath = do
+      sock <- socket AF_UNIX Stream defaultProtocol
+      connect sock (SockAddrUnix socketPath)
+      pure sock
 
 -- * Query modification - Stability
 withStabilityTestGroup :: Tasty.TestTree

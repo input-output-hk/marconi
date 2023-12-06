@@ -11,23 +11,23 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
 import Cardano.Api qualified as C
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Cont (MonadIO (liftIO))
 import Control.Monad.Except (runExceptT)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader ()
 import Data.Aeson ()
 import Data.Aeson.TH (Options (omitNothingFields), defaultOptions, deriveJSON, fieldLabelModifier)
 import Data.Bifunctor (first)
 import Data.Char (toLower)
 import Data.Word (Word64)
+import Marconi.Cardano.Indexers (queryableCurrentSyncPoint)
+import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
+import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Cardano.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
   Tip,
   fromChainTip,
  )
 import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Indexers (queryableCurrentSyncPoint)
-import Marconi.ChainIndex.Indexers.BlockInfo (BlockInfo)
-import Marconi.ChainIndex.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.ChainIndex.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, hoistHttpHandler, queryErrToRpcErr)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, UnusedRequestParams, mkJsonRpcInternalErr)

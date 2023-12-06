@@ -61,6 +61,9 @@ library
     Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses
     Marconi.Sidechain.Experimental.Api.JsonRpc.Routes
     Marconi.Sidechain.Experimental.Api.JsonRpc.Server
+    Marconi.Sidechain.Experimental.Api.Rest.Endpoint.Metrics
+    Marconi.Sidechain.Experimental.Api.Rest.Routes
+    Marconi.Sidechain.Experimental.Api.Rest.Server
     Marconi.Sidechain.Experimental.Api.Types
     Marconi.Sidechain.Experimental.CLI
     Marconi.Sidechain.Experimental.Concurrency
@@ -74,16 +77,18 @@ library
   -- Local components
   --------------------
   build-depends:
-    , marconi-cardano-core   >=1.2.0
-    , marconi-chain-index    >=1.2.0
-    , marconi-core           >=1.2.0
-    , marconi-core-json-rpc  >=1.2.0
+    , marconi-cardano-core      >=1.2.0
+    , marconi-cardano-indexers  >=1.2.0
+    , marconi-chain-index       >=1.2.0
+    , marconi-core              >=1.2.0
+    , marconi-core-json-rpc     >=1.2.0
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api          ^>=8.20
+    , cardano-api           ^>=8.20
+    , cardano-crypto-class
     , cardano-ledger-core
     , iohk-monitoring
 
@@ -94,12 +99,14 @@ library
     , aeson
     , async
     , base                  >=4.9 && <5
+    , bytestring
     , directory
     , lens
     , mtl
     , nonempty-containers
     , optparse-applicative
     , pretty-simple
+    , prometheus-client
     , servant
     , servant-server
     , stm                   >=2.5
@@ -131,6 +138,7 @@ test-suite marconi-sidechain-experimental-test
   other-modules:
     Spec.Marconi.Sidechain.Experimental.CLI
     Spec.Marconi.Sidechain.Experimental.CLIInputValidation
+    Spec.Marconi.Sidechain.Experimental.Routes
     Spec.Marconi.Sidechain.Experimental.Utils
 
   --------------------
@@ -143,10 +151,11 @@ test-suite marconi-sidechain-experimental-test
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index:{marconi-chain-index, marconi-chain-index-test-lib}  >=1.2.0
+    , marconi-cardano-core            >=1.2.0
+    , marconi-chain-index             >=1.2.0
     , marconi-core
-    , marconi-core-json-rpc                                                    >=1.2.0
-    , marconi-sidechain-experimental                                           >=1.2.0
+    , marconi-core-json-rpc           >=1.2.0
+    , marconi-sidechain-experimental
 
   --------------------------
   -- Other IOG dependencies

@@ -82,7 +82,9 @@ runSidechainIndexers = do
           )
         ,
           ( epochStateWorker (CLI.nodeConfigPath cliArgs) epochStateCallback
-          , Just $ dbPath </> epochStateDbName
+          , if CLI.optionsDisableEpochState cliArgs
+              then Nothing
+              else Just $ dbPath </> epochStateDbName
           )
         ,
           ( mintBurnWorker mintBurnCallback $ CLI.targetAssets cliArgs

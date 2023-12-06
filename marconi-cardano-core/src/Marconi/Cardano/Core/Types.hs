@@ -42,7 +42,6 @@ module Marconi.Cardano.Core.Types (
   mintBurnDbName,
   SecurityParam (SecurityParam),
   TxIndexInBlock (TxIndexInBlock),
-  ShouldFailIfResync (ShouldFailIfResync),
 
   -- * Configuration for index runners
   RunIndexerConfig (RunIndexerConfig),
@@ -124,15 +123,6 @@ type TxOutRef = C.TxIn
 
 txOutRef :: C.TxId -> C.TxIx -> C.TxIn
 txOutRef = C.TxIn
-
-newtype ShouldFailIfResync = ShouldFailIfResync Bool
-  deriving newtype
-    ( Eq
-    , Ord
-    , Show
-    , Aeson.FromJSON
-    , Aeson.ToJSON
-    )
 
 newtype SecurityParam = SecurityParam Word64
   deriving newtype (Eq, Ord, Bounded, Enum, Real, Num, Read, Integral, Show)

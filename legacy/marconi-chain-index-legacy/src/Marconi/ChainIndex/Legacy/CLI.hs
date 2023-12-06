@@ -209,10 +209,7 @@ optionsParser =
       ( Opt.long "disable-script-tx"
           <> Opt.help "disable script-tx indexers."
       )
-    <*> Opt.switch
-      ( Opt.long "disable-epoch-stakepool-size"
-          <> Opt.help "disable epoch stakepool size indexers."
-      )
+    <*> commonDisableEpochStateParser
     <*> Opt.switch
       ( Opt.long "disable-mintburn"
           <> Opt.help "disable mint/burn indexers."
@@ -424,6 +421,13 @@ commonRetryConfigParser =
               <> Opt.help "Max time (in seconds) allowed after startup for retries. Defaults to 30min."
               <> Opt.value 1_800
           )
+
+commonDisableEpochStateParser :: Opt.Parser Bool
+commonDisableEpochStateParser =
+  Opt.switch
+    ( Opt.long "disable-epoch-stakepool-size"
+        <> Opt.help "disable epoch stakepool size indexers."
+    )
 
 -- | Extract UtxoIndexerConfig from CLI Options
 mkUtxoIndexerConfig :: Options -> UtxoIndexerConfig

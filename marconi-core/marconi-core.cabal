@@ -71,12 +71,15 @@ library
     Marconi.Core.Query
     Marconi.Core.Transformer.Class
     Marconi.Core.Transformer.IndexTransformer
+    Marconi.Core.Transformer.WithAction
     Marconi.Core.Transformer.WithCache
     Marconi.Core.Transformer.WithCatchup
     Marconi.Core.Transformer.WithCatchup.SQLite
     Marconi.Core.Transformer.WithDelay
     Marconi.Core.Transformer.WithFold
     Marconi.Core.Transformer.WithPruning
+    Marconi.Core.Transformer.WithStream
+    Marconi.Core.Transformer.WithStream.Streamable
     Marconi.Core.Transformer.WithTracer
     Marconi.Core.Transformer.WithTransform
     Marconi.Core.Type
@@ -96,6 +99,7 @@ library
     , aeson
     , async
     , base           >=4.7 && <5
+    , binary
     , bytestring
     , comonad
     , containers
@@ -104,8 +108,10 @@ library
     , foldl
     , lens
     , mtl
+    , network
     , sqlite-simple
     , stm
+    , streaming
     , text
     , transformers
 
@@ -136,17 +142,23 @@ test-suite marconi-core-test
   other-modules:  Marconi.CoreSpec
   hs-source-dirs: test
   build-depends:
+    , async
     , base                   >=4.7    && <5
+    , bytestring
     , comonad
     , containers
     , contra-tracer
+    , directory
     , lens
     , marconi-core
     , marconi-core-test-lib
     , mtl
+    , network
     , QuickCheck
     , quickcheck-instances
     , sqlite-simple          >=0.4.18
+    , stm
+    , streaming
     , tasty
     , tasty-quickcheck
     , temporary

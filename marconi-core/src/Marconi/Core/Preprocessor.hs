@@ -28,7 +28,8 @@ module Marconi.Core.Preprocessor (
 
 import Control.Arrow (Arrow (arr))
 import Control.Lens.Operators ((%~))
-import Control.Monad.State.Strict (StateT (runStateT), join, (<=<))
+import Control.Monad (join, (<=<))
+import Control.Monad.State.Strict (StateT (runStateT))
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
 import Control.Monad.Trans.State.Strict (State)
 import Control.Scanl (Scan (Scan), ScanM (ScanM), arrM, generalize)

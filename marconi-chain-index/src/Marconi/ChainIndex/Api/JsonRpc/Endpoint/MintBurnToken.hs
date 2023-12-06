@@ -24,9 +24,8 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Indexers (queryableMintToken)
-import Marconi.ChainIndex.Indexers.MintTokenEvent (
+import Marconi.Cardano.Indexers (queryableMintToken)
+import Marconi.Cardano.Indexers.MintTokenEvent (
   mintAssetAssetName,
   mintAssetQuantity,
   mintAssetRedeemer,
@@ -38,7 +37,8 @@ import Marconi.ChainIndex.Indexers.MintTokenEvent (
   mintTokenEventTxId,
   mintTokenEvents,
  )
-import Marconi.ChainIndex.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, hoistHttpHandler, queryErrToRpcErr)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)

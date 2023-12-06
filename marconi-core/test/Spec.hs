@@ -20,6 +20,7 @@ tests =
         ]
     , Core.cacheTestGroup
     , testGroup "Query modification" [Core.withStabilityTestGroup]
+    , testGroup "Action hijacking" [Core.withStreamTestGroup]
     , testGroup
         "WithDelay"
         [ Core.delayTestGroup "ListIndexer" Core.listIndexerRunner

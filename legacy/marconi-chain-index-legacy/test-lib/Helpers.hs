@@ -43,11 +43,11 @@ cardano-testnet related code should change anyway.
 -- | Start a testnet.
 startTestnet
   :: FilePath
+  -> Integer --  ^ slot length in milliseconds, shorter makes the tests go faster
   -> H.Integration (C.LocalNodeConnectInfo C.CardanoMode, C.NetworkId, FilePath)
-startTestnet tempAbsBasePath = do
+startTestnet tempAbsBasePath slotLength = do
   let socketPathAbs = tempAbsBasePath <> "/node-server.sock"
       networkId = testnet -- TODO: any other networkId doesn't work
-      slotLength = 10 -- in milliseconds, shorter than the default to make the tests go faster
       localNodeConnectInfo = C.mkLocalNodeConnectInfo networkId socketPathAbs
   liftIO $ E.startTestnet socketPathAbs slotLength networkId
   pure (localNodeConnectInfo, networkId, socketPathAbs)

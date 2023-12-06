@@ -34,6 +34,9 @@ let
           marconi-cardano-core.doHaddock = false;
           marconi-cardano-core.flags.defer-plugin-errors = false;
 
+          marconi-cardano-indexers.doHaddock = false;
+          marconi-cardano-indexers.flags.defer-plugin-errors = false;
+
           marconi-chain-index.doHaddock = false;
           marconi-chain-index.flags.defer-plugin-errors = false;
 
@@ -81,6 +84,7 @@ let
           # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
           marconi-core.ghcOptions = [ "-Werror" ];
           marconi-cardano-core.ghcOptions = [ "-Werror" ];
+          marconi-cardano-indexers.ghcOptions = [ "-Werror" ];
           marconi-chain-index.ghcOptions = [ "-Werror" ];
           marconi-sidechain.ghcOptions = [ "-Werror" ];
           marconi-sidechain-experimental.ghcOptions = [ "-Werror" ];

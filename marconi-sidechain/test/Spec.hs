@@ -24,7 +24,6 @@ import System.Directory (createDirectory, getTemporaryDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withTempDirectory)
 import Test.Tasty (TestTree, defaultMain, localOption, testGroup)
-import Test.Tasty.ExpectedFailure (ignoreTestBecause)
 import Test.Tasty.Hedgehog (HedgehogTestLimit (HedgehogTestLimit))
 
 main :: IO ()
@@ -44,7 +43,7 @@ tests :: SidechainEnv -> RpcClientAction -> TestTree
 tests env rpcClientAction =
   testGroup
     "marconi-sidechain"
-    [ ignoreTestBecause "needs local running cardano-node" Integration.tests
+    [ Integration.tests
     , CLIInputValidation.tests
     , localOption (HedgehogTestLimit $ Just 200) $
         testGroup

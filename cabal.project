@@ -20,6 +20,7 @@ packages: legacy/marconi-core-legacy
           marconi-chain-index
           marconi-core
           marconi-cardano-core
+          marconi-cardano-indexers
           marconi-core-json-rpc
           marconi-sidechain
           marconi-sidechain-experimental
@@ -66,8 +67,8 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/input-output-hk/cardano-node-emulator
-    tag: 28de5cc1754937ba07bd35120e47e12c609f130b
-    --sha256: sha256-/6W/KUN3vFHQ5ah/XUiGvm7z1Vn/9wpI/1mucvgRwwk=
+    tag: 3a43d5cfea9a5f01ec68e5d1aeea7429394d1191
+    --sha256: sha256-3reCwN9mWAJZoep8qEzCcHw3JcgLyLd2XW3JUIIfnhQ=
     subdir:
       plutus-ledger
       plutus-script-utils

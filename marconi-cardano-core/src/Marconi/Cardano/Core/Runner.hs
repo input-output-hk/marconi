@@ -45,7 +45,8 @@ import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Except (ExceptT, void)
+import Control.Monad (void)
+import Control.Monad.Except (ExceptT)
 import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)

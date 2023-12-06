@@ -222,6 +222,7 @@ test-suite marconi-sidechain-test
     , cardano-api-gen         ^>=8.2
     , cardano-crypto-class
     , cardano-ledger-shelley
+    , cardano-node-emulator
     , cardano-slotting        ^>=0.1.1.1
     , hedgehog-extras
     , iohk-monitoring

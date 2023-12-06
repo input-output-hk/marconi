@@ -30,10 +30,6 @@ The general process for creating an ADR is:
    :titlesonly:
 
    0001-record-architecture-decisions
-   0002-marconi-initiative
-   0003-marconi-indexer-rollbacks
-   0004-marconi-query-interface
-   0005-marconi-indexers-query-synchronisation-primitive
-   0006-indexer-resuming-strategy
-   0007-observability
-   0008-marconi-sidechain-testing-strategy
+   0002-indexer-resuming-strategy
+   0003-observability
+   0004-marconi-sidechain-testing-strategy

@@ -43,6 +43,8 @@ data CliArgs = CliArgs
   , optionsFailsIfResync :: !ShouldFailIfResync
   -- ^ Fails resuming if at least one indexer will resync from genesis instead of one of its lastest
   -- synced point.
+  , optionsDisableEpochState :: !Bool
+  -- ^ disable EpochState indexer
   , optionsRetryConfig :: !RetryConfig
   , optionsChainPoint :: !C.ChainPoint
   }
@@ -72,5 +74,6 @@ parserCliArgs =
     <*> Cli.commonMaybeTargetAddressParser
     <*> Cli.commonMaybeTargetAssetParser
     <*> Cli.commonShouldFailIfResyncParser
+    <*> Cli.commonDisableEpochStateParser
     <*> Cli.commonRetryConfigParser
     <*> Cli.chainPointParser

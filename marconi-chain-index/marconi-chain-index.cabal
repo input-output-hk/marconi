@@ -87,22 +87,6 @@ library
     Marconi.ChainIndex.Error
     Marconi.ChainIndex.Git.Rev
     Marconi.ChainIndex.Git.RevFromGit
-    Marconi.ChainIndex.Indexers
-    Marconi.ChainIndex.Indexers.BlockInfo
-    Marconi.ChainIndex.Indexers.ChainTip
-    Marconi.ChainIndex.Indexers.Coordinator
-    Marconi.ChainIndex.Indexers.CurrentSyncPointQuery
-    Marconi.ChainIndex.Indexers.Datum
-    Marconi.ChainIndex.Indexers.EpochNonce
-    Marconi.ChainIndex.Indexers.EpochSDD
-    Marconi.ChainIndex.Indexers.ExtLedgerStateCoordinator
-    Marconi.ChainIndex.Indexers.MintTokenEvent
-    Marconi.ChainIndex.Indexers.MintTokenEventQuery
-    Marconi.ChainIndex.Indexers.SnapshotBlockEvent
-    Marconi.ChainIndex.Indexers.Spent
-    Marconi.ChainIndex.Indexers.SyncHelper
-    Marconi.ChainIndex.Indexers.Utxo
-    Marconi.ChainIndex.Indexers.UtxoQuery
     Marconi.ChainIndex.Run
     Marconi.ChainIndex.Snapshot.Run
     Marconi.ChainIndex.Utils
@@ -115,6 +99,7 @@ library
   --------------------
   build-depends:
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
+    , marconi-cardano-indexers
     , marconi-core
     , marconi-core-json-rpc
 
@@ -122,21 +107,12 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api                   ^>=8.20
+    , cardano-api             ^>=8.20
     , cardano-crypto-class
-    , cardano-ledger-alonzo         >=1.3.1.1
-    , cardano-ledger-api
-    , cardano-ledger-babbage        >=1.4.0.1
-    , cardano-ledger-conway         >=1.5
-    , cardano-ledger-core
-    , cardano-ledger-mary           >=1.3.0.2
     , cardano-ledger-shelley
-    , cardano-protocol-tpraos       >=1.0.3.3
-    , cardano-slotting              ^>=0.1.1.1
+    , cardano-slotting        ^>=0.1.1.1
     , iohk-monitoring
     , ouroboros-consensus
-    , ouroboros-consensus-cardano
-    , ouroboros-consensus-protocol
 
   ------------------------
   -- Non-IOG dependencies
@@ -145,11 +121,8 @@ library
     , aeson
     , async
     , base                  >=4.9 && <5
-    , base16-bytestring
     , bytestring
-    , cborg
     , comonad
-    , containers
     , directory
     , filepath
     , lens
@@ -157,7 +130,6 @@ library
     , nonempty-containers
     , optparse-applicative
     , pretty-simple
-    , prettyprinter
     , process
     , prometheus-client
     , servant
@@ -166,8 +138,6 @@ library
     , template-haskell
     , text
     , time
-    , transformers
-    , vector-map
     , warp
 
 executable marconi-chain-index
@@ -197,14 +167,6 @@ test-suite marconi-chain-index-test
     Spec.Marconi.ChainIndex.Api.Routes
     Spec.Marconi.ChainIndex.CLI
     Spec.Marconi.ChainIndex.CLIInputValidation
-    Spec.Marconi.ChainIndex.Indexers
-    Spec.Marconi.ChainIndex.Indexers.BlockInfo
-    Spec.Marconi.ChainIndex.Indexers.ChainTip
-    Spec.Marconi.ChainIndex.Indexers.Datum
-    Spec.Marconi.ChainIndex.Indexers.MintTokenEvent
-    Spec.Marconi.ChainIndex.Indexers.Spent
-    Spec.Marconi.ChainIndex.Indexers.Utxo
-    Spec.Marconi.ChainIndex.Indexers.UtxoQuery
     Spec.Marconi.ChainIndex.Utils
 
   --------------------
@@ -213,7 +175,6 @@ test-suite marconi-chain-index-test
   build-depends:
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
     , marconi-chain-index
-    , marconi-chain-index-test-lib
     , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
@@ -274,68 +235,6 @@ test-suite marconi-chain-index-test
     , text
     , time
     , transformers
-
-library marconi-chain-index-test-lib
-  import:          lang
-
-  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
-  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
-  -- components that depend on this library like `marconi-sidechain`.
-  ghc-options:     -Wno-unused-packages
-  visibility:      public
-  hs-source-dirs:  test-lib
-  exposed-modules:
-    Test.Gen.Marconi.ChainIndex.MintTokenEvent
-    Test.Helpers
-    Test.Integration
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:
-    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
-    , marconi-chain-index
-    , marconi-core
-
-  --------------------------
-  -- Other IOG dependencies
-  --------------------------
-  build-depends:
-    , cardano-api                   ^>=8.20
-    , cardano-api-gen               ^>=8.2
-    , cardano-binary
-    , cardano-crypto-class
-    , cardano-ledger-core
-    , cardano-node-emulator
-    , cardano-node-socket-emulator
-    , iohk-monitoring
-    , ouroboros-network-protocols
-    , plutus-core
-    , plutus-ledger
-    , plutus-ledger-api             ^>=1.9
-    , plutus-tx
-    , plutus-tx-plugin
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , async
-    , base             >=4.9 && <5
-    , bytestring
-    , containers
-    , contra-tracer
-    , data-default
-    , directory
-    , filepath
-    , hedgehog
-    , hedgehog-extras
-    , lens
-    , mtl
-    , streaming
-    , temporary
-    , text
-    , time
 
 executable marconi-chain-snapshot
   import:         lang

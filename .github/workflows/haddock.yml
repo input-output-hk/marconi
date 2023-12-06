@@ -25,7 +25,7 @@ jobs:
           nix develop --command bash -c '
               cabal update
               cabal haddock marconi-core
-              cabal haddock marconi-chain-index
+              cabal haddock marconi-chain-index:lib:marconi-chain-index
               cabal haddock marconi-core-json-rpc
             '
           mkdir dist
