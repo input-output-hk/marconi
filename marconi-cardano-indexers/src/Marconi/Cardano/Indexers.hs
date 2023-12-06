@@ -57,8 +57,8 @@ import Marconi.Cardano.Indexers.MintTokenEventQuery (
  )
 import Marconi.Cardano.Indexers.SnapshotBlockEvent (
   SnapshotBlockEvent (SnapshotBlockEvent),
-  SnapshotBlockEventMetadata,
-  SnapshotBlockEventWorkerConfig (SnapshotBlockEventWorkerConfig, blockRange, currentBlockNo),
+  SnapshotMetadata,
+  SnapshotWorkerConfig (SnapshotWorkerConfig, blockRange, currentBlockNo),
   getConfigCodec,
  )
 import Marconi.Cardano.Indexers.SnapshotBlockEvent qualified as SnapshotBlockEvent
@@ -460,7 +460,7 @@ snapshotBlockEventBuilder
           SnapshotBlockEvent
           ( Core.WithTrace
               m
-              (Core.FileIndexer SnapshotBlockEventMetadata)
+              (Core.FileIndexer SnapshotMetadata)
           )
       )
 snapshotBlockEventBuilder securityParam catchupConfig textLogger path blockRange' nodeConfig =
@@ -475,7 +475,7 @@ snapshotBlockEventBuilder securityParam catchupConfig textLogger path blockRange
           (BM.appendName indexerName indexerEventLogger)
    in SnapshotBlockEvent.snapshotBlockEventWorker
         standardWorkerConfig
-        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange' nodeConfig)
+        (SnapshotWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange' nodeConfig)
         path
 
 extractSnapshotBlockEvent
@@ -485,6 +485,7 @@ extractSnapshotBlockEvent
 extractSnapshotBlockEvent =
   pure . Just . SnapshotBlockEvent . WithDistance.getEvent . snd
 
+-- | Builds the coordinators for each sub-chain serializers.
 buildIndexersForSnapshot
   :: SecurityParam
   -> Core.CatchupConfig
@@ -512,9 +513,9 @@ buildIndexersForSnapshot
         blockEventTextLogger = BM.appendName "blockEvent" textLogger
         blockEventLogger = BM.appendName "blockEvent" mainLogger
         snapshotBlockEventTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
+        snapshotExtLedgerStateTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
 
     snapshotWorkers <-
-      -- TODO: better directory naming
       for (zip blockRanges [1 :: Integer ..]) $ \(blockRange', no) -> do
         Core.WorkerIndexer _snapshotBlockEventMVar snapshotBlockEventWorker <-
           snapshotBlockEventBuilder
@@ -528,13 +529,13 @@ buildIndexersForSnapshot
           snapshotExtLedgerStateEventBuilder
             securityParam
             catchupConfig
-            snapshotBlockEventTextLogger
+            snapshotExtLedgerStateTextLogger
             (path </> show no)
             blockRange'
             nodeConfig
         return [snapshotExtLedgerStateWorker, snapshotBlockEventWorker]
 
-    Core.WorkerIndexer _epochStateMVar epochStateWorker <-
+    Core.WorkerIndexer _epochStateMVar snapshotWorker <-
       ExtLedgerStateCoordinator.extLedgerStateWorker
         epochStateConfig
         (concat snapshotWorkers)
@@ -544,7 +545,7 @@ buildIndexersForSnapshot
       lift $
         buildBlockEventCoordinator
           blockEventLogger
-          [epochStateWorker]
+          [snapshotWorker]
 
     lift $
       syncStatsCoordinator
@@ -583,7 +584,7 @@ snapshotExtLedgerStateEventBuilder securityParam catchupConfig textLogger path b
    in snapshotExtLedgerStateEventWorker
         securityParam
         standardWorkerConfig
-        (SnapshotBlockEventWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange' nodeConfig)
+        (SnapshotWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange' nodeConfig)
         path
 
 snapshotExtLedgerStateEventWorker
@@ -591,7 +592,7 @@ snapshotExtLedgerStateEventWorker
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
   => SecurityParam
   -> StandardWorkerConfig n input ExtLedgerStateEvent
-  -> SnapshotBlockEventWorkerConfig input
+  -> SnapshotWorkerConfig input
   -> FilePath
   -> m
       ( Core.WorkerIndexer

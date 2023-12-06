@@ -454,8 +454,7 @@ commonRetryConfigParser =
 mkUtxoIndexerConfig :: Options -> UtxoIndexerConfig
 mkUtxoIndexerConfig o = UtxoIndexerConfig (optionsTargetAddresses o) (optionsEnableUtxoTxOutRef o)
 
--- TODO: the reason why we're parsing [BlockRange] is because we can create the sub-directory names
--- based on the block ranges, so the user doesn't have to specify a name for each range
+-- | CL options for the marconi-chain-snapshot executable.
 data SnapshotOptions = SnapshotOptions
   { snapshotOptionsSocketPath :: !String
   -- ^ POSIX socket file to communicate with cardano node

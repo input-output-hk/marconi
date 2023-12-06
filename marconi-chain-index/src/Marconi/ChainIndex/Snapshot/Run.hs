@@ -36,37 +36,31 @@ import System.Exit (exitFailure)
 appName :: Text
 appName = "marconi-chain-snapshot"
 
--- TODO: add nice logging, when ranges start and when they finish serializing
+{- | Runs the sets of indexers which serialize the user-provided ranges of blocks on disk.
+ It effectively creates snapshots of sub-chains which can be streamed back to Marconi,
+ avoiding the need to run a live Cardano node.
+ Note that in order to not skip any ranges the indexers are always started from genesis.
+-}
 run :: IO ()
 run = do
   (trace, sb) <- defaultStdOutLogger appName
   options <- parseSnapshotOptions
-  nodeConfigPath <- case Cli.snapshotOptionsNodeConfigPath options of
-    Just cfg -> do
-      exists <- doesFileExist cfg
-      unless exists $
-        withLogFullError exitFailure sb trace $
-          Text.pack $
-            "Config file does not exist at the provided path: " <> cfg
-      pure cfg
-    Nothing -> withLogFullError exitFailure sb trace "No node config path provided"
+  nodeConfigPath <- getNodeConfigPath options sb trace
 
   let marconiTrace = mkMarconiTrace trace
       retryConfig = Cli.snapshotOptionsRetryConfig options
       networkId = Cli.snapshotOptionsNetworkId options
       socketPath = Cli.snapshotOptionsSocketPath options
-      snapshotDir = Cli.snapshotOptionsSnapshotDir options -- I don't know about this, it looks like mkExtLedgerStateCoordinator create some FileIndexer which creates files in a certain way; if it's currently creating SQLite files, how does it know, in my case, to create .cbor files?
-      blockRanges = Cli.snapshotOptionsBlockRanges options
-      volatileEpochStateSnapshotInterval = 100 -- What is this?
+      snapshotDir = Cli.snapshotOptionsSnapshotDir options
+      volatileEpochStateSnapshotInterval = 100
       batchSize = 5000
       stopCatchupDistance = 100
+
   securityParam <-
     withNodeConnectRetry marconiTrace retryConfig socketPath $
       Utils.toException $
         Utils.querySecurityParam @Void networkId socketPath
 
-  -- Question: do I need a `buildIndexers` function?
-  -- Answer: I think yes, because we need to wrap it into a BlockEvent coordinator (not sure yet what it does) and a SyncStats coordinator, which adds node sync logging to the underlying coordinator
   let extLedgerStateConfig =
         ExtLedgerStateWorkerConfig
           Distance.getEvent
@@ -77,34 +71,55 @@ run = do
       snapshotConfig =
         RunIndexerConfig
           marconiTrace
-          withDistanceAndTipPreprocessor -- or withNoPreprocessor -- is this right?
+          withDistanceAndTipPreprocessor
           retryConfig
           securityParam
           networkId
-          C.ChainPointAtGenesis -- we should always start from genesis
+          C.ChainPointAtGenesis
           socketPath
-  let blockRanges' =
-        case blockRanges of
-          [] -> error "TODO: add response"
-          _ -> blockRanges
+
+  blockRanges <- getBlockRanges options sb trace
+
   mSnapshotCoordinator <-
     runExceptT $
       buildIndexersForSnapshot
         securityParam
-        (Core.mkCatchupConfig batchSize stopCatchupDistance) -- what is this?
+        (Core.mkCatchupConfig batchSize stopCatchupDistance)
         extLedgerStateConfig
         trace
         marconiTrace
         snapshotDir
-        blockRanges'
+        blockRanges
         nodeConfigPath
   snapshotCoordinator <-
     case mSnapshotCoordinator of
       Left err -> withLogFullError exitFailure sb trace $ Text.pack $ show err
       Right result -> pure result
+
   runIndexer snapshotConfig snapshotCoordinator
   where
     withLogFullError action sb trace msg = do
       logError trace msg
       BM.shutdown sb
       action
+
+    getNodeConfigPath options sb trace =
+      case Cli.snapshotOptionsNodeConfigPath options of
+        Just cfg -> do
+          exists <- doesFileExist cfg
+          unless exists $
+            withLogFullError exitFailure sb trace $
+              Text.pack $
+                "Config file does not exist at the provided path: " <> cfg
+          pure cfg
+        Nothing -> withLogFullError exitFailure sb trace "No node config path provided"
+
+    getBlockRanges options sb trace =
+      case Cli.snapshotOptionsBlockRanges options of
+        [] ->
+          withLogFullError
+            exitFailure
+            sb
+            trace
+            "Please provide at least one block range to snapshot."
+        br -> pure br

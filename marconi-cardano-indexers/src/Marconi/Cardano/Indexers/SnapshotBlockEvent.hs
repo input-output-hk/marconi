@@ -4,8 +4,8 @@
 module Marconi.Cardano.Indexers.SnapshotBlockEvent (
   snapshotBlockEventWorker,
   SnapshotBlockEvent (..),
-  SnapshotBlockEventWorkerConfig (..),
-  SnapshotBlockEventMetadata,
+  SnapshotWorkerConfig (..),
+  SnapshotMetadata,
   getConfigCodec,
 ) where
 
@@ -50,14 +50,13 @@ import Ouroboros.Consensus.Node.NetworkProtocolVersion qualified as O
 import Ouroboros.Consensus.Node.Serialisation qualified as O
 import Text.Read qualified as Text
 
-data SnapshotBlockEventWorkerConfig input = SnapshotBlockEventWorkerConfig
+data SnapshotWorkerConfig input = SnapshotWorkerConfig
   { currentBlockNo :: input -> C.BlockNo
   , blockRange :: BlockRange
   , nodeConfig :: FilePath
   }
 
--- TODO: I think this is a structured representation of the filename?
-data SnapshotBlockEventMetadata = SnapshotBlockEventMetadata
+data SnapshotMetadata = SnapshotMetadata
   { blockMetadataBlockNo :: Maybe C.BlockNo
   , blockMetadataChainpoint :: C.ChainPoint
   }
@@ -74,7 +73,7 @@ mkSnapshotBlockEventIndexer
   => FilePath
   -> O.CodecConfig
       (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> m (Core.FileIndexer SnapshotBlockEventMetadata SnapshotBlockEvent)
+  -> m (Core.FileIndexer SnapshotMetadata SnapshotBlockEvent)
 mkSnapshotBlockEventIndexer path codecConfig = do
   blockNodeToNodeVersion <-
     case blockNodeToNodeVersionM of
@@ -107,7 +106,7 @@ mkSnapshotBlockEventIndexer path codecConfig = do
 
 getConfigCodec
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => SnapshotBlockEventWorkerConfig input
+  => SnapshotWorkerConfig input
   -> m
       ( O.CodecConfig
           (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
@@ -135,10 +134,10 @@ readGenesisFile nodeConfigPath = do
 deserializeSnapshotBlockEvent
   :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
-  -> SnapshotBlockEventMetadata
+  -> SnapshotMetadata
   -> BS.ByteString
   -> Either Text (Maybe SnapshotBlockEvent)
-deserializeSnapshotBlockEvent _codecConfig _blockToNode (SnapshotBlockEventMetadata Nothing _) =
+deserializeSnapshotBlockEvent _codecConfig _blockToNode (SnapshotMetadata Nothing _) =
   const (Right Nothing)
 deserializeSnapshotBlockEvent codecConfig blockToNode metadata =
   bimap
@@ -186,28 +185,28 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 parseBlockNo :: Text.Text -> Maybe O.BlockNo
 parseBlockNo bno = C.BlockNo <$> Text.readMaybe (Text.unpack bno)
 
-deserializeMetadata :: [Text.Text] -> Maybe SnapshotBlockEventMetadata
+deserializeMetadata :: [Text.Text] -> Maybe SnapshotMetadata
 deserializeMetadata [blockNoStr] =
-  Just $ SnapshotBlockEventMetadata (parseBlockNo blockNoStr) C.ChainPointAtGenesis
+  Just $ SnapshotMetadata (parseBlockNo blockNoStr) C.ChainPointAtGenesis
 deserializeMetadata [blockNoStr, slotNoStr, hashStr] = do
   slotNo <- fmap C.SlotNo . Text.readMaybe $ Text.unpack slotNoStr
   bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 hashStr
   headerHash <- either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
-  Just $ SnapshotBlockEventMetadata (parseBlockNo blockNoStr) (C.ChainPoint slotNo headerHash)
+  Just $ SnapshotMetadata (parseBlockNo blockNoStr) (C.ChainPoint slotNo headerHash)
 deserializeMetadata _other = Nothing
 
 snapshotBlockEventWorker
   :: forall input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
   => StandardWorkerConfig n input SnapshotBlockEvent
-  -> SnapshotBlockEventWorkerConfig input
+  -> SnapshotWorkerConfig input
   -> FilePath
   -> m
       ( Core.WorkerIndexer
           n
           input
           SnapshotBlockEvent
-          (Core.WithTrace n (Core.FileIndexer SnapshotBlockEventMetadata))
+          (Core.WithTrace n (Core.FileIndexer SnapshotMetadata))
       )
 snapshotBlockEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig path = do
   codecConfig <- getConfigCodec snapshotBlockEventWorkerConfig
@@ -221,7 +220,10 @@ snapshotBlockEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig pat
   Core.createWorkerWithPreprocessing (workerName standardWorkerConfig) preprocessor indexer
 
 inBlockRangePreprocessor
-  :: (Monad m) => (a -> C.BlockNo) -> BlockRange -> Core.Preprocessor m C.ChainPoint a a
+  :: (Monad m)
+  => (a -> C.BlockNo)
+  -> BlockRange
+  -> Core.Preprocessor m C.ChainPoint a a
 inBlockRangePreprocessor toBlockNo br =
   Core.scanMaybeEvent filterWithinBlockRange Nothing
   where
@@ -230,12 +232,6 @@ inBlockRangePreprocessor toBlockNo br =
         then pure . Just $ input
         else pure Nothing
 
--- From Nicolas' branch
-
--- | Metadata used to cerate 'EpochStateIndexer' filenames
-
--- The codec config I will get from reading the result from indexing the ExtLedgerStateEvent from
--- the first block in the range OR is it from genesis?
 encodeBlock
   :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
@@ -249,7 +245,7 @@ encodeBlock codecConfig blockToNode block =
 decodeBlock
   :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
   -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
-  -> SnapshotBlockEventMetadata
+  -> SnapshotMetadata
   -> CBOR.Decoder s BlockEvent
 decodeBlock codecConfig blockToNode _metadata = do
   block <- C.fromConsensusBlock C.CardanoMode <$> O.decodeNodeToClient codecConfig blockToNode
