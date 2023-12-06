@@ -468,6 +468,16 @@ module Marconi.Core (
   Prunable (..),
   HasPruningConfig (securityParam, pruneEvery),
 
+  -- ** Arbitrary action on events
+  WithAction (..),
+  WithActionConfig (..),
+  withActionConfigAction,
+  withActionWrapper,
+
+  -- ** Streaming
+  Streamable (streamFrom, streamTo),
+  withStream,
+
   -- ** Caching
   WithCache,
   withCache,
@@ -653,6 +663,12 @@ import Marconi.Core.Transformer.IndexTransformer (
   wrappedIndexer,
   wrapperConfig,
  )
+import Marconi.Core.Transformer.WithAction (
+  WithAction (..),
+  WithActionConfig (..),
+  withActionConfigAction,
+  withActionWrapper,
+ )
 import Marconi.Core.Transformer.WithCache (
   HasCacheConfig (cache),
   WithCache,
@@ -693,6 +709,12 @@ import Marconi.Core.Transformer.WithPruning (
   securityParam,
   stepsBeforeNext,
   withPruning,
+ )
+import Marconi.Core.Transformer.WithStream (
+  withStream,
+ )
+import Marconi.Core.Transformer.WithStream.Streamable (
+  Streamable (streamFrom, streamTo),
  )
 import Marconi.Core.Transformer.WithTracer (
   HasTraceConfig (trace),
