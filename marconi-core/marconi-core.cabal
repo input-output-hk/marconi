@@ -148,12 +148,12 @@ test-suite marconi-core-test
     , comonad
     , containers
     , contra-tracer
+    , directory
     , lens
     , marconi-core
     , marconi-core-test-lib
     , mtl
     , network
-    , network-run
     , QuickCheck
     , quickcheck-instances
     , sqlite-simple          >=0.4.18

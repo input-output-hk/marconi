@@ -122,14 +122,16 @@ import Control.Concurrent (
   forkIO,
   newQSem,
   signalQSem,
+  threadDelay,
   waitQSem,
  )
 import Control.Concurrent qualified as Con
-import Control.Concurrent.Async (race)
+import Control.Concurrent.Async (concurrently)
 import Control.Concurrent.STM (
   TBQueue,
   newTBQueueIO,
  )
+import Control.Exception (bracket, finally)
 import Control.Lens (
   Getter,
   Lens',
@@ -167,6 +169,7 @@ import Data.Sequence (Seq ((:<|), (:|>)))
 import Data.Sequence qualified as Seq
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
+import Data.UUID.V4 (nextRandom)
 import Data.Word (Word64)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
@@ -179,13 +182,22 @@ import GHC.Generics (Generic)
 import Marconi.Core (Streamable (streamFrom), unwrap, withStream)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
-import Network.Run.TCP (runTCPClient, runTCPServer)
 import Network.Socket (
-  Socket,
+  Family (AF_UNIX),
+  SockAddr (SockAddrUnix),
+  SocketType (Stream),
+  accept,
+  bind,
+  close,
+  connect,
+  defaultProtocol,
+  listen,
+  socket,
  )
 import Network.Socket.ByteString (sendAll)
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as S
+import System.Directory (removeFile)
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.ModelBased qualified as Model
 import Test.QuickCheck (Arbitrary, Gen, Property, (===), (==>))
@@ -1718,30 +1730,52 @@ propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabil
 propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+
   serverStarted <- liftIO $ newQSem 1
-  Right (actual, expected) <-
-    liftIO $ race (server chainSubset serverStarted) (client chainSubset serverStarted)
+  guid <- liftIO nextRandom
+
+  let socketPath = "/tmp/prop-with-stream-socket:" ++ show guid ++ ".sock"
+
+  (_, (actual, expected)) <-
+    liftIO
+      ( concurrently
+          (server socketPath chainSubset serverStarted)
+          (client socketPath chainSubset serverStarted)
+          `finally` removeFile socketPath
+      )
 
   GenM.stop (actual == expected)
   where
-    server chainSubset serverStarted = do
-      runTCPServer (Just "127.0.0.1") "3005" serve
-      where
-        serve :: Socket -> IO ()
-        serve s = do
-          signalQSem serverStarted
-          _ <- runExceptT $ do
-            let toInt = view (Core.event . _TestEvent)
-                indexer = withStream toInt s Core.mkListIndexer
-            foldM_ (flip process) indexer chainSubset
-          sendAll s BS.empty
-    client chainSubset serverStarted = do
+    server socketPath chainSubset serverStarted = bracket (runUnixSocketServer socketPath) close $ \s -> do
+      signalQSem serverStarted
+      (conn, _) <- accept s
+      _ <- runExceptT $ do
+        let toInt = view (Core.event . _TestEvent)
+            indexer = withStream toInt conn Core.mkListIndexer
+        foldM_ (flip process) indexer chainSubset
+      sendAll conn BS.empty
+      close conn
+
+    client socketPath chainSubset serverStarted = do
       waitQSem serverStarted
-      runTCPClient "127.0.0.1" "3005" $ \s -> do
+
+      -- We need to delay because otherwise we might try to connect before @accept s@ runs
+      threadDelay 100
+      bracket (runUnixSocketClient socketPath) close $ \s -> do
         let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
             stream :: Stream (Of Int) IO () = streamFrom s
         str <- S.toList_ stream
         pure (str, fmap (view _TestEvent) testEvents)
+
+    runUnixSocketServer socketPath = do
+      sock <- socket AF_UNIX Stream defaultProtocol
+      bind sock (SockAddrUnix socketPath)
+      listen sock 1
+      pure sock
+    runUnixSocketClient socketPath = do
+      sock <- socket AF_UNIX Stream defaultProtocol
+      connect sock (SockAddrUnix socketPath)
+      pure sock
 
 -- * Query modification - Stability
 withStabilityTestGroup :: Tasty.TestTree
