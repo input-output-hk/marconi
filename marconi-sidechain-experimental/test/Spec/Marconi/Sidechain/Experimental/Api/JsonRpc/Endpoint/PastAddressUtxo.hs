@@ -101,7 +101,6 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
         Sidechain.getPastAddressUtxoHandler params
 
   -- TODO: PLT-8634 manually close the indexers needed?
-
   actual <- Hedgehog.evalIO $ either throwIO pure res >>= either (fail . show) pure
 
   let
@@ -119,14 +118,15 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
 
   -- TODO: PLT-8634
   Hedgehog.evalIO $ do
-    putStrLn "Actual raw: "
-    print actual
-    putStrLn "Expected raw: "
-    print expected
-    putStrLn "Addr raw: "
-    print addr
-    putStrLn "Query from Utxo db directly: "
-    print allUtxo
+    putStrLn "Tmp dir: " >> print tmp
+  --  putStrLn "Actual raw: "
+  --  print actual
+  --  putStrLn "Expected raw: "
+  --  print expected
+  --  putStrLn "Addr raw: "
+  --  print addr
+  --  putStrLn "Query from Utxo db directly: "
+  --  print allUtxo
 
   uncurry (===) $
     Utils.uniformGetUtxosFromAddressResult addr actual expected

@@ -51,6 +51,7 @@ import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
 import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
+import Test.Gen.Marconi.Cardano.Indexers.Datum qualified as Test.Datum
 import Test.Gen.Marconi.Cardano.Indexers.Spent qualified as Test.Spent
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 
@@ -123,16 +124,23 @@ indexAllWithMockchain indexers chain = do
       -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe (NonEmpty Spent.SpentInfo))))]
     toSpentsEvents = map (fmap Just) . Test.Spent.getTimedSpentsEventsWithDistance
 
-  -- TODO: PLT-8634 Remove the 'pure' statements and fill with indexing
+    toDatumsEvents
+      :: Test.Mockchain.MockchainWithDistance C.BabbageEra
+      -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe (NonEmpty Datum.DatumInfo))))]
+    toDatumsEvents = map (fmap Just) . Test.Datum.getTimedDatumsEventsWithDistance
+
   modifyMVar_ (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
     Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure
+  -- TODO: PLT-8634 Remove the 'pure' statements and fill with indexing
   modifyMVar_ (indexers ^. testBuildIndexersResultEpochSDD) pure
   modifyMVar_ (indexers ^. testBuildIndexersResultEpochNonce) pure
   modifyMVar_ (indexers ^. testBuildIndexersResultUtxo) $
+    -- TODO: PLT-8634
     Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultSpent) $
     Core.indexAllEither (toSpentsEvents chainNoInfo) >=> either throwIO pure
-  modifyMVar_ (indexers ^. testBuildIndexersResultDatum) pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultDatum) $
+    Core.indexAllEither (toDatumsEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultMintTokenEvent) pure
 
 {- | This is a copy-paste version of @Marconi.Cardano.Indexers.'buildIndexers'@

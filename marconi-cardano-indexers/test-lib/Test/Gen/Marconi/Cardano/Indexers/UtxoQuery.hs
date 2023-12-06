@@ -62,7 +62,7 @@ indexMockchain
     Concurrent.modifyMVar_ spentVar $
       fmap (either (error . show) id) . Core.indexAllEither (Spent.getTimedSpentsEvents chain)
     Concurrent.modifyMVar_ datumVar $
-      fmap (either (error . show) id) . Core.indexAllEither (Datum.getDatumsEvents chain)
+      fmap (either (error . show) id) . Core.indexAllEither (Datum.getTimedDatumsEvents chain)
     Concurrent.modifyMVar_ blockInfoVar $
       fmap (either (error . show) id)
         . Core.indexAllEither (BlockInfo.getTimedBlockInfoEvents chainWithInfo)
