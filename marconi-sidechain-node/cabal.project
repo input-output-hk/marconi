@@ -61,15 +61,16 @@ source-repository-package
   tag: 25670eb6f2d89b26b6e173de268bdfb33c49a2d2
   --sha256: sha256-XGZLSeZDHyg8ni2aEyPFLKWYbsl05Y027B6aVh86vhY=
   subdir:
-    marconi-core
-    -- We need to use compatible cardano-api versions
-    -- marconi-chain-index
+    marconi-cardano-indexers
+    marconi-chain-index
+    marconi-core    
+    marconi-core-json-rpc
 
 source-repository-package
   type: git
   location: https://github.com/CardanoSolutions/cardano-node
-  tag: a28540f690f485fc28283528e824652c17ce62c0
-  --sha256: 0i0jyl3h798dwjq4f68jcfagm7dj4nzpw1h0kpjy9rdz6pikm61l
+  tag: f118fa8c34c601bb8148ad33cc99afa915001d13
+  --sha256: 1qccckj57z95nlgzc3a358g0bl9cqllk9sapyrsll122agqm2my1
   subdir:
     cardano-node
     trace-dispatcher

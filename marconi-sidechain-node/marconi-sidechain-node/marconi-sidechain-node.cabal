@@ -51,15 +51,13 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api
+    , cardano-api ^>= 8.20
     , cardano-crypto-class
     , cardano-ledger-api
-    , cardano-node               ==8.4.0
+    , cardano-node               ==8.4.1
+    , marconi-chain-index
     , marconi-core
     , optparse-applicative-fork
-
-  -- , marconi-chain-index -- Doesn't work yet because current cardano-node version depends on
-  -- cardano-api-8.1 and marconi depends on cardano-api-8.20.
 
   ------------------------
   -- Non-IOG dependencies
