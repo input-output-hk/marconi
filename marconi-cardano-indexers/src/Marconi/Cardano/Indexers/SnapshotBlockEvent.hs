@@ -50,15 +50,27 @@ import Ouroboros.Consensus.Node.NetworkProtocolVersion qualified as O
 import Ouroboros.Consensus.Node.Serialisation qualified as O
 import Text.Read qualified as Text
 
+{- | Type which contains the data needed to configure the snapshot
+ indexer workers for 'BlockEvent's and 'ExtLedgerState' events.
+-}
 data SnapshotWorkerConfig input = SnapshotWorkerConfig
   { currentBlockNo :: input -> C.BlockNo
+  -- ^ retrieves the current block number from the indexer's input
   , blockRange :: BlockRange
+  -- ^ sub-chain to index, passed by the user on the CL
   , nodeConfig :: FilePath
+  -- ^ configuration of the Cardano node, passed by the user on the CL
   }
 
+{- | A representation of the names provided for the snapshot files.
+ This is used by the file indexer when parsing and unparsing the
+ file names.
+-}
 data SnapshotMetadata = SnapshotMetadata
   { blockMetadataBlockNo :: Maybe C.BlockNo
+  -- ^ the block which was serialized
   , blockMetadataChainpoint :: C.ChainPoint
+  -- ^ the chain point which was serialized
   }
   deriving (Show)
 
@@ -76,33 +88,39 @@ mkSnapshotBlockEventIndexer
   -> m (Core.FileIndexer SnapshotMetadata SnapshotBlockEvent)
 mkSnapshotBlockEventIndexer path codecConfig = do
   blockNodeToNodeVersion <-
-    case blockNodeToNodeVersionM of
-      Nothing -> throwError $ Core.IndexerInternalError "Can't find block to Node version"
-      Just v -> pure v
-  let fileStorageConfig =
-        Core.FileStorageConfig
-          False
-          (const $ const [])
-          (comparing blockMetadataBlockNo)
-      fileBuilder =
-        Core.FileBuilder
-          "block"
-          "cbor"
-          metadataAsText
-          (serializeSnapshotBlockEvent codecConfig blockNodeToNodeVersion)
-          serializeChainPoint
-      eventBuilder =
-        Core.EventBuilder
-          deserializeMetadata
-          blockMetadataChainpoint
-          (deserializeSnapshotBlockEvent codecConfig blockNodeToNodeVersion)
-          deserializeChainPoint
-   in mkFileIndexer path Nothing fileStorageConfig fileBuilder eventBuilder
+    maybe
+      (throwError $ Core.IndexerInternalError "Can't find block to Node version")
+      pure
+      blockNodeToNodeVersionM
+  mkFileIndexer
+    path
+    Nothing
+    fileStorageConfig
+    (fileBuilder blockNodeToNodeVersion)
+    (eventBuilder blockNodeToNodeVersion)
   where
     blockNodeToNodeVersionM = do
       nodeToClientVersion <- snd $ O.latestReleasedNodeVersion (Proxy @(O.CardanoBlock O.StandardCrypto))
       Map.lookup nodeToClientVersion $
         O.supportedNodeToClientVersions (Proxy @(O.CardanoBlock O.StandardCrypto))
+    fileStorageConfig =
+      Core.FileStorageConfig
+        False
+        (const $ const [])
+        (comparing blockMetadataBlockNo)
+    fileBuilder toVersion =
+      Core.FileBuilder
+        "block"
+        "cbor"
+        metadataAsText
+        (serializeSnapshotBlockEvent codecConfig toVersion)
+        serializeChainPoint
+    eventBuilder toVersion =
+      Core.EventBuilder
+        deserializeMetadata
+        blockMetadataChainpoint
+        (deserializeSnapshotBlockEvent codecConfig toVersion)
+        deserializeChainPoint
 
 getConfigCodec
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -128,7 +146,13 @@ readGenesisFile nodeConfigPath = do
     Right cfg -> pure cfg
   genesisConfigE <- liftIO $ runExceptT $ C.readCardanoGenesisConfig nodeCfg
   case genesisConfigE of
-    Left err -> throwError . Core.IndexerInternalError . Text.pack . show . C.renderGenesisConfigError $ err
+    Left err ->
+      throwError
+        . Core.IndexerInternalError
+        . Text.pack
+        . show
+        . C.renderGenesisConfigError
+        $ err
     Right cfg -> pure cfg
 
 deserializeSnapshotBlockEvent
@@ -195,6 +219,10 @@ deserializeMetadata [blockNoStr, slotNoStr, hashStr] = do
   Just $ SnapshotMetadata (parseBlockNo blockNoStr) (C.ChainPoint slotNo headerHash)
 deserializeMetadata _other = Nothing
 
+{- | Builds the worker on top of the 'BlockEvent' indexer.
+ This is where the events are preprocessed by filtering out
+ any blocks which are not in the given 'BlockRange'.
+-}
 snapshotBlockEventWorker
   :: forall input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
@@ -219,6 +247,9 @@ snapshotBlockEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig pat
             (blockRange snapshotBlockEventWorkerConfig)
   Core.createWorkerWithPreprocessing (workerName standardWorkerConfig) preprocessor indexer
 
+{- | A preprocessor for applying indexers to only the blocks
+ inside a given 'BlockRange'.
+-}
 inBlockRangePreprocessor
   :: (Monad m)
   => (a -> C.BlockNo)
