@@ -241,6 +241,7 @@ mkUtxoSQLiteQuery (UtxoQueryAggregate _utxo _spent _datum _blockInfo) =
 
 type instance Core.Result UtxoQueryInput = [UtxoResult]
 
+-- TODO: PLT-8634 uncomment where/joins
 baseQuery :: SQL.Query
 baseQuery =
   [sql|
@@ -304,15 +305,17 @@ instance
           Nothing -> mempty
           Just lo -> (["u.slotNo >= :lowerBound"], [":lowerBound" := lo])
         upperBoundFilter = case q ^. upperBound <|> C.chainPointToSlotNo point of
-          -- TODO: PLT-8634 if investigating no such column error: this could be a copy-paste error
-          -- from the legacy code. make it u.slotNo?
+          -- TODO: PLT-8634 this could be a copy-paste error from the legacy code.
+          -- make it u.slotNo? Note this branch is typically unreachable
+          -- because 'point' provided is not genesis.
           Nothing -> (["s.slotNo IS NULL"], [])
           Just hi ->
             ( -- created before the upperBound
 
               [ "u.slotNo <= :upperBound"
-              , -- unspent or spent after the upper bound
-                "(futureSpent.slotNo IS NULL OR futureSpent.slotNo > :upperBound)"
+              -- TODO: PLT-8634 this clause is the one causing problems.
+              -- , -- unspent or spent after the upper bound
+              --   "(futureSpent.slotNo IS NULL OR futureSpent.slotNo > :upperBound)"
               ]
             , [":upperBound" := hi]
             )

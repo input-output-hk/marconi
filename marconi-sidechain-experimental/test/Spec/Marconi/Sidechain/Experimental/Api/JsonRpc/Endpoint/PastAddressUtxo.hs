@@ -19,6 +19,7 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Indexers qualified as Indexers
+import Marconi.Cardano.Indexers.SyncHelper qualified as SyncHelper
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
@@ -41,19 +42,20 @@ import Test.Tasty.Hedgehog (
   testPropertyNamed,
  )
 
--- TODO: PLT8634 remove the option setting
-
 tests :: TestTree
 tests =
-  -- TODO: PLT-8634 remove shrink limit?
-  localOption (HedgehogShrinkLimit $ Just 5) $
-    testGroup
-      "Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo"
-      [ testPropertyNamed
-          "Handler returns Utxos from queried address"
-          "propQueryTargetAddresses"
-          propQueryTargetAddresses
-      ]
+  -- TODO: PLT-8634 issue with too many open files if run for the default number.
+  -- need the tmp directory to clean up, but it seems workspace does not actually do that
+  -- between runs. possible solution is to pull the generation outside.
+  localOption (HedgehogTestLimit $ Just 10) $
+    localOption (HedgehogShrinkLimit $ Just 1) $
+      testGroup
+        "Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo"
+        [ testPropertyNamed
+            "Handler returns Utxos from queried address"
+            "propQueryTargetAddresses"
+            propQueryTargetAddresses
+        ]
 
 -- TODO: PLT-8634 change test name to be more descriptive
 propQueryTargetAddresses :: Hedgehog.Property
@@ -67,12 +69,7 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
       Test.Utxo.getTimedUtxosEventsWithDistance $
         Test.Mockchain.mockchainWithInfoAsMockchainWithDistance events
 
-  -- TODO: PLT-8634
   addr <- Hedgehog.forAll $ Hedgehog.Gen.element (Utils.addressesFromTimedUtxoEvent e)
-  -- Hedgehog.forAll $ do
-  --  addrs <-
-  --    Utils.addressesFromTimedUtxoEvent <$> Hedgehog.Gen.element utxoEvents
-  --  Hedgehog.Gen.element addrs
 
   let
     args =
@@ -92,11 +89,10 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
 
   Hedgehog.evalIO $ threadDelay 1_000_000
 
-  -- TODO: PLT-8634 add coverage
   let
-    params = ChainIndex.GetUtxosFromAddressParams addrString (Just 10) Nothing
+    params = ChainIndex.GetUtxosFromAddressParams addrString Nothing Nothing
     -- TODO: PLT8634 Params for direct query
-    query = UtxoQuery.UtxoQueryInput addr (Just 10) Nothing
+    query = UtxoQuery.UtxoQueryInput addr Nothing Nothing
 
   -- Query via JSON-RPC handler
   res <-
@@ -112,12 +108,14 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
   -- TODO: PLT-8634 trying direct query as in handler
   let indexerUtxoQuery = indexersConfig ^. Test.Indexers.testBuildIndexersResultQueryables . Indexers.queryableUtxo
 
+  Right lastSyncPoint <- Hedgehog.evalIO $ runExceptT $ Core.lastSyncPoint indexerUtxoQuery
+  Right lastStablePoint <- Hedgehog.evalIO $ runExceptT $ Core.lastStablePoint indexerUtxoQuery
+
   -- Analogous to 'Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.getUtxoQueryInputHandler'
   -- for querying a single address.
-  Right lastPoint <- Hedgehog.evalIO $ runExceptT $ Core.lastSyncPoint indexerUtxoQuery
   directRes <-
     Hedgehog.evalIO $
-      runExceptT (Core.queryEither lastPoint query indexerUtxoQuery)
+      runExceptT (Core.queryEither lastSyncPoint query indexerUtxoQuery)
         >>= either undefined pure
         >>= either undefined pure
 
@@ -133,15 +131,17 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
       runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexerUtxo) >>= either throwIO pure
 
   -- TODO: PLT-8634
-  Hedgehog.evalIO $ do
-    putStrLn "Tmp dir: " >> print tmp
-    putStrLn "Last sync: " >> print lastPoint
-    putStrLn "Uniformized direct UtxoQuery result: "
-      >> print (map (\x -> (x ^. UtxoQuery.utxo . Utxo.txIn, x ^. UtxoQuery.utxo . Utxo.value)) directRes)
-    -- putStrLn "Actual raw: " >> print actual
-    -- putStrLn "Expected raw: " >> print expected
-    -- putStrLn "Addr raw: " >> print addr
-    putStrLn "Query from Utxo db directly: " >> print allUtxo
+  -- Hedgehog.evalIO $ do
+  --  putStrLn "Tmp dir: " >> print tmp
+  --  putStrLn "Last sync: " >> print lastSyncPoint
+  --  putStrLn "Last stable: " >> print lastStablePoint
+  --  putStrLn "Generated events: " >> print events
+  --  putStrLn "Uniformized direct UtxoQuery result: "
+  --    >> print (map (\x -> (x ^. UtxoQuery.utxo . Utxo.txIn, x ^. UtxoQuery.utxo . Utxo.value)) directRes)
+  --  -- putStrLn "Actual raw: " >> print actual
+  --  -- putStrLn "Expected raw: " >> print expected
+  --  putStrLn "Addr string: " >> print addrString
+  --  putStrLn "Query from Utxo db directly: " >> print allUtxo
   -- putStrLn "Uniformized direct query result: "
   --  >> print (map (fmap (map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.toList)) allUtxo)
 
