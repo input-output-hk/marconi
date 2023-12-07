@@ -110,32 +110,38 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
     expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) utxoEvents
 
   -- TODO: PLT-8634 trying direct query as in handler
-  let indexer = indexersConfig ^. Test.Indexers.testBuildIndexersResultQueryables . Indexers.queryableUtxo
+  let indexerUtxoQuery = indexersConfig ^. Test.Indexers.testBuildIndexersResultQueryables . Indexers.queryableUtxo
 
   -- Analogous to 'Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.getUtxoQueryInputHandler'
   -- for querying a single address.
-  Right lastPoint <- Hedgehog.evalIO $ runExceptT $ Core.lastSyncPoint indexer
+  Right lastPoint <- Hedgehog.evalIO $ runExceptT $ Core.lastSyncPoint indexerUtxoQuery
   directRes <-
     Hedgehog.evalIO $
-      runExceptT (Core.queryEither lastPoint query indexer)
+      runExceptT (Core.queryEither lastPoint query indexerUtxoQuery)
         >>= either undefined pure
         >>= either undefined pure
 
-  ---- TODO: PLT-8634 old code for querying raw utxo indexer
-  -- allUtxo :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
-  --  Hedgehog.evalIO $
-  --    runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexer) >>= either throwIO pure
+  -- TODO: PLT-8634 direct query on utxo db
+  indexerUtxo <-
+    Hedgehog.evalIO $
+      readMVar $
+        indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo
+
+  -- TODO: PLT-8634 old code for querying raw utxo indexer
+  allUtxo :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
+    Hedgehog.evalIO $
+      runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexerUtxo) >>= either throwIO pure
 
   -- TODO: PLT-8634
   Hedgehog.evalIO $ do
     putStrLn "Tmp dir: " >> print tmp
     putStrLn "Last sync: " >> print lastPoint
-    putStrLn "Uniformized direct query result: "
+    putStrLn "Uniformized direct UtxoQuery result: "
       >> print (map (\x -> (x ^. UtxoQuery.utxo . Utxo.txIn, x ^. UtxoQuery.utxo . Utxo.value)) directRes)
-  -- putStrLn "Actual raw: " >> print actual
-  -- putStrLn "Expected raw: " >> print expected
-  -- putStrLn "Addr raw: " >> print addr
-  -- putStrLn "Query from Utxo db directly: " >> print allUtxo
+    -- putStrLn "Actual raw: " >> print actual
+    -- putStrLn "Expected raw: " >> print expected
+    -- putStrLn "Addr raw: " >> print addr
+    putStrLn "Query from Utxo db directly: " >> print allUtxo
   -- putStrLn "Uniformized direct query result: "
   --  >> print (map (fmap (map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.toList)) allUtxo)
 
