@@ -6,9 +6,6 @@
 -}
 module Test.Gen.Marconi.Cardano.Indexers where
 
--- TODO: PLT-8634
-import Debug.Trace qualified as Debug
-
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar, modifyMVar_, withMVar)
@@ -112,12 +109,7 @@ indexAllWithMockchain indexers chain = do
     toUtxoEvents
       :: Test.Mockchain.MockchainWithDistance C.BabbageEra
       -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe UtxoEvent)))]
-    toUtxoEvents es =
-      Debug.trace
-        ("Mockchain events passed to Utxo: " ++ show es)
-        (Debug.trace ("UtxoEvents resulting: " ++ show res) res)
-      where
-        res = map (fmap Just) $ Test.Utxo.getTimedUtxosEventsWithDistance es
+    toUtxoEvents = map (fmap Just) . Test.Utxo.getTimedUtxosEventsWithDistance
 
     toSpentsEvents
       :: Test.Mockchain.MockchainWithDistance C.BabbageEra
