@@ -20,6 +20,7 @@ import Hedgehog.Gen qualified
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Indexers qualified as Indexers
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.ChainIndex.Api.Types qualified as ChainIndex
 import Marconi.Core qualified as Core
@@ -94,7 +95,10 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
   -- TODO: PLT-8634 add coverage
   let
     params = ChainIndex.GetUtxosFromAddressParams addrString (Just 10) Nothing
+    -- TODO: PLT8634 Params for direct query
+    query = UtxoQuery.UtxoQueryInput addr (Just 10) Nothing
 
+  -- Query via JSON-RPC handler
   res <-
     Hedgehog.evalIO $
       flip runReaderT httpConfig . runExceptT $
@@ -105,30 +109,35 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
   let
     expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) utxoEvents
 
-  -- TODO: PLT-8634 trying direct query
-  indexer <-
-    Hedgehog.evalIO $
-      readMVar $
-        indexersConfig ^. Test.Indexers.testBuildIndexersResultUtxo
+  -- TODO: PLT-8634 trying direct query as in handler
+  let indexer = indexersConfig ^. Test.Indexers.testBuildIndexersResultQueryables . Indexers.queryableUtxo
 
-  Hedgehog.evalIO $
-    runExceptT (Core.lastSyncPoint indexer)
-      >>= either undefined (\r -> putStrLn "Last sync: " >> print r)
-
-  allUtxo :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
+  -- Analogous to 'Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.getUtxoQueryInputHandler'
+  -- for querying a single address.
+  Right lastPoint <- Hedgehog.evalIO $ runExceptT $ Core.lastSyncPoint indexer
+  directRes <-
     Hedgehog.evalIO $
-      runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexer) >>= either throwIO pure
+      runExceptT (Core.queryEither lastPoint query indexer)
+        >>= either undefined pure
+        >>= either undefined pure
+
+  ---- TODO: PLT-8634 old code for querying raw utxo indexer
+  -- allUtxo :: [Core.Timed C.ChainPoint Utxo.UtxoEvent] <-
+  --  Hedgehog.evalIO $
+  --    runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexer) >>= either throwIO pure
 
   -- TODO: PLT-8634
   Hedgehog.evalIO $ do
     putStrLn "Tmp dir: " >> print tmp
-    putStrLn "Actual raw: " >> print actual
-    putStrLn "Expected raw: " >> print expected
-    putStrLn "Addr raw: " >> print addr
-    putStrLn "Query from Utxo db directly: " >> print allUtxo
-    -- TODO: PLT-8634 compare this to the expected result from hedgehog
+    putStrLn "Last sync: " >> print lastPoint
     putStrLn "Uniformized direct query result: "
-      >> print (map (fmap (map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.toList)) allUtxo)
+      >> print (map (\x -> (x ^. UtxoQuery.utxo . Utxo.txIn, x ^. UtxoQuery.utxo . Utxo.value)) directRes)
+  -- putStrLn "Actual raw: " >> print actual
+  -- putStrLn "Expected raw: " >> print expected
+  -- putStrLn "Addr raw: " >> print addr
+  -- putStrLn "Query from Utxo db directly: " >> print allUtxo
+  -- putStrLn "Uniformized direct query result: "
+  --  >> print (map (fmap (map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.toList)) allUtxo)
 
   Hedgehog.evalIO $ Test.Indexers.closeIndexers indexersConfig
 
