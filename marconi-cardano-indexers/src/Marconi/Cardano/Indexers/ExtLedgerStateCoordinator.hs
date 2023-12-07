@@ -17,14 +17,17 @@ module Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateCoordinator (ExtLedgerStateCoordinator),
   ExtLedgerStateCoordinatorConfig (ExtLedgerStateCoordinatorConfig),
   ExtLedgerStateWorkerConfig (..),
+  EpochMetadata,
 
   -- * Constructors
   mkExtLedgerStateCoordinator,
   extLedgerStateWorker,
+  buildExtLedgerStateEventIndexer,
 
   -- * Utils
   newEpochPreprocessor,
   readGenesisFile,
+  extractBlockEvent,
 ) where
 
 import Cardano.Api qualified as C

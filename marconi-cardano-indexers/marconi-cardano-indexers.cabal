@@ -65,6 +65,7 @@ library
     Marconi.Cardano.Indexers.ExtLedgerStateCoordinator
     Marconi.Cardano.Indexers.MintTokenEvent
     Marconi.Cardano.Indexers.MintTokenEventQuery
+    Marconi.Cardano.Indexers.SnapshotBlockEvent
     Marconi.Cardano.Indexers.Spent
     Marconi.Cardano.Indexers.SyncHelper
     Marconi.Cardano.Indexers.Utxo
