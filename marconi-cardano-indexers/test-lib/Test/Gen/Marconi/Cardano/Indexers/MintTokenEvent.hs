@@ -88,6 +88,28 @@ getValueFromTxMintValue _ = mempty
 
 {- GENERATORS -}
 
+-- | Generate a MockchainWithInfoAndDistance guaranteeing mint/burn events.
+genMockchainWithMintsWithInfoAndDistance
+  :: H.Gen (Mockchain.MockchainWithInfoAndDistance C.BabbageEra)
+genMockchainWithMintsWithInfoAndDistance = Mockchain.attachDistanceToMockChainWithInfo <$> genMockchainWithMintsWithInfo
+
+-- | Generate a MockchainWithInfo guaranteeing mint/burn events.
+genMockchainWithMintsWithInfo :: H.Gen (Mockchain.MockchainWithInfo C.BabbageEra)
+genMockchainWithMintsWithInfo = genMockchainWithMints >>= Mockchain.genMockchainWithInfoFromMockchain
+
+-- | Generate a Mockchain guaranteeing mint/burn events.
+genMockchainWithMints :: H.Gen (Mockchain.Mockchain C.BabbageEra)
+genMockchainWithMints = Mockchain.genMockchainWithTxBodyGen genTxBodyContentFromTxInsWithMints
+
+{- | Version of @Mockchain.'genTxBodyContentFromTxIns'@ that always generates mint/burn
+events instead of the default of not generating any.
+-}
+genTxBodyContentFromTxInsWithMints :: [C.TxIn] -> H.Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
+genTxBodyContentFromTxInsWithMints txIns =
+  C.setTxMintValue
+    <$> genTxMintValue
+    <*> Mockchain.genTxBodyContentFromTxIns txIns
+
 genTxMintValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
 genTxMintValue = genTxMintValueRange 1 100
 

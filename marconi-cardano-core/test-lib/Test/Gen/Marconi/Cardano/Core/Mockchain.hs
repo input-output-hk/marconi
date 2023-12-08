@@ -28,6 +28,8 @@ module Test.Gen.Marconi.Cardano.Core.Mockchain (
   getChainPointFromBlockHeader,
   getBlockNoFromBlockHeader,
   getTxBody,
+  genMockchainWithInfoFromMockchain,
+  attachDistanceToMockChainWithInfo,
 ) where
 
 import Cardano.Api qualified as C
@@ -96,9 +98,11 @@ data MockChainInfo = MockChainInfo
   , _chainTip :: C.ChainTip
   }
 
--- | Generate a MockchainWithInfo
-genMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
-genMockchainWithInfo =
+{- | Generate a MockchainWithInfo using a generator for Mockchain.
+Allows for generating mockchains that have particular properties.
+-}
+genMockchainWithInfoFromMockchain :: Mockchain C.BabbageEra -> Gen (MockchainWithInfo C.BabbageEra)
+genMockchainWithInfoFromMockchain =
   let startEpochNo = 0
 
       attachInfoToBlock :: MockBlock era -> StateT MockChainInfo Gen (MockBlockWithInfo era)
@@ -120,7 +124,11 @@ genMockchainWithInfo =
           fromIntegral <$> Hedgehog.Gen.word (Hedgehog.Range.constant 10000 10000000)
         let startInfo = MockChainInfo startEpochNo startTime C.ChainTipAtGenesis
         traverse attachInfoToBlock chain `evalStateT` startInfo
-   in genMockchain >>= attachInfoToChain
+   in attachInfoToChain
+
+-- | Generate a MockchainWithInfo
+genMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
+genMockchainWithInfo = genMockchain >>= genMockchainWithInfoFromMockchain
 
 -- TODO: PLT-8634 review this. distances seem too large.
 
@@ -129,9 +137,12 @@ which is given by the chain tip of the latest block. Ensures the result is sorte
 block number, as is currently implemented in 'genMockchainWithTxBodyGen'.
 -}
 genMockchainWithInfoAndDistance :: Gen (MockchainWithInfoAndDistance C.BabbageEra)
-genMockchainWithInfoAndDistance =
+genMockchainWithInfoAndDistance = attachDistanceToMockChainWithInfo <$> genMockchainWithInfo
+
+attachDistanceToMockChainWithInfo
+  :: MockchainWithInfo C.BabbageEra -> MockchainWithInfoAndDistance C.BabbageEra
+attachDistanceToMockChainWithInfo =
   List.reverse . attachDistanceToMockChainReversed . revSortChain
-    <$> genMockchainWithInfo
   where
     getBlockNo (C.BlockHeader _ _ blockNo) = blockNo
     revSortChain = List.sortOn (Data.Ord.Down . getBlockNo . mockBlockWithInfoChainPoint)
