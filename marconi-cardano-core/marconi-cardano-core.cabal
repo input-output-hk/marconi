@@ -1,4 +1,4 @@
-cabal-version: 3.0
+cabal-version: 3.8
 name:          marconi-cardano-core
 version:       1.2.0.0
 license:       Apache-2.0
@@ -69,7 +69,7 @@ library
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
+    , marconi-cardano-core:cardano-api-extended
     , marconi-core
 
   --------------------------
@@ -166,8 +166,7 @@ library marconi-cardano-core-test-lib
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
-    , marconi-cardano-core
+    marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
 
   --------------------------
   -- Other IOG dependencies
@@ -223,9 +222,7 @@ test-suite marconi-cardano-core-test
   -- Local components
   --------------------
   build-depends:
-    , cardano-api-extended
-    , marconi-cardano-core
-    , marconi-cardano-core-test-lib
+    marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
 
   --------------------------
   -- Other IOG dependencies

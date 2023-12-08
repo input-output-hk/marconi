@@ -1,4 +1,4 @@
-cabal-version: 3.0
+cabal-version: 3.8
 name:          marconi-core-legacy
 version:       1.2.0.0
 synopsis:      Indexers that can rewind the state to a previous version.
