@@ -8,7 +8,7 @@ module Test.Gen.Marconi.Cardano.Indexers where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
-import Control.Concurrent (MVar, modifyMVar_, withMVar)
+import Control.Concurrent (MVar, modifyMVar_)
 import Control.Exception (throwIO)
 import Control.Lens (makeLenses, (^.))
 import Control.Monad ((>=>))
@@ -49,6 +49,7 @@ import Marconi.Core qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
 import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import Test.Gen.Marconi.Cardano.Indexers.Datum qualified as Test.Datum
+import Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent qualified as Test.MintTokenEvent
 import Test.Gen.Marconi.Cardano.Indexers.Spent qualified as Test.Spent
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 
@@ -81,6 +82,8 @@ closeIndexers indexers = Core.close (indexers ^. testBuildIndexersResultCoordina
 {- | Index the exposed indexers in 'TestBuildIndexersResult' with a given Mockchain, except
  - for the coordinator and current sync point indexer (within MarconiCardanoQueryables) which can only
  - be indexed with 'BlockEvent' s coming from the chain-sync protocol.
+ -
+ - NOTE: This does not currently index EpochSDD or EpochNonce indexers.
 -}
 indexAllWithMockchain
   :: TestBuildIndexersResult
@@ -112,12 +115,15 @@ indexAllWithMockchain indexers chain = do
       -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe (NonEmpty Datum.DatumInfo))))]
     toDatumsEvents = map (fmap Just) . Test.Datum.getTimedDatumsEventsWithDistance
 
+    toMintTokenEvents
+      :: Test.Mockchain.MockchainWithDistance C.BabbageEra
+      -> [Core.Timed C.ChainPoint (Maybe (WithDistance (Maybe MintTokenEvent.MintTokenBlockEvents)))]
+    toMintTokenEvents = map (fmap Just) . Test.MintTokenEvent.getTimedMintTokentEventsWithDistance
+
   modifyMVar_ (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
     Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure
-  -- TODO: PLT-8634 Remove the 'pure' statements and fill with indexing
-  -- modifyMVar_ (indexers ^. testBuildIndexersResultEpochSDD) pure
-  -- modifyMVar_ (indexers ^. testBuildIndexersResultEpochNonce) pure
-  -- modifyMVar_ (indexers ^. testBuildIndexersResultMintTokenEvent) pure
+  modifyMVar_ (indexers ^. testBuildIndexersResultMintTokenEvent) $
+    Core.indexAllEither (toMintTokenEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultUtxo) $
     Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultSpent) $

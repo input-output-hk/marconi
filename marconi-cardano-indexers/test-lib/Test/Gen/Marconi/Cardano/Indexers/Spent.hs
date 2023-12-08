@@ -28,16 +28,13 @@ getTimedSpentsEvents
   -> [Core.Timed C.ChainPoint (Maybe (NonEmpty Spent.SpentInfo))]
 getTimedSpentsEvents = map getBlockSpentsEvent
 
-getTxBody :: C.Tx era -> C.TxBody era
-getTxBody (C.Tx txBody _) = txBody
-
 getBlockSpentsEvent
   :: Mockchain.MockBlock era
   -> Core.Timed C.ChainPoint (Maybe (NonEmpty Spent.SpentInfo))
 getBlockSpentsEvent (Mockchain.MockBlock (C.BlockHeader slotNo blockHeaderHash _) txs) =
   Core.Timed (C.ChainPoint slotNo blockHeaderHash) $
     nonEmpty $
-      concatMap (Spent.getInputs . getTxBody) txs
+      concatMap (Spent.getInputs . Mockchain.getTxBody) txs
 
 genSpent :: Hedgehog.Gen Spent.SpentInfo
 genSpent = Spent.SpentInfo <$> CGen.genTxIn <*> CGen.genTxId

@@ -27,6 +27,7 @@ module Test.Gen.Marconi.Cardano.Core.Mockchain (
   genTxBodyContentWithAddresses,
   getChainPointFromBlockHeader,
   getBlockNoFromBlockHeader,
+  getTxBody,
 ) where
 
 import Cardano.Api qualified as C
@@ -271,6 +272,9 @@ getChainPointFromBlockHeader (C.BlockHeader slotNo blockHeaderHash _blockNo) =
 
 getBlockNoFromBlockHeader :: C.BlockHeader -> C.BlockNo
 getBlockNoFromBlockHeader (C.BlockHeader _ _ blockNo) = blockNo
+
+getTxBody :: C.Tx era -> C.TxBody era
+getTxBody (C.Tx txBody _) = txBody
 
 genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.Address C.ShelleyAddr, DatumLocation)]
 genAddressesWithDatum genDatumLocation = do
