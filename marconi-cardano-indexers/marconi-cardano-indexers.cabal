@@ -1,4 +1,4 @@
-cabal-version: 3.0
+cabal-version: 3.8
 name:          marconi-cardano-indexers
 version:       1.2.0.0
 license:       Apache-2.0
@@ -138,8 +138,7 @@ test-suite marconi-cardano-indexers-test
   --------------------
   build-depends:
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
-    , marconi-cardano-indexers
-    , marconi-cardano-indexers-test-lib
+    , marconi-cardano-indexers:{marconi-cardano-indexers, marconi-cardano-indexers-test-lib}
     , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------

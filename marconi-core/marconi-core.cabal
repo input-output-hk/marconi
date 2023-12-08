@@ -1,4 +1,4 @@
-cabal-version: 3.0
+cabal-version: 3.8
 name:          marconi-core
 version:       1.2.0.0
 synopsis:      Modular indexing for rewindable ledger
@@ -143,20 +143,19 @@ test-suite marconi-core-test
   hs-source-dirs: test
   build-depends:
     , async
-    , base                   >=4.7    && <5
+    , base                                                >=4.7    && <5
     , bytestring
     , comonad
     , containers
     , contra-tracer
     , directory
     , lens
-    , marconi-core
-    , marconi-core-test-lib
+    , marconi-core:{marconi-core, marconi-core-test-lib}
     , mtl
     , network
     , QuickCheck
     , quickcheck-instances
-    , sqlite-simple          >=0.4.18
+    , sqlite-simple                                       >=0.4.18
     , stm
     , streaming
     , tasty
