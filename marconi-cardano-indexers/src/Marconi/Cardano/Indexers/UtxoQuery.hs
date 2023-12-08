@@ -313,9 +313,9 @@ instance
             ( -- created before the upperBound
 
               [ "u.slotNo <= :upperBound"
-              -- TODO: PLT-8634 this clause is the one causing problems.
-              -- , -- unspent or spent after the upper bound
-              --   "(futureSpent.slotNo IS NULL OR futureSpent.slotNo > :upperBound)"
+              , -- TODO: PLT-8634 this clause is the one causing problems.
+                -- unspent or spent after the upper bound
+                "(futureSpent.slotNo IS NULL OR futureSpent.slotNo > :upperBound)"
               ]
             , [":upperBound" := hi]
             )

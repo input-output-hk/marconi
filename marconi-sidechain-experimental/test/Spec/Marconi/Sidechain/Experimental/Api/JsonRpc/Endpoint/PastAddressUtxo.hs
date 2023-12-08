@@ -62,12 +62,18 @@ propQueryTargetAddresses :: Hedgehog.Property
 propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp -> do
   events <- Hedgehog.forAll Test.Mockchain.genMockchainWithInfoAndDistance
 
-  -- TODO: PLT-8634 ensure the result is nonempty or otherwise deal with this
-  -- Select a single address from the sampled events
+  -- TODO: PLT-8634 generated events should be an input. wrapper to check that we have
+  -- at least one event?
+
+  -- TODO: PLT-8634 is this sufficient? need to get *all* utxos from this event
+  -- associated with that address.
+  -- Select a single address from the sampled utxos.
+  -- An address from the last event is selected so that we know it is unspent.
   let
-    utxoEvents@(e : _) =
-      Test.Utxo.getTimedUtxosEventsWithDistance $
-        Test.Mockchain.mockchainWithInfoAsMockchainWithDistance events
+    (e : _) =
+      reverse $
+        Test.Utxo.getTimedUtxosEventsWithDistance $
+          Test.Mockchain.mockchainWithInfoAsMockchainWithDistance events
 
   addr <- Hedgehog.forAll $ Hedgehog.Gen.element (Utils.addressesFromTimedUtxoEvent e)
 
@@ -103,7 +109,7 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
   actual <- Hedgehog.evalIO $ either throwIO pure res >>= either (fail . show) pure
 
   let
-    expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) utxoEvents
+    expected = mapMaybe ((\(WithDistance _ x) -> x) . (^. Core.event)) [e]
 
   -- TODO: PLT-8634 trying direct query as in handler
   let indexerUtxoQuery = indexersConfig ^. Test.Indexers.testBuildIndexersResultQueryables . Indexers.queryableUtxo
@@ -131,17 +137,16 @@ propQueryTargetAddresses = Hedgehog.property $ Test.Helpers.workspace "." $ \tmp
       runExceptT (Core.queryLatest (Core.EventsMatchingQuery Just) indexerUtxo) >>= either throwIO pure
 
   -- TODO: PLT-8634
-  -- Hedgehog.evalIO $ do
-  --  putStrLn "Tmp dir: " >> print tmp
-  --  putStrLn "Last sync: " >> print lastSyncPoint
-  --  putStrLn "Last stable: " >> print lastStablePoint
-  --  putStrLn "Generated events: " >> print events
-  --  putStrLn "Uniformized direct UtxoQuery result: "
-  --    >> print (map (\x -> (x ^. UtxoQuery.utxo . Utxo.txIn, x ^. UtxoQuery.utxo . Utxo.value)) directRes)
-  --  -- putStrLn "Actual raw: " >> print actual
-  --  -- putStrLn "Expected raw: " >> print expected
-  --  putStrLn "Addr string: " >> print addrString
-  --  putStrLn "Query from Utxo db directly: " >> print allUtxo
+  Hedgehog.evalIO $ do
+    --  putStrLn "Last sync: " >> print lastSyncPoint
+    --  putStrLn "Last stable: " >> print lastStablePoint
+    putStrLn "Generated events: " >> print events
+    --  putStrLn "Uniformized direct UtxoQuery result: "
+    --    >> print (map (\x -> (x ^. UtxoQuery.utxo . Utxo.txIn, x ^. UtxoQuery.utxo . Utxo.value)) directRes)
+    --  -- putStrLn "Actual raw: " >> print actual
+    --  -- putStrLn "Expected raw: " >> print expected
+    --  putStrLn "Addr string: " >> print addrString
+    putStrLn "Query from Utxo db directly: " >> print allUtxo
   -- putStrLn "Uniformized direct query result: "
   --  >> print (map (fmap (map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.toList)) allUtxo)
 
