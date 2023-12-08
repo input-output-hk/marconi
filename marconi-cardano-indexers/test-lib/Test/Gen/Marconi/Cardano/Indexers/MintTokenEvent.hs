@@ -102,13 +102,12 @@ genMockchainWithMints :: H.Gen (Mockchain.Mockchain C.BabbageEra)
 genMockchainWithMints = Mockchain.genMockchainWithTxBodyGen genTxBodyContentFromTxInsWithMints
 
 {- | Version of @Mockchain.'genTxBodyContentFromTxIns'@ that always generates mint/burn
-events instead of the default of not generating any.
+events instead of the default of not generating any. Sets all the TxIns as collateral.
 -}
 genTxBodyContentFromTxInsWithMints :: [C.TxIn] -> H.Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
-genTxBodyContentFromTxInsWithMints txIns =
-  C.setTxMintValue
-    <$> genTxMintValue
-    <*> Mockchain.genTxBodyContentFromTxIns txIns
+genTxBodyContentFromTxInsWithMints txIns = C.setTxInsCollateral (C.TxInsCollateral C.CollateralInBabbageEra txIns) <$> txb
+  where
+    txb = C.setTxMintValue <$> genTxMintValue <*> Mockchain.genTxBodyContentFromTxIns txIns
 
 genTxMintValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
 genTxMintValue = genTxMintValueRange 1 100
