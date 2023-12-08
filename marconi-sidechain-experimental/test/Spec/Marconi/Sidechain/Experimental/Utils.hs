@@ -1,14 +1,17 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 
 module Spec.Marconi.Sidechain.Experimental.Utils where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent qualified as IO
-import Control.Exception (throwIO)
+import Control.Exception (bracket, throwIO)
 import Control.Lens (folded, set, (^.), (^..))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (runReaderT)
 import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function ((&))
@@ -35,6 +38,7 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (ValueWrapper (unVa
 import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
 import Marconi.Core qualified as Core
+import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig (..))
 import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs, targetAssets))
 import Marconi.Sidechain.Experimental.Env (
@@ -44,15 +48,33 @@ import Marconi.Sidechain.Experimental.Env (
  )
 import Marconi.Sidechain.Experimental.Indexers (sidechainBuildIndexers)
 import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
+import Network.JsonRpc.Types (JsonRpcErr)
 import System.Directory qualified as IO
 import System.Environment qualified as IO
 import System.FilePath qualified as IO
 import System.FilePath.Posix ((</>))
 import System.IO qualified as IO
 import System.Process qualified as IO
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 
 {- QUERY TEST UTILS -}
+
+{- | Wrapper for building the indexers, indexing the mockchain events, querying via a handler,
+and closing the indexers.
+-}
+queryHandlerWithIndexers
+  :: Mockchain.MockchainWithInfoAndDistance C.BabbageEra
+  -> IO (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
+  -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) result)
+  -> IO result
+queryHandlerWithIndexers chain buildAction queryAction = bracket buildAction (Test.Indexers.closeIndexers . snd) $
+  \(httpConfig, indexersConfig) -> do
+    Test.Indexers.indexAllWithMockchain indexersConfig chain
+    threadDelay 500_000
+    runReaderT (runExceptT queryAction) httpConfig
+      >>= either throwIO pure
+      >>= either (fail . show) pure
 
 {- | Dummy CLI arguments from which to create a 'SidechainEnv' used in testing via
 'mkSidechainEnvFromCliArgs'. Fields can be updated as needed for different tests.

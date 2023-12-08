@@ -76,20 +76,11 @@ makeLenses ''TestBuildIndexersResult
 closeIndexers
   :: TestBuildIndexersResult
   -> IO ()
-closeIndexers indexers = do
-  withMVar (indexers ^. testBuildIndexersResultBlockInfoIndexer) Core.close
-  withMVar (indexers ^. testBuildIndexersResultEpochSDD) Core.close
-  withMVar (indexers ^. testBuildIndexersResultEpochNonce) Core.close
-  withMVar (indexers ^. testBuildIndexersResultUtxo) Core.close
-  withMVar (indexers ^. testBuildIndexersResultSpent) Core.close
-  withMVar (indexers ^. testBuildIndexersResultDatum) Core.close
-  withMVar (indexers ^. testBuildIndexersResultMintTokenEvent) Core.close
-  -- TODO: PLT-8634 does closing the coordinator close all indexers?
-  Core.close (indexers ^. testBuildIndexersResultCoordinator)
+closeIndexers indexers = Core.close (indexers ^. testBuildIndexersResultCoordinator)
 
-{- | Index all with a given Mockchain. For tests, you must index each individual indexer
-rather than indexing the coordinator. The coordinator takes 'BlockEvent's coming from the
-chain-sync stream, which we cannot construct directly.
+{- | Index the exposed indexers in 'TestBuildIndexersResult' with a given Mockchain, except
+ - for the coordinator and current sync point indexer (within MarconiCardanoQueryables) which can only
+ - be indexed with 'BlockEvent' s coming from the chain-sync protocol.
 -}
 indexAllWithMockchain
   :: TestBuildIndexersResult
@@ -124,16 +115,15 @@ indexAllWithMockchain indexers chain = do
   modifyMVar_ (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
     Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure
   -- TODO: PLT-8634 Remove the 'pure' statements and fill with indexing
-  modifyMVar_ (indexers ^. testBuildIndexersResultEpochSDD) pure
-  modifyMVar_ (indexers ^. testBuildIndexersResultEpochNonce) pure
+  -- modifyMVar_ (indexers ^. testBuildIndexersResultEpochSDD) pure
+  -- modifyMVar_ (indexers ^. testBuildIndexersResultEpochNonce) pure
+  -- modifyMVar_ (indexers ^. testBuildIndexersResultMintTokenEvent) pure
   modifyMVar_ (indexers ^. testBuildIndexersResultUtxo) $
-    -- TODO: PLT-8634
     Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultSpent) $
     Core.indexAllEither (toSpentsEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultDatum) $
     Core.indexAllEither (toDatumsEvents chainNoInfo) >=> either throwIO pure
-  modifyMVar_ (indexers ^. testBuildIndexersResultMintTokenEvent) pure
 
 {- | This is a copy-paste version of @Marconi.Cardano.Indexers.'buildIndexers'@
 whose sole purpose is to expose the elementary indexer workers inside. That allows us to index
