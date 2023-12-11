@@ -153,8 +153,6 @@ addresses.
 genShelleyMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
 genShelleyMockchainWithInfo = genShelleyMockchain >>= genMockchainWithInfoFromMockchain
 
--- TODO: PLT-8634 review this. distances seem too large.
-
 {- | Generate a 'MockchainWithInfoAndDistance'. "Distance" is distance from the current chain tip,
 which is given by the chain tip of the latest block. Ensures the result is sorted ascending by
 block number, as is currently implemented in 'genMockchainWithTxBodyGen'.

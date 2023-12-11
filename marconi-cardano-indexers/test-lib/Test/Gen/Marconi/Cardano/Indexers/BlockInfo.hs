@@ -25,7 +25,10 @@ getTimedBlockInfoEvents
   -> [Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)]
 getTimedBlockInfoEvents = map getBlockInfoEvent
 
--- TODO: PLT-8634 some note about why this is here. or make an issue.
+{- | Generate a list of @BlockInfo.'BlockInfo'@ events from a @Mockchain.'Mockchain'@.
+ - This version is used in some tests and manually fixes the block numbers by index of
+ - the provided chain, rather than using those provided in the chain.
+-}
 getTimedBlockInfoEventsFixedBlockNos
   :: Mockchain.MockchainWithInfo era
   -> [Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)]
