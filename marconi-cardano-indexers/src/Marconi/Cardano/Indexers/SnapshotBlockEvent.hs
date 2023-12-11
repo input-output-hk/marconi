@@ -1,5 +1,7 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Marconi.Cardano.Indexers.SnapshotBlockEvent (
   snapshotBlockEventWorker,
@@ -9,10 +11,11 @@ module Marconi.Cardano.Indexers.SnapshotBlockEvent (
   getConfigCodec,
 
   -- * For testing
-  deserializeSnapshotBlockEvent,
-  deserializeMetadata,
   CodecConfig,
   BlockNodeToClientVersion,
+  deserializeSnapshotBlockEvent,
+  deserializeMetadata,
+  blockNodeToNodeVersionM,
 ) where
 
 import Cardano.Api qualified as C
@@ -49,8 +52,10 @@ import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.FileIndexer (mkFileIndexer)
 import Marconi.Core.Preprocessor qualified as Core
 import Ouroboros.Consensus.Block qualified as O
+import Ouroboros.Consensus.Byron.Ledger.Block qualified as O
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
+import Ouroboros.Consensus.HardFork.Combinator.Serialisation.Common qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Ouroboros.Consensus.Node.NetworkProtocolVersion qualified as O
 import Ouroboros.Consensus.Node.Serialisation qualified as O
@@ -107,10 +112,6 @@ mkSnapshotBlockEventIndexer path codecConfig = do
     (fileBuilder blockNodeToNodeVersion)
     (eventBuilder blockNodeToNodeVersion)
   where
-    blockNodeToNodeVersionM = do
-      nodeToClientVersion <- snd $ O.latestReleasedNodeVersion (Proxy @(O.CardanoBlock O.StandardCrypto))
-      Map.lookup nodeToClientVersion $
-        O.supportedNodeToClientVersions (Proxy @(O.CardanoBlock O.StandardCrypto))
     fileStorageConfig =
       Core.FileStorageConfig
         False
@@ -129,6 +130,16 @@ mkSnapshotBlockEventIndexer path codecConfig = do
         snapshotMetadataChainpoint
         (deserializeSnapshotBlockEvent codecConfig toVersion)
         deserializeChainPoint
+
+blockNodeToNodeVersionM
+  :: Maybe
+      ( O.HardForkNodeToClientVersion
+          (O.ByronBlock : O.CardanoShelleyEras O.StandardCrypto)
+      )
+blockNodeToNodeVersionM = do
+  nodeToClientVersion <- snd $ O.latestReleasedNodeVersion (Proxy @(O.CardanoBlock O.StandardCrypto))
+  Map.lookup nodeToClientVersion $
+    O.supportedNodeToClientVersions (Proxy @(O.CardanoBlock O.StandardCrypto))
 
 getConfigCodec
   :: (MonadIO m, MonadError Core.IndexerError m)
