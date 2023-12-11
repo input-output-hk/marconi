@@ -8,7 +8,7 @@ import Cardano.Api.Extended.Streaming (BlockEvent)
 import Control.Monad ((<=<))
 import Control.Monad.Except (runExceptT)
 import Data.ByteString qualified as BS
-import Data.List (sortOn)
+import Data.List (isPrefixOf, sortOn)
 import Data.Text qualified as Text
 import Marconi.Cardano.Indexers.SnapshotBlockEvent (
   BlockNodeToClientVersion,
@@ -70,7 +70,7 @@ mkStreamFromSnapshot
 mkStreamFromSnapshot nodeConfig dir = do
   codecConfig <- getConfigCodec' nodeConfig
   toClientVersion <- getBlockToNodeClientVersion
-  files <- listDirectory dir
+  files <- filter isBlockEventFile <$> listDirectory dir
   return
     . mkBlockEventStream codecConfig toClientVersion
     $ mkFileStream files
@@ -78,3 +78,4 @@ mkStreamFromSnapshot nodeConfig dir = do
     getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec
     getBlockToNodeClientVersion =
       maybe (error "Error in getting the node client version") pure blockNodeToNodeVersionM
+    isBlockEventFile = isPrefixOf "block_"
