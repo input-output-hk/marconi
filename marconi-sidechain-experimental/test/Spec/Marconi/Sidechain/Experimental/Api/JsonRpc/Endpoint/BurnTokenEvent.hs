@@ -81,10 +81,13 @@ propQueryMintingPolicyWithMockchain events = Test.Helpers.workspace "." $ \tmp -
     let
       burnEventsWithPolicy = filter ((== policy) . getPolicyId) burnEvents
 
+    configPath <- Hedgehog.evalIO Utils.getNodeConfigPath
+
     let
       args =
         Utils.initTestingCliArgs
           { CLI.dbDir = tmp
+          , CLI.nodeConfigPath = configPath
           }
 
     let

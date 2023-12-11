@@ -78,12 +78,17 @@ propQueryTargetAddressesWithMockchain events = Test.Helpers.workspace "." $ \tmp
 
     addr <- Hedgehog.forAll $ Hedgehog.Gen.element (Utils.addressesFromTimedUtxoEvent e)
 
+    -- Make config for this test
+
+    configPath <- Hedgehog.evalIO Utils.getNodeConfigPath
+
     let
       args =
         Utils.initTestingCliArgs
           { CLI.targetAddresses = Utils.addressAnysToTargetAddresses [addr]
           , -- Use tmp directory instead of "" since LastEventIndexer writes latestStable.cbor
             CLI.dbDir = tmp
+          , CLI.nodeConfigPath = configPath
           }
       -- Serialise to Bech32-format string as required by handler
       addrString = Text.unpack $ C.serialiseAddress addr

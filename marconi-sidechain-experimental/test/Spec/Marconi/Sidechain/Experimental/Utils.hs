@@ -52,6 +52,7 @@ import Marconi.Sidechain.Experimental.Env (
 import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
 import Network.JsonRpc.Types (JsonRpcErr)
 import System.Directory qualified as IO
+import System.Environment (getEnv)
 import System.Environment qualified as IO
 import System.FilePath qualified as IO
 import System.FilePath.Posix ((</>))
@@ -85,9 +86,7 @@ initTestingCliArgs :: CliArgs
 initTestingCliArgs =
   CliArgs
     ""
-    -- NOTE: this needs to be valid since ExtLedgerStateCoordinator builder
-    -- calls readGenesisFile.
-    "../config/cardano-node/mainnet/config.json"
+    ""
     -- dbPath "" uses temporary files
     ""
     3_000
@@ -98,6 +97,11 @@ initTestingCliArgs =
     StartFromGenesis
   where
     retryConfig = RetryConfig 1 (Just 16)
+
+getNodeConfigPath :: IO FilePath
+getNodeConfigPath =
+  (++ "/cardano-node/mainnet/config.json")
+    <$> getEnv "CARDANO_NODE_CONFIG"
 
 {- | Utility for testing JSON RPC handlers, mainly.
  - Construct the 'SidechainHttpServerConfig' and indexers in the same way as 'mkSidechainEnvFromCliArgs',

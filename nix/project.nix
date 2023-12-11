@@ -77,8 +77,12 @@ let
           marconi-sidechain.preCheck = "
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
           ";
+
+          # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
+          # The coordinator's build function calls `readGenesisFile` so must know where to look.
           marconi-sidechain-experimental.preCheck = "
             export MARCONI_SIDECHAIN_EXPERIMENTAL=${inputs.self.packages.marconi-sidechain-experimental}/bin/marconi-sidechain-experimental
+            export CARDANO_NODE_CONFIG=${../config}
           ";
 
           # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
