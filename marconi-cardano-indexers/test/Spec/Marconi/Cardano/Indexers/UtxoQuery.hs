@@ -75,7 +75,7 @@ propResolvedDatum :: Property
 propResolvedDatum = Hedgehog.property $ do
   events <- Hedgehog.forAll Test.Mockchain.genMockchainWithInfo
   let utxoEvents = Test.Utxo.getTimedUtxosEvents $ Test.Mockchain.mockchainWithInfoAsMockchain events
-      datumEvents = Test.Datum.getDatumsEvents $ Test.Mockchain.mockchainWithInfoAsMockchain events
+      datumEvents = Test.Datum.getTimedDatumsEvents $ Test.Mockchain.mockchainWithInfoAsMockchain events
   event <- Hedgehog.forAll $ Hedgehog.Gen.element utxoEvents
   let point = event ^. Core.point
   address <-
@@ -86,7 +86,7 @@ propResolvedDatum = Hedgehog.property $ do
     liftIO $
       Test.UtxoQuery.withIndexer events $
         Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
-  let storedData = Test.Datum.getDatumsEvents $ Test.Mockchain.mockchainWithInfoAsMockchain events
+  let storedData = Test.Datum.getTimedDatumsEvents $ Test.Mockchain.mockchainWithInfoAsMockchain events
       notInDatumEvents :: C.Hash C.ScriptData -> Either String String
       notInDatumEvents hash =
         if hash `elem` datumEvents ^.. traverse . Core.event . traverse . traverse . Datum.datumHash

@@ -46,7 +46,7 @@ propQueryTargetAddresses =
   Hedgehog.withTests 10 $
     Hedgehog.withShrinks 1 $
       Hedgehog.property $
-        Hedgehog.forAll Test.Mockchain.genMockchainWithInfoAndDistance
+        Hedgehog.forAll Test.Mockchain.genShelleyMockchainWithInfoAndDistance
           >>= propQueryTargetAddressesWithMockchain
 
 {- | Create a property test for getUtxosFromAddress endpoint using the provided

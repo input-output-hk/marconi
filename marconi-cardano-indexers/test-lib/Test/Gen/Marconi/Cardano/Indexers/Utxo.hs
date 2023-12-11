@@ -18,7 +18,7 @@ import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 genTimedUtxosEvents :: Gen [Core.Timed C.ChainPoint (Maybe Utxo.UtxoEvent)]
 genTimedUtxosEvents = getTimedUtxosEvents <$> Mockchain.genMockchain
 
-{- | Generate a list of timed events with a distince in blocks to the chain tip. For example,
+{- | Generate a list of timed events with a distance in blocks to the chain tip. For example,
 can be used as a base to generate events for indexing directly with
 @Marconi.Cardano.Core.Indexer.Worker.'StandardIndexer'@.
 -}
@@ -51,7 +51,7 @@ genUtxo = do
 
 {- HELPERS -}
 
--- | Generate a list of @Utxo@ event from a mock chain
+-- | Generate a list of @Utxo.UtxoEvent@ from a @Mockchain.'Mockchain'@.
 getTimedUtxosEvents
   :: (C.IsCardanoEra era)
   => Mockchain.Mockchain era

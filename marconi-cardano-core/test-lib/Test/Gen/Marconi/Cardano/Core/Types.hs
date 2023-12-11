@@ -18,6 +18,7 @@ module Test.Gen.Marconi.Cardano.Core.Types (
   genTxIndex,
   genWitnessAndHashInEra,
   genTxOutTxContext,
+  genShelleyTxOutTxContext,
   genAddressInEra,
   genTxOutValue,
   genSimpleScriptData,
@@ -302,16 +303,29 @@ genExecutionUnits =
     <$> Gen.integral (Range.constant 0 1000)
     <*> Gen.integral (Range.constant 0 1000)
 
-genTxOutTxContext :: (C.IsShelleyBasedEra era) => C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
-genTxOutTxContext era =
+{- | Generate a @C.'TxOut'@ in the given era. It can contain Shelley or Byron addresses.
+For a version that only gives Shelley addresses, see 'genShelleyTxOutTxContext'.
+-}
+genTxOutTxContext :: C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
+genTxOutTxContext era = genTxOutTxContextWithAddress era (genAddressInEra era)
+
+{- | Generate a @C.'TxOut'@ in the given era. It will contain only Shelley addresses.
+For a version that also might give Byron addresses, see 'genTxOutTxContext'.
+-}
+genShelleyTxOutTxContext
+  :: (C.IsShelleyBasedEra era) => C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
+genShelleyTxOutTxContext era = genTxOutTxContextWithAddress era (genShelleyAddressInEra era)
+
+genTxOutTxContextWithAddress
+  :: C.CardanoEra era -> Gen (C.AddressInEra era) -> Gen (C.TxOut C.CtxTx era)
+genTxOutTxContextWithAddress era addrGen =
   C.TxOut
-    -- TODO: PLT-8634 call out this change
-    <$> genShelleyAddressInEra era
+    <$> addrGen
     <*> genTxOutValue era
     <*> genSimpleTxOutDatumHashTxContext era
     <*> constantReferenceScript era
 
--- TODO: PLT-8634 revisit and try to use something from cardano-api
+-- | Generate a Shelley address in the given era.
 genShelleyAddressInEra :: (C.IsShelleyBasedEra era) => C.CardanoEra era -> Gen (C.AddressInEra era)
 genShelleyAddressInEra _ = C.shelleyAddressInEra <$> CGen.genAddressShelley
 

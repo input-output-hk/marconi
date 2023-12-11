@@ -6,17 +6,21 @@
 module Test.Gen.Marconi.Cardano.Core.Mockchain (
   Mockchain,
   genMockchain,
+  genShelleyMockchain,
   MockBlock (..),
   MockchainWithInfo,
   MockchainWithDistance,
   MockchainWithInfoAndDistance,
   genMockchainWithInfo,
+  genShelleyMockchainWithInfo,
   genMockchainWithInfoAndDistance,
+  genShelleyMockchainWithInfoAndDistance,
   MockBlockWithInfo (..),
   genMockchainWithTxBodyGen,
   mockchainWithInfoAsMockchain,
   mockchainWithInfoAsMockchainWithDistance,
   genTxBodyContentFromTxIns,
+  genShelleyTxBodyContentFromTxIns,
   genTxBodyContentFromTxInsWithPhase2Validation,
   DatumLocation (..),
   getDatumHashFromDatumLocation,
@@ -50,7 +54,12 @@ import Hedgehog.Range qualified as Range
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, attachDistance)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Helpers (emptyTxBodyContent)
-import Test.Gen.Marconi.Cardano.Core.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
+import Test.Gen.Marconi.Cardano.Core.Types (
+  genHashBlockHeader,
+  genShelleyTxOutTxContext,
+  genTxOutTxContext,
+  nonEmptySubset,
+ )
 import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
 
 type Mockchain era = [MockBlock era]
@@ -88,9 +97,15 @@ mockBlockWithInfoAsMockBlock :: MockBlockWithInfo era -> MockBlock era
 mockBlockWithInfoAsMockBlock block =
   MockBlock (mockBlockWithInfoChainPoint block) (mockBlockWithInfoTxs block)
 
--- | Generate a Mockchain
+{- | Generate a 'Mockchain'. Can contain Byron or Shelley addresses.
+For a version using only Shelley addresses, see 'genShelleyMockchain'.
+-}
 genMockchain :: Gen (Mockchain C.BabbageEra)
 genMockchain = genMockchainWithTxBodyGen genTxBodyContentFromTxIns
+
+-- | Generate a 'Mockchain' that contains only Shelley addresses.
+genShelleyMockchain :: Gen (Mockchain C.BabbageEra)
+genShelleyMockchain = genMockchainWithTxBodyGen genShelleyTxBodyContentFromTxIns
 
 data MockChainInfo = MockChainInfo
   { _epochNo :: C.EpochNo
@@ -98,7 +113,7 @@ data MockChainInfo = MockChainInfo
   , _chainTip :: C.ChainTip
   }
 
-{- | Generate a MockchainWithInfo using a generator for Mockchain.
+{- | Generate a 'MockchainWithInfo' using a fixed 'Mockchain'.
 Allows for generating mockchains that have particular properties.
 -}
 genMockchainWithInfoFromMockchain :: Mockchain C.BabbageEra -> Gen (MockchainWithInfo C.BabbageEra)
@@ -126,18 +141,35 @@ genMockchainWithInfoFromMockchain =
         traverse attachInfoToBlock chain `evalStateT` startInfo
    in attachInfoToChain
 
--- | Generate a MockchainWithInfo
+{- | Generate a 'MockchainWithInfo'. Can contain Byron and Shelley addresses.
+For a version using only Shelley addresses see 'genShelleyMockchainWithInfo'.
+-}
 genMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
 genMockchainWithInfo = genMockchain >>= genMockchainWithInfoFromMockchain
 
+{- | Generate a 'MockchainWithInfo', which can contain only Shelley
+addresses.
+-}
+genShelleyMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
+genShelleyMockchainWithInfo = genShelleyMockchain >>= genMockchainWithInfoFromMockchain
+
 -- TODO: PLT-8634 review this. distances seem too large.
 
-{- | Generate a MockchainWithInfoAndDistance. "Distance" is distance from the current chain tip,
+{- | Generate a 'MockchainWithInfoAndDistance'. "Distance" is distance from the current chain tip,
 which is given by the chain tip of the latest block. Ensures the result is sorted ascending by
 block number, as is currently implemented in 'genMockchainWithTxBodyGen'.
+
+Can contain Byron or Shelley addresses. For a version using only Shelley addresses see
+'genShelleyMockchainWithInfoAndDistance'.
 -}
 genMockchainWithInfoAndDistance :: Gen (MockchainWithInfoAndDistance C.BabbageEra)
 genMockchainWithInfoAndDistance = attachDistanceToMockChainWithInfo <$> genMockchainWithInfo
+
+{- | Generate a 'MockchainWithInfoAndDistance' containing only Shelley addresses.
+See 'genMockchainWithInfoAndDistance'.
+-}
+genShelleyMockchainWithInfoAndDistance :: Gen (MockchainWithInfoAndDistance C.BabbageEra)
+genShelleyMockchainWithInfoAndDistance = attachDistanceToMockChainWithInfo <$> genShelleyMockchainWithInfo
 
 attachDistanceToMockChainWithInfo
   :: MockchainWithInfo C.BabbageEra -> MockchainWithInfoAndDistance C.BabbageEra
@@ -208,9 +240,27 @@ genMockchainWithTxBodyGen genTxBody = do
         , mockchain ++ [MockBlock bh [newTx]]
         )
 
+{- | Generate @C.'TxBodyContent'@ from a fixed list of @C.'TxIn'@,
+ - which can contain either Byron or Shelley addresses. For a version that generates
+ - only Shelley addresses see 'genShelleyTxBodyContentFromTxIns'.
+-}
 genTxBodyContentFromTxIns
   :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
-genTxBodyContentFromTxIns inputs = do
+genTxBodyContentFromTxIns inputs = genTxBodyContentFromTxInsTxOut inputs (genTxOutTxContext C.BabbageEra)
+
+{- | Generate @C.'TxBodyContent'@ from a fixed list of @C.'TxIn'@,
+ - which can contain only Shelley addresses.
+-}
+genShelleyTxBodyContentFromTxIns
+  :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
+genShelleyTxBodyContentFromTxIns inputs = genTxBodyContentFromTxInsTxOut inputs (genShelleyTxOutTxContext C.BabbageEra)
+
+{- | Generate @C.'TxBodyContent'@ from a fixed list of @C.'TxIn'@ and a given
+generator for @C.'TxOut'@. See also 'genTxBodyWithAddresses'.
+-}
+genTxBodyContentFromTxInsTxOut
+  :: [C.TxIn] -> Gen (C.TxOut C.CtxTx C.BabbageEra) -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
+genTxBodyContentFromTxInsTxOut inputs txOutGen = do
   initialPP <- CGen.genProtocolParameters C.BabbageEra
   let modifiedPP =
         initialPP
@@ -230,7 +280,7 @@ genTxBodyContentFromTxIns inputs = do
           (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
           ledgerPP
 
-  txOuts <- Gen.list (Range.linear 1 5) $ genTxOutTxContext C.BabbageEra
+  txOuts <- Gen.list (Range.linear 1 5) txOutGen
   pure $
     txBodyContent
       { C.txIns = fmap (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) inputs
@@ -287,10 +337,9 @@ getBlockNoFromBlockHeader (C.BlockHeader _ _ blockNo) = blockNo
 getTxBody :: C.Tx era -> C.TxBody era
 getTxBody (C.Tx txBody _) = txBody
 
-genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.Address C.ShelleyAddr, DatumLocation)]
+genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.AddressInEra C.BabbageEra, DatumLocation)]
 genAddressesWithDatum genDatumLocation = do
-  -- TODO: PLT-8634 need to call out this change to gen shelley addresses. required for query via utxo handler.
-  addresses <- Gen.list (Range.linear 1 3) CGen.genAddressShelley
+  addresses <- Gen.list (Range.linear 1 3) $ CGen.genAddressInEra C.BabbageEra
   -- We do 'addresses ++ addresses' to generate duplicate addresses so that we can test that we
   -- correctly index different datums for the same address.
   forM (addresses ++ addresses) $ \addr -> do
