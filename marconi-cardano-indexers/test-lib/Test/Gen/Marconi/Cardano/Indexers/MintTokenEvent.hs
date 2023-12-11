@@ -88,7 +88,10 @@ getValueFromTxMintValue _ = mempty
 
 {- GENERATORS -}
 
--- | Generate a MockchainWithInfoAndDistance guaranteeing mint/burn events.
+{- | Generate a MockchainWithInfoAndDistance guaranteeing mint/burn events.
+NOTE: This does not at the moment generate a valid chain since it might produce burn events
+for assets that were not yet minted.
+-}
 genMockchainWithMintsWithInfoAndDistance
   :: H.Gen (Mockchain.MockchainWithInfoAndDistance C.BabbageEra)
 genMockchainWithMintsWithInfoAndDistance = Mockchain.attachDistanceToMockChainWithInfo <$> genMockchainWithMintsWithInfo
@@ -107,10 +110,14 @@ events instead of the default of not generating any. Sets all the TxIns as colla
 genTxBodyContentFromTxInsWithMints :: [C.TxIn] -> H.Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
 genTxBodyContentFromTxInsWithMints txIns = C.setTxInsCollateral (C.TxInsCollateral C.CollateralInBabbageEra txIns) <$> txb
   where
-    txb = C.setTxMintValue <$> genTxMintValue <*> Mockchain.genTxBodyContentFromTxIns txIns
+    txb = C.setTxMintValue <$> genTxMintBurnValue <*> Mockchain.genTxBodyContentFromTxIns txIns
 
+-- | Note this only generates *mint* events, not burn events, with values in the given range.
 genTxMintValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
 genTxMintValue = genTxMintValueRange 1 100
+
+genTxMintBurnValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
+genTxMintBurnValue = genTxMintValueRange (-100) 100
 
 genTxMintValueRange :: Integer -> Integer -> H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
 genTxMintValueRange min' max' = do

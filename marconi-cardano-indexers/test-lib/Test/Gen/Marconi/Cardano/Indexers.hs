@@ -6,8 +6,6 @@
 -}
 module Test.Gen.Marconi.Cardano.Indexers where
 
--- TODO: PLT-8634
-
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (MVar, modifyMVar_)
@@ -19,7 +17,6 @@ import Control.Monad.Trans (lift)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Debug.Trace qualified as Debug
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
@@ -126,9 +123,7 @@ indexAllWithMockchain indexers chain = do
   modifyMVar_ (indexers ^. testBuildIndexersResultBlockInfoIndexer) $
     Core.indexAllEither (toBlockInfoEvents chain) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultMintTokenEvent) $
-    Core.indexAllEither
-      (let res = toMintTokenEvents chainNoInfo in Debug.trace ("MintTokenEvents: " ++ show res) res)
-      >=> either throwIO pure
+    Core.indexAllEither (toMintTokenEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultUtxo) $
     Core.indexAllEither (toUtxoEvents chainNoInfo) >=> either throwIO pure
   modifyMVar_ (indexers ^. testBuildIndexersResultSpent) $

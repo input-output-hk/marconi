@@ -136,6 +136,7 @@ test-suite marconi-sidechain-experimental-test
   main-is:            Spec.hs
   hs-source-dirs:     test
   other-modules:
+    Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent
     Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo
     Spec.Marconi.Sidechain.Experimental.CLI
     Spec.Marconi.Sidechain.Experimental.CLIInputValidation

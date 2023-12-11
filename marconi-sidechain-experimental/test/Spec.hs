@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent qualified as BurnTokenEvent
 import Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo qualified as PastAddressUtxo
 import Spec.Marconi.Sidechain.Experimental.CLI qualified as CLI
 import Spec.Marconi.Sidechain.Experimental.CLIInputValidation qualified as CLIInputValidation
@@ -15,7 +16,8 @@ tests :: TestTree
 tests =
   testGroup
     "marconi-sidechain-experimental"
-    [ PastAddressUtxo.tests
+    [ BurnTokenEvent.tests
+    , PastAddressUtxo.tests
     , CLI.tests
     , CLIInputValidation.tests
     , Routes.tests

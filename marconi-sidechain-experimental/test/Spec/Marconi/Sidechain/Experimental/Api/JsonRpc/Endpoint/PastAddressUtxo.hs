@@ -76,7 +76,8 @@ propQueryTargetAddressesWithMockchain events = Test.Helpers.workspace "." $ \tmp
     args =
       Utils.initTestingCliArgs
         { CLI.targetAddresses = Utils.addressAnysToTargetAddresses [addr]
-        , CLI.dbDir = tmp
+        , -- Use tmp directory instead of "" since LastEventIndexer writes latestStable.cbor
+          CLI.dbDir = tmp
         }
     -- Serialise to Bech32-format string as required by handler
     addrString = Text.unpack $ C.serialiseAddress addr

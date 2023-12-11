@@ -29,7 +29,12 @@ import Hedgehog.Extras.Stock qualified as OS
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig), TargetAddresses)
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+  BurnTokenEventResult (BurnTokenEventResult),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
+ )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
   AddressUtxoResult (AddressUtxoResult, txId, txIx, value),
   GetUtxosFromAddressResult (unAddressUtxosResult),
@@ -83,11 +88,12 @@ initTestingCliArgs :: CliArgs
 initTestingCliArgs =
   CliArgs
     ""
-    -- TODO: PLT-8634 this needs to be valid since ExtLedgerStateCoordinator builder calls readGenesisFile.
+    -- NOTE: this needs to be valid since ExtLedgerStateCoordinator builder
+    -- calls readGenesisFile.
     "../config/cardano-node/mainnet/config.json"
-    -- dbPath "" uses temporary dbs
+    -- dbPath "" uses temporary files
     ""
-    8080
+    3_000
     C.Mainnet
     Nothing
     Nothing
@@ -173,6 +179,36 @@ uniformGetUtxosFromAddressResult target result inputs = (sortUniqueOnTxIn actual
     blockUtxosToExpected :: Utxo.UtxoEvent -> [(C.TxIn, C.Value)]
     blockUtxosToExpected = map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.filter (\x -> x ^. Utxo.address == target)
     expected = concatMap blockUtxosToExpected inputs
+
+{- | Create uniform actual/expected results from GetBurnTokenEventsResult and compare on
+fields of BurnTokenEventResult except slotNo, blockHeaderHash and isStable.
+-}
+uniformGetBurnTokenEventsResult
+  :: GetBurnTokenEventsResult
+  -> [MintTokenEvent.MintTokenEvent]
+  -> ( [(C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)]
+     , [(C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)]
+     )
+uniformGetBurnTokenEventsResult (GetBurnTokenEventsResult result) inputs = (List.sort actual, List.sort expected)
+  where
+    actual = map mintTokenToUniform inputs
+    expected = map resultToUniform result
+    mintTokenToUniform
+      :: MintTokenEvent.MintTokenEvent
+      -> (C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)
+    mintTokenToUniform e =
+      ( e ^. MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventBlockNo
+      , e ^. MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventTxId
+      , e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetAssetName
+      , -- NOTE: The query handler converts negative values to positive ones, since it considers burn events only.
+        -e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetQuantity
+      , e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetRedeemer
+      )
+    resultToUniform
+      :: BurnTokenEventResult
+      -> (C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)
+    resultToUniform (BurnTokenEventResult _ _ blockNo tid rh r assetName burnAmount _) =
+      (blockNo, tid, assetName, burnAmount, MintTokenEvent.MintAssetRedeemer <$> r <*> rh)
 
 {- GOLDEN TEST UTILS -}
 
