@@ -156,6 +156,10 @@ let
         { from = "host"; host.port = 10022; guest.port = 22; }
       ];
     };
+
+    imports = [
+      inputs.self.nixosModules.marconi-sidechain
+    ];
   };
 
   # TODO Doesn't work yet. Need to complete in the future.
@@ -218,7 +222,7 @@ let
         ExecStartPre = ''
           ${pkgs.bash}/bin/bash -c "mkdir -p /var/lib/cardano-node/preprod/marconi-sidechain"
         '';
-        ExecStart = ''${pkgs.bash}/bin/bash -c "${inputs.self.marconi-sidechain}/bin/marconi-sidechain --testnet-magic 1 -s ${config.services.cardano-node.socketPath 0} --node-config-path ${config.services.cardano-node.stateDir 0}/config-0-0.json -d ${config.services.cardano-node.stateDir 0}/preprod/marconi-sidechain --http-port 8080 --max-indexing-depth"'';
+        ExecStart = ''${pkgs.bash}/bin/bash -c "${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain --testnet-magic 1 -s ${config.services.cardano-node.socketPath 0} --node-config-path ${config.services.cardano-node.stateDir 0}/config-0-0.json -d ${config.services.cardano-node.stateDir 0}/preprod/marconi-sidechain --http-port 8080 --max-indexing-depth"'';
         ConditionPathExists = config.services.cardano-node.socketPath 0;
       };
 

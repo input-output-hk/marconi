@@ -41,6 +41,9 @@
     repoRoot = ./.;
     systems = [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ];
     outputs = import ./nix/outputs.nix;
+    flake = {
+      nixosModules = import ./nix/nixosModules;
+    };
   };
 
 

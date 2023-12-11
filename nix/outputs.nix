@@ -4,9 +4,7 @@ let
   project = repoRoot.nix.project;
 in
 [
-  (
-    project.flake
-  )
+  (project.flake)
   {
     devShells.profiled = project.variants.profiled.devShell;
   }
