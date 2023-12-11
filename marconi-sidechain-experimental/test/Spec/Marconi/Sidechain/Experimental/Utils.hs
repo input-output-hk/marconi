@@ -4,7 +4,6 @@
 module Spec.Marconi.Sidechain.Experimental.Utils where
 
 import Cardano.Api qualified as C
-import Cardano.BM.Trace (Trace)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent qualified as IO
 import Control.Exception (bracket, throwIO)
@@ -22,11 +21,10 @@ import Data.Maybe (mapMaybe)
 import Data.Monoid (getLast)
 import Data.Set qualified as Set
 import Data.Set.NonEmpty qualified as NESet
-import Data.Text (Text)
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
-import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig), TargetAddresses)
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
@@ -36,7 +34,7 @@ import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
-  AddressUtxoResult (AddressUtxoResult, txId, txIx, value),
+  AddressUtxoResult (txId, txIx, value),
   GetUtxosFromAddressResult (unAddressUtxosResult),
  )
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (ValueWrapper (unValueWrapper))
@@ -44,14 +42,13 @@ import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler)
-import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig (..))
+import Marconi.Sidechain.Experimental.Api.Types (
+  SidechainHttpServerConfig (SidechainHttpServerConfig),
+ )
 import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs, targetAssets))
 import Marconi.Sidechain.Experimental.Env (
-  SidechainEnv,
   mkSidechainBuildIndexersConfig,
-  mkSidechainEnvFromCliArgs,
  )
-import Marconi.Sidechain.Experimental.Indexers (sidechainBuildIndexers)
 import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
 import Network.JsonRpc.Types (JsonRpcErr)
 import System.Directory qualified as IO

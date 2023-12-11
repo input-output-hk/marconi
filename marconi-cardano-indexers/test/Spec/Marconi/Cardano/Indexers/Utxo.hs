@@ -9,7 +9,7 @@ import Cardano.Api qualified as C
 import Control.Concurrent qualified as Concurrent
 import Control.Lens ((^.), (^..))
 import Control.Lens qualified as Lens
-import Control.Monad (join, void)
+import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.List ((\\))
@@ -20,17 +20,14 @@ import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Hedgehog.Gen qualified as Hedgehog
-import Hedgehog.Range qualified
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
 import Marconi.Cardano.Core.Logger (nullTracer)
-import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
-import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Gen
 import Test.Tasty (TestTree, testGroup)

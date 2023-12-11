@@ -5,12 +5,9 @@
 module Test.Gen.Marconi.Cardano.Indexers.UtxoQuery where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (MVar)
 import Control.Concurrent qualified as Concurrent
-import Control.Exception (throwIO)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.List.NonEmpty (NonEmpty)
 import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Hedgehog.Range qualified

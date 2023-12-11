@@ -9,16 +9,12 @@ import Cardano.Api qualified as C
 import Control.Lens ((^.), (^..))
 import Control.Lens qualified as Lens
 import Control.Monad (when)
-import Data.Maybe (mapMaybe)
-import Data.Text qualified as Text
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
-import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Extract.WithDistance qualified as WithDistance
-import Marconi.Cardano.Indexers.MintTokenEvent (mintTokenEventAsset, mintTokenEventLocation)
+import Marconi.Cardano.Indexers.MintTokenEvent (mintTokenEventAsset)
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken qualified as ChainIndex
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent qualified as Sidechain
 import Marconi.Sidechain.Experimental.CLI qualified as CLI
