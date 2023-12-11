@@ -209,6 +209,7 @@ library marconi-cardano-indexers-test-lib
     Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent
     Test.Helpers
     Test.Integration
+    Test.Marconi.Cardano.Snapshot
 
   --------------------
   -- Local components

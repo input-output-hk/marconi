@@ -5,8 +5,14 @@ module Marconi.Cardano.Indexers.SnapshotBlockEvent (
   snapshotBlockEventWorker,
   SnapshotBlockEvent (..),
   SnapshotWorkerConfig (..),
-  SnapshotMetadata,
+  SnapshotMetadata (..),
   getConfigCodec,
+
+  -- * For testing
+  deserializeSnapshotBlockEvent,
+  deserializeMetadata,
+  CodecConfig,
+  BlockNodeToClientVersion,
 ) where
 
 import Cardano.Api qualified as C
@@ -67,9 +73,9 @@ data SnapshotWorkerConfig input = SnapshotWorkerConfig
  file names.
 -}
 data SnapshotMetadata = SnapshotMetadata
-  { blockMetadataBlockNo :: Maybe C.BlockNo
+  { snapshotMetadataBlockNo :: Maybe C.BlockNo
   -- ^ the block which was serialized
-  , blockMetadataChainpoint :: C.ChainPoint
+  , snapshotMetadataChainpoint :: C.ChainPoint
   -- ^ the chain point which was serialized
   }
   deriving (Show)
@@ -80,11 +86,13 @@ newtype SnapshotBlockEvent = SnapshotBlockEvent
 
 type instance Core.Point SnapshotBlockEvent = C.ChainPoint
 
+type CodecConfig = O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+type BlockNodeToClientVersion = O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
+
 mkSnapshotBlockEventIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => FilePath
-  -> O.CodecConfig
-      (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+  -> CodecConfig
   -> m (Core.FileIndexer SnapshotMetadata SnapshotBlockEvent)
 mkSnapshotBlockEventIndexer path codecConfig = do
   blockNodeToNodeVersion <-
@@ -107,7 +115,7 @@ mkSnapshotBlockEventIndexer path codecConfig = do
       Core.FileStorageConfig
         False
         (const $ const [])
-        (comparing blockMetadataBlockNo)
+        (comparing snapshotMetadataBlockNo)
     fileBuilder toVersion =
       Core.FileBuilder
         "block"
@@ -118,19 +126,16 @@ mkSnapshotBlockEventIndexer path codecConfig = do
     eventBuilder toVersion =
       Core.EventBuilder
         deserializeMetadata
-        blockMetadataChainpoint
+        snapshotMetadataChainpoint
         (deserializeSnapshotBlockEvent codecConfig toVersion)
         deserializeChainPoint
 
 getConfigCodec
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => SnapshotWorkerConfig input
-  -> m
-      ( O.CodecConfig
-          (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-      )
-getConfigCodec cfg = do
-  genesisCfg <- readGenesisFile (nodeConfig cfg)
+  => FilePath
+  -> m CodecConfig
+getConfigCodec nodeConfigFile = do
+  genesisCfg <- readGenesisFile nodeConfigFile
   let extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
       configCodec = O.configCodec . O.getExtLedgerCfg $ extLedgerCfg
   return configCodec
@@ -156,23 +161,23 @@ readGenesisFile nodeConfigPath = do
     Right cfg -> pure cfg
 
 deserializeSnapshotBlockEvent
-  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
+  :: CodecConfig
+  -> BlockNodeToClientVersion
   -> SnapshotMetadata
   -> BS.ByteString
   -> Either Text (Maybe SnapshotBlockEvent)
 deserializeSnapshotBlockEvent _codecConfig _blockToNode (SnapshotMetadata Nothing _) =
   const (Right Nothing)
-deserializeSnapshotBlockEvent codecConfig blockToNode metadata =
+deserializeSnapshotBlockEvent codecConfig blockToNode _ =
   bimap
     (Text.pack . show)
     (Just . SnapshotBlockEvent . snd)
-    . CBOR.deserialiseFromBytes (decodeBlock codecConfig blockToNode metadata)
+    . CBOR.deserialiseFromBytes (decodeBlock codecConfig blockToNode)
     . BS.fromStrict
 
 serializeSnapshotBlockEvent
-  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
+  :: CodecConfig
+  -> BlockNodeToClientVersion
   -> SnapshotBlockEvent
   -> BS.ByteString
 serializeSnapshotBlockEvent codecConfig blockToNode =
@@ -237,7 +242,7 @@ snapshotBlockEventWorker
           (Core.WithTrace n (Core.FileIndexer SnapshotMetadata))
       )
 snapshotBlockEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig path = do
-  codecConfig <- getConfigCodec snapshotBlockEventWorkerConfig
+  codecConfig <- getConfigCodec (nodeConfig snapshotBlockEventWorkerConfig)
   indexer <-
     Core.withTrace (logger standardWorkerConfig) <$> mkSnapshotBlockEventIndexer path codecConfig
   let preprocessor =
@@ -264,8 +269,8 @@ inBlockRangePreprocessor toBlockNo br =
         else pure Nothing
 
 encodeBlock
-  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
+  :: CodecConfig
+  -> BlockNodeToClientVersion
   -> BlockEvent
   -> CBOR.Encoding
 encodeBlock codecConfig blockToNode block =
@@ -274,11 +279,10 @@ encodeBlock codecConfig blockToNode block =
     <> CBOR.encodeWord64 (fromIntegral $ (\(MkFixed x) -> x) $ nominalDiffTimeToSeconds $ blockTime block)
 
 decodeBlock
-  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
-  -> SnapshotMetadata
+  :: CodecConfig
+  -> BlockNodeToClientVersion
   -> CBOR.Decoder s BlockEvent
-decodeBlock codecConfig blockToNode _metadata = do
+decodeBlock codecConfig blockToNode = do
   block <- C.fromConsensusBlock C.CardanoMode <$> O.decodeNodeToClient codecConfig blockToNode
   epochNo' <- fromIntegral <$> CBOR.decodeWord64
   time' <- secondsToNominalDiffTime . MkFixed . fromIntegral <$> CBOR.decodeWord64

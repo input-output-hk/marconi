@@ -601,7 +601,7 @@ snapshotExtLedgerStateEventWorker
           (Core.WithTrace n (Core.FileIndexer EpochMetadata))
       )
 snapshotExtLedgerStateEventWorker securityParam standardWorkerConfig snapshotBlockEventWorkerConfig path = do
-  codecConfig <- getConfigCodec snapshotBlockEventWorkerConfig
+  codecConfig <- getConfigCodec (SnapshotBlockEvent.nodeConfig snapshotBlockEventWorkerConfig)
   indexer <-
     Core.withTrace (logger standardWorkerConfig)
       <$> buildExtLedgerStateEventIndexer codecConfig securityParam path
