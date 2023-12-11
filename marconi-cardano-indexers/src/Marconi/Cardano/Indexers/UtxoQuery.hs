@@ -309,7 +309,8 @@ instance
             ( -- created before the upperBound
 
               [ "u.slotNo <= :upperBound"
-              , "(futureSpent.slotNo IS NULL OR futureSpent.slotNo > :upperBound)"
+              , -- unspent or spent after the upper bound
+                "(futureSpent.slotNo IS NULL OR futureSpent.slotNo > :upperBound)"
               ]
             , [":upperBound" := hi]
             )
