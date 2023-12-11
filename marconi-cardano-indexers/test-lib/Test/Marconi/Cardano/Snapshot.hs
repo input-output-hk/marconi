@@ -31,16 +31,16 @@ data SnapshotFileData = SnapshotFileData
   }
 
 mkFileStream :: [FilePath] -> Stream (Of SnapshotFileData) IO ()
-mkFileStream = Stream.each . sortOn index . fmap f
-  where
-    f :: FilePath -> SnapshotFileData
-    f orig@(Text.pack -> name) =
-      case deserializeMetadata $ Text.splitOn "_" name of
-        Nothing -> error "Malformed metadata"
-        Just m ->
-          case snapshotMetadataBlockNo m of
-            Nothing -> error "Malformed metadata: missing block number"
-            Just i -> SnapshotFileData orig m i
+mkFileStream = Stream.each . sortOn index . fmap mkSnapshotFileData
+
+mkSnapshotFileData :: FilePath -> SnapshotFileData
+mkSnapshotFileData orig@(Text.pack -> name) =
+  case deserializeMetadata $ Text.splitOn "_" name of
+    Nothing -> error "Malformed metadata"
+    Just m ->
+      case snapshotMetadataBlockNo m of
+        Nothing -> error "Malformed metadata: missing block number"
+        Just i -> SnapshotFileData orig m i
 
 mkBlockEventStream
   :: CodecConfig
@@ -49,7 +49,8 @@ mkBlockEventStream
   -> Stream (Of BlockEvent) IO ()
 mkBlockEventStream codecConfig toClientVersion = Stream.mapM serializeBlock
   where
-    serializeBlock (SnapshotFileData file meta _) = do
+    serializeBlock :: SnapshotFileData -> IO BlockEvent
+    serializeBlock (SnapshotFileData file meta _blockNo) = do
       rawBytes <- BS.readFile file
       let eBlockEvent = deserializeSnapshotBlockEvent codecConfig toClientVersion meta rawBytes
           blockEvent =
