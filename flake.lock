@@ -3,11 +3,11 @@
     "CHaP": {
       "flake": false,
       "locked": {
-        "lastModified": 1696532530,
-        "narHash": "sha256-Tabp1I371941jDRh+5X7/zp4cxKACt3H4hrXR5TdA8Y=",
+        "lastModified": 1701892389,
+        "narHash": "sha256-x1N9DA+zALq3/rYlyCSquTTqf4yJr30zWiPx67abzKg=",
         "owner": "input-output-hk",
         "repo": "cardano-haskell-packages",
-        "rev": "6d33ceace68c32707cb6a5d08483dd7c35059f31",
+        "rev": "e8b5da975037cab4608b9f4c3ce65a959769355b",
         "type": "github"
       },
       "original": {
@@ -1029,11 +1029,11 @@
     "hackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1696465466,
-        "narHash": "sha256-YlazbA1gGX6DGONHpGsA7vEgS0y43TzmarLkRjL0Nn0=",
+        "lastModified": 1701822196,
+        "narHash": "sha256-YrgFCHmZ2gZuPwSX7InfUgG8uholhDJ7METKi8kdlD0=",
         "owner": "input-output-hk",
         "repo": "hackage.nix",
-        "rev": "a99556cc8d1b2296eb1cc11c301564e1ee9324d1",
+        "rev": "dd096b415cfa593c6674351578778d7064f97102",
         "type": "github"
       },
       "original": {
@@ -1423,11 +1423,11 @@
         "sphinxcontrib-haddock": "sphinxcontrib-haddock"
       },
       "locked": {
-        "lastModified": 1699537966,
-        "narHash": "sha256-MGGza+vZDRjKj31WhQJDt7CqVVdrFkgkXIcqr0gDiU8=",
+        "lastModified": 1700649178,
+        "narHash": "sha256-ltH0ssweTOAV+q6klGl01PP/hceVkj6sh3SfgB44Ql4=",
         "owner": "input-output-hk",
         "repo": "iogx",
-        "rev": "c6ce7f034717ed0c0e9c6dd8fa2f898a15439627",
+        "rev": "af1f870fd0a3ddbd7af70ce18c4bed1f1cb1ccc3",
         "type": "github"
       },
       "original": {

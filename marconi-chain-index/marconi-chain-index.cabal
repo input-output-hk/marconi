@@ -1,4 +1,4 @@
-cabal-version: 3.0
+cabal-version: 3.8
 name:          marconi-chain-index
 version:       1.2.0.0
 license:       Apache-2.0
