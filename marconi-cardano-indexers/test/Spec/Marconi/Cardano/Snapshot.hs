@@ -1,24 +1,33 @@
 module Spec.Marconi.Cardano.Snapshot (tests) where
 
 import Streaming.Prelude qualified as Stream
-import Test.Marconi.Cardano.Snapshot (Snapshot (..), mkSnapshot)
-import Test.Tasty (TestTree, localOption, testGroup)
-import Test.Tasty.HUnit (testCase)
+import System.IO (IOMode (WriteMode), hPrint, withFile)
+import Test.Marconi.Cardano.Snapshot (
+  Snapshot (snapshotBlockStream, snapshotPreviousLedgerState),
+  mkSnapshot,
+ )
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.Golden (goldenVsFileDiff)
 
 tests :: TestTree
 tests =
   testGroup
     "Spec.Marconi.Cardano.Snapshot"
-    [t]
+    [testDeserializeSnapshot]
 
-t :: TestTree
-t =
-  testGroup
-    "TESTING"
-    [ testCase "" $ do
-        let configFile = "/home/ana/Workspace/IOG/marconi/config/cardano-node/preprod/config.json"
-            testDir = "/home/ana/Workspace/IOG/marconi/testing-snapshot/1"
-        snapshot <- mkSnapshot configFile testDir
-        print (snapshotPreviousLedgerState snapshot)
-        Stream.print (snapshotBlockStream snapshot)
-    ]
+testDeserializeSnapshot :: TestTree
+testDeserializeSnapshot =
+  goldenVsFileDiff
+    "TestDeserializeSnapshot"
+    (\expected actual -> ["diff", "--color=always", expected, actual])
+    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.golden"
+    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out"
+    run
+  where
+    run = do
+      -- TODO: generalize configFile
+      let configFile = "/home/ana/Workspace/IOG/marconi/config/cardano-node/preprod/config.json"
+      snapshot <- mkSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10"
+      withFile "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out" WriteMode $ \handle -> do
+        hPrint handle (snapshotPreviousLedgerState snapshot)
+        Stream.toHandle handle (Stream.map show $ snapshotBlockStream snapshot)
