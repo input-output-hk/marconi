@@ -4,7 +4,7 @@
 that has a settlement time
 (ie. rollback can happen and invalidates the last indexed blocks).
 
-While `marconi` is supposed to target the Cardano blockchain,
+While `marconi` was designed to target the Cardano blockchain,
 the content of `marconi-core` is totally chain agnostic and does not rely on
 anything Cardano specific type.
 
