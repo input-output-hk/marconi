@@ -21,7 +21,7 @@ import Data.Void (Void)
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner qualified as Runner
-import Marconi.Cardano.Core.Types (TargetAddresses)
+import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam), TargetAddresses)
 import Marconi.Cardano.Indexers (buildIndexers)
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
@@ -69,8 +69,7 @@ run appName = withGracefulTermination_ $ do
   createDirectoryIfMissing True (Cli.optionsDbPath o)
 
   let batchSize = 5000
-      stopCatchupDistance = 100
-      volatileEpochStateSnapshotInterval = 100
+      volatileEpochStateSnapshotInterval = 1000
       filteredAddresses = shelleyAddressesToAddressAny $ Cli.optionsTargetAddresses o
       filteredAssetIds = Cli.optionsTargetAssets o
       includeScript = not $ Cli.optionsDisableScript o
@@ -110,6 +109,8 @@ run appName = withGracefulTermination_ $ do
     withNodeConnectRetry marconiTrace retryConfig socketPath $
       Utils.toException $
         Utils.querySecurityParam @Void networkId socketPath
+
+  let SecurityParam stopCatchupDistance = securityParam
 
   mindexers <-
     runExceptT $
