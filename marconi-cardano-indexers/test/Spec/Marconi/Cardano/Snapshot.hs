@@ -1,7 +1,7 @@
 module Spec.Marconi.Cardano.Snapshot (tests) where
 
 import Streaming.Prelude qualified as Stream
-import System.Environment (lookupEnv)
+import System.Environment (getEnv)
 import System.FilePath ((</>))
 import System.IO (IOMode (WriteMode), hPrint, withFile)
 import Test.Marconi.Cardano.Snapshot (
@@ -35,9 +35,5 @@ testDeserializeSnapshot =
 
 getNodeConfigPath :: String -> IO FilePath
 getNodeConfigPath nodeType = do
-  mConfigDir <- lookupEnv "CARDANO_NODE_CONFIG"
-  case mConfigDir of
-    Just configDir ->
-      return $ configDir </> "cardano-node" </> nodeType </> "config.json"
-    Nothing ->
-      return $ "../config/cardano-node" </> nodeType </> "config.json"
+  configDir <- getEnv "CARDANO_NODE_CONFIG"
+  return $ configDir </> "cardano-node" </> nodeType </> "config.json"
