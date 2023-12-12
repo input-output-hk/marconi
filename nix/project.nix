@@ -59,17 +59,9 @@ let
           # is necessary to prevent the error
           # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
           # See https://github.com/input-output-hk/cardano-node/issues/4194.
-          #
-          # The line 'export CARDANO_NODE_SRC=...' is used to specify the
-          # root folder used to fetch the `configuration.yaml` file (in
-          # marconi, it's currently in the
-          # `configuration/defaults/byron-mainnet` directory.
-          # Else, we'll get the error
-          # `/nix/store/ls0ky8x6zi3fkxrv7n4vs4x9czcqh1pb-marconi/marconi/test/configuration.yaml: openFile: does not exist (No such file or directory)`
           marconi-chain-index.preCheck = "
             export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
             export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
-            export CARDANO_NODE_SRC=${../.}
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-chain-index}/bin/marconi-chain-index
           ";
 
