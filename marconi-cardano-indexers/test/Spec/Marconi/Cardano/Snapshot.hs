@@ -25,8 +25,7 @@ testDeserializeSnapshot =
     run
   where
     run = do
-      -- TODO: generalize configFile
-      let configFile = "/home/ana/Workspace/IOG/marconi/config/cardano-node/preprod/config.json"
+      let configFile = "../config/cardano-node/preprod/config.json"
       snapshot <- mkSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10"
       withFile "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out" WriteMode $ \handle -> do
         hPrint handle (snapshotPreviousLedgerState snapshot)
