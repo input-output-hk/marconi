@@ -9,6 +9,7 @@ import Control.Monad ((<=<))
 import Control.Monad.Except (runExceptT)
 import Data.ByteString qualified as BS
 import Data.List (find, isPrefixOf, sortOn)
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent)
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerState
@@ -25,7 +26,7 @@ import Marconi.Cardano.Indexers.SnapshotBlockEvent qualified as BlockEvent
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as Stream
 import System.Directory (listDirectory)
-import System.FilePath (takeBaseName)
+import System.FilePath (takeBaseName, (</>))
 
 data Snapshot = Snapshot
   { snapshotPreviousLedgerState :: ExtLedgerStateEvent
@@ -40,7 +41,7 @@ data SnapshotFileData = SnapshotFileData
 
 mkSnapshotFileData :: FilePath -> SnapshotFileData
 mkSnapshotFileData orig@(Text.pack . takeBaseName -> name) =
-  case BlockEvent.deserializeMetadata $ Text.splitOn "_" name of
+  case BlockEvent.deserializeMetadata . extractRawMetadata "block" $ name of
     Nothing -> error "Malformed metadata for serialized BlockEvent."
     Just m ->
       case snapshotMetadataBlockNo m of
@@ -70,8 +71,6 @@ mkBlockEventStream codecConfig toClientVersion =
     mkFileStream :: [FilePath] -> Stream (Of SnapshotFileData) IO ()
     mkFileStream = Stream.each . sortOn index . fmap mkSnapshotFileData
 
--- TODO: I think there is an issue with the metadata parsing, I should
--- look at how it's implemented in the FileIndexer
 mkSnapshot
   :: FilePath
   -- ^ path to the node config file
@@ -81,7 +80,7 @@ mkSnapshot
 mkSnapshot nodeConfig inputDir = do
   codecConfig <- getConfigCodec' nodeConfig
   toClientVersion <- getBlockToNodeClientVersion
-  files <- listDirectory inputDir
+  files <- fmap (inputDir </>) <$> listDirectory inputDir
   let blockFiles = filter isBlockEventFile files
       ledgerStateFile = findLedgerState files
       blockStream = mkBlockEventStream codecConfig toClientVersion blockFiles
@@ -93,19 +92,20 @@ mkSnapshot nodeConfig inputDir = do
     getBlockToNodeClientVersion =
       maybe (error "Error in getting the node client version") pure blockNodeToNodeVersionM
 
-    isBlockEventFile = isPrefixOf "block_"
+    isBlockEventFile = isPrefixOf "block_" . takeBaseName
 
     findLedgerState =
       maybe (error "Could not find file containing serialized ledger state") id
-        . find ("epochState_" `isPrefixOf`)
+        . find (isPrefixOf "epochState_" . takeBaseName)
 
 deserializeLedgerState
   :: CodecConfig
   -> FilePath
   -> IO ExtLedgerStateEvent
 deserializeLedgerState codecConfig file@(Text.pack . takeBaseName -> name) =
-  case ExtLedgerState.deserialiseMetadata $ Text.splitOn "_" name of
-    Nothing -> error "Malformed metadata for serialized ExtLedgerStateEvent."
+  case ExtLedgerState.deserialiseMetadata . extractRawMetadata "epochState" $ name of
+    Nothing ->
+      error $ "Malformed metadata for serialized ExtLedgerStateEvent: " <> show name
     Just meta -> do
       rawBytes <- BS.readFile file
       let eExtLedgerState = ExtLedgerState.deserialiseLedgerState codecConfig meta rawBytes
@@ -115,3 +115,12 @@ deserializeLedgerState codecConfig file@(Text.pack . takeBaseName -> name) =
           case mExtLedgerState of
             Nothing -> error "Cannot deserialize ledger state."
             Just ledger -> return ledger
+
+extractRawMetadata :: Text -> Text -> [Text]
+extractRawMetadata typeOfEvent name =
+  case Text.splitOn "_" name of
+    (prefix : contentFlag : rawMetadata)
+      | prefix == typeOfEvent
+      , contentFlag == "just" ->
+          rawMetadata
+    _ -> error $ "Malformed metadata format for: " <> show name

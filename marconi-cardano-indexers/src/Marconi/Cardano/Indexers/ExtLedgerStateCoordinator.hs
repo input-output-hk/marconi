@@ -108,7 +108,11 @@ data ExtLedgerStateCoordinatorConfig input = ExtLedgerStateCoordinatorConfig
 Lens.makeLenses ''ExtLedgerStateCoordinatorConfig
 
 -- | Base event used to store the 'ExtLedgerState'
-data ExtLedgerStateEvent = ExtLedgerStateEvent {extLedgerState :: ExtLedgerState, blockNo :: C.BlockNo}
+data ExtLedgerStateEvent = ExtLedgerStateEvent
+  { extLedgerState :: ExtLedgerState
+  , blockNo :: C.BlockNo
+  }
+  deriving (Show)
 
 type instance Core.Point ExtLedgerStateEvent = C.ChainPoint
 
