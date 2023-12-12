@@ -2,7 +2,9 @@
 module Test.Gen.Marconi.Cardano.Indexers.Utxo where
 
 import Cardano.Api qualified as C
+import Control.Lens (folded, (^.), (^..))
 import Control.Monad (join)
+import Data.List qualified as List
 import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import Hedgehog (Gen)
 import Hedgehog.Gen qualified
@@ -77,3 +79,11 @@ getTimedUtxosEventsWithDistance =
 getBlockUtxosEvent :: (C.IsCardanoEra era) => Mockchain.MockBlock era -> Maybe (NonEmpty Utxo.Utxo)
 getBlockUtxosEvent (Mockchain.MockBlock _ txs) =
   nonEmpty $ join $ zipWith Utxo.getUtxosFromTx [0 ..] txs
+
+-- | Get the addresses from a timed 'UtxoEvent' with distance.
+addressesFromTimedUtxoEvent
+  :: Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent)) -> [C.AddressAny]
+addressesFromTimedUtxoEvent = List.nub . getAddrs
+  where
+    getAddrs :: Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent)) -> [C.AddressAny]
+    getAddrs e = e ^. Core.event ^.. folded . folded . folded . Utxo.address

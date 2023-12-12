@@ -19,6 +19,7 @@ import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo quali
 import Marconi.Sidechain.Experimental.CLI qualified as CLI
 import Spec.Marconi.Sidechain.Experimental.Utils qualified as Utils
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
+import Test.Gen.Marconi.Cardano.Core.Types qualified as Test.Types
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 import Test.Helpers qualified
 import Test.Tasty (TestTree, testGroup)
@@ -76,7 +77,7 @@ propQueryTargetAddressesWithMockchain events = Test.Helpers.workspace "." $ \tmp
     let
       e = last utxoEvents
 
-    addr <- Hedgehog.forAll $ Hedgehog.Gen.element (Utils.addressesFromTimedUtxoEvent e)
+    addr <- Hedgehog.forAll $ Hedgehog.Gen.element (Test.Utxo.addressesFromTimedUtxoEvent e)
 
     -- Make config for this test
 
@@ -85,7 +86,7 @@ propQueryTargetAddressesWithMockchain events = Test.Helpers.workspace "." $ \tmp
     let
       args =
         Utils.initTestingCliArgs
-          { CLI.targetAddresses = Utils.addressAnysToTargetAddresses [addr]
+          { CLI.targetAddresses = Test.Types.addressAnysToTargetAddresses [addr]
           , -- Use tmp directory instead of "" since LastEventIndexer writes latestStable.cbor
             CLI.dbDir = tmp
           , CLI.nodeConfigPath = configPath

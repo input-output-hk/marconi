@@ -7,26 +7,22 @@ import Cardano.Api qualified as C
 import Control.Concurrent (threadDelay)
 import Control.Concurrent qualified as IO
 import Control.Exception (bracket, throwIO)
-import Control.Lens (folded, set, (^.), (^..))
+import Control.Lens (set, (^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (runReaderT)
 import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function ((&))
-import Data.List qualified as L
+import Data.Functor ((<&>))
 import Data.List qualified as List
 import Data.List.NonEmpty qualified as NEList
-import Data.Maybe (mapMaybe)
 import Data.Monoid (getLast)
-import Data.Set qualified as Set
-import Data.Set.NonEmpty qualified as NESet
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
-import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
-import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig), TargetAddresses)
+import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig))
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
@@ -61,7 +57,7 @@ import System.Process qualified as IO
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 
-{- QUERY TEST UTILS -}
+{- QUERY TEST SETUP -}
 
 {- | Wrapper for building the indexers, indexing the mockchain events, querying via a handler,
 and closing the indexers.
@@ -100,8 +96,8 @@ initTestingCliArgs =
 
 getNodeConfigPath :: IO FilePath
 getNodeConfigPath =
-  (++ "/cardano-node/mainnet/config.json")
-    <$> getEnv "CARDANO_NODE_CONFIG"
+  getEnv "CARDANO_NODE_CONFIG"
+    <&> (++ "/cardano-node/mainnet/config.json")
 
 {- | Utility for testing JSON RPC handlers, mainly.
  - Construct the 'SidechainHttpServerConfig' and indexers in the same way as 'mkSidechainEnvFromCliArgs',
@@ -139,7 +135,7 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
     httpConfig =
       ChainIndex.Types.HttpServerConfig
         trace
-        8080
+        3_000
         0
         (config ^. Indexers.sidechainBuildIndexersUtxoConfig . Utxo.trackedAddresses)
         (A.toJSON cliArgs)
@@ -148,19 +144,7 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
 
   pure (sidechainHttpConfig, buildIndexersConfig)
 
--- | Get the addresses from a timed 'UtxoEvent' with distance.
-addressesFromTimedUtxoEvent
-  :: Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent)) -> [C.AddressAny]
-addressesFromTimedUtxoEvent = L.nub . getAddrs
-  where
-    getAddrs :: Core.Timed C.ChainPoint (WithDistance (Maybe Utxo.UtxoEvent)) -> [C.AddressAny]
-    getAddrs e = e ^. Core.event ^.. folded . folded . folded . Utxo.address
-
-addressAnysToTargetAddresses :: [C.AddressAny] -> Maybe TargetAddresses
-addressAnysToTargetAddresses = NESet.nonEmptySet . Set.fromList . mapMaybe op
-  where
-    op (C.AddressShelley addr) = Just addr
-    op _ = Nothing
+{- COMPARING RESULTS -}
 
 {- | Create uniform actual/expected results from the GetUtxosFromAddressResult query, for comparison
  - with equality. This is to give better counterexample reporting with '==='.
@@ -211,9 +195,9 @@ uniformGetBurnTokenEventsResult (GetBurnTokenEventsResult result) inputs = (List
     resultToUniform (BurnTokenEventResult _ _ blockNo tid rh r assetName burnAmount _) =
       (blockNo, tid, assetName, burnAmount, MintTokenEvent.MintAssetRedeemer <$> r <*> rh)
 
-{- GOLDEN TEST UTILS -}
+{- GOLDEN TESTS -}
 
--- Capture handle contents in a separate thread (e.g. stderr)
+-- | Capture handle contents in a separate thread (e.g. stderr)
 captureHandleContents :: IO.Handle -> IO BSL.ByteString
 captureHandleContents handle = do
   mvar <- IO.newEmptyMVar
@@ -238,7 +222,7 @@ binFlex pkg binaryEnv = do
 
 addExeSuffix :: String -> String
 addExeSuffix s =
-  if ".exe" `L.isSuffixOf` s
+  if ".exe" `List.isSuffixOf` s
     then s
     else s <> if OS.isWin32 then ".exe" else ""
 
@@ -278,7 +262,7 @@ binDist pkg = do
   contents <- BSL.readFile =<< planJsonFile
 
   case A.eitherDecode contents of
-    Right plan -> case L.filter matching (plan & H.installPlan) of
+    Right plan -> case List.filter matching (plan & H.installPlan) of
       (component : _) -> case component & H.binFile of
         Just bin -> return $ addExeSuffix (T.unpack bin)
         Nothing -> error $ "missing bin-file in: " <> show component

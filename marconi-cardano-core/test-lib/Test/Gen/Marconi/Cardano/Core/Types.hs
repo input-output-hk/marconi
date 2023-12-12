@@ -2,6 +2,7 @@
 {-# LANGUAGE TupleSections #-}
 
 module Test.Gen.Marconi.Cardano.Core.Types (
+  addressAnysToTargetAddresses,
   nonEmptySubset,
   genBlockHeader,
   genHashBlockHeader,
@@ -48,11 +49,12 @@ import Data.Coerce (coerce)
 import Data.Int (Int64)
 import Data.List.NonEmpty as NE (NonEmpty ((:|)), cons, fromList, init, toList)
 import Data.Map qualified as Map
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Proxy (Proxy (Proxy))
 import Data.Ratio (Ratio, (%))
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Set.NonEmpty qualified as NESet
 import Data.String (fromString)
 import Data.Word (Word64)
 import GHC.Natural (Natural)
@@ -60,8 +62,15 @@ import Hedgehog (Gen, MonadGen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range (Range)
 import Hedgehog.Range qualified as Range
+import Marconi.Cardano.Core.Types (TargetAddresses)
 import PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCostModelParams)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
+
+addressAnysToTargetAddresses :: [C.AddressAny] -> Maybe TargetAddresses
+addressAnysToTargetAddresses = NESet.nonEmptySet . Set.fromList . mapMaybe op
+  where
+    op (C.AddressShelley addr) = Just addr
+    op _ = Nothing
 
 nonEmptySubset :: (MonadGen m, Ord a) => Set a -> m (Set a)
 nonEmptySubset s = do

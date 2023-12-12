@@ -42,7 +42,6 @@ import Control.Monad (foldM, forM)
 import Control.Monad.State (MonadState (get), MonadTrans (lift), StateT, evalStateT, put)
 import Data.List qualified as List
 import Data.Maybe (catMaybes)
-import Data.Ord qualified
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Time.Clock.POSIX (POSIXTime)
@@ -51,7 +50,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Internal.Gen qualified as Hedgehog.Gen
 import Hedgehog.Range qualified
 import Hedgehog.Range qualified as Range
-import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, attachDistance)
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, attachDistance, getEvent)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Helpers (emptyTxBodyContent)
 import Test.Gen.Marconi.Cardano.Core.Types (
@@ -153,9 +152,11 @@ addresses.
 genShelleyMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
 genShelleyMockchainWithInfo = genShelleyMockchain >>= genMockchainWithInfoFromMockchain
 
-{- | Generate a 'MockchainWithInfoAndDistance'. "Distance" is distance from the current chain tip,
-which is given by the chain tip of the latest block. Ensures the result is sorted ascending by
-block number, as is currently implemented in 'genMockchainWithTxBodyGen'.
+{- | Generate a 'MockchainWithInfoAndDistance'. "Distance" is distance from the current chain tip
+ - associated with the 'MockBlockWithInfo'.
+ -
+Ensures the result is sorted ascending by block number, as is currently implemented in
+'genMockchainWithTxBodyGen'.
 
 Can contain Byron or Shelley addresses. For a version using only Shelley addresses see
 'genShelleyMockchainWithInfoAndDistance'.
@@ -172,19 +173,14 @@ genShelleyMockchainWithInfoAndDistance = attachDistanceToMockChainWithInfo <$> g
 attachDistanceToMockChainWithInfo
   :: MockchainWithInfo C.BabbageEra -> MockchainWithInfoAndDistance C.BabbageEra
 attachDistanceToMockChainWithInfo =
-  List.reverse . attachDistanceToMockChainReversed . revSortChain
+  sortChain
+    . map
+      (\b' -> attachDistance (getBlockNo $ mockBlockWithInfoChainPoint b') (mockBlockInfoChainTip b') b')
   where
     getBlockNo (C.BlockHeader _ _ blockNo) = blockNo
-    revSortChain = List.sortOn (Data.Ord.Down . getBlockNo . mockBlockWithInfoChainPoint)
-    attachDistanceToMockChainReversed
-      :: MockchainWithInfo C.BabbageEra -> MockchainWithInfoAndDistance C.BabbageEra
-    attachDistanceToMockChainReversed [] = []
-    attachDistanceToMockChainReversed (b : bs) =
-      map
-        (\b' -> attachDistance (getBlockNo $ mockBlockWithInfoChainPoint b') tip b')
-        (b : bs)
-      where
-        tip = mockBlockInfoChainTip b
+    -- NOTE: Since we're using the chain tip in the given block info for distance,
+    -- the events need not be ascending in the distance, just in the block number.
+    sortChain = List.sortOn (getBlockNo . mockBlockWithInfoChainPoint . getEvent)
 
 bumpChainTip :: C.ChainTip -> StateT MockChainInfo Gen C.ChainTip
 bumpChainTip tip = do
