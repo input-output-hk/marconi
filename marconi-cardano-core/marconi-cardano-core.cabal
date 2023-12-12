@@ -192,7 +192,7 @@ library marconi-cardano-core-test-lib
   ------------------------
   build-depends:
     , async
-    , base             >=4.9 && <5
+    , base                 >=4.9 && <5
     , bytestring
     , containers
     , contra-tracer
@@ -203,6 +203,7 @@ library marconi-cardano-core-test-lib
     , hedgehog-extras
     , lens
     , mtl
+    , nonempty-containers
     , streaming
     , temporary
     , text

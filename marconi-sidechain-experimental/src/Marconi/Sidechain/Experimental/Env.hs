@@ -9,7 +9,7 @@ import Cardano.Api qualified as C
 import Cardano.BM.Backend.Switchboard qualified as BM
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (Trace, logError)
-import Control.Lens (makeLenses)
+import Control.Lens (makeLenses, (^.))
 import Control.Monad (unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (toJSON)
@@ -27,7 +27,7 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
  )
 import Marconi.Cardano.Indexers.MintTokenEvent (MintTokenEventConfig (MintTokenEventConfig))
-import Marconi.Cardano.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig))
+import Marconi.Cardano.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig), trackedAddresses)
 import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.ChainIndex.Utils qualified as ChainIndex.Utils
 import Marconi.Core qualified as Core
@@ -53,6 +53,7 @@ import Marconi.Sidechain.Experimental.Indexers (
   SidechainBuildIndexersConfig (SidechainBuildIndexersConfig),
   SidechainRunIndexersConfig (SidechainRunIndexersConfig),
   sidechainBuildIndexers,
+  sidechainBuildIndexersUtxoConfig,
   updateRunIndexerConfigWithLastStable,
  )
 import System.Directory (createDirectoryIfMissing, doesFileExist)
@@ -79,6 +80,33 @@ querySecurityParamFromCliArgs trace CliArgs{..} =
     withNodeConnectRetry (mkMarconiTrace trace) optionsRetryConfig socketFilePath $
       ChainIndex.Utils.toException $
         ChainIndex.Utils.querySecurityParam @Void networkId socketFilePath
+
+-- | Build the 'SidechainBuildIndexersConfig' from CLI arguments.
+mkSidechainBuildIndexersConfig
+  :: Trace IO Text -> CliArgs -> SecurityParam -> SidechainBuildIndexersConfig
+mkSidechainBuildIndexersConfig trace CliArgs{..} securityParam =
+  let
+    filteredAddresses =
+      maybe
+        []
+        (map C.AddressShelley . NEList.toList . NESet.toList)
+        targetAddresses
+    -- Hard-coded with the same values as chain-index
+    catchupConfig = Core.mkCatchupConfig 5000 100
+    -- Snapshot config hard-coded as in chain-index
+    epochStateConfig = ExtLedgerStateWorkerConfig getEvent trace nodeConfigPath 100 securityParam
+    mintBurnConfig = MintTokenEventConfig targetAssets
+    -- Explicitly does not include the script.
+    utxoConfig = UtxoIndexerConfig filteredAddresses False
+   in
+    SidechainBuildIndexersConfig
+      trace
+      securityParam
+      catchupConfig
+      dbDir
+      epochStateConfig
+      mintBurnConfig
+      utxoConfig
 
 {- | Create the 'SidechainEnv' from the CLI arguments,
 with some validity checks on arguments needed to create the environment.
@@ -117,19 +145,6 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
 
   -- Indexer config
   let
-    filteredAddresses =
-      maybe
-        []
-        (map C.AddressShelley . NEList.toList . NESet.toList)
-        targetAddresses
-    -- Hard-coded with the same values as chain-index
-    catchupConfig = Core.mkCatchupConfig 5000 100
-    -- Snapshot config hard-coded as in chain-index
-    epochStateConfig = ExtLedgerStateWorkerConfig getEvent trace nodeConfigPath 100 securityParam
-    mintBurnConfig = MintTokenEventConfig targetAssets
-    -- Explicitly does not include the script.
-    utxoConfig = UtxoIndexerConfig filteredAddresses False
-
     runIndexerConfig lastSyncPoint =
       ChainIndex.Runner.RunIndexerConfig
         marconiTrace
@@ -143,15 +158,7 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
         socketFilePath
 
     -- Used in sidechainBuildIndexers but not passed to the SidechainEnv
-    buildIndexersConfig =
-      SidechainBuildIndexersConfig
-        trace
-        securityParam
-        catchupConfig
-        dbDir
-        epochStateConfig
-        mintBurnConfig
-        utxoConfig
+    buildIndexersConfig = mkSidechainBuildIndexersConfig trace cliArgs securityParam
 
   -- Build the indexers, returning workers and latest sync
   -- This is needed to build the http config.
@@ -170,7 +177,7 @@ mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
         trace
         httpPort
         securityParam
-        filteredAddresses
+        (buildIndexersConfig ^. sidechainBuildIndexersUtxoConfig . trackedAddresses)
         (toJSON cliArgs)
         queryables
 

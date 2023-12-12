@@ -3,15 +3,13 @@
 
 module Spec.Marconi.Cardano.Indexers.Utxo (
   tests,
-  getTimedUtxosEvents,
-  genUtxo,
 ) where
 
 import Cardano.Api qualified as C
 import Control.Concurrent qualified as Concurrent
 import Control.Lens ((^.), (^..))
 import Control.Lens qualified as Lens
-import Control.Monad (join, void)
+import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as Aeson
 import Data.List ((\\))
@@ -22,18 +20,16 @@ import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Hedgehog.Gen qualified as Hedgehog
-import Hedgehog.Range qualified
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
  )
 import Marconi.Cardano.Core.Logger (nullTracer)
-import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
-import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
+import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Gen
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
 
@@ -76,7 +72,7 @@ tests =
 -- | We can retrieve the event at a given slot
 propRoundTripAtSlotUtxo :: Hedgehog.Property
 propRoundTripAtSlotUtxo = Hedgehog.property $ do
-  events <- Hedgehog.forAll $ getTimedUtxosEvents <$> Gen.genMockchain
+  events <- Hedgehog.forAll $ Gen.getTimedUtxosEvents <$> Gen.genMockchain
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
   emptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer ":memory:"
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
@@ -87,7 +83,7 @@ propRoundTripAtSlotUtxo = Hedgehog.property $ do
 -- | We can retrieve all the events
 propRoundTripUtxo :: Hedgehog.Property
 propRoundTripUtxo = Hedgehog.property $ do
-  events <- Hedgehog.forAll $ getTimedUtxosEvents <$> Gen.genMockchain
+  events <- Hedgehog.forAll $ Gen.getTimedUtxosEvents <$> Gen.genMockchain
   let filterNonEmpty (Core.Timed _ Nothing) = Nothing
       filterNonEmpty (Core.Timed p (Just utxos)) = Just $ Core.Timed p utxos
       nonEmptyEvents = mapMaybe filterNonEmpty events
@@ -99,7 +95,7 @@ propRoundTripUtxo = Hedgehog.property $ do
 -- | On EventAt, the 'UtxoIndexer' behaves like a 'ListIndexer'
 propActLikeListIndexerOnEventAt :: Hedgehog.Property
 propActLikeListIndexerOnEventAt = Hedgehog.property $ do
-  events <- Hedgehog.forAll $ getTimedUtxosEvents <$> Gen.genMockchain
+  events <- Hedgehog.forAll $ Gen.getTimedUtxosEvents <$> Gen.genMockchain
   testedEmptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer ":memory:"
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events testedEmptyIndexer
   referenceIndexer <- Core.indexAll events Core.mkListIndexer
@@ -117,8 +113,8 @@ shorter test).
 propRunnerTracksSelectedAddress :: Hedgehog.Property
 propRunnerTracksSelectedAddress = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchain
-  let utxoEvents = getTimedUtxosEvents events
-      timedEvents = fmap (\evt -> Core.Timed (extractChainPoint evt) evt) events
+  let utxoEvents = Gen.getTimedUtxosEvents events
+      timedEvents = fmap (\evt -> Core.Timed (Gen.getChainPointFromBlockHeader $ Gen.mockBlockHeader evt) evt) events
       chainAddresses = utxoEvents ^.. traverse . Core.event . traverse . traverse . Utxo.address
       attachDistance dist = Just . WithDistance dist
       eventsWithDistance
@@ -149,7 +145,7 @@ propRunnerTracksSelectedAddress = Hedgehog.property $ do
             "test"
             1
             (Core.mkCatchupConfig 4 2)
-            (pure . getBlockUtxosEvent)
+            (pure . Gen.getBlockUtxosEvent)
             nullTracer
         )
         (Utxo.UtxoIndexerConfig followedAddresses True)
@@ -170,8 +166,8 @@ TODO Change to look like the 'propRunnerTracksSelectedAssetId' of the MintBurnEv
 propRunnerDoesntTrackUnselectedAddress :: Hedgehog.Property
 propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
   events <- Hedgehog.forAll Gen.genMockchain
-  let utxoEvents = getTimedUtxosEvents events
-      timedEvents = fmap (\evt -> Core.Timed (extractChainPoint evt) evt) events
+  let utxoEvents = Gen.getTimedUtxosEvents events
+      timedEvents = fmap (\evt -> Core.Timed (Gen.getChainPointFromBlockHeader $ Gen.mockBlockHeader evt) evt) events
       chainAddresses = utxoEvents ^.. traverse . Core.event . traverse . traverse . Utxo.address
       attachDistance dist = Just . WithDistance dist
       eventsWithDistance
@@ -196,7 +192,7 @@ propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
             "test"
             1
             (Core.mkCatchupConfig 4 2)
-            (pure . getBlockUtxosEvent)
+            (pure . Gen.getBlockUtxosEvent)
             nullTracer
         )
         (Utxo.UtxoIndexerConfig followedAddresses True)
@@ -214,43 +210,5 @@ propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
 -- | Standard tripping property for JSON
 propTrippingUtxoJSON :: Hedgehog.Property
 propTrippingUtxoJSON = Hedgehog.property $ do
-  event <- Hedgehog.forAll genUtxo
+  event <- Hedgehog.forAll Gen.genUtxo
   Hedgehog.tripping event Aeson.encode Aeson.eitherDecode
-
--- | Generate a list of @Utxo@ event from a mock chain
-getTimedUtxosEvents
-  :: (C.IsCardanoEra era)
-  => Gen.Mockchain era
-  -> [Core.Timed C.ChainPoint (Maybe (NonEmpty Utxo.Utxo))]
-getTimedUtxosEvents =
-  let getBlockTimedUtxosEvent block = Core.Timed (extractChainPoint block) $ getBlockUtxosEvent block
-   in fmap getBlockTimedUtxosEvent
-
-getBlockUtxosEvent :: (C.IsCardanoEra era) => Gen.MockBlock era -> Maybe (NonEmpty Utxo.Utxo)
-getBlockUtxosEvent (Gen.MockBlock _ txs) =
-  NonEmpty.nonEmpty $ join $ zipWith Utxo.getUtxosFromTx [0 ..] txs
-
-extractChainPoint :: Gen.MockBlock era -> C.ChainPoint
-extractChainPoint (Gen.MockBlock (C.BlockHeader slotNo blockHeaderHash _) _) =
-  C.ChainPoint slotNo blockHeaderHash
-
--- Generate a random 'Utxo'
-genUtxo :: Hedgehog.Gen Utxo.Utxo
-genUtxo = do
-  script <- CGen.genScriptInAnyLang
-  let genAddressAny :: Hedgehog.Gen C.AddressAny
-      genAddressAny = do
-        (C.AddressInEra _ addr) <- CGen.genAddressInEra C.BabbageEra
-        pure $ C.toAddressAny addr
-      hashScriptInAnyLang :: C.ScriptInAnyLang -> C.ScriptHash
-      hashScriptInAnyLang (C.ScriptInAnyLang _ s) = C.hashScript s
-      scriptHash :: C.ScriptHash
-      scriptHash = hashScriptInAnyLang script
-  Utxo.Utxo
-    <$> genAddressAny -- address
-    <*> (TxIndexInBlock <$> Hedgehog.Gen.integral_ (Hedgehog.Range.constant 0 100)) -- txIndex
-    <*> CGen.genTxIn -- txIn
-    <*> Hedgehog.Gen.maybe CGen.genHashScriptData -- datumHash
-    <*> CGen.genValue CGen.genAssetId (CGen.genQuantity $ Hedgehog.Range.constant 0 100) -- value
-    <*> Hedgehog.Gen.maybe (pure script) -- inlineScript
-    <*> Hedgehog.Gen.maybe (pure scriptHash) -- inlineScriptHash

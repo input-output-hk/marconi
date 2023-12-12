@@ -136,6 +136,8 @@ test-suite marconi-sidechain-experimental-test
   main-is:            Spec.hs
   hs-source-dirs:     test
   other-modules:
+    Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent
+    Spec.Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo
     Spec.Marconi.Sidechain.Experimental.CLI
     Spec.Marconi.Sidechain.Experimental.CLIInputValidation
     Spec.Marconi.Sidechain.Experimental.Routes
@@ -151,10 +153,11 @@ test-suite marconi-sidechain-experimental-test
   -- Local components
   --------------------
   build-depends:
-    , marconi-cardano-core            >=1.2.0
-    , marconi-chain-index             >=1.2.0
-    , marconi-core
-    , marconi-core-json-rpc           >=1.2.0
+    , marconi-cardano-core:{marconi-cardano-core, marconi-cardano-core-test-lib}              >=1.2.0
+    , marconi-cardano-indexers:{marconi-cardano-indexers, marconi-cardano-indexers-test-lib}  >=1.2.0
+    , marconi-chain-index                                                                     >=1.2.0
+    , marconi-core                                                                            >=1.2.0
+    , marconi-core-json-rpc                                                                   >=1.2.0
     , marconi-sidechain-experimental
 
   --------------------------
@@ -186,6 +189,7 @@ test-suite marconi-sidechain-experimental-test
     , http-client
     , lens
     , mtl
+    , nonempty-containers
     , optparse-applicative
     , process
     , resourcet

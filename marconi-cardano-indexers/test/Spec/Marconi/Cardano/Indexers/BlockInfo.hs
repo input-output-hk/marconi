@@ -6,8 +6,6 @@
 module Spec.Marconi.Cardano.Indexers.BlockInfo (
   propTests,
   unitTests,
-  getBlockInfoEvents,
-  genBlockInfo,
 ) where
 
 import Cardano.Api qualified as C
@@ -19,21 +17,17 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (runExceptT)
 import Data.Aeson qualified as Aeson
 import Data.Maybe (mapMaybe)
-import Data.Time qualified as Time
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Extras.Test.Base qualified as Hedgehog
 import Hedgehog.Gen qualified
-import Hedgehog.Range qualified
 import Marconi.Cardano.Core.Indexer.Worker (StandardWorker (StandardWorker))
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Indexers (blockInfoBuilder)
-import Marconi.Cardano.Indexers.BlockInfo (BlockInfo (BlockInfo))
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
-import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
-import Test.Gen.Marconi.Cardano.Core.Types qualified as CGen
+import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration
 import Test.Tasty (TestTree, testGroup)
@@ -87,7 +81,7 @@ unitTests =
 -- | We can retrieve the event at a given slot
 propRoundTripAtSlotBlockInfo :: Hedgehog.Property
 propRoundTripAtSlotBlockInfo = Hedgehog.property $ do
-  events <- Hedgehog.forAll $ getBlockInfoEvents <$> Gen.genMockchainWithInfo
+  events <- Hedgehog.forAll Test.BlockInfo.genBlockInfoEvents
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
   indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
   retrievedEvents <-
@@ -97,7 +91,7 @@ propRoundTripAtSlotBlockInfo = Hedgehog.property $ do
 -- | We can retrieve all the events
 propRoundTripBlockInfo :: Hedgehog.Property
 propRoundTripBlockInfo = Hedgehog.property $ do
-  events <- Hedgehog.forAll $ getBlockInfoEvents <$> Gen.genMockchainWithInfo
+  events <- Hedgehog.forAll Test.BlockInfo.genBlockInfoEvents
   let nonEmptyEvents = mapMaybe sequenceA events
   indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
   retrievedEvents <- Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
@@ -106,11 +100,11 @@ propRoundTripBlockInfo = Hedgehog.property $ do
 -- | On EventAt, the 'BlockInfoIndexer' behaves like a 'ListIndexer'
 propActLikeListIndexerOnEventAt :: Hedgehog.Property
 propActLikeListIndexerOnEventAt = Hedgehog.property $ do
-  events <- Hedgehog.forAll $ getBlockInfoEvents <$> Gen.genMockchainWithInfo
+  events <- Hedgehog.forAll Test.BlockInfo.genBlockInfoEvents
   indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
   referenceIndexer <- Core.indexAll events Core.mkListIndexer
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
-  (testedResult :: Maybe BlockInfo) <-
+  (testedResult :: Maybe BlockInfo.BlockInfo) <-
     Hedgehog.evalExceptT $ Core.query (event ^. Core.point) Core.EventAtQuery indexer
   refResult <-
     Hedgehog.evalExceptT $ Core.query (event ^. Core.point) Core.EventAtQuery referenceIndexer
@@ -119,7 +113,7 @@ propActLikeListIndexerOnEventAt = Hedgehog.property $ do
 -- | Standard tripping property for JSON
 propTrippingBlockInfoJSON :: Hedgehog.Property
 propTrippingBlockInfoJSON = Hedgehog.property $ do
-  event <- Hedgehog.forAll genBlockInfo
+  event <- Hedgehog.forAll Test.BlockInfo.genBlockInfo
   Hedgehog.tripping event Aeson.encode Aeson.eitherDecode
 
 -- | Test for block info using cardano-node-emulator
@@ -160,7 +154,7 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
 
         indexer <- readMVar mindexer
 
-        (queryEvents :: [Core.Timed C.ChainPoint BlockInfo]) <-
+        (queryEvents :: [Core.Timed C.ChainPoint BlockInfo.BlockInfo]) <-
           either throwIO pure
             =<< runExceptT (Core.queryLatest Core.allEvents indexer)
 
@@ -168,34 +162,3 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
 
   assertion <- Hedgehog.leftFail res
   Hedgehog.assert assertion
-
--- | Generate a list of events from a mock chain
-getBlockInfoEvents
-  :: Gen.MockchainWithInfo era
-  -> [Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)]
-getBlockInfoEvents =
-  let getChainPoint :: Gen.BlockHeader -> C.ChainPoint
-      getChainPoint (Gen.BlockHeader slotNo blockHeaderHash _blockNo) =
-        C.ChainPoint slotNo blockHeaderHash
-
-      getBlockInfo :: C.BlockNo -> Gen.MockBlockWithInfo era -> BlockInfo.BlockInfo
-      getBlockInfo bno (Gen.MockBlockWithInfo _bh epochNo timestamp _tip _txs) =
-        let timestampAsWord = fst $ properFraction $ Time.nominalDiffTimeToSeconds timestamp
-         in BlockInfo.BlockInfo bno timestampAsWord epochNo
-
-      getBlockInfoEvent
-        :: C.BlockNo
-        -> Gen.MockBlockWithInfo era
-        -> Core.Timed C.ChainPoint (Maybe BlockInfo.BlockInfo)
-      getBlockInfoEvent bno block =
-        Core.Timed (getChainPoint $ Gen.mockBlockWithInfoChainPoint block)
-          . pure
-          $ getBlockInfo bno block
-   in zipWith getBlockInfoEvent [0 ..]
-
-genBlockInfo :: Hedgehog.Gen BlockInfo
-genBlockInfo = do
-  BlockInfo
-    <$> CGen.genBlockNo
-    <*> (fromIntegral <$> Hedgehog.Gen.word (Hedgehog.Range.constant 10_000 10_000_000))
-    <*> CGen.genEpochNo

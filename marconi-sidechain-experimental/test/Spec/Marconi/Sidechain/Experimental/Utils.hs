@@ -1,25 +1,203 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
 
 module Spec.Marconi.Sidechain.Experimental.Utils where
 
+import Cardano.Api qualified as C
+import Control.Concurrent (threadDelay)
 import Control.Concurrent qualified as IO
-import Control.Monad.IO.Class (liftIO)
+import Control.Exception (bracket, throwIO)
+import Control.Lens (set, (^.))
+import Control.Monad.Except (runExceptT)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Reader (runReaderT)
 import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function ((&))
-import Data.List qualified as L
+import Data.Functor ((<&>))
+import Data.List qualified as List
+import Data.List.NonEmpty qualified as NEList
 import Data.Monoid (getLast)
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig))
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Cardano.Indexers.Utxo qualified as Utxo
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+  BurnTokenEventResult (BurnTokenEventResult),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
+ )
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
+  AddressUtxoResult (txId, txIx, value),
+  GetUtxosFromAddressResult (unAddressUtxosResult),
+ )
+import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (ValueWrapper (unValueWrapper))
+import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
+import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
+import Marconi.Core qualified as Core
+import Marconi.Core.JsonRpc (ReaderHandler)
+import Marconi.Sidechain.Experimental.Api.Types (
+  SidechainHttpServerConfig (SidechainHttpServerConfig),
+ )
+import Marconi.Sidechain.Experimental.CLI (CliArgs (CliArgs, targetAssets))
+import Marconi.Sidechain.Experimental.Env (
+  mkSidechainBuildIndexersConfig,
+ )
+import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
+import Network.JsonRpc.Types (JsonRpcErr)
 import System.Directory qualified as IO
+import System.Environment (getEnv)
 import System.Environment qualified as IO
 import System.FilePath qualified as IO
 import System.FilePath.Posix ((</>))
 import System.IO qualified as IO
 import System.Process qualified as IO
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
+import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
 
--- Capture handle contents in a separate thread (e.g. stderr)
+{- QUERY TEST SETUP -}
+
+{- | Wrapper for building the indexers, indexing the mockchain events, querying via a handler,
+and closing the indexers.
+-}
+queryHandlerWithIndexers
+  :: Mockchain.MockchainWithInfoAndDistance C.BabbageEra
+  -> IO (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
+  -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) result)
+  -> IO result
+queryHandlerWithIndexers chain buildAction queryAction = bracket buildAction (Test.Indexers.closeIndexers . snd) $
+  \(httpConfig, indexersConfig) -> do
+    Test.Indexers.indexAllWithMockchain indexersConfig chain
+    threadDelay 500_000
+    runReaderT (runExceptT queryAction) httpConfig
+      >>= either throwIO pure
+      >>= either (fail . show) pure
+
+{- | Dummy CLI arguments from which to create a 'SidechainEnv' used in testing via
+'mkSidechainEnvFromCliArgs'. Fields can be updated as needed for different tests.
+-}
+initTestingCliArgs :: CliArgs
+initTestingCliArgs =
+  CliArgs
+    ""
+    ""
+    -- dbPath "" uses temporary files
+    ""
+    3_000
+    C.Mainnet
+    Nothing
+    Nothing
+    retryConfig
+    StartFromGenesis
+  where
+    retryConfig = RetryConfig 1 (Just 16)
+
+getNodeConfigPath :: IO FilePath
+getNodeConfigPath =
+  getEnv "CARDANO_NODE_CONFIG"
+    <&> (++ "/cardano-node/mainnet/config.json")
+
+{- | Utility for testing JSON RPC handlers, mainly.
+ - Construct the 'SidechainHttpServerConfig' and indexers in the same way as 'mkSidechainEnvFromCliArgs',
+ - including some hard-coded parameters in 'mkSidechainBuildIndexersConfig',
+ - except using @Test.Indexers.'buildIndexers'@. We need to expose the underlying indexers for direct indexing with
+ - randomly generated events. Fixes the security parameter to 0 since this assumes no rollbacks are
+ - tested.
+-}
+mkTestSidechainConfigsFromCliArgs
+  :: (MonadIO m) => CliArgs -> m (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
+mkTestSidechainConfigsFromCliArgs cliArgs = do
+  (trace, _) <- liftIO $ defaultStdOutLogger "marconi-sidechain-experimental-test"
+  let
+    -- Fixing security param at 0. No rollbacks.
+    securityParam = 0
+    -- Set the catchup params to those appropriate for indexing few events.
+    config =
+      set Indexers.sidechainBuildIndexersCatchupConfig (Core.mkCatchupConfig 1 0) $
+        mkSidechainBuildIndexersConfig trace cliArgs securityParam
+  res <-
+    liftIO . runExceptT $
+      Test.Indexers.buildIndexers
+        (config ^. Indexers.sidechainBuildIndexersSecurityParam)
+        (config ^. Indexers.sidechainBuildIndexersCatchupConfig)
+        (config ^. Indexers.sidechainBuildIndexersUtxoConfig)
+        (config ^. Indexers.sidechainBuildIndexersMintTokenEventConfig)
+        (config ^. Indexers.sidechainBuildIndexersEpochStateConfig)
+        trace
+        (mkMarconiTrace trace)
+        (config ^. Indexers.sidechainBuildIndexersDbPath)
+
+  buildIndexersConfig <- either (liftIO . throwIO) pure res
+
+  let
+    httpConfig =
+      ChainIndex.Types.HttpServerConfig
+        trace
+        3_000
+        0
+        (config ^. Indexers.sidechainBuildIndexersUtxoConfig . Utxo.trackedAddresses)
+        (A.toJSON cliArgs)
+        (buildIndexersConfig ^. Test.Indexers.testBuildIndexersResultQueryables)
+    sidechainHttpConfig = SidechainHttpServerConfig httpConfig (targetAssets cliArgs)
+
+  pure (sidechainHttpConfig, buildIndexersConfig)
+
+{- COMPARING RESULTS -}
+
+{- | Create uniform actual/expected results from the GetUtxosFromAddressResult query, for comparison
+ - with equality. This is to give better counterexample reporting with '==='.
+   It is the caller's job to ensure the query in fact did use the provided address, since that is not in the result.
+   Utxos are considered equal here if they are associated with the same address (assumed),
+   have the same @C.'TxIn'@ and the same 'value'.
+-}
+uniformGetUtxosFromAddressResult
+  :: C.AddressAny
+  -> GetUtxosFromAddressResult
+  -> [Utxo.UtxoEvent]
+  -> ([(C.TxIn, C.Value)], [(C.TxIn, C.Value)])
+uniformGetUtxosFromAddressResult target result inputs = (sortUniqueOnTxIn actual, sortUniqueOnTxIn expected)
+  where
+    sortUniqueOnTxIn = List.sortOn fst . List.nub
+    actual = map (\x -> (C.TxIn (txId x) (txIx x), unValueWrapper $ value x)) $ unAddressUtxosResult result
+    blockUtxosToExpected :: Utxo.UtxoEvent -> [(C.TxIn, C.Value)]
+    blockUtxosToExpected = map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.filter (\x -> x ^. Utxo.address == target)
+    expected = concatMap blockUtxosToExpected inputs
+
+{- | Create uniform actual/expected results from GetBurnTokenEventsResult and compare on
+fields of BurnTokenEventResult except slotNo, blockHeaderHash and isStable.
+-}
+uniformGetBurnTokenEventsResult
+  :: GetBurnTokenEventsResult
+  -> [MintTokenEvent.MintTokenEvent]
+  -> ( [(C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)]
+     , [(C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)]
+     )
+uniformGetBurnTokenEventsResult (GetBurnTokenEventsResult result) inputs = (List.sort actual, List.sort expected)
+  where
+    actual = map mintTokenToUniform inputs
+    expected = map resultToUniform result
+    mintTokenToUniform
+      :: MintTokenEvent.MintTokenEvent
+      -> (C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)
+    mintTokenToUniform e =
+      ( e ^. MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventBlockNo
+      , e ^. MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventTxId
+      , e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetAssetName
+      , -- NOTE: The query handler converts negative values to positive ones, since it considers burn events only.
+        -e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetQuantity
+      , e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetRedeemer
+      )
+    resultToUniform
+      :: BurnTokenEventResult
+      -> (C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)
+    resultToUniform (BurnTokenEventResult _ _ blockNo tid rh r assetName burnAmount _) =
+      (blockNo, tid, assetName, burnAmount, MintTokenEvent.MintAssetRedeemer <$> r <*> rh)
+
+{- GOLDEN TESTS -}
+
+-- | Capture handle contents in a separate thread (e.g. stderr)
 captureHandleContents :: IO.Handle -> IO BSL.ByteString
 captureHandleContents handle = do
   mvar <- IO.newEmptyMVar
@@ -44,7 +222,7 @@ binFlex pkg binaryEnv = do
 
 addExeSuffix :: String -> String
 addExeSuffix s =
-  if ".exe" `L.isSuffixOf` s
+  if ".exe" `List.isSuffixOf` s
     then s
     else s <> if OS.isWin32 then ".exe" else ""
 
@@ -84,7 +262,7 @@ binDist pkg = do
   contents <- BSL.readFile =<< planJsonFile
 
   case A.eitherDecode contents of
-    Right plan -> case L.filter matching (plan & H.installPlan) of
+    Right plan -> case List.filter matching (plan & H.installPlan) of
       (component : _) -> case component & H.binFile of
         Just bin -> return $ addExeSuffix (T.unpack bin)
         Nothing -> error $ "missing bin-file in: " <> show component

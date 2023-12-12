@@ -8,31 +8,44 @@ module Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent where
 import Cardano.Api.Shelley qualified as C
 import Control.Monad (replicateM)
 import Data.Bifunctor (first)
+import Data.List.NonEmpty (nonEmpty)
 import Data.Map qualified as Map
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as H.Gen
 import Hedgehog.Range qualified as Range
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Core qualified as Core
 import PlutusLedgerApi.V1 qualified as PlutusV1
 import PlutusLedgerApi.V2 qualified as PlutusV2
 import PlutusTx qualified
+import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 
-genTxMintValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
-genTxMintValue = genTxMintValueRange 1 100
-
-genTxMintValueRange :: Integer -> Integer -> H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
-genTxMintValueRange min' max' = do
-  n :: Int <- H.Gen.integral (Range.constant 1 5)
-  policyAssets <- replicateM n genAsset
-  let (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy policyAssets
-      buildInfo = C.BuildTxWith $ Map.singleton policyId policyWitness
-  pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues buildInfo
+getTimedMintTokentEventsWithDistance
+  :: Mockchain.MockchainWithDistance era
+  -> [Core.Timed C.ChainPoint (WithDistance (Maybe MintTokenEvent.MintTokenBlockEvents))]
+getTimedMintTokentEventsWithDistance = map op
   where
-    genAsset :: H.Gen (C.AssetName, C.Quantity)
-    genAsset = (,) <$> genAssetName <*> genQuantity
-    genQuantity = C.Quantity <$> H.Gen.integral (Range.constant min' max')
+    op (WithDistance d block) = WithDistance d <$> getMintTokenEvents block
 
-genAssetName :: H.Gen C.AssetName
-genAssetName = C.AssetName <$> H.Gen.bytes (Range.constant 1 5)
+getTimedMintTokenEvents
+  :: Mockchain.Mockchain era
+  -> [Core.Timed C.ChainPoint (Maybe MintTokenEvent.MintTokenBlockEvents)]
+getTimedMintTokenEvents = map getMintTokenEvents
+
+getMintTokenEvents
+  :: Mockchain.MockBlock era
+  -> Core.Timed C.ChainPoint (Maybe MintTokenEvent.MintTokenBlockEvents)
+getMintTokenEvents (Mockchain.MockBlock (C.BlockHeader slotNo blockHeaderHash blockNo) txs) =
+  Core.Timed
+    (C.ChainPoint slotNo blockHeaderHash)
+    $ fmap MintTokenEvent.MintTokenBlockEvents
+    $ nonEmpty
+    $ concat
+    $ zipWith
+      (\i -> MintTokenEvent.extractEventsFromTx blockNo i . Mockchain.getTxBody)
+      [0 ..]
+      txs
 
 mkMintValue
   :: MintingPolicy
@@ -68,9 +81,55 @@ type MintingPolicy = PlutusTx.CompiledCode (PlutusTx.BuiltinData -> PlutusTx.Bui
 commonMintingPolicy :: MintingPolicy
 commonMintingPolicy = $$(PlutusTx.compile [||\_ _ -> ()||])
 
---
-
 -- | Get the @Cardano.Api.TxBody.'Value'@ from the @Cardano.Api.TxBody.'TxMintValue'@.
 getValueFromTxMintValue :: C.TxMintValue build era -> C.Value
 getValueFromTxMintValue (C.TxMintValue _ v _) = v
 getValueFromTxMintValue _ = mempty
+
+{- GENERATORS -}
+
+{- | Generate a MockchainWithInfoAndDistance guaranteeing mint/burn events.
+NOTE: This does not at the moment generate a valid chain since it might produce burn events
+for assets that were not yet minted.
+-}
+genMockchainWithMintsWithInfoAndDistance
+  :: H.Gen (Mockchain.MockchainWithInfoAndDistance C.BabbageEra)
+genMockchainWithMintsWithInfoAndDistance = Mockchain.attachDistanceToMockChainWithInfo <$> genMockchainWithMintsWithInfo
+
+-- | Generate a MockchainWithInfo guaranteeing mint/burn events.
+genMockchainWithMintsWithInfo :: H.Gen (Mockchain.MockchainWithInfo C.BabbageEra)
+genMockchainWithMintsWithInfo = genMockchainWithMints >>= Mockchain.genMockchainWithInfoFromMockchain
+
+-- | Generate a Mockchain guaranteeing mint/burn events.
+genMockchainWithMints :: H.Gen (Mockchain.Mockchain C.BabbageEra)
+genMockchainWithMints = Mockchain.genMockchainWithTxBodyGen genTxBodyContentFromTxInsWithMints
+
+{- | Version of @Mockchain.'genTxBodyContentFromTxIns'@ that always generates mint/burn
+events instead of the default of not generating any. Sets all the TxIns as collateral.
+-}
+genTxBodyContentFromTxInsWithMints :: [C.TxIn] -> H.Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
+genTxBodyContentFromTxInsWithMints txIns = C.setTxInsCollateral (C.TxInsCollateral C.CollateralInBabbageEra txIns) <$> txb
+  where
+    txb = C.setTxMintValue <$> genTxMintBurnValue <*> Mockchain.genTxBodyContentFromTxIns txIns
+
+-- | Note this only generates *mint* events, not burn events, with values in the given range.
+genTxMintValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
+genTxMintValue = genTxMintValueRange 1 100
+
+genTxMintBurnValue :: H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
+genTxMintBurnValue = genTxMintValueRange (-100) 100
+
+genTxMintValueRange :: Integer -> Integer -> H.Gen (C.TxMintValue C.BuildTx C.BabbageEra)
+genTxMintValueRange min' max' = do
+  n :: Int <- H.Gen.integral (Range.constant 1 5)
+  policyAssets <- replicateM n genAsset
+  let (policyId, policyWitness, mintedValues) = mkMintValue commonMintingPolicy policyAssets
+      buildInfo = C.BuildTxWith $ Map.singleton policyId policyWitness
+  pure $ C.TxMintValue C.MultiAssetInBabbageEra mintedValues buildInfo
+  where
+    genAsset :: H.Gen (C.AssetName, C.Quantity)
+    genAsset = (,) <$> genAssetName <*> genQuantity
+    genQuantity = C.Quantity <$> H.Gen.integral (Range.constant min' max')
+
+genAssetName :: H.Gen C.AssetName
+genAssetName = C.AssetName <$> H.Gen.bytes (Range.constant 1 5)
