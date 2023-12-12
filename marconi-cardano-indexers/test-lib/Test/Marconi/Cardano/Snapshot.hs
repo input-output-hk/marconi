@@ -11,6 +11,7 @@ import Data.ByteString qualified as BS
 import Data.List (find, isPrefixOf, sortOn)
 import Data.Text qualified as Text
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent)
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerState
 import Marconi.Cardano.Indexers.SnapshotBlockEvent (
   BlockNodeToClientVersion,
   CodecConfig,
@@ -24,6 +25,7 @@ import Marconi.Cardano.Indexers.SnapshotBlockEvent qualified as BlockEvent
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as Stream
 import System.Directory (listDirectory)
+import System.FilePath (takeBaseName)
 
 data Snapshot = Snapshot
   { snapshotPreviousLedgerState :: ExtLedgerStateEvent
@@ -37,9 +39,9 @@ data SnapshotFileData = SnapshotFileData
   }
 
 mkSnapshotFileData :: FilePath -> SnapshotFileData
-mkSnapshotFileData orig@(Text.pack -> name) =
+mkSnapshotFileData orig@(Text.pack . takeBaseName -> name) =
   case BlockEvent.deserializeMetadata $ Text.splitOn "_" name of
-    Nothing -> error "Malformed metadata"
+    Nothing -> error "Malformed metadata for serialized BlockEvent."
     Just m ->
       case snapshotMetadataBlockNo m of
         Nothing -> error "Malformed metadata: missing block number"
@@ -83,7 +85,7 @@ mkSnapshot nodeConfig inputDir = do
   let blockFiles = filter isBlockEventFile files
       ledgerStateFile = findLedgerState files
       blockStream = mkBlockEventStream codecConfig toClientVersion blockFiles
-      previousLedgerState = deserializeLedgerState codecConfig toClientVersion ledgerStateFile
+  previousLedgerState <- deserializeLedgerState codecConfig ledgerStateFile
   return (Snapshot previousLedgerState blockStream)
   where
     getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec
@@ -96,3 +98,20 @@ mkSnapshot nodeConfig inputDir = do
     findLedgerState =
       maybe (error "Could not find file containing serialized ledger state") id
         . find ("epochState_" `isPrefixOf`)
+
+deserializeLedgerState
+  :: CodecConfig
+  -> FilePath
+  -> IO ExtLedgerStateEvent
+deserializeLedgerState codecConfig file@(Text.pack . takeBaseName -> name) =
+  case ExtLedgerState.deserialiseMetadata $ Text.splitOn "_" name of
+    Nothing -> error "Malformed metadata for serialized ExtLedgerStateEvent."
+    Just meta -> do
+      rawBytes <- BS.readFile file
+      let eExtLedgerState = ExtLedgerState.deserialiseLedgerState codecConfig meta rawBytes
+      case eExtLedgerState of
+        Left err -> error (Text.unpack err)
+        Right mExtLedgerState ->
+          case mExtLedgerState of
+            Nothing -> error "Cannot deserialize ledger state."
+            Just ledger -> return ledger
