@@ -62,34 +62,34 @@ library
   hs-source-dirs:  src
   c-sources:       cbits/rev.c
   exposed-modules:
-    Marconi.ChainIndex.Api.HttpServer
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types
-    Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers
-    Marconi.ChainIndex.Api.JsonRpc.Routes
-    Marconi.ChainIndex.Api.JsonRpc.Server
-    Marconi.ChainIndex.Api.Rest.Endpoint.Metrics
-    Marconi.ChainIndex.Api.Rest.Endpoint.Params
-    Marconi.ChainIndex.Api.Rest.Endpoint.TargetAddresses
-    Marconi.ChainIndex.Api.Rest.Endpoint.Time
-    Marconi.ChainIndex.Api.Rest.Routes
-    Marconi.ChainIndex.Api.Rest.Server
-    Marconi.ChainIndex.Api.Routes
-    Marconi.ChainIndex.Api.Types
-    Marconi.ChainIndex.CLI
-    Marconi.ChainIndex.Error
-    Marconi.ChainIndex.Git.Rev
-    Marconi.ChainIndex.Git.RevFromGit
-    Marconi.ChainIndex.Run
-    Marconi.ChainIndex.Snapshot.Run
-    Marconi.ChainIndex.Utils
+    Marconi.Cardano.ChainIndex.Api.HttpServer
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Echo
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.EpochState
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Routes
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Server
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Metrics
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Params
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.TargetAddresses
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Time
+    Marconi.Cardano.ChainIndex.Api.Rest.Routes
+    Marconi.Cardano.ChainIndex.Api.Rest.Server
+    Marconi.Cardano.ChainIndex.Api.Routes
+    Marconi.Cardano.ChainIndex.Api.Types
+    Marconi.Cardano.ChainIndex.CLI
+    Marconi.Cardano.ChainIndex.Error
+    Marconi.Cardano.ChainIndex.Git.Rev
+    Marconi.Cardano.ChainIndex.Git.RevFromGit
+    Marconi.Cardano.ChainIndex.Run
+    Marconi.Cardano.ChainIndex.Snapshot.Run
+    Marconi.Cardano.ChainIndex.Utils
 
   other-modules:   Paths_marconi_cardano_chain_index
   autogen-modules: Paths_marconi_cardano_chain_index
@@ -163,11 +163,11 @@ test-suite marconi-cardano-chain-index-test
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
-    Spec.Marconi.ChainIndex.Api.Gen
-    Spec.Marconi.ChainIndex.Api.Routes
-    Spec.Marconi.ChainIndex.CLI
-    Spec.Marconi.ChainIndex.CLIInputValidation
-    Spec.Marconi.ChainIndex.Utils
+    Spec.Marconi.Cardano.ChainIndex.Api.Gen
+    Spec.Marconi.Cardano.ChainIndex.Api.Routes
+    Spec.Marconi.Cardano.ChainIndex.CLI
+    Spec.Marconi.Cardano.ChainIndex.CLIInputValidation
+    Spec.Marconi.Cardano.ChainIndex.Utils
 
   --------------------
   -- Local components
