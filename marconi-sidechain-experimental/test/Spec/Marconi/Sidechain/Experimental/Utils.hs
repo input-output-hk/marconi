@@ -1,43 +1,22 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NumericUnderscores #-}
 
+-- | Testing utilities that have no home elsewhere.
 module Spec.Marconi.Sidechain.Experimental.Utils where
 
 import Cardano.Api qualified as C
-import Control.Concurrent (threadDelay)
-import Control.Concurrent qualified as IO
-import Control.Exception (bracket, throwIO)
+import Control.Exception (throwIO)
 import Control.Lens (set, (^.))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Reader (runReaderT)
 import Data.Aeson qualified as A
-import Data.ByteString.Lazy qualified as BSL
-import Data.Function ((&))
 import Data.Functor ((<&>))
-import Data.List qualified as List
-import Data.List.NonEmpty qualified as NEList
-import Data.Monoid (getLast)
-import Data.Text qualified as T
-import Hedgehog.Extras.Internal.Plan qualified as H
-import Hedgehog.Extras.Stock qualified as OS
-import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
-  BurnTokenEventResult (BurnTokenEventResult),
-  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
- )
-import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
-  AddressUtxoResult (txId, txIx, value),
-  GetUtxosFromAddressResult (unAddressUtxosResult),
- )
-import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (ValueWrapper (unValueWrapper))
 import Marconi.Cardano.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.Cardano.ChainIndex.CLI (StartingPoint (StartFromGenesis))
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
-import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig))
-import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
+import Marconi.Cardano.Core.Types qualified as Core.Types
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
-import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (
   SidechainHttpServerConfig (SidechainHttpServerConfig),
  )
@@ -46,58 +25,8 @@ import Marconi.Sidechain.Experimental.Env (
   mkSidechainBuildIndexersConfig,
  )
 import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
-import Network.JsonRpc.Types (JsonRpcErr)
-import System.Directory qualified as IO
 import System.Environment (getEnv)
-import System.Environment qualified as IO
-import System.FilePath qualified as IO
-import System.FilePath.Posix ((</>))
-import System.IO qualified as IO
-import System.Process qualified as IO
-import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
 import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
-
-{- QUERY TEST SETUP -}
-
-{- | Wrapper for building the indexers, indexing the mockchain events, querying via a handler,
-and closing the indexers.
--}
-queryHandlerWithIndexers
-  :: Mockchain.MockchainWithInfoAndDistance C.BabbageEra
-  -> IO (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
-  -> ReaderHandler SidechainHttpServerConfig (Either (JsonRpcErr String) result)
-  -> IO result
-queryHandlerWithIndexers chain buildAction queryAction = bracket buildAction (Test.Indexers.closeIndexers . snd) $
-  \(httpConfig, indexersConfig) -> do
-    Test.Indexers.indexAllWithMockchain indexersConfig chain
-    threadDelay 500_000
-    runReaderT (runExceptT queryAction) httpConfig
-      >>= either throwIO pure
-      >>= either (fail . show) pure
-
-{- | Dummy CLI arguments from which to create a 'SidechainEnv' used in testing via
-'mkSidechainEnvFromCliArgs'. Fields can be updated as needed for different tests.
--}
-initTestingCliArgs :: CliArgs
-initTestingCliArgs =
-  CliArgs
-    ""
-    ""
-    -- dbPath "" uses temporary files
-    ""
-    3_000
-    C.Mainnet
-    Nothing
-    Nothing
-    retryConfig
-    StartFromGenesis
-  where
-    retryConfig = RetryConfig 1 (Just 16)
-
-getNodeConfigPath :: IO FilePath
-getNodeConfigPath =
-  getEnv "CARDANO_NODE_CONFIG"
-    <&> (++ "/cardano-node/mainnet/config.json")
 
 {- | Utility for testing JSON RPC handlers, mainly.
  - Construct the 'SidechainHttpServerConfig' and indexers in the same way as 'mkSidechainEnvFromCliArgs',
@@ -144,162 +73,26 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
 
   pure (sidechainHttpConfig, buildIndexersConfig)
 
-{- COMPARING RESULTS -}
-
-{- | Create uniform actual/expected results from the GetUtxosFromAddressResult query, for comparison
- - with equality. This is to give better counterexample reporting with '==='.
-   It is the caller's job to ensure the query in fact did use the provided address, since that is not in the result.
-   Utxos are considered equal here if they are associated with the same address (assumed),
-   have the same @C.'TxIn'@ and the same 'value'.
+{- | Dummy CLI arguments from which to create a 'SidechainEnv' used in testing via
+'mkSidechainEnvFromCliArgs'. Fields can be updated as needed for different tests.
 -}
-uniformGetUtxosFromAddressResult
-  :: C.AddressAny
-  -> GetUtxosFromAddressResult
-  -> [Utxo.UtxoEvent]
-  -> ([(C.TxIn, C.Value)], [(C.TxIn, C.Value)])
-uniformGetUtxosFromAddressResult target result inputs = (sortUniqueOnTxIn actual, sortUniqueOnTxIn expected)
+initTestingCliArgs :: CliArgs
+initTestingCliArgs =
+  CliArgs
+    ""
+    ""
+    -- dbPath "" uses temporary files
+    ""
+    3000
+    C.Mainnet
+    Nothing
+    Nothing
+    retryConfig
+    StartFromGenesis
   where
-    sortUniqueOnTxIn = List.sortOn fst . List.nub
-    actual = map (\x -> (C.TxIn (txId x) (txIx x), unValueWrapper $ value x)) $ unAddressUtxosResult result
-    blockUtxosToExpected :: Utxo.UtxoEvent -> [(C.TxIn, C.Value)]
-    blockUtxosToExpected = map (\x -> (x ^. Utxo.txIn, x ^. Utxo.value)) . NEList.filter (\x -> x ^. Utxo.address == target)
-    expected = concatMap blockUtxosToExpected inputs
+    retryConfig = Core.Types.RetryConfig 1 (Just 16)
 
-{- | Create uniform actual/expected results from GetBurnTokenEventsResult and compare on
-fields of BurnTokenEventResult except slotNo, blockHeaderHash and isStable.
--}
-uniformGetBurnTokenEventsResult
-  :: GetBurnTokenEventsResult
-  -> [MintTokenEvent.MintTokenEvent]
-  -> ( [(C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)]
-     , [(C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)]
-     )
-uniformGetBurnTokenEventsResult (GetBurnTokenEventsResult result) inputs = (List.sort actual, List.sort expected)
-  where
-    actual = map mintTokenToUniform inputs
-    expected = map resultToUniform result
-    mintTokenToUniform
-      :: MintTokenEvent.MintTokenEvent
-      -> (C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)
-    mintTokenToUniform e =
-      ( e ^. MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventBlockNo
-      , e ^. MintTokenEvent.mintTokenEventLocation . MintTokenEvent.mintTokenEventTxId
-      , e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetAssetName
-      , -- NOTE: The query handler converts negative values to positive ones, since it considers burn events only.
-        -e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetQuantity
-      , e ^. MintTokenEvent.mintTokenEventAsset . MintTokenEvent.mintAssetRedeemer
-      )
-    resultToUniform
-      :: BurnTokenEventResult
-      -> (C.BlockNo, C.TxId, C.AssetName, C.Quantity, Maybe MintTokenEvent.MintAssetRedeemer)
-    resultToUniform (BurnTokenEventResult _ _ blockNo tid rh r assetName burnAmount _) =
-      (blockNo, tid, assetName, burnAmount, MintTokenEvent.MintAssetRedeemer <$> r <*> rh)
-
-{- GOLDEN TESTS -}
-
--- | Capture handle contents in a separate thread (e.g. stderr)
-captureHandleContents :: IO.Handle -> IO BSL.ByteString
-captureHandleContents handle = do
-  mvar <- IO.newEmptyMVar
-  _ <- IO.forkIO $ do
-    contents <- BSL.hGetContents handle
-    IO.putMVar mvar contents
-  IO.takeMVar mvar
-
--- -- | Compute the path to the binary given a package name or an environment variable override.
-binFlex
-  :: String
-  -- ^ Package name
-  -> String
-  -- ^ Environment variable pointing to the binary to run
-  -> IO FilePath
-  -- ^ Path to executable
-binFlex pkg binaryEnv = do
-  maybeEnvBin <- liftIO $ IO.lookupEnv binaryEnv
-  case maybeEnvBin of
-    Just envBin -> return envBin
-    Nothing -> binDist pkg
-
-addExeSuffix :: String -> String
-addExeSuffix s =
-  if ".exe" `List.isSuffixOf` s
-    then s
-    else s <> if OS.isWin32 then ".exe" else ""
-
--- -- | Find the nearest plan.json going upwards from the current directory.
-findDefaultPlanJsonFile :: IO FilePath
-findDefaultPlanJsonFile = IO.getCurrentDirectory >>= go
-  where
-    go :: FilePath -> IO FilePath
-    go d = do
-      let file = d </> "dist-newstyle/cache/plan.json"
-      exists <- IO.doesFileExist file
-      if exists
-        then return file
-        else do
-          let parent = IO.takeDirectory d
-          if parent == d
-            then return "dist-newstyle/cache/plan.json"
-            else go parent
-
--- -- | Discover the location of the plan.json file.
-planJsonFile :: IO String
-planJsonFile = do
-  maybeBuildDir <- liftIO $ IO.lookupEnv "CABAL_BUILDDIR"
-  case maybeBuildDir of
-    Just buildDir -> return $ ".." </> buildDir </> "cache/plan.json"
-    Nothing -> findDefaultPlanJsonFile
-
--- -- | Consult the "plan.json" generated by cabal to get the path to the executable corresponding.
--- -- to a haskell package.  It is assumed that the project has already been configured and the
--- -- executable has been built.
-binDist
-  :: String
-  -- ^ Package name
-  -> IO FilePath
-  -- ^ Path to executable
-binDist pkg = do
-  contents <- BSL.readFile =<< planJsonFile
-
-  case A.eitherDecode contents of
-    Right plan -> case List.filter matching (plan & H.installPlan) of
-      (component : _) -> case component & H.binFile of
-        Just bin -> return $ addExeSuffix (T.unpack bin)
-        Nothing -> error $ "missing bin-file in: " <> show component
-      [] -> error $ "Cannot find exe:" <> pkg <> " in plan"
-    Left message -> error $ "Cannot decode plan: " <> message
-  where
-    matching :: H.Component -> Bool
-    matching component = case H.componentName component of
-      Just name -> name == "exe:" <> T.pack pkg
-      Nothing -> False
-
-{- | Create a 'CreateProcess' describing how to start a process given the Cabal package name
-corresponding to the executable, an environment variable pointing to the executable,
-and an argument list.
-
-'flex' means that the environment determines how the process is launched:
-When the environment variable is set, the `binaryEnv` describes the location of the executable
-to use. This applies to marconi's CI nix environment but not the local shell.
-When the environment variable is not available, the `pkg` describes the name of the binary to
-launch. It will be found instead by consulting the "plan.json" generated by cabal.
-It is assumed that the project has already been configured and the executable has been built.
--}
-procFlex
-  :: String
-  -- ^ Cabal package name corresponding to the executable
-  -> String
-  -- ^ Environment variable pointing to the binary to run
-  -> [String]
-  -- ^ Arguments to the CLI command
-  -> IO IO.CreateProcess
-  -- ^ Captured stdout
-procFlex pkg binaryEnv arguments = do
-  bin <- binFlex pkg binaryEnv
-  return
-    (IO.proc bin arguments)
-      { IO.env = getLast mempty
-      , IO.cwd = getLast mempty
-      , -- this allows sending signals to the created processes, without killing the test-suite process
-        IO.create_group = True
-      }
+getNodeConfigPath :: IO FilePath
+getNodeConfigPath =
+  getEnv "CARDANO_NODE_CONFIG"
+    <&> (++ "/cardano-node/mainnet/config.json")

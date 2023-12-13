@@ -153,11 +153,11 @@ test-suite marconi-sidechain-experimental-test
   -- Local components
   --------------------
   build-depends:
-    , marconi-cardano-chain-index                                                             >=1.2.0
-    , marconi-cardano-core:{marconi-cardano-core, marconi-cardano-core-test-lib}              >=1.2.0
-    , marconi-cardano-indexers:{marconi-cardano-indexers, marconi-cardano-indexers-test-lib}  >=1.2.0
-    , marconi-core                                                                            >=1.2.0
-    , marconi-core-json-rpc                                                                   >=1.2.0
+    , marconi-cardano-chain-index:{marconi-cardano-chain-index, marconi-cardano-chain-index-test-lib}  >=1.2.0
+    , marconi-cardano-core:{marconi-cardano-core, marconi-cardano-core-test-lib}                       >=1.2.0
+    , marconi-cardano-indexers:{marconi-cardano-indexers, marconi-cardano-indexers-test-lib}           >=1.2.0
+    , marconi-core                                                                                     >=1.2.0
+    , marconi-core-json-rpc                                                                            >=1.2.0
     , marconi-sidechain-experimental
 
   --------------------------

@@ -260,7 +260,10 @@ library marconi-cardano-chain-index-test-lib
   ghc-options:     -Wno-unused-packages
   visibility:      public
   hs-source-dirs:  test-lib
-  exposed-modules: Test.Marconi.Cardano.ChainIndex.CLI
+  exposed-modules:
+    Test.Marconi.Cardano.ChainIndex.Api.HttpServer
+    Test.Marconi.Cardano.ChainIndex.Api.JsonRpc
+    Test.Marconi.Cardano.ChainIndex.CLI
 
   --------------------
   -- Local components
@@ -268,8 +271,9 @@ library marconi-cardano-chain-index-test-lib
   build-depends:
     , marconi-cardano-chain-index
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
-    , marconi-cardano-indexers
+    , marconi-cardano-indexers:{marconi-cardano-indexers, marconi-cardano-indexers-test-lib}
     , marconi-core
+    , marconi-core-json-rpc
 
   --------------------------
   -- Other IOG dependencies
