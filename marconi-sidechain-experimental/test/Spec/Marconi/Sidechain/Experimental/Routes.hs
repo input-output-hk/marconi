@@ -9,16 +9,16 @@ import Control.Monad (forM)
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
-import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
   AddressUtxoResult (AddressUtxoResult),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   SpentInfoResult (SpentInfoResult),
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
   UtxoTxInput (UtxoTxInput),
   ValueWrapper (ValueWrapper),
  )
+import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.BurnTokenEvent (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),

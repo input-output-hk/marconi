@@ -2,7 +2,7 @@
 
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.Echo where
 
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo qualified as ChainIndex.Echo
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Echo qualified as ChainIndex.Echo
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)

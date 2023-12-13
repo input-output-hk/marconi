@@ -9,6 +9,7 @@ import Control.Lens (view, (^.))
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader (ask), ReaderT)
+import Marconi.Cardano.ChainIndex.CLI qualified as CommonCLI
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
 import Marconi.Cardano.Core.Runner (
   RunIndexerConfig (RunIndexerConfig),
@@ -16,7 +17,6 @@ import Marconi.Cardano.Core.Runner (
  )
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types (SecurityParam)
-import Marconi.ChainIndex.CLI qualified as CommonCLI
 import Marconi.Core qualified as Core
 import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Env (Env, envCliArgs, envStdoutTrace)

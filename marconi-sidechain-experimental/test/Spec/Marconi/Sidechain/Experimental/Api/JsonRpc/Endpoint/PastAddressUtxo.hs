@@ -12,8 +12,8 @@ import Data.Text qualified as Text
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.Cardano.Core.Extract.WithDistance (getEvent)
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo qualified as Sidechain
 import Marconi.Sidechain.Experimental.CLI qualified as CLI

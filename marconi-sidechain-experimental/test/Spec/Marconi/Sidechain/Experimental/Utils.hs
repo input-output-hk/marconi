@@ -21,21 +21,21 @@ import Data.Monoid (getLast)
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+  BurnTokenEventResult (BurnTokenEventResult),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
+ )
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
+  AddressUtxoResult (txId, txIx, value),
+  GetUtxosFromAddressResult (unAddressUtxosResult),
+ )
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (ValueWrapper (unValueWrapper))
+import Marconi.Cardano.ChainIndex.Api.Types qualified as ChainIndex.Types
+import Marconi.Cardano.ChainIndex.CLI (StartingPoint (StartFromGenesis))
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Types (RetryConfig (RetryConfig))
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
-  BurnTokenEventResult (BurnTokenEventResult),
-  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
- )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
-  AddressUtxoResult (txId, txIx, value),
-  GetUtxosFromAddressResult (unAddressUtxosResult),
- )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (ValueWrapper (unValueWrapper))
-import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
-import Marconi.ChainIndex.CLI (StartingPoint (StartFromGenesis))
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (

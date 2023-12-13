@@ -12,7 +12,7 @@ import Cardano.Ledger.BaseTypes qualified as Ledger
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState qualified as ChainIndex.EpochState
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.EpochState qualified as ChainIndex.EpochState
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)
