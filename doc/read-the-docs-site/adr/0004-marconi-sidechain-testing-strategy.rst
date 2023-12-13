@@ -19,7 +19,7 @@ Context
 -------
 
 A general approach to functional testing Marconi-Sidechains covering all test levels.
-The scope of this document is `marconi-sidechain`, not other Marconi applications such as `marconi-chain-index`.
+The scope of this document is `marconi-sidechain`, not other Marconi applications such as `marconi-cardano-chain-index`.
 
 Decision
 --------
@@ -43,7 +43,7 @@ Decision
 UNIT TESTING:
 
 * We will test indexers and filters with as many positive and negative combinations as possible using data-driven and property tests.
-  However, it is not currently possible to test all parts in this way, such as the chain sync client, so we will lean more on the `cardano-node-emulator` to generate valid transactions for thorough testing in this area at the integration test level. 
+  However, it is not currently possible to test all parts in this way, such as the chain sync client, so we will lean more on the `cardano-node-emulator` to generate valid transactions for thorough testing in this area at the integration test level.
   .  To support this, we will produce a generator to act like a "mockchain" to generate a variety of: blocks, transations and roll forward/backward events.
 
 * We will only test functions and modules at lower layers to the CLI or RPC and not aim to cover these interfaces because we will get greater coverage of those with the integration tests.
@@ -72,7 +72,7 @@ END-TO-END TESTING:
 * We will sometimes perform exploratory testing on major features, such as new RPC methods or cli options.
   This can provide faster feedback in lieu of automation testing being produced.
   Should not be carried out by the engineer who implemented the feature (due to assumption bias).
-    
+
 * We will produce tests for each of the RPC API methods to stress the filters.
   These tests will assert against known correct response content.
   These tests will ideally be run on mainnet because there is more interesting transaction data there and so are more likely to catch an edge-case.
@@ -107,7 +107,7 @@ Argument
 
 Alternative solutions
 ---------------------
-When testing marconi-chain-index we can take a similar approach but must also:
+When testing marconi-cardano-chain-index we can take a similar approach but must also:
   - test starting the application with the CLI's disable flags:
     - end-to-end test to check absence of db file being created after run
     - property test to randomise combinations

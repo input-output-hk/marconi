@@ -17,7 +17,7 @@ index-state:
   , cardano-haskell-packages 2023-12-06T19:40:56Z
 packages: legacy/marconi-core-legacy
           legacy/marconi-chain-index-legacy
-          marconi-chain-index
+          marconi-cardano-chain-index
           marconi-core
           marconi-cardano-core
           marconi-cardano-indexers

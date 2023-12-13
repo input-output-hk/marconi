@@ -42,7 +42,7 @@ import Marconi.Cardano.Core.Types (
  )
 import Marconi.ChainIndex.Git.Rev (gitRev)
 import Options.Applicative (ReadM, eitherReader, execParserPure)
-import Paths_marconi_chain_index (version)
+import Paths_marconi_cardano_chain_index (version)
 
 -- | Represents a specified point from which to start indexing
 data StartingPoint

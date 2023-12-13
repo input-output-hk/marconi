@@ -25,15 +25,15 @@ jobs:
           nix develop --command bash -c '
               cabal update
               cabal haddock marconi-core
-              cabal haddock marconi-chain-index:lib:marconi-chain-index
+              cabal haddock marconi-cardano-chain-index:lib:marconi-cardano-chain-index
               cabal haddock marconi-core-json-rpc
             '
           mkdir dist
           mkdir dist/marconi-core
-          mkdir dist/marconi-chain-index
+          mkdir dist/marconi-cardano-chain-index
           mkdir dist/marconi-core-json-rpc
           cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-core-1.2.0.0/doc/html/marconi-core/* ./dist/marconi-core
-          cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-chain-index-1.2.0.0/doc/html/marconi-chain-index/* ./dist/marconi-chain-index
+          cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-cardano-chain-index-1.2.0.0/doc/html/marconi-cardano-chain-index/* ./dist/marconi-cardano-chain-index
           cp -RL ./dist-newstyle/build/x86_64-linux/ghc-9.2.8/marconi-core-json-rpc-1.2.0.0/doc/html/marconi-core-json-rpc/* ./dist/marconi-core-json-rpc
       - uses: JamesIves/github-pages-deploy-action@v4
         with:

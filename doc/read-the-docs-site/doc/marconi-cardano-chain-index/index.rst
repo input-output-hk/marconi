@@ -1,4 +1,4 @@
-Running `marconi-chain-index`
+Running `marconi-cardano-chain-index`
 =============================
 
 .. toctree::

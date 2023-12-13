@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-This module contains a bunch of utility functions for working in `marconi-chain-index`.
+This module contains a bunch of utility functions for working in `marconi-cardano-chain-index`.
 -}
 module Marconi.ChainIndex.Utils (
   isBlockRollbackable,

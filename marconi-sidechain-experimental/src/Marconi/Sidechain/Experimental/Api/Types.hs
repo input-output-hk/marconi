@@ -33,7 +33,7 @@ makeLenses ''SidechainHttpServerConfig
 {- UTILITIES -}
 
 {- | Specialization of a composition of 'mapError' and 'withReaderT' to facilitate
-mappings between handlers from `marconi-chain-index` using @Types.'HttpServerConfig'@
+mappings between handlers from `marconi-cardano-chain-index` using @Types.'HttpServerConfig'@
 and handlers of this package using 'SidechainHttpServerConfig'.
 -}
 withChainIndexHandler

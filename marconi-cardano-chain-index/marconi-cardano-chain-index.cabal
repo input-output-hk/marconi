@@ -1,5 +1,5 @@
 cabal-version: 3.8
-name:          marconi-chain-index
+name:          marconi-cardano-chain-index
 version:       1.2.0.0
 license:       Apache-2.0
 license-files:
@@ -91,8 +91,8 @@ library
     Marconi.ChainIndex.Snapshot.Run
     Marconi.ChainIndex.Utils
 
-  other-modules:   Paths_marconi_chain_index
-  autogen-modules: Paths_marconi_chain_index
+  other-modules:   Paths_marconi_cardano_chain_index
+  autogen-modules: Paths_marconi_cardano_chain_index
 
   --------------------
   -- Local components
@@ -140,7 +140,7 @@ library
     , time
     , warp
 
-executable marconi-chain-index
+executable marconi-cardano-chain-index
   import:         lang
   hs-source-dirs: app
   main-is:        Main.hs
@@ -149,14 +149,14 @@ executable marconi-chain-index
   --------------------
   -- Local components
   --------------------
-  build-depends:  marconi-chain-index >=1.2.0
+  build-depends:  marconi-cardano-chain-index >=1.2.0
 
   ------------------------
   -- Non-IOG dependencies
   ------------------------
   build-depends:  base >=4.9 && <5
 
-test-suite marconi-chain-index-test
+test-suite marconi-cardano-chain-index-test
   import:         lang
   ghc-options:    -Wno-unused-packages
   type:           exitcode-stdio-1.0
@@ -173,8 +173,8 @@ test-suite marconi-chain-index-test
   -- Local components
   --------------------
   build-depends:
+    , marconi-cardano-chain-index
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
-    , marconi-chain-index
     , marconi-core:{marconi-core, marconi-core-test-lib}
 
   --------------------------
@@ -245,7 +245,7 @@ executable marconi-chain-snapshot
   --------------------
   -- Local components
   --------------------
-  build-depends:  marconi-chain-index
+  build-depends:  marconi-cardano-chain-index
 
   ------------------------
   -- Non-IOG dependencies

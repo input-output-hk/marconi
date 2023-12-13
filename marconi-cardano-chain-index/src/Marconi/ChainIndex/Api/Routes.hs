@@ -12,5 +12,5 @@ import Marconi.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI)
 import Marconi.ChainIndex.Api.Rest.Routes (RestAPI)
 import Servant.API ((:<|>))
 
--- | marconi-chain-indexer APIs
+-- | marconi-cardano-chain-index APIs
 type API = JsonRpcAPI :<|> RestAPI

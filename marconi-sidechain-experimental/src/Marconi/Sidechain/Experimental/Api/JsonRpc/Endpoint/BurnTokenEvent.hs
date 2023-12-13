@@ -45,7 +45,7 @@ data GetBurnTokenEventsParams = GetBurnTokenEventsParams
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
-{- | Convert the sidechain param shape to the one from 'marconi-chain-index',
+{- | Convert the sidechain param shape to the one from 'marconi-cardano-chain-index',
 for reuse in the handler borrowed from that package.
 -}
 sidechainParamsToChainIndexParams

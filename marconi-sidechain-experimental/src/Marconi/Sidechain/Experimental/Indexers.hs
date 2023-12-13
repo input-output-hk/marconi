@@ -49,7 +49,7 @@ makeLenses ''SidechainRunIndexersConfig
 {- INDEXER BUILDERS AND RUNNERS -}
 
 {- | Build the sidechain indexer workers and coordinator,
-similarly to the marconi-chain-index application.
+similarly to the marconi-cardano-chain-index application.
 -}
 sidechainBuildIndexers
   :: (MonadIO m)

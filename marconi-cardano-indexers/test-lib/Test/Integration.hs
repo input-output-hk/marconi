@@ -206,7 +206,7 @@ quantityToZero = C.valueFromList . map (fmap (const 0)) . C.valueToList
 {- Indexers and queries -}
 
 {- | @Core.'CatchupConfig'@ with values suitable for end-to-end tests. The current values are taken
-from those hard-coded in the marconi-chain-index application.
+from those hard-coded in the marconi-cardano-chain-index application.
 -}
 mkEndToEndCatchupConfig :: Core.CatchupConfig
 mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100

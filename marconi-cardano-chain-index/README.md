@@ -1,6 +1,6 @@
-# marconi-chain-index
+# marconi-cardano-chain-index
 
-`marconi-chain-index` is a chain indexer with a predefined set of indexers from which the user can choose from.
+`marconi-cardano-chain-index` is a chain indexer with a predefined set of indexers from which the user can choose from.
 Currently, this executable only acts as a chain-indexer, and doesn't provide a server from which clients can issue requests to.
 
 ## Prerequisites
@@ -18,51 +18,51 @@ TODO
 
 ### Nix build
 
-The `marconi-chain-index` executable is available as a nix flake.
+The `marconi-cardano-chain-index` executable is available as a nix flake.
 
 If inside the `marconi` repository, you can run from the top-level:
 
 ```
-$ nix build .#marconi-chain-index
+$ nix build .#marconi-cardano-chain-index
 ```
 
 Or you may run from anywhere:
 
 ```
-$ nix build github:input-output-hk/marconi#marconi-chain-index
+$ nix build github:input-output-hk/marconi#marconi-cardano-chain-index
 ```
 
 Both commands will produce a `result` directory containing the executable
-`result/bin/marconi-chain-index`.
+`result/bin/marconi-cardano-chain-index`.
 
 ### Cabal+Nix build
 
-To build `marconi-chain-index` from the source files, use the following commands:
+To build `marconi-cardano-chain-index` from the source files, use the following commands:
 
 ```sh
 git clone git@github.com:input-output-hk/marconi.git
 nix develop
 cabal clean && cabal update # Optional, but makes sure you start clean
-cabal build marconi-chain-index
+cabal build marconi-cardano-chain-index
 ```
 
 The above process will build the executable in your local environment at this location:
 
 ```sh
-cabal exec -- which marconi-chain-index
+cabal exec -- which marconi-cardano-chain-index
 ```
 
 Or you can run the executable directly with:
 
 ```sh
-cabal run marconi-chain-index:exe:marconi-chain-index -- --help
+cabal run marconi-cardano-chain-index:exe:marconi-cardano-chain-index -- --help
 ```
 
 ## Command line summary
 
-Run `marconi-chain-index`, `$(cabal exec -- which marconi-chain-index) --help` or `cabal run marconi-chain-index:exe:marconi-chain-index -- --help` for a general synopsis of the command line options depending on your installation method.
+Run `marconi-cardano-chain-index`, `$(cabal exec -- which marconi-cardano-chain-index) --help` or `cabal run marconi-cardano-chain-index:exe:marconi-cardano-chain-index -- --help` for a general synopsis of the command line options depending on your installation method.
 
-See [this automatically generated golden file](./test/Spec/Golden/Cli/marconi-chain-index___help.help) for the up-to-date help command output.
+See [this automatically generated golden file](./test/Spec/Golden/Cli/marconi-cardano-chain-index___help.help) for the up-to-date help command output.
 
 ## How to run
 
@@ -76,7 +76,7 @@ We are assuming that:
 The most minimal way to run the executable is as follows:
 
 ```sh
-$(cabal exec -- which marconi-chain-index) \
+$(cabal exec -- which marconi-cardano-chain-index) \
     --testnet-magic 1 \
     --socket-path "$CARDANO_NODE_SOCKET_PATH" \
     --db-dir "$MARCONI_DB_DIRECTORY" \
