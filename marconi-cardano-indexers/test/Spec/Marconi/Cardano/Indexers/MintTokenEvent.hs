@@ -691,7 +691,7 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
 
   res <- H.evalIO
     $ Async.race
-      (Runner.runIndexer config coordinator)
+      (Runner.runIndexer config coordinator undefined)
     $ do
       threadDelay 5_000_000
 
