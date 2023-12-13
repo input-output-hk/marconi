@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.Cardano.ChainIndex.Utils where
+-- | Utilities for testing CLI components, mainly via golden tests.
+module Test.Marconi.Cardano.ChainIndex.CLI where
 
 import Control.Concurrent qualified as IO
 import Control.Monad.IO.Class (liftIO)

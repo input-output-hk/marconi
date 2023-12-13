@@ -167,13 +167,12 @@ test-suite marconi-cardano-chain-index-test
     Spec.Marconi.Cardano.ChainIndex.Api.Routes
     Spec.Marconi.Cardano.ChainIndex.CLI
     Spec.Marconi.Cardano.ChainIndex.CLIInputValidation
-    Spec.Marconi.Cardano.ChainIndex.Utils
 
   --------------------
   -- Local components
   --------------------
   build-depends:
-    , marconi-cardano-chain-index
+    , marconi-cardano-chain-index:{marconi-cardano-chain-index, marconi-cardano-chain-index-test-lib}
     , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
     , marconi-core:{marconi-core, marconi-core-test-lib}
 
@@ -294,6 +293,8 @@ library marconi-cardano-chain-index-test-lib
   -- Non-IOG dependencies
   ------------------------
   build-depends:
+    , aeson
+    , aeson-pretty
     , async
     , base             >=4.9 && <5
     , bytestring
@@ -306,6 +307,7 @@ library marconi-cardano-chain-index-test-lib
     , hedgehog-extras
     , lens
     , mtl
+    , process
     , streaming
     , temporary
     , text

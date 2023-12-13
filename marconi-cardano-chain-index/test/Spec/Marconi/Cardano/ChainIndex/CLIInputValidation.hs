@@ -7,9 +7,9 @@ module Spec.Marconi.Cardano.ChainIndex.CLIInputValidation where
 import Data.ByteString.Lazy qualified as BSL
 import Data.Functor ((<&>))
 import Data.Maybe (fromJust)
-import Spec.Marconi.Cardano.ChainIndex.Utils qualified as U
 import System.FilePath.Posix ((</>))
 import System.Process qualified as IO
+import Test.Marconi.Cardano.ChainIndex.CLI qualified as Test.CLI
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsString)
 
@@ -123,6 +123,6 @@ invalidCliArgWhenStartIngMarconiChainIndexTest InvalidArgTestInput{..} = do
               , IO.std_err = IO.CreatePipe
               }
         )
-      =<< U.procFlex "marconi-cardano-chain-index" "MARCONI_CHAIN_INDEX" [invalidFlag, invalidArg]
+      =<< Test.CLI.procFlex "marconi-cardano-chain-index" "MARCONI_CHAIN_INDEX" [invalidFlag, invalidArg]
 
-  U.captureHandleContents (fromJust mStderr)
+  Test.CLI.captureHandleContents (fromJust mStderr)
