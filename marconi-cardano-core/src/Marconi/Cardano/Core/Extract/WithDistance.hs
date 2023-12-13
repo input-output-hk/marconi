@@ -12,7 +12,7 @@ import Marconi.Core qualified as Core
 
 -- | Attach the distance (in blocks) to the tip to an event
 data WithDistance event = WithDistance Word64 event
-  deriving (Functor, Foldable, Traversable)
+  deriving (Show, Functor, Foldable, Traversable)
 
 chainDistance :: WithDistance event -> Word64
 chainDistance (WithDistance distance _) = distance

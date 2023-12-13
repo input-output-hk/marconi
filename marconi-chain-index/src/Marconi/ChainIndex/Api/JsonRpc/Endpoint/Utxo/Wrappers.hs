@@ -3,8 +3,8 @@
 {-# LANGUAGE TupleSections #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
-  UtxoTxInput (UtxoTxInput),
-  ValueWrapper (ValueWrapper),
+  UtxoTxInput (..),
+  ValueWrapper (..),
 ) where
 
 import Cardano.Api qualified as C

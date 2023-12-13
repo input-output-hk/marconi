@@ -30,7 +30,7 @@ in
   env = {
     CARDANO_CLI = "${cardano-cli}/bin/cardano-cli";
     CARDANO_NODE = "${cardano-node}/bin/cardano-node";
-    CARDANO_NODE_CONFIG = "${../config}";
+    CARDANO_NODE_CONFIG = ../config;
   };
 
   preCommit = {

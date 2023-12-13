@@ -6,14 +6,21 @@
 module Test.Gen.Marconi.Cardano.Core.Mockchain (
   Mockchain,
   genMockchain,
+  genShelleyMockchain,
   MockBlock (..),
   MockchainWithInfo,
+  MockchainWithDistance,
+  MockchainWithInfoAndDistance,
   genMockchainWithInfo,
+  genShelleyMockchainWithInfo,
+  genMockchainWithInfoAndDistance,
+  genShelleyMockchainWithInfoAndDistance,
   MockBlockWithInfo (..),
-  C.BlockHeader (..),
   genMockchainWithTxBodyGen,
   mockchainWithInfoAsMockchain,
+  mockchainWithInfoAsMockchainWithDistance,
   genTxBodyContentFromTxIns,
+  genShelleyTxBodyContentFromTxIns,
   genTxBodyContentFromTxInsWithPhase2Validation,
   DatumLocation (..),
   getDatumHashFromDatumLocation,
@@ -22,12 +29,18 @@ module Test.Gen.Marconi.Cardano.Core.Mockchain (
   genTxsWithAddresses,
   genTxBodyWithAddresses,
   genTxBodyContentWithAddresses,
+  getChainPointFromBlockHeader,
+  getBlockNoFromBlockHeader,
+  getTxBody,
+  genMockchainWithInfoFromMockchain,
+  attachDistanceToMockChainWithInfo,
 ) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Control.Monad (foldM, forM)
 import Control.Monad.State (MonadState (get), MonadTrans (lift), StateT, evalStateT, put)
+import Data.List qualified as List
 import Data.Maybe (catMaybes)
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -37,9 +50,15 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Internal.Gen qualified as Hedgehog.Gen
 import Hedgehog.Range qualified
 import Hedgehog.Range qualified as Range
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, attachDistance, getEvent)
 import Test.Gen.Cardano.Api.Typed qualified as CGen
 import Test.Gen.Marconi.Cardano.Core.Helpers (emptyTxBodyContent)
-import Test.Gen.Marconi.Cardano.Core.Types (genHashBlockHeader, genTxOutTxContext, nonEmptySubset)
+import Test.Gen.Marconi.Cardano.Core.Types (
+  genHashBlockHeader,
+  genShelleyTxOutTxContext,
+  genTxOutTxContext,
+  nonEmptySubset,
+ )
 import Test.Gen.Marconi.Cardano.Core.Types qualified as Gen
 
 type Mockchain era = [MockBlock era]
@@ -63,16 +82,29 @@ data MockBlockWithInfo era = MockBlockWithInfo
   }
   deriving (Show)
 
+type MockchainWithInfoAndDistance era = [WithDistance (MockBlockWithInfo era)]
+type MockchainWithDistance era = [WithDistance (MockBlock era)]
+
 mockchainWithInfoAsMockchain :: MockchainWithInfo era -> Mockchain era
 mockchainWithInfoAsMockchain = fmap mockBlockWithInfoAsMockBlock
+
+mockchainWithInfoAsMockchainWithDistance
+  :: MockchainWithInfoAndDistance era -> MockchainWithDistance era
+mockchainWithInfoAsMockchainWithDistance = fmap (fmap mockBlockWithInfoAsMockBlock)
 
 mockBlockWithInfoAsMockBlock :: MockBlockWithInfo era -> MockBlock era
 mockBlockWithInfoAsMockBlock block =
   MockBlock (mockBlockWithInfoChainPoint block) (mockBlockWithInfoTxs block)
 
--- | Generate a Mockchain
+{- | Generate a 'Mockchain'. Can contain Byron or Shelley addresses.
+For a version using only Shelley addresses, see 'genShelleyMockchain'.
+-}
 genMockchain :: Gen (Mockchain C.BabbageEra)
 genMockchain = genMockchainWithTxBodyGen genTxBodyContentFromTxIns
+
+-- | Generate a 'Mockchain' that contains only Shelley addresses.
+genShelleyMockchain :: Gen (Mockchain C.BabbageEra)
+genShelleyMockchain = genMockchainWithTxBodyGen genShelleyTxBodyContentFromTxIns
 
 data MockChainInfo = MockChainInfo
   { _epochNo :: C.EpochNo
@@ -80,9 +112,11 @@ data MockChainInfo = MockChainInfo
   , _chainTip :: C.ChainTip
   }
 
--- | Generate a MockchainWithInfo
-genMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
-genMockchainWithInfo =
+{- | Generate a 'MockchainWithInfo' using a fixed 'Mockchain'.
+Allows for generating mockchains that have particular properties.
+-}
+genMockchainWithInfoFromMockchain :: Mockchain C.BabbageEra -> Gen (MockchainWithInfo C.BabbageEra)
+genMockchainWithInfoFromMockchain =
   let startEpochNo = 0
 
       attachInfoToBlock :: MockBlock era -> StateT MockChainInfo Gen (MockBlockWithInfo era)
@@ -104,7 +138,49 @@ genMockchainWithInfo =
           fromIntegral <$> Hedgehog.Gen.word (Hedgehog.Range.constant 10000 10000000)
         let startInfo = MockChainInfo startEpochNo startTime C.ChainTipAtGenesis
         traverse attachInfoToBlock chain `evalStateT` startInfo
-   in genMockchain >>= attachInfoToChain
+   in attachInfoToChain
+
+{- | Generate a 'MockchainWithInfo'. Can contain Byron and Shelley addresses.
+For a version using only Shelley addresses see 'genShelleyMockchainWithInfo'.
+-}
+genMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
+genMockchainWithInfo = genMockchain >>= genMockchainWithInfoFromMockchain
+
+{- | Generate a 'MockchainWithInfo', which can contain only Shelley
+addresses.
+-}
+genShelleyMockchainWithInfo :: Gen (MockchainWithInfo C.BabbageEra)
+genShelleyMockchainWithInfo = genShelleyMockchain >>= genMockchainWithInfoFromMockchain
+
+{- | Generate a 'MockchainWithInfoAndDistance'. "Distance" is distance from the current chain tip
+ - associated with the 'MockBlockWithInfo'.
+ -
+Ensures the result is sorted ascending by block number, as is currently implemented in
+'genMockchainWithTxBodyGen'.
+
+Can contain Byron or Shelley addresses. For a version using only Shelley addresses see
+'genShelleyMockchainWithInfoAndDistance'.
+-}
+genMockchainWithInfoAndDistance :: Gen (MockchainWithInfoAndDistance C.BabbageEra)
+genMockchainWithInfoAndDistance = attachDistanceToMockChainWithInfo <$> genMockchainWithInfo
+
+{- | Generate a 'MockchainWithInfoAndDistance' containing only Shelley addresses.
+See 'genMockchainWithInfoAndDistance'.
+-}
+genShelleyMockchainWithInfoAndDistance :: Gen (MockchainWithInfoAndDistance C.BabbageEra)
+genShelleyMockchainWithInfoAndDistance = attachDistanceToMockChainWithInfo <$> genShelleyMockchainWithInfo
+
+attachDistanceToMockChainWithInfo
+  :: MockchainWithInfo C.BabbageEra -> MockchainWithInfoAndDistance C.BabbageEra
+attachDistanceToMockChainWithInfo =
+  sortChain
+    . map
+      (\b' -> attachDistance (getBlockNo $ mockBlockWithInfoChainPoint b') (mockBlockInfoChainTip b') b')
+  where
+    getBlockNo (C.BlockHeader _ _ blockNo) = blockNo
+    -- NOTE: Since we're using the chain tip in the given block info for distance,
+    -- the events need not be ascending in the distance, just in the block number.
+    sortChain = List.sortOn (getBlockNo . mockBlockWithInfoChainPoint . getEvent)
 
 bumpChainTip :: C.ChainTip -> StateT MockChainInfo Gen C.ChainTip
 bumpChainTip tip = do
@@ -158,9 +234,27 @@ genMockchainWithTxBodyGen genTxBody = do
         , mockchain ++ [MockBlock bh [newTx]]
         )
 
+{- | Generate @C.'TxBodyContent'@ from a fixed list of @C.'TxIn'@,
+ - which can contain either Byron or Shelley addresses. For a version that generates
+ - only Shelley addresses see 'genShelleyTxBodyContentFromTxIns'.
+-}
 genTxBodyContentFromTxIns
   :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
-genTxBodyContentFromTxIns inputs = do
+genTxBodyContentFromTxIns inputs = genTxBodyContentFromTxInsTxOut inputs (genTxOutTxContext C.BabbageEra)
+
+{- | Generate @C.'TxBodyContent'@ from a fixed list of @C.'TxIn'@,
+ - which can contain only Shelley addresses.
+-}
+genShelleyTxBodyContentFromTxIns
+  :: [C.TxIn] -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
+genShelleyTxBodyContentFromTxIns inputs = genTxBodyContentFromTxInsTxOut inputs (genShelleyTxOutTxContext C.BabbageEra)
+
+{- | Generate @C.'TxBodyContent'@ from a fixed list of @C.'TxIn'@ and a given
+generator for @C.'TxOut'@. See also 'genTxBodyWithAddresses'.
+-}
+genTxBodyContentFromTxInsTxOut
+  :: [C.TxIn] -> Gen (C.TxOut C.CtxTx C.BabbageEra) -> Gen (C.TxBodyContent C.BuildTx C.BabbageEra)
+genTxBodyContentFromTxInsTxOut inputs txOutGen = do
   initialPP <- CGen.genProtocolParameters C.BabbageEra
   let modifiedPP =
         initialPP
@@ -180,7 +274,7 @@ genTxBodyContentFromTxIns inputs = do
           (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
           ledgerPP
 
-  txOuts <- Gen.list (Range.linear 1 5) $ genTxOutTxContext C.BabbageEra
+  txOuts <- Gen.list (Range.linear 1 5) txOutGen
   pure $
     txBodyContent
       { C.txIns = fmap (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) inputs
@@ -226,6 +320,16 @@ getDatumFromDatumLocation (TxOutDatumHashLocation _ d) = Just d
 getDatumFromDatumLocation (TxOutDatumInTxLocation _ d) = Just d
 getDatumFromDatumLocation (TxOutDatumInlineLocation _ d) = Just d
 getDatumFromDatumLocation (PlutusScriptDatumLocation _ d) = Just d
+
+getChainPointFromBlockHeader :: C.BlockHeader -> C.ChainPoint
+getChainPointFromBlockHeader (C.BlockHeader slotNo blockHeaderHash _blockNo) =
+  C.ChainPoint slotNo blockHeaderHash
+
+getBlockNoFromBlockHeader :: C.BlockHeader -> C.BlockNo
+getBlockNoFromBlockHeader (C.BlockHeader _ _ blockNo) = blockNo
+
+getTxBody :: C.Tx era -> C.TxBody era
+getTxBody (C.Tx txBody _) = txBody
 
 genAddressesWithDatum :: Gen DatumLocation -> Gen [(C.AddressInEra C.BabbageEra, DatumLocation)]
 genAddressesWithDatum genDatumLocation = do

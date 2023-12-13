@@ -2,9 +2,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
-  AddressUtxoResult (AddressUtxoResult),
-  GetUtxosFromAddressParams (GetUtxosFromAddressParams),
-  GetUtxosFromAddressResult (GetUtxosFromAddressResult),
+  AddressUtxoResult (..),
+  GetUtxosFromAddressParams (..),
+  GetUtxosFromAddressResult (..),
 ) where
 
 import Cardano.Api (FromJSON, ToJSON)
