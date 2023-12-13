@@ -73,7 +73,7 @@ genTest commands = do
   let goldenFile =
         T.unpack $
           "test/Spec/Golden/Cli/"
-            <> T.intercalate "_" ("marconi-chain-index" : (T.replace "-" "_" <$> commands))
+            <> T.intercalate "_" ("marconi-cardano-chain-index" : (T.replace "-" "_" <$> commands))
             <> ".help"
 
   goldenVsStringDiff
@@ -95,4 +95,4 @@ generateHelpScreen commands = do
         Failure failure -> failure
         Success _ -> error "Parser expected to fail"
         CompletionInvoked _ -> error "Parser expected to fail"
-  pure $ fromStrict (encodeUtf8 . T.pack <$> fst $ renderFailure text "marconi-chain-index")
+  pure $ fromStrict (encodeUtf8 . T.pack <$> fst $ renderFailure text "marconi-cardano-chain-index")

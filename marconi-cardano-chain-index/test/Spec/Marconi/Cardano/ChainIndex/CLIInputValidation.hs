@@ -16,8 +16,8 @@ import Test.Tasty.Golden (goldenVsString)
 tests :: TestTree
 tests =
   testGroup
-    "marconi-chain-index input validation error"
-    [ testGroup "check input validation when starting marconi-chain-index with invalid cli flags" $
+    "marconi-cardano-chain-index input validation error"
+    [ testGroup "check input validation when starting marconi-cardano-chain-index with invalid cli flags" $
         invalidOptionalCliFlagsWithExpectedErrors
           <&> ( \testInput ->
                   goldenVsString
@@ -123,6 +123,6 @@ invalidCliArgWhenStartIngMarconiChainIndexTest InvalidArgTestInput{..} = do
               , IO.std_err = IO.CreatePipe
               }
         )
-      =<< U.procFlex "marconi-chain-index" "MARCONI_CHAIN_INDEX" [invalidFlag, invalidArg]
+      =<< U.procFlex "marconi-cardano-chain-index" "MARCONI_CHAIN_INDEX" [invalidFlag, invalidArg]
 
   U.captureHandleContents (fromJust mStderr)
