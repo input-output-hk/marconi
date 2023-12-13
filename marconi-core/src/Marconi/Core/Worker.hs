@@ -71,7 +71,7 @@ data WorkerM m input point = forall indexer event n.
   , workerState :: MVar (indexer event)
   -- ^ the indexer controlled by this worker
   , transformInput :: Preprocessor (ExceptT IndexerError m) point input event
-  -- ^ adapt the input event givent by the coordinator to the worker type
+  -- ^ adapt the input event given by the coordinator to the worker type
   , hoistError :: forall a. n a -> ExceptT IndexerError m a
   -- ^ adapt the monadic stack of the indexer to the one of the worker
   }

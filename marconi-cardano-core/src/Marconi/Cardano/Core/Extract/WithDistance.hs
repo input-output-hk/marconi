@@ -10,7 +10,7 @@ import Cardano.Api qualified as C
 import Data.Word (Word64)
 import Marconi.Core qualified as Core
 
--- | Attach the distance (in blocks) to the tip to an event
+-- | A type to store the distance, in blocks, to the tip of the chain
 data WithDistance event = WithDistance Word64 event
   deriving (Show, Functor, Foldable, Traversable)
 
@@ -22,7 +22,7 @@ getEvent (WithDistance _ event) = event
 
 type instance Core.Point (WithDistance event) = C.ChainPoint
 
--- | Extract the timed information from a block
+-- | Attach the distance (in blocks) to the tip to an event
 attachDistance
   :: C.BlockNo
   -> C.ChainTip
