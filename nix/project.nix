@@ -77,6 +77,11 @@ let
             export CARDANO_NODE_CONFIG=${../config}
           ";
 
+          # Needed for running marconi-cardano-indexers snapshot tests in CI
+          marconi-cardano-indexers.preCheck = "
+            export CARDANO_NODE_CONFIG=${../config}
+          ";
+
           # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
           marconi-core.ghcOptions = [ "-Werror" ];
           marconi-cardano-core.ghcOptions = [ "-Werror" ];

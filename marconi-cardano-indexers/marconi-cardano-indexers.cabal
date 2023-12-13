@@ -132,6 +132,7 @@ test-suite marconi-cardano-indexers-test
     Spec.Marconi.Cardano.Indexers.Spent
     Spec.Marconi.Cardano.Indexers.Utxo
     Spec.Marconi.Cardano.Indexers.UtxoQuery
+    Spec.Marconi.Cardano.Snapshot
 
   --------------------
   -- Local components
@@ -187,6 +188,7 @@ test-suite marconi-cardano-indexers-test
     , postgresql-simple
     , prettyprinter
     , sqlite-simple
+    , streaming
     , tasty
     , tasty-golden
     , tasty-hedgehog
@@ -214,6 +216,7 @@ library marconi-cardano-indexers-test-lib
     Test.Gen.Marconi.Cardano.Indexers.UtxoQuery
     Test.Helpers
     Test.Integration
+    Test.Marconi.Cardano.Snapshot
 
   --------------------
   -- Local components
