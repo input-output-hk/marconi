@@ -13,8 +13,8 @@ module Marconi.Cardano.Indexers.SnapshotBlockEvent (
   -- * For testing
   CodecConfig,
   BlockNodeToClientVersion,
-  deserializeSnapshotBlockEvent,
-  deserializeMetadata,
+  deserialiseSnapshotBlockEvent,
+  deserialiseMetadata,
   blockNodeToNodeVersionM,
 ) where
 
@@ -126,10 +126,10 @@ mkSnapshotBlockEventIndexer path codecConfig = do
         serializeChainPoint
     eventBuilder toVersion =
       Core.EventBuilder
-        deserializeMetadata
+        deserialiseMetadata
         snapshotMetadataChainpoint
-        (deserializeSnapshotBlockEvent codecConfig toVersion)
-        deserializeChainPoint
+        (deserialiseSnapshotBlockEvent codecConfig toVersion)
+        deserialiseChainPoint
 
 blockNodeToNodeVersionM
   :: Maybe
@@ -171,15 +171,15 @@ readGenesisFile nodeConfigPath = do
         $ err
     Right cfg -> pure cfg
 
-deserializeSnapshotBlockEvent
+deserialiseSnapshotBlockEvent
   :: CodecConfig
   -> BlockNodeToClientVersion
   -> SnapshotMetadata
   -> BS.ByteString
   -> Either Text (Maybe SnapshotBlockEvent)
-deserializeSnapshotBlockEvent _codecConfig _blockToNode (SnapshotMetadata Nothing _) =
+deserialiseSnapshotBlockEvent _codecConfig _blockToNode (SnapshotMetadata Nothing _) =
   const (Right Nothing)
-deserializeSnapshotBlockEvent codecConfig blockToNode _ =
+deserialiseSnapshotBlockEvent codecConfig blockToNode _ =
   bimap
     (Text.pack . show)
     (Just . SnapshotBlockEvent . snd)
@@ -225,15 +225,15 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 parseBlockNo :: Text.Text -> Maybe O.BlockNo
 parseBlockNo bno = C.BlockNo <$> Text.readMaybe (Text.unpack bno)
 
-deserializeMetadata :: [Text.Text] -> Maybe SnapshotMetadata
-deserializeMetadata [blockNoStr] =
+deserialiseMetadata :: [Text.Text] -> Maybe SnapshotMetadata
+deserialiseMetadata [blockNoStr] =
   Just $ SnapshotMetadata (parseBlockNo blockNoStr) C.ChainPointAtGenesis
-deserializeMetadata [blockNoStr, slotNoStr, hashStr] = do
+deserialiseMetadata [blockNoStr, slotNoStr, hashStr] = do
   slotNo <- fmap C.SlotNo . Text.readMaybe $ Text.unpack slotNoStr
   bhhBs <- either (const Nothing) Just $ Base16.decode $ Text.encodeUtf8 hashStr
   headerHash <- either (const Nothing) Just $ C.deserialiseFromRawBytes (C.proxyToAsType Proxy) bhhBs
   Just $ SnapshotMetadata (parseBlockNo blockNoStr) (C.ChainPoint slotNo headerHash)
-deserializeMetadata _other = Nothing
+deserialiseMetadata _other = Nothing
 
 {- | Builds the worker on top of the 'BlockEvent' indexer.
  This is where the events are preprocessed by filtering out
@@ -307,8 +307,8 @@ serializeChainPoint =
         CBOR.encodeBool True <> CBOR.encodeWord64 s <> CBOR.encodeBytes (BS.Short.fromShort bhh)
    in CBOR.toStrictByteString . pointEncoding
 
-deserializeChainPoint :: BS.ByteString -> Either Text C.ChainPoint
-deserializeChainPoint bs =
+deserialiseChainPoint :: BS.ByteString -> Either Text C.ChainPoint
+deserialiseChainPoint bs =
   let pointDecoding = do
         b <- CBOR.decodeBool
         if b
