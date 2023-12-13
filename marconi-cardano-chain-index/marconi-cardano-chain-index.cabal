@@ -251,3 +251,62 @@ executable marconi-chain-snapshot
   -- Non-IOG dependencies
   ------------------------
   build-depends:  base >=4.9 && <5
+
+library marconi-cardano-chain-index-test-lib
+  import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
+  visibility:      public
+  hs-source-dirs:  test-lib
+  exposed-modules: Test.Marconi.Cardano.ChainIndex.CLI
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-cardano-chain-index
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
+    , marconi-cardano-indexers
+    , marconi-core
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                   ^>=8.20
+    , cardano-api-gen               ^>=8.2
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
+    , iohk-monitoring
+    , ouroboros-network-protocols
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api             ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , async
+    , base             >=4.9 && <5
+    , bytestring
+    , containers
+    , contra-tracer
+    , data-default
+    , directory
+    , filepath
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , mtl
+    , streaming
+    , temporary
+    , text
+    , time
