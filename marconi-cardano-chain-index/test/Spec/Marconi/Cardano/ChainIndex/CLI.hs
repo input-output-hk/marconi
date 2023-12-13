@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.ChainIndex.CLI (tests) where
+module Spec.Marconi.Cardano.ChainIndex.CLI (tests) where
 
 import Data.ByteString.Lazy (ByteString, fromStrict)
 import Data.Text qualified as T
@@ -14,7 +14,7 @@ import Options.Applicative (
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
 
-import Marconi.ChainIndex.CLI (programParser)
+import Marconi.Cardano.ChainIndex.CLI (programParser)
 import Test.Tasty.Hedgehog (testProperty)
 
 import Cardano.Api qualified as C
@@ -24,7 +24,7 @@ import Data.List.NonEmpty (toList)
 import Hedgehog (Property, annotate, forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range (linear)
-import Marconi.ChainIndex.CLI qualified as CLI
+import Marconi.Cardano.ChainIndex.CLI qualified as CLI
 import Options.Applicative qualified as Opt
 import Test.Gen.Cardano.Api.Typed qualified as Gen
 

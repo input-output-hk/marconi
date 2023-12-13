@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Spec.Marconi.ChainIndex.Api.Routes (tests) where
+module Spec.Marconi.Cardano.ChainIndex.Api.Routes (tests) where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as CS
@@ -21,30 +21,30 @@ import Hedgehog (
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (Tip (Tip))
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (Tip (Tip))
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   ActiveSDDResult (ActiveSDDResult),
   EpochNonceResult (EpochNonceResult),
   nonceToMaybe,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
   AddressUtxoResult (AddressUtxoResult),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   SpentInfoResult (SpentInfoResult),
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
   UtxoTxInput (UtxoTxInput),
   ValueWrapper (ValueWrapper),
  )
-import Spec.Marconi.ChainIndex.Api.Gen (
+import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
+import Spec.Marconi.Cardano.ChainIndex.Api.Gen (
   genBurnTokenEventResult,
   genGetBurnTokenEventsParams,
  )
@@ -56,7 +56,7 @@ import Test.Tasty.Hedgehog (testPropertyNamed)
 tests :: TestTree
 tests =
   testGroup
-    "Spec.Marconi.ChainIndex.Api.Routes"
+    "Spec.Marconi.Cardano.ChainIndex.Api.Routes"
     [ testGroup
         "ToJSON/FromJSON rountrip"
         [ testPropertyNamed

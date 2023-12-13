@@ -1,11 +1,11 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Marconi.ChainIndex.Api.Rest.Endpoint.Time where
+module Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Time where
 
 import Control.Monad.Trans (liftIO)
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig)
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Servant (Get, PlainText, (:>))
 

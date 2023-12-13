@@ -2,10 +2,10 @@
 
 module Main (main) where
 
-import Spec.Marconi.ChainIndex.Api.Routes qualified as Api.Routes
-import Spec.Marconi.ChainIndex.Api.Routes qualified as Routes
-import Spec.Marconi.ChainIndex.CLI qualified as CLI
-import Spec.Marconi.ChainIndex.CLIInputValidation qualified as CLIInput
+import Spec.Marconi.Cardano.ChainIndex.Api.Routes qualified as Api.Routes
+import Spec.Marconi.Cardano.ChainIndex.Api.Routes qualified as Routes
+import Spec.Marconi.Cardano.ChainIndex.CLI qualified as CLI
+import Spec.Marconi.Cardano.ChainIndex.CLIInputValidation qualified as CLIInput
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
 main :: IO ()

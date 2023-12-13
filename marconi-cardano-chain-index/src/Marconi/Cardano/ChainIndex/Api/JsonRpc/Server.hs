@@ -1,22 +1,22 @@
-module Marconi.ChainIndex.Api.JsonRpc.Server (jsonRpcServer) where
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Server (jsonRpcServer) where
 
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   getCurrentSyncedBlockHandler,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo (echo)
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Echo (echo)
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   getEpochNonceHandler,
   getEpochStakePoolDelegationHandler,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   getBurnTokenEventsHandler,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
   getTargetAddressesQueryHandler,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (getUtxosFromAddressQueryHandler)
-import Marconi.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig)
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo (getUtxosFromAddressQueryHandler)
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig)
 import Marconi.Core.JsonRpc (ReaderServer)
 import Servant.API ((:<|>) ((:<|>)))
 

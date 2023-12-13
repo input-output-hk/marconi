@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
   UtxoTxInput (..),
   ValueWrapper (..),
 ) where

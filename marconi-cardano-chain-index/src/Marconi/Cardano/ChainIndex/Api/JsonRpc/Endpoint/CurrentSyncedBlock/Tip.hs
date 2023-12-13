@@ -2,7 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
   Tip (..),
   fromChainTip,
 ) where

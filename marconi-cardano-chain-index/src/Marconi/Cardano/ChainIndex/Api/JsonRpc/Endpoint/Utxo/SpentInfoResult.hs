@@ -1,4 +1,4 @@
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult where
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult where
 
 import Cardano.Api (FromJSON, ToJSON)
 import Cardano.Api qualified as C

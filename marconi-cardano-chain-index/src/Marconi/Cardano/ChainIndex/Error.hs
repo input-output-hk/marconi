@@ -1,7 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Marconi.ChainIndex.Error where
+module Marconi.Cardano.ChainIndex.Error where
 
 import Control.Exception (Exception, Handler (Handler), catches, throw)
 import Control.Monad.Except (ExceptT (ExceptT), runExceptT)

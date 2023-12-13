@@ -1,11 +1,11 @@
-module Marconi.ChainIndex.Api.Rest.Server (restApiServer) where
+module Marconi.Cardano.ChainIndex.Api.Rest.Server (restApiServer) where
 
-import Marconi.ChainIndex.Api.Rest.Endpoint.Metrics (getMetricsHandler)
-import Marconi.ChainIndex.Api.Rest.Endpoint.Params (getParamsHandler)
-import Marconi.ChainIndex.Api.Rest.Endpoint.TargetAddresses (getTargetAddressesHandler)
-import Marconi.ChainIndex.Api.Rest.Endpoint.Time (getTimeHandler)
-import Marconi.ChainIndex.Api.Rest.Routes (RestAPI)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig)
+import Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Metrics (getMetricsHandler)
+import Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Params (getParamsHandler)
+import Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.TargetAddresses (getTargetAddressesHandler)
+import Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Time (getTimeHandler)
+import Marconi.Cardano.ChainIndex.Api.Rest.Routes (RestAPI)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig)
 import Marconi.Core.JsonRpc (ReaderServer)
 import Servant ((:<|>) ((:<|>)))
 

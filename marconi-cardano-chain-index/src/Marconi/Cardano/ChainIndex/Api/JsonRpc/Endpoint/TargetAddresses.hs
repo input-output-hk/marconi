@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
   RpcTargetAddressesMethod,
   getTargetAddressesQueryHandler,
 ) where
@@ -8,7 +8,7 @@ module Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
 import Cardano.Api (SerialiseAddress (serialiseAddress))
 import Control.Lens (view)
 import Data.Text (Text)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configTrackedAddresses)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configTrackedAddresses)
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, UnusedRequestParams)
 

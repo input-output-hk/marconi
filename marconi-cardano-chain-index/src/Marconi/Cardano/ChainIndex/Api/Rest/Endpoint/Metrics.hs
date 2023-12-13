@@ -1,13 +1,13 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Marconi.ChainIndex.Api.Rest.Endpoint.Metrics where
+module Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Metrics where
 
 import Control.Monad.Trans (liftIO)
 import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text.Encoding qualified as Text
-import Marconi.ChainIndex.Api.Types (HttpServerConfig)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig)
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Prometheus qualified as P
 import Servant (Get, PlainText, (:>))

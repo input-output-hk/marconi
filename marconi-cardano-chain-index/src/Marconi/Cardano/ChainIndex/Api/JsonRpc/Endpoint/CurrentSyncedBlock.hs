@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
   RpcGetCurrentSyncedBlock,
   getCurrentSyncedBlockHandler,
@@ -19,15 +19,15 @@ import Data.Aeson.TH (Options (omitNothingFields), defaultOptions, deriveJSON, f
 import Data.Bifunctor (first)
 import Data.Char (toLower)
 import Data.Word (Word64)
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
+  Tip,
+  fromChainTip,
+ )
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.Cardano.Indexers (queryableCurrentSyncPoint)
 import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Cardano.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
-  Tip,
-  fromChainTip,
- )
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, hoistHttpHandler, queryErrToRpcErr)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, UnusedRequestParams, mkJsonRpcInternalErr)

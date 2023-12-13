@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Spec.Marconi.ChainIndex.Utils where
+module Spec.Marconi.Cardano.ChainIndex.Utils where
 
 import Control.Concurrent qualified as IO
 import Control.Monad.IO.Class (liftIO)

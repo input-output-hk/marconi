@@ -1,4 +1,4 @@
-module Spec.Marconi.ChainIndex.Api.Gen where
+module Spec.Marconi.Cardano.ChainIndex.Api.Gen where
 
 import Cardano.Api qualified as C
 import Data.String (fromString)
@@ -7,7 +7,7 @@ import Hedgehog (
  )
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
  )

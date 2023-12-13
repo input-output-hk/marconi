@@ -1,23 +1,23 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI) where
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI) where
 
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   RpcGetCurrentSyncedBlock,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Echo (RpcEchoMethod)
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Echo (RpcEchoMethod)
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   RpcEpochActiveStakePoolDelegationMethod,
   RpcEpochNonceMethod,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   RpcGetBurnTokenEventsMethod,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses (
   RpcTargetAddressesMethod,
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (RpcGetUtxosFromAddressMethod)
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo (RpcGetUtxosFromAddressMethod)
 import Network.JsonRpc.Types (RawJsonRpc)
 import Servant ((:<|>), (:>))
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.ChainIndex.Api.Types (
+module Marconi.Cardano.ChainIndex.Api.Types (
   HttpServerConfig (HttpServerConfig),
   configTrace,
   configPort,

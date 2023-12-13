@@ -3,13 +3,13 @@
 {-# LANGUAGE TypeOperators #-}
 
 -- | Defines REST and JSON-RPC routes
-module Marconi.ChainIndex.Api.Routes (
-  module Marconi.ChainIndex.Api.Routes,
+module Marconi.Cardano.ChainIndex.Api.Routes (
+  module Marconi.Cardano.ChainIndex.Api.Routes,
 ) where
 
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI)
+import Marconi.Cardano.ChainIndex.Api.Rest.Routes (RestAPI)
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Api.JsonRpc.Routes (JsonRpcAPI)
-import Marconi.ChainIndex.Api.Rest.Routes (RestAPI)
 import Servant.API ((:<|>))
 
 -- | marconi-cardano-chain-index APIs

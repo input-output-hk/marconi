@@ -1,11 +1,11 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Marconi.ChainIndex.Api.Rest.Endpoint.Params where
+module Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Params where
 
 import Control.Lens (view)
 import Data.Aeson.Types qualified as Aeson
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configParams)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configParams)
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Servant (Get, JSON, (:>))
 

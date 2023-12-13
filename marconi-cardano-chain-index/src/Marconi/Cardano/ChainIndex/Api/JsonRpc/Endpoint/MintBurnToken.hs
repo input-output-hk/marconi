@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken (
   BurnTokenEventResult (BurnTokenEventResult),
   GetBurnTokenEventsParams (GetBurnTokenEventsParams),
   GetBurnTokenEventsResult (GetBurnTokenEventsResult),
@@ -23,6 +23,7 @@ import Data.Bifunctor (first)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Indexers (queryableMintToken)
 import Marconi.Cardano.Indexers.MintTokenEvent (
@@ -38,7 +39,6 @@ import Marconi.Cardano.Indexers.MintTokenEvent (
   mintTokenEvents,
  )
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, hoistHttpHandler, queryErrToRpcErr)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)

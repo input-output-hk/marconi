@@ -2,12 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Spec.Marconi.ChainIndex.CLIInputValidation where
+module Spec.Marconi.Cardano.ChainIndex.CLIInputValidation where
 
 import Data.ByteString.Lazy qualified as BSL
 import Data.Functor ((<&>))
 import Data.Maybe (fromJust)
-import Spec.Marconi.ChainIndex.Utils qualified as U
+import Spec.Marconi.Cardano.ChainIndex.Utils qualified as U
 import System.FilePath.Posix ((</>))
 import System.Process qualified as IO
 import Test.Tasty (TestTree, testGroup)

@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.EpochState (
   RpcEpochActiveStakePoolDelegationMethod,
   RpcEpochNonceMethod,
   ActiveSDDResult (..),
@@ -21,14 +21,14 @@ import Control.Lens.Getter qualified as Lens
 import Data.Aeson.TH (defaultOptions, deriveJSON, fieldLabelModifier)
 import Data.Char (toLower)
 import GHC.Word (Word64)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
+import Marconi.Cardano.ChainIndex.Utils qualified as Util
 import Marconi.Cardano.Indexers (
   queryableEpochNonce,
   queryableEpochSDD,
  )
 import Marconi.Cardano.Indexers.EpochNonce qualified as EpochState
 import Marconi.Cardano.Indexers.EpochSDD qualified as EpochState
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.ChainIndex.Utils qualified as Util
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, dimapHandler, queryHttpReaderHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, mkJsonRpcInvalidParamsErr)

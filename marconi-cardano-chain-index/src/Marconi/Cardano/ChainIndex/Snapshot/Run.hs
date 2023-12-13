@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Marconi.ChainIndex.Snapshot.Run (
+module Marconi.Cardano.ChainIndex.Snapshot.Run (
   run,
 ) where
 
@@ -12,6 +12,9 @@ import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
+import Marconi.Cardano.ChainIndex.CLI (parseSnapshotOptions)
+import Marconi.Cardano.ChainIndex.CLI qualified as Cli
+import Marconi.Cardano.ChainIndex.Utils qualified as Utils
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
@@ -24,9 +27,6 @@ import Marconi.Cardano.Indexers (buildIndexersForSnapshot)
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
  )
-import Marconi.ChainIndex.CLI (parseSnapshotOptions)
-import Marconi.ChainIndex.CLI qualified as Cli
-import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core.Transformer.WithCatchup qualified as Core (
   mkCatchupConfig,
  )

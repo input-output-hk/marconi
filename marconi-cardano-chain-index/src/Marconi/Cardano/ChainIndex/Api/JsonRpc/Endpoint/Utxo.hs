@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 
-module Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
+module Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
   AddressUtxoResult (AddressUtxoResult),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
   RpcGetUtxosFromAddressMethod,
@@ -16,6 +16,23 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans (lift)
 import Data.Bifunctor (bimap, first)
 import Data.Text (pack)
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult (
+  SpentInfoResult (SpentInfoResult),
+ )
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
+  AddressUtxoResult (AddressUtxoResult),
+  GetUtxosFromAddressParams (GetUtxosFromAddressParams),
+  GetUtxosFromAddressResult (GetUtxosFromAddressResult),
+ )
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
+  UtxoTxInput (UtxoTxInput),
+  ValueWrapper (ValueWrapper),
+ )
+import Marconi.Cardano.ChainIndex.Api.Types (
+  HttpServerConfig,
+  configQueryables,
+  configTrackedAddresses,
+ )
 import Marconi.Cardano.Indexers (queryableUtxo)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BI
 import Marconi.Cardano.Indexers.Utxo (datumHash, txIn, txIndex, value)
@@ -23,19 +40,6 @@ import Marconi.Cardano.Indexers.UtxoQuery (
   UtxoQueryInput (UtxoQueryInput),
   UtxoResult (UtxoResult),
  )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult (
-  SpentInfoResult (SpentInfoResult),
- )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types (
-  AddressUtxoResult (AddressUtxoResult),
-  GetUtxosFromAddressParams (GetUtxosFromAddressParams),
-  GetUtxosFromAddressResult (GetUtxosFromAddressResult),
- )
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
-  UtxoTxInput (UtxoTxInput),
-  ValueWrapper (ValueWrapper),
- )
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configQueryables, configTrackedAddresses)
 import Marconi.Core qualified as Core
 import Marconi.Core.JsonRpc (ReaderHandler, hoistHttpHandler, queryErrToRpcErr)
 import Marconi.Core.Type (Result)

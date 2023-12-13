@@ -1,12 +1,12 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Marconi.ChainIndex.Api.Rest.Endpoint.TargetAddresses where
+module Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.TargetAddresses where
 
 import Cardano.Api (serialiseAddress)
 import Control.Lens (view)
 import Data.Text (Text)
-import Marconi.ChainIndex.Api.Types (HttpServerConfig, configTrackedAddresses)
+import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configTrackedAddresses)
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Servant (Get, JSON, (:>))
 

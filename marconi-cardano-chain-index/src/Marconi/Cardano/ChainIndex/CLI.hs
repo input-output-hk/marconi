@@ -5,7 +5,7 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TupleSections #-}
 
-module Marconi.ChainIndex.CLI where
+module Marconi.Cardano.ChainIndex.CLI where
 
 import Control.Applicative (many, optional, some)
 import Data.Aeson (FromJSON, ToJSON)
@@ -27,6 +27,7 @@ import Data.List.NonEmpty qualified as NEList
 import Data.Set.NonEmpty qualified as NESet
 import Data.Word (Word64)
 import GHC.Generics (Generic)
+import Marconi.Cardano.ChainIndex.Git.Rev (gitRev)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
   BlockRange,
@@ -40,7 +41,6 @@ import Marconi.Cardano.Core.Types (
   scriptTxDbName,
   utxoDbName,
  )
-import Marconi.ChainIndex.Git.Rev (gitRev)
 import Options.Applicative (ReadM, eitherReader, execParserPure)
 import Paths_marconi_cardano_chain_index (version)
 

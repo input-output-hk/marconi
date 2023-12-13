@@ -1,14 +1,14 @@
-module Marconi.ChainIndex.Api.HttpServer where
+module Marconi.Cardano.ChainIndex.Api.HttpServer where
 
 import Control.Lens ((^.))
 import Control.Monad.Reader (ReaderT, ask, lift)
 import Data.Proxy (Proxy (Proxy))
-import Marconi.ChainIndex.Api.JsonRpc.Server (jsonRpcServer)
-import Marconi.ChainIndex.Api.Rest.Server (restApiServer)
-import Marconi.ChainIndex.Api.Routes (
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Server (jsonRpcServer)
+import Marconi.Cardano.ChainIndex.Api.Rest.Server (restApiServer)
+import Marconi.Cardano.ChainIndex.Api.Routes (
   API,
  )
-import Marconi.ChainIndex.Api.Types (
+import Marconi.Cardano.ChainIndex.Api.Types (
   HttpServerConfig,
   configPort,
   configTrace,
