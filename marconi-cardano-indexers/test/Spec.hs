@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Spec.Marconi.Cardano.Indexers qualified as Indexers
+import Spec.Marconi.Cardano.Snapshot qualified as Snapshot
 import Test.Tasty (TestTree, defaultMain, testGroup)
 
 main :: IO ()
@@ -10,4 +11,6 @@ tests :: TestTree
 tests =
   testGroup
     "marconi-cardano-indexers"
-    [Indexers.tests]
+    [ Indexers.tests
+    , Snapshot.tests
+    ]

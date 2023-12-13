@@ -28,6 +28,10 @@ module Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   newEpochPreprocessor,
   readGenesisFile,
   extractBlockEvent,
+
+  -- * For testing
+  deserialiseLedgerState,
+  deserialiseMetadata,
 ) where
 
 import Cardano.Api qualified as C
@@ -84,6 +88,7 @@ import Text.Read qualified as Text
 
 type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
 type ExtLedgerConfig = O.ExtLedgerCfg (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
+type CodecConfig = O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
 
 type instance Core.Point ExtLedgerState = C.ChainPoint
 type instance Core.Point (C.BlockInMode C.CardanoMode) = C.ChainPoint
@@ -103,7 +108,11 @@ data ExtLedgerStateCoordinatorConfig input = ExtLedgerStateCoordinatorConfig
 Lens.makeLenses ''ExtLedgerStateCoordinatorConfig
 
 -- | Base event used to store the 'ExtLedgerState'
-data ExtLedgerStateEvent = ExtLedgerStateEvent {extLedgerState :: ExtLedgerState, blockNo :: C.BlockNo}
+data ExtLedgerStateEvent = ExtLedgerStateEvent
+  { extLedgerState :: ExtLedgerState
+  , blockNo :: C.BlockNo
+  }
+  deriving (Show)
 
 type instance Core.Point ExtLedgerStateEvent = C.ChainPoint
 
@@ -558,18 +567,6 @@ buildExtLedgerStateEventIndexer codecConfig securityParam' path = do
             (O.encodeDisk codecConfig)
           . extLedgerState
 
-      deserialiseLedgerState (EpochMetadata Nothing _) = const (Right Nothing)
-      deserialiseLedgerState (EpochMetadata (Just blockNo') _) =
-        bimap
-          (Text.pack . show)
-          (Just . flip ExtLedgerStateEvent blockNo' . snd)
-          . CBOR.deserialiseFromBytes
-            ( O.decodeExtLedgerState
-                (O.decodeDisk codecConfig)
-                (O.decodeDisk codecConfig)
-                (O.decodeDisk codecConfig)
-            )
-          . BS.fromStrict
       blockNoAsText = maybe "" (Text.pack . show . (\(C.BlockNo b) -> b) . blockNo)
       metadataAsText (Core.Timed C.ChainPointAtGenesis evt) = [blockNoAsText evt]
       metadataAsText (Core.Timed chainPoint evt) =
@@ -599,7 +596,30 @@ buildExtLedgerStateEventIndexer codecConfig securityParam' path = do
     (Just 180_000_000) -- Wait 180s for files to finish writing before terminating
     (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
-    (Core.EventBuilder deserialiseMetadata metadataChainpoint deserialiseLedgerState deserialisePoint)
+    ( Core.EventBuilder
+        deserialiseMetadata
+        metadataChainpoint
+        (deserialiseLedgerState codecConfig)
+        deserialisePoint
+    )
+
+deserialiseLedgerState
+  :: CodecConfig
+  -> EpochMetadata
+  -> BS.ByteString
+  -> Either Text (Maybe ExtLedgerStateEvent)
+deserialiseLedgerState _ (EpochMetadata Nothing _) = const (Right Nothing)
+deserialiseLedgerState codecConfig (EpochMetadata (Just blockNo') _) =
+  bimap
+    (Text.pack . show)
+    (Just . flip ExtLedgerStateEvent blockNo' . snd)
+    . CBOR.deserialiseFromBytes
+      ( O.decodeExtLedgerState
+          (O.decodeDisk codecConfig)
+          (O.decodeDisk codecConfig)
+          (O.decodeDisk codecConfig)
+      )
+    . BS.fromStrict
 
 -- | File Indexer to save the @BlockInMode@
 buildBlockIndexer
