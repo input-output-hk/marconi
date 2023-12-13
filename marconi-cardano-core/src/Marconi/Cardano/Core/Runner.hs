@@ -35,14 +35,25 @@ module Marconi.Cardano.Core.Runner (
 import Cardano.Api.Extended qualified as C
 import Cardano.Api.Extended.Streaming (
   BlockEvent (BlockEvent),
+  ChainSyncConnection (ChainSyncConnection),
   ChainSyncEvent (RollBackward, RollForward),
   ChainSyncEventException (NoIntersectionFound),
-  withChainSyncBlockEventStream,
+  connectToLocalNodeWithChainSyncClient,
+  mkChainSyncConnection,
  )
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
+import Control.Concurrent.Async (
+  ExceptionInLinkedThread (ExceptionInLinkedThread),
+  link,
+  withAsync,
+ )
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch)
+import Control.Exception (
+  SomeException (SomeException),
+  catch,
+  throw,
+ )
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -66,7 +77,6 @@ import Marconi.Cardano.Core.Types (
 import Marconi.Core qualified as Core
 import Prettyprinter (pretty)
 import Prettyprinter qualified as PP
-import Streaming qualified as S
 import Streaming.Prelude qualified as S
 
 -- | Runner pre-processing
@@ -136,11 +146,11 @@ runIndexer
       cBox <- Concurrent.newMVar indexer
       let processEvent = eventProcessing ^. runIndexerPreprocessEvent
           runChainSyncStream =
-            withChainSyncBlockEventStream
+            mkChainSyncConnection
               socketPath
               networkId
               [startingPoint]
-              (mkEventStream processEvent eventQueue)
+              >>= connectToChainSyncAndStream processEvent eventQueue
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.pretty NoIntersectionFoundLog
@@ -178,14 +188,28 @@ getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
 getBlockNo (C.BlockInMode block _eraInMode) =
   case C.getBlockHeader block of C.BlockHeader _ _ b -> b
 
--- | Event preprocessing, to ease the coordinator work
-mkEventStream
+{- | Creates a new thread which connects to the local node. In the current thread it
+receives events via the chain sync protocol. These events are preprocessed and written
+to a 'TBQueue'.
+-}
+connectToChainSyncAndStream
   :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint a])
   -> STM.TBQueue (Core.ProcessedInput C.ChainPoint a)
-  -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
+  -> ChainSyncConnection r
   -> IO r
-mkEventStream processEvent q =
-  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
+connectToChainSyncAndStream
+  processEvent
+  queue
+  (ChainSyncConnection stream localNodeConnectInfo client) =
+    withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a ->
+      do
+        -- Make sure all exceptions in the client thread are passed to the consumer thread
+        link a
+        -- Process and consume the stream
+        S.mapM_ (STM.atomically . traverse_ (STM.writeTBQueue queue) . processEvent) stream
+        -- Let's rethrow exceptions from the client thread unwrapped, so that the
+        -- consumer does not have to know anything about async
+        `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
 
 withDistanceAndTipPreprocessor
   :: RunIndexerEventPreprocessing TipAndBlock

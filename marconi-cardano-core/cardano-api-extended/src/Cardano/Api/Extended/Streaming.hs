@@ -3,7 +3,7 @@
 
 module Cardano.Api.Extended.Streaming (
   withChainSyncEventStream,
-  withChainSyncBlockEventStream,
+  mkChainSyncConnection,
   ChainSyncEvent (..),
   ChainSyncEventException (..),
 
@@ -14,6 +14,8 @@ module Cardano.Api.Extended.Streaming (
   blocks,
   blocksPipelined,
   ignoreRollbacks,
+  ChainSyncConnection (..),
+  connectToLocalNodeWithChainSyncClient,
 ) where
 
 import Cardano.Api qualified as C
@@ -111,24 +113,33 @@ data BlockEvent = BlockEvent
   }
   deriving (Show)
 
+-- | The data necessary for connecting to a client using the chain sync protocol.
+data ChainSyncConnection r = ChainSyncConnection
+  { eventStream :: Stream (Of (ChainSyncEvent BlockEvent)) IO r
+  -- ^ the stream of events coming from the client
+  , nodeConnectInfo :: C.LocalNodeConnectInfo C.CardanoMode
+  -- ^ information about the local node
+  , chainSyncClient :: C.ChainSyncClient (C.BlockInMode C.CardanoMode) C.ChainPoint C.ChainTip IO ()
+  -- ^ the actual client to connect to
+  }
+
 {- | Uses the chain-sync mini-protocol to connect to a locally running node and fetch blocks from the
     given starting point, along with their @EpochNo@ and creation time.
 -}
-withChainSyncBlockEventStream
+mkChainSyncConnection
   :: FilePath
   -- ^ Path to the node socket
   -> C.NetworkId
   -> [C.ChainPoint]
   -- ^ The point on the chain to start streaming from
-  -> (Stream (Of (ChainSyncEvent BlockEvent)) IO r -> IO b)
-  -- ^ The stream consumer
-  -> IO b
-withChainSyncBlockEventStream socketPath networkId points consumer =
+  -> IO (ChainSyncConnection r)
+mkChainSyncConnection socketPath networkId points =
   do
-    -- The chain-sync client runs in a different thread passing the blocks it
+    -- The chain-sync client should be run in a different thread passing the blocks it
     -- receives to the stream consumer through a MVar. The chain-sync client
-    -- thread and the stream consumer will each block on each other and stay
-    -- in lockstep.
+    -- thread and the stream consumer will stay in lockstep. Once a block is emitted
+    -- by the client thread it will be consumed by the consumer thread.
+    -- See 'Marconi.Cardano.Core.Runner.connectToChainSyncAndStream'.
     --
     -- NOTE: choosing a MVar is a tradeoff towards simplicity. In this case a
     -- (bounded) queue could perform better. Indeed a properly-sized buffer
@@ -195,14 +206,8 @@ withChainSyncBlockEventStream socketPath networkId points consumer =
         eventLoop history = takeMVar nextChainSyncEventVar >>= fmap Right . attachEpochAndTime history
 
     history <- askHistory
-    withAsync (connectToLocalNodeWithChainSyncClient localNodeConnectInfo client) $ \a -> do
-      -- Make sure all exceptions in the client thread are passed to the consumer thread
-      link a
-      -- Run the consumer
-      consumer $ S.unfoldr eventLoop history
-    -- Let's rethrow exceptions from the client thread unwrapped, so that the
-    -- consumer does not have to know anything about async
-    `catch` \(ExceptionInLinkedThread _ (SomeException e)) -> throw e
+    let stream = S.unfoldr eventLoop history
+    return $ ChainSyncConnection stream localNodeConnectInfo client
 
 connectToLocalNodeWithChainSyncClient
   :: C.LocalNodeConnectInfo C.CardanoMode
