@@ -9,6 +9,7 @@
 module Marconi.Cardano.Core.Runner (
   -- * Runner
   runChainSyncIndexer,
+  runSnapshotIndexer,
 
   -- ** Runner Config
   RunIndexerConfig (RunIndexerConfig),
@@ -70,8 +71,8 @@ import Streaming qualified as S
 import Streaming.Prelude qualified as S
 
 -- | Runner pre-processing
-data RunIndexerEventPreprocessing event = RunIndexerEventPreprocessing
-  { _runIndexerPreprocessEvent :: ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint event]
+data RunIndexerEventPreprocessing rawEvent event = RunIndexerEventPreprocessing
+  { _runIndexerPreprocessEvent :: rawEvent -> [Core.ProcessedInput C.ChainPoint event]
   , _runIndexerExtractBlockNo :: event -> Maybe C.BlockNo
   , _runIndexerExtractTipDistance :: event -> Maybe Word
   }
@@ -79,9 +80,9 @@ data RunIndexerEventPreprocessing event = RunIndexerEventPreprocessing
 Lens.makeLenses ''RunIndexerEventPreprocessing
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig event = RunIndexerConfig
+data RunIndexerConfig rawEvent event = RunIndexerConfig
   { _runIndexerConfigTrace :: MarconiTrace IO
-  , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event
+  , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing rawEvent event
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
   , _runIndexerConfigNetworkId :: C.NetworkId
@@ -104,6 +105,40 @@ instance PP.Pretty RunIndexerLog where
 
 type instance Core.Point BlockEvent = C.ChainPoint
 
+{- | Connect to the given socket to start a chain sync protocol and start indexing it with the
+given indexer.
+-}
+runChainSyncIndexer
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
+     , Core.Closeable IO indexer
+     , Core.Point event ~ C.ChainPoint
+     )
+  => RunIndexerConfig (ChainSyncEvent BlockEvent) event
+  -> indexer event
+  -> IO ()
+runChainSyncIndexer config indexer =
+  runEmitterAndConsumer securityParam eventPreprocessing (chainSyncEventEmitter config indexer)
+  where
+    securityParam = Lens.view runIndexerConfigSecurityParam config
+    eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
+
+runSnapshotIndexer
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) BlockEvent indexer
+     , Core.Closeable IO indexer
+     )
+  => RunIndexerConfig BlockEvent BlockEvent
+  -> indexer BlockEvent
+  -> S.Stream (S.Of BlockEvent) IO ()
+  -> IO ()
+runSnapshotIndexer config indexer stream =
+  runEmitterAndConsumer
+    securityParam
+    eventPreprocessing
+    (streamBlockEventEmitter config indexer stream)
+  where
+    securityParam = Lens.view runIndexerConfigSecurityParam config
+    eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
+
 data EventEmitter indexer event a = EventEmitter
   { queue :: STM.TBQueue (Core.ProcessedInput (Core.Point event) event)
   , indexerMVar :: Concurrent.MVar (indexer event)
@@ -117,7 +152,7 @@ runEmitterAndConsumer
      , Core.Closeable IO indexer
      )
   => SecurityParam
-  -> RunIndexerEventPreprocessing event
+  -> RunIndexerEventPreprocessing rawEvent event
   -> IO (EventEmitter indexer event a)
   -> IO ()
 runEmitterAndConsumer
@@ -133,26 +168,9 @@ runEmitterAndConsumer
           queue
           indexerMVar
 
-{- | Connect to the given socket to start a chain sync protocol and start indexing it with the
-given indexer.
--}
-runChainSyncIndexer
-  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
-     , Core.Closeable IO indexer
-     , Core.Point event ~ C.ChainPoint
-     )
-  => RunIndexerConfig event
-  -> indexer event
-  -> IO ()
-runChainSyncIndexer config indexer =
-  runEmitterAndConsumer securityParam eventPreprocessing (chainSyncEventEmitter config indexer)
-  where
-    securityParam = Lens.view runIndexerConfigSecurityParam config
-    eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
-
 chainSyncEventEmitter
   :: (Core.Point event ~ C.ChainPoint)
-  => RunIndexerConfig event
+  => RunIndexerConfig (ChainSyncEvent BlockEvent) event
   -> indexer event
   -> IO (EventEmitter indexer event ())
 chainSyncEventEmitter
@@ -187,9 +205,24 @@ chainSyncEventEmitter
               runChainSyncStream `catch` whenNoIntersectionFound
       return (EventEmitter eventQueue cBox eventEmitter)
 
+streamBlockEventEmitter
+  :: RunIndexerConfig BlockEvent BlockEvent
+  -> indexer BlockEvent
+  -> S.Stream (S.Of BlockEvent) IO ()
+  -> IO (EventEmitter indexer BlockEvent ())
+streamBlockEventEmitter config indexer stream = do
+  queue <- STM.newTBQueueIO $ fromIntegral securityParam
+  indexerMVar <- Concurrent.newMVar indexer
+  let processEvent = eventProcessing ^. runIndexerPreprocessEvent
+      emitEvents = mkEventStream processEvent queue stream
+  return EventEmitter{queue, indexerMVar, emitEvents}
+  where
+    securityParam = Lens.view runIndexerConfigSecurityParam config
+    eventProcessing = Lens.view runIndexerConfigEventProcessing config
+
 stablePointComputation
   :: SecurityParam
-  -> RunIndexerEventPreprocessing event
+  -> RunIndexerEventPreprocessing rawEvent event
   -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
 stablePointComputation securityParam preprocessing (Core.Timed point event) = do
@@ -216,15 +249,15 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint a])
-  -> STM.TBQueue (Core.ProcessedInput C.ChainPoint a)
-  -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
+  :: (inputEvent -> [Core.ProcessedInput (Core.Point inputEvent) outputEvent])
+  -> STM.TBQueue (Core.ProcessedInput (Core.Point inputEvent) outputEvent)
+  -> S.Stream (S.Of inputEvent) IO r
   -> IO r
 mkEventStream processEvent q =
   S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
 
 withDistanceAndTipPreprocessor
-  :: RunIndexerEventPreprocessing TipAndBlock
+  :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) TipAndBlock
 withDistanceAndTipPreprocessor =
   let extractChainTipAndAddDistance
         :: ChainSyncEvent BlockEvent
@@ -249,7 +282,7 @@ withDistanceAndTipPreprocessor =
       blockNoFromBlockEvent _ = Nothing
    in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
 
-withNoPreprocessor :: RunIndexerEventPreprocessing BlockEvent
+withNoPreprocessor :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) BlockEvent
 withNoPreprocessor =
   let eventToProcessedInput
         :: ChainSyncEvent BlockEvent
@@ -262,7 +295,8 @@ withNoPreprocessor =
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
 
-withDistancePreprocessor :: RunIndexerEventPreprocessing (WithDistance BlockEvent)
+withDistancePreprocessor
+  :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)
 withDistancePreprocessor =
   let addDistance
         :: ChainSyncEvent BlockEvent

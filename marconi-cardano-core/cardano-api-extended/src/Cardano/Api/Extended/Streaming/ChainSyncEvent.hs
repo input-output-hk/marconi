@@ -15,6 +15,7 @@ import Control.Concurrent.Async qualified as IO
 import Control.Exception qualified as IO
 import Data.SOP.Strict (NP ((:*)))
 import GHC.Generics (Generic)
+import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Cardano.CanHardFork qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator.AcrossEras qualified as HFC
@@ -27,6 +28,8 @@ data ChainSyncEvent a
   = RollForward a C.ChainTip
   | RollBackward C.ChainPoint C.ChainTip
   deriving (Show, Functor, Generic)
+
+type instance Core.Point (ChainSyncEvent a) = C.ChainPoint
 
 data ChainSyncEventException
   = NoIntersectionFound

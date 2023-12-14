@@ -122,6 +122,11 @@ library cardano-api-extended
     Cardano.Api.Extended.Streaming.Callback
     Cardano.Api.Extended.Streaming.ChainSyncEvent
 
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:   marconi-core
+
   --------------------------
   -- Other IOG dependencies
   --------------------------
