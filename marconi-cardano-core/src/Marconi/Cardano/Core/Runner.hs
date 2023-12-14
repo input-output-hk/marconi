@@ -8,7 +8,7 @@
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.Cardano.Core.Runner (
   -- * Runner
-  runIndexer,
+  runChainSyncIndexer,
 
   -- ** Runner Config
   RunIndexerConfig (RunIndexerConfig),
@@ -41,11 +41,11 @@ import Cardano.Api.Extended.Streaming (
  )
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
+import Control.Concurrent.Async (race_)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
-import Control.Monad (void)
 import Control.Monad.Except (ExceptT)
 import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
@@ -104,20 +104,59 @@ instance PP.Pretty RunIndexerLog where
 
 type instance Core.Point BlockEvent = C.ChainPoint
 
+runEmitterAndConsumer
+  :: ( Core.Point event ~ C.ChainPoint
+     , Ord (Core.Point event)
+     , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
+     , Core.Closeable IO indexer
+     )
+  => SecurityParam
+  -> RunIndexerEventPreprocessing event
+  -> IO
+      ( STM.TBQueue (Core.ProcessedInput (Core.Point event) event)
+      , Concurrent.MVar (indexer event)
+      , IO a
+      )
+  -> IO ()
+runEmitterAndConsumer
+  securityParam
+  eventPreprocessing
+  eventEmitter =
+    do
+      (eventQueue, cBox, emitEvents) <- eventEmitter
+      emitEvents
+        `race_` Core.processQueue
+          (stablePointComputation securityParam eventPreprocessing)
+          Map.empty
+          eventQueue
+          cBox
+
 {- | Connect to the given socket to start a chain sync protocol and start indexing it with the
 given indexer.
-
-If you want to start several indexers, use @runIndexers@.
 -}
-runIndexer
-  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) a indexer
+runChainSyncIndexer
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
-     , Core.Point a ~ C.ChainPoint
+     , Core.Point event ~ C.ChainPoint
      )
-  => RunIndexerConfig a
-  -> indexer a
+  => RunIndexerConfig event
+  -> indexer event
   -> IO ()
-runIndexer
+runChainSyncIndexer config indexer =
+  runEmitterAndConsumer securityParam eventPreprocessing (chainSyncEventEmitter config indexer)
+  where
+    securityParam = Lens.view runIndexerConfigSecurityParam config
+    eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
+
+chainSyncEventEmitter
+  :: RunIndexerConfig event
+  -> indexer event
+  -> IO
+      ( STM.TBQueue (Core.ProcessedInput C.ChainPoint event)
+      , Concurrent.MVar (indexer event)
+      , IO ()
+      )
+chainSyncEventEmitter
   ( RunIndexerConfig
       trace
       eventProcessing
@@ -127,7 +166,7 @@ runIndexer
       startingPoint
       socketPath
     )
-  indexer = do
+  indexer =
     withNodeConnectRetry trace retryConfig socketPath $ do
       Trace.logInfo trace $
         PP.pretty $
@@ -144,12 +183,10 @@ runIndexer
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.pretty NoIntersectionFoundLog
-      void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
-      Core.processQueue
-        (stablePointComputation securityParam eventProcessing)
-        Map.empty
-        eventQueue
-        cBox
+          eventEmitter =
+            withNodeConnectRetry trace retryConfig socketPath $
+              runChainSyncStream `catch` whenNoIntersectionFound
+      return (eventQueue, cBox, eventEmitter)
 
 stablePointComputation
   :: SecurityParam

@@ -89,6 +89,7 @@ library
   ------------------------
   build-depends:
     , aeson
+    , async
     , base                 >=4.9 && <5
     , bytestring
     , cborg

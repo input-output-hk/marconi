@@ -148,7 +148,7 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
   Hedgehog.evalIO $ Integration.startTestnet nscConfig
 
   res <- Hedgehog.evalIO $
-    Async.race (Runner.runIndexer config coordinator) $
+    Async.race (Runner.runChainSyncIndexer config coordinator) $
       do
         threadDelay 5_000_000
 
