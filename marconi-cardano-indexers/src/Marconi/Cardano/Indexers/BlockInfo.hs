@@ -157,7 +157,9 @@ blockInfoWorker config path = do
   indexer <- mkBlockInfoIndexer path
   mkStandardWorker config indexer
 
--- | Configure and start the @BlockInfo@ indexer suitable for use in a coordinator.
+{- | Convenience wrapper around 'blockInfoWorker' with some defaults for
+creating 'StandardWorkerConfig', including a preprocessor.
+-}
 blockInfoBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam

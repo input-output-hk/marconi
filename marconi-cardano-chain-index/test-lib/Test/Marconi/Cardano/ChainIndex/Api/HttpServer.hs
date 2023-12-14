@@ -10,7 +10,7 @@ import Control.Monad.Reader (runReaderT)
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Network.JsonRpc.Types (JsonRpcErr)
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Mockchain
-import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
+import Test.Marconi.Cardano.ChainIndex.Indexers qualified as Test.Indexers
 
 {- | Wrapper for instantiating indexers, indexing mockchain events, querying via a handler,
 and closing the indexers.

@@ -4,7 +4,7 @@
 {- | Generators and helpers for testing @Marconi.Cardano.Indexers@, namely the
 'SyncStatsCoordinator'.
 -}
-module Test.Gen.Marconi.Cardano.ChainIndex.Indexers where
+module Test.Marconi.Cardano.ChainIndex.Indexers where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
@@ -24,6 +24,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
  )
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
 import Marconi.Cardano.Core.Types (
+  AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
   MarconiTrace,
   SecurityParam,
@@ -31,6 +32,7 @@ import Marconi.Cardano.Core.Types (
  )
 import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Cardano.Indexers.ChainTip qualified as ChainTip
 import Marconi.Cardano.Indexers.Coordinator (syncStatsCoordinator)
 import Marconi.Cardano.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
 import Marconi.Cardano.Indexers.Datum qualified as Datum
@@ -131,7 +133,7 @@ indexAllWithMockchain indexers chain = do
   modifyMVar_ (indexers ^. testBuildIndexersResultDatum) $
     Core.indexAllEither (toDatumsEvents chainNoInfo) >=> either throwIO pure
 
-{- | This is a copy-paste version of @Marconi.Cardano.Indexers.'buildIndexers'@
+{- | This is a copy-paste version of @Marconi.Cardano.ChainIndex.Indexers.'buildIndexers'@
 whose sole purpose is to expose the elementary indexer workers inside. That allows us to index
 generated events directly, which is useful in testing specific JSON RPC query handlers.
 We cannot index the returned coordinator directly because it takes, in essence, BlockEvents which
@@ -169,7 +171,7 @@ buildIndexers
         epochNonceTextLogger = BM.appendName "epochNonce" epochStateTextLogger
 
     StandardWorker blockInfoMVar blockInfoWorker <-
-      Indexers.blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
+      BlockInfo.blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
 
     Core.WorkerIndexer epochSDDMVar epochSDDWorker <-
       Indexers.epochSDDBuilder securityParam catchupConfig epochSDDTextLogger path
@@ -182,17 +184,22 @@ buildIndexers
         path
 
     StandardWorker utxoMVar utxoWorker <-
-      Indexers.utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
+      Utxo.utxoBuilder securityParam catchupConfig utxoConfig txBodyCoordinatorLogger path
     StandardWorker spentMVar spentWorker <-
-      Indexers.spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+      Spent.spentBuilder securityParam catchupConfig txBodyCoordinatorLogger path
     StandardWorker datumMVar datumWorker <-
-      Indexers.datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
+      Datum.datumBuilder securityParam catchupConfig txBodyCoordinatorLogger path
     StandardWorker mintTokenMVar mintTokenWorker <-
-      Indexers.mintBuilder securityParam catchupConfig mintEventConfig txBodyCoordinatorLogger path
+      MintTokenEvent.mintTokenEventBuilder
+        securityParam
+        catchupConfig
+        mintEventConfig
+        txBodyCoordinatorLogger
+        path
 
-    let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> Indexers.AnyTxBody
-        getTxBody blockNo ix tx = Indexers.AnyTxBody blockNo ix (C.getTxBody tx)
-        toTxBodys :: BlockEvent -> [Indexers.AnyTxBody]
+    let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+        getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+        toTxBodys :: BlockEvent -> [AnyTxBody]
         toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
           zipWith (getTxBody bn) [0 ..] txs
 
@@ -215,7 +222,7 @@ buildIndexers
           blockEventLogger
           [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-    Core.WorkerIndexer chainTipMVar chainTipWorker <- Indexers.chainTipBuilder mainLogger path
+    Core.WorkerIndexer chainTipMVar chainTipWorker <- ChainTip.chainTipBuilder mainLogger path
 
     mainCoordinator <-
       lift $

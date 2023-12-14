@@ -26,7 +26,7 @@ import Marconi.Sidechain.Experimental.Env (
  )
 import Marconi.Sidechain.Experimental.Indexers qualified as Indexers
 import System.Environment (getEnv)
-import Test.Gen.Marconi.Cardano.Indexers qualified as Test.Indexers
+import Test.Marconi.Cardano.ChainIndex.Indexers qualified as Test.Indexers
 
 {- | Utility for testing JSON RPC handlers, mainly.
  - Construct the 'SidechainHttpServerConfig' and indexers in the same way as 'mkSidechainEnvFromCliArgs',

@@ -56,7 +56,8 @@ module Marconi.Cardano.Indexers.MintTokenEvent (
   configTrackedAssetIds,
   catchupConfigEventHook,
   mkMintTokenIndexer,
-  mkMintTokenEventWorker,
+  mintTokenEventWorker,
+  mintTokenEventBuilder,
   filterByTargetAssetIds,
 
   -- * Extract events
@@ -80,6 +81,7 @@ where
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Trace (Trace)
+import Cardano.BM.Tracing qualified as BM
 import Cardano.Ledger.Alonzo.Tx qualified as LA
 import Cardano.Ledger.Api (
   RdmrPtr (RdmrPtr),
@@ -95,7 +97,19 @@ import Cardano.Ledger.Mary.Value (
   PolicyID (PolicyID),
   flattenMultiAsset,
  )
-import Control.Lens (Lens', folded, lens, over, toListOf, view, (%~), (.~), (^.), (^?))
+import Control.Lens (
+  Lens',
+  folded,
+  lens,
+  over,
+  toListOf,
+  view,
+  (%~),
+  (.~),
+  (?~),
+  (^.),
+  (^?),
+ )
 import Control.Lens qualified as Lens
 import Control.Monad.Except (MonadError, runExceptT, throwError)
 import Control.Monad.IO.Class (MonadIO)
@@ -119,16 +133,19 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
-  StandardWorkerConfig,
+  StandardWorkerConfig (StandardWorkerConfig),
   mkStandardWorker,
   mkStandardWorkerWithFilter,
  )
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
+  AnyTxBody (AnyTxBody),
+  SecurityParam,
   TxIndexInBlock,
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import System.FilePath ((</>))
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
 type MintTokenEventIndexer = Core.SQLiteIndexer MintTokenBlockEvents
@@ -276,7 +293,7 @@ instance SQL.FromRow MintAsset where
 type instance Core.Point MintTokenBlockEvents = C.ChainPoint
 
 -- | Create a worker for the MintTokenEvent indexer
-mkMintTokenEventWorker
+mintTokenEventWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => StandardWorkerConfig m input MintTokenBlockEvents
   -- ^ General configuration of the indexer (mostly for logging purpose)
@@ -285,11 +302,41 @@ mkMintTokenEventWorker
   -- asset ids)
   -> FilePath
   -> n (StandardWorker m input MintTokenBlockEvents Core.SQLiteIndexer)
-mkMintTokenEventWorker workerConfig (MintTokenEventConfig mTrackedAssetIds) dbPath = do
+mintTokenEventWorker workerConfig (MintTokenEventConfig mTrackedAssetIds) dbPath = do
   sqliteIndexer <- mkMintTokenIndexer dbPath
   case mTrackedAssetIds of
     Nothing -> mkStandardWorker workerConfig sqliteIndexer
     Just trackedAssetIds -> mkStandardWorkerWithFilter workerConfig (filterByTargetAssetIds trackedAssetIds) sqliteIndexer
+
+{- | Convenience wrapper around 'mkMintTokenEventWorker' with some defaults for
+creating 'StandardWorkerConfig', including a preprocessor.
+-}
+mintTokenEventBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> MintTokenEventConfig
+  -> BM.Trace IO Text
+  -> FilePath
+  -> n (StandardWorker IO [AnyTxBody] MintTokenBlockEvents Core.SQLiteIndexer)
+mintTokenEventBuilder securityParam catchupConfig mintEventConfig textLogger path =
+  let indexerName = "MintTokenEvent"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      mintDbPath = path </> "mint.db"
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook
+            ?~ catchupConfigEventHook indexerName textLogger mintDbPath
+      extractMint :: AnyTxBody -> [MintTokenEvent]
+      extractMint (AnyTxBody bn ix txb) = extractEventsFromTx bn ix txb
+      mintTokenWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfigWithTracer
+          (pure . fmap MintTokenBlockEvents . NonEmpty.nonEmpty . (>>= extractMint))
+          (BM.appendName indexerName indexerEventLogger)
+   in mintTokenEventWorker mintTokenWorkerConfig mintEventConfig mintDbPath
 
 -- | Only keep the MintTokenEvents at a block if they mint a target 'AssetId'.
 filterByTargetAssetIds

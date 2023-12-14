@@ -7,6 +7,7 @@ module Marconi.Cardano.Indexers.ChainTip (
   mkChainTipIndexer,
   ChainTipConfig (ChainTipConfig),
   chainTipWorker,
+  chainTipBuilder,
 ) where
 
 import Cardano.Api.Extended qualified as C
@@ -24,7 +25,11 @@ import Data.ByteString.Short qualified as BS.Short
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (
+  TipAndBlock (TipAndBlock),
+ )
 import Marconi.Core qualified as Core
+import System.FilePath ((</>))
 
 type instance Core.Point C.ChainTip = C.ChainPoint
 
@@ -72,6 +77,25 @@ chainTipWorker
       )
 chainTipWorker tracer extractor cfg =
   Core.createWorker "chainTip" (Just . extractor) =<< mkChainTipIndexer tracer cfg
+
+{- | Convenience wrapper around 'chainTipWorker' with some defaults for
+creating 'StandardWorkerConfig', including a preprocessor.
+-}
+chainTipBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => BM.Trace m (Core.IndexerEvent C.ChainPoint)
+  -> FilePath
+  -> n
+      ( Core.WorkerIndexer
+          m
+          TipAndBlock
+          C.ChainTip
+          (Core.WithTrace m Core.LastEventIndexer)
+      )
+chainTipBuilder tracer dir = do
+  let chainTipPath = dir </> "chainTip"
+      tipOnly (TipAndBlock tip _) = tip
+  chainTipWorker tracer tipOnly (ChainTipConfig chainTipPath 2048)
 
 serialiseTip :: C.ChainTip -> BS.ByteString
 serialiseTip =
