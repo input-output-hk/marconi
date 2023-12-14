@@ -1,5 +1,5 @@
 Running `marconi-cardano-chain-index`
-=============================
+=====================================
 
 .. toctree::
    :maxdepth: 2
