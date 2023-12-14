@@ -1730,10 +1730,10 @@ propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   (_, (actual, expected)) <- liftIO
     $ Tmp.withSystemTempDirectory
-      "stream"
+      mempty
     $ \dir -> do
       let chainSubset = take (chainSizeSubset args) (eventGenerator args)
-          fileName = dir </> "socket"
+          fileName = dir </> "f"
       serverStarted <- newQSem 1
       concurrently
         (server fileName chainSubset serverStarted)
