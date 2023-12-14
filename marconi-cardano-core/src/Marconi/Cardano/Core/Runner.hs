@@ -104,6 +104,12 @@ instance PP.Pretty RunIndexerLog where
 
 type instance Core.Point BlockEvent = C.ChainPoint
 
+data EventEmitter indexer event a = EventEmitter
+  { queue :: STM.TBQueue (Core.ProcessedInput (Core.Point event) event)
+  , indexerMVar :: Concurrent.MVar (indexer event)
+  , emitEvents :: IO a
+  }
+
 runEmitterAndConsumer
   :: ( Core.Point event ~ C.ChainPoint
      , Ord (Core.Point event)
@@ -112,24 +118,20 @@ runEmitterAndConsumer
      )
   => SecurityParam
   -> RunIndexerEventPreprocessing event
-  -> IO
-      ( STM.TBQueue (Core.ProcessedInput (Core.Point event) event)
-      , Concurrent.MVar (indexer event)
-      , IO a
-      )
+  -> IO (EventEmitter indexer event a)
   -> IO ()
 runEmitterAndConsumer
   securityParam
   eventPreprocessing
   eventEmitter =
     do
-      (eventQueue, cBox, emitEvents) <- eventEmitter
+      EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
       emitEvents
         `race_` Core.processQueue
           (stablePointComputation securityParam eventPreprocessing)
           Map.empty
-          eventQueue
-          cBox
+          queue
+          indexerMVar
 
 {- | Connect to the given socket to start a chain sync protocol and start indexing it with the
 given indexer.
@@ -149,13 +151,10 @@ runChainSyncIndexer config indexer =
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
 
 chainSyncEventEmitter
-  :: RunIndexerConfig event
+  :: (Core.Point event ~ C.ChainPoint)
+  => RunIndexerConfig event
   -> indexer event
-  -> IO
-      ( STM.TBQueue (Core.ProcessedInput C.ChainPoint event)
-      , Concurrent.MVar (indexer event)
-      , IO ()
-      )
+  -> IO (EventEmitter indexer event ())
 chainSyncEventEmitter
   ( RunIndexerConfig
       trace
@@ -186,7 +185,7 @@ chainSyncEventEmitter
           eventEmitter =
             withNodeConnectRetry trace retryConfig socketPath $
               runChainSyncStream `catch` whenNoIntersectionFound
-      return (eventQueue, cBox, eventEmitter)
+      return (EventEmitter eventQueue cBox eventEmitter)
 
 stablePointComputation
   :: SecurityParam
