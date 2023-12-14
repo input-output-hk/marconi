@@ -87,6 +87,7 @@ library
     Marconi.Cardano.ChainIndex.Error
     Marconi.Cardano.ChainIndex.Git.Rev
     Marconi.Cardano.ChainIndex.Git.RevFromGit
+    Marconi.Cardano.ChainIndex.Indexers
     Marconi.Cardano.ChainIndex.Run
     Marconi.Cardano.ChainIndex.Snapshot.Run
     Marconi.Cardano.ChainIndex.Utils
@@ -264,6 +265,7 @@ library marconi-cardano-chain-index-test-lib
     Test.Marconi.Cardano.ChainIndex.Api.HttpServer
     Test.Marconi.Cardano.ChainIndex.Api.JsonRpc
     Test.Marconi.Cardano.ChainIndex.CLI
+    Test.Marconi.Cardano.ChainIndex.Indexers
 
   --------------------
   -- Local components

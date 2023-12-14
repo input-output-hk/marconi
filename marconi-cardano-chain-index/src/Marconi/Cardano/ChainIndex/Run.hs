@@ -25,12 +25,12 @@ import Marconi.Cardano.ChainIndex.Api.Types (
   HttpServerConfig (HttpServerConfig),
  )
 import Marconi.Cardano.ChainIndex.CLI qualified as Cli
+import Marconi.Cardano.ChainIndex.Indexers (buildIndexers)
 import Marconi.Cardano.ChainIndex.Utils qualified as Utils
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam), TargetAddresses)
-import Marconi.Cardano.Indexers (buildIndexers)
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core

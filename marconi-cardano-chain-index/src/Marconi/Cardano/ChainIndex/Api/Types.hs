@@ -15,8 +15,8 @@ import Cardano.BM.Trace (Trace)
 import Control.Lens (makeLenses)
 import Data.Aeson qualified as Aeson
 import Data.Text (Text)
+import Marconi.Cardano.ChainIndex.Indexers (MarconiCardanoQueryables)
 import Marconi.Cardano.Core.Types (SecurityParam)
-import Marconi.Cardano.Indexers (MarconiCardanoQueryables)
 
 data HttpServerConfig = HttpServerConfig
   { _configTrace :: !(Trace IO Text)

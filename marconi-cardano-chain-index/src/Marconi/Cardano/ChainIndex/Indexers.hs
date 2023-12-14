@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Marconi.Cardano.Indexers where
+module Marconi.Cardano.ChainIndex.Indexers where
 
 import Cardano.Api.Extended qualified as C
 import Cardano.BM.Tracing qualified as BM
@@ -30,6 +30,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
  )
 import Marconi.Cardano.Core.Transformer.WithSyncStats (WithSyncStats)
 import Marconi.Cardano.Core.Types (
+  AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
   BlockRange,
   MarconiTrace,
@@ -69,7 +70,6 @@ import Marconi.Core qualified as Core
 import Marconi.Core.Preprocessor qualified as Core
 import System.FilePath ((</>))
 
-data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
 type instance
   Core.Point (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent) =
     C.ChainPoint
@@ -235,33 +235,6 @@ buildTxBodyCoordinator
 buildTxBodyCoordinator textLogger extract workers = do
   let indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
   Core.worker <$> coordinatorWorker "TxBody coordinator" indexerEventLogger extract workers
-
--- | Configure and start the @BlockInfo@ indexer
-blockInfoBuilder
-  :: (MonadIO n, MonadError Core.IndexerError n)
-  => SecurityParam
-  -> Core.CatchupConfig
-  -> BM.Trace IO Text
-  -> FilePath
-  -> n (StandardWorker IO BlockEvent BlockInfo.BlockInfo Core.SQLiteIndexer)
-blockInfoBuilder securityParam catchupConfig textLogger path =
-  let indexerName = "BlockInfo"
-      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
-      blockInfoDbPath = path </> BlockInfo.dbName
-      catchupConfigWithTracer =
-        catchupConfig
-          & Core.configCatchupEventHook
-            ?~ BlockInfo.catchupConfigEventHook indexerName textLogger blockInfoDbPath
-      extractBlockInfo :: BlockEvent -> BlockInfo.BlockInfo
-      extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = BlockInfo.fromBlockEratoBlockInfo b eno t
-      blockInfoWorkerConfig =
-        StandardWorkerConfig
-          indexerName
-          securityParam
-          catchupConfigWithTracer
-          (pure . Just . extractBlockInfo)
-          (BM.appendName indexerName indexerEventLogger)
-   in BlockInfo.blockInfoWorker blockInfoWorkerConfig (path </> BlockInfo.dbName)
 
 -- | Configure and start the @Utxo@ indexer
 utxoBuilder

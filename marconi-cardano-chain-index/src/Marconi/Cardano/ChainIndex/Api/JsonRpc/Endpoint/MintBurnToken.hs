@@ -24,8 +24,8 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (catMaybes)
 import GHC.Generics (Generic)
 import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
+import Marconi.Cardano.ChainIndex.Indexers (queryableMintToken)
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.Cardano.Indexers (queryableMintToken)
 import Marconi.Cardano.Indexers.MintTokenEvent (
   mintAssetAssetName,
   mintAssetQuantity,

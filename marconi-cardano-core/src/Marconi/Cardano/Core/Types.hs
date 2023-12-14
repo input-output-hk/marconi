@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -30,6 +31,7 @@ module Marconi.Cardano.Core.Types (
   -- * Aliases to ease concept mapping between plutus types and cardano types
   TxOutRef,
   txOutRef,
+  AnyTxBody (AnyTxBody),
 
   -- * Reexport from cardano-api-extended
   BlockEvent (..),
@@ -143,6 +145,9 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     , SQL.ToField
     , SQL.FromField
     )
+
+-- | An existential type representing a transaction with @C.'TxBody' era@ for any Cardano era.
+data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
 
 -- | Common configuration required to run indexers
 data RunIndexerConfig = RunIndexerConfig

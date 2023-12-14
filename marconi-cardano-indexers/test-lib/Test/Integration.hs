@@ -27,8 +27,8 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Ledger.Test (testnet)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Runner qualified as Runner
+import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody))
 import Marconi.Cardano.Core.Types qualified as Types
-import Marconi.Cardano.Indexers (AnyTxBody (AnyTxBody))
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Helpers qualified as Core.Helpers
 import Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent qualified as Gen.MintTokenEvent

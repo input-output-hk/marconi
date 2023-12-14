@@ -33,7 +33,7 @@ import Marconi.Cardano.ChainIndex.Api.Types (
   configQueryables,
   configTrackedAddresses,
  )
-import Marconi.Cardano.Indexers (queryableUtxo)
+import Marconi.Cardano.ChainIndex.Indexers (queryableUtxo)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BI
 import Marconi.Cardano.Indexers.Utxo (datumHash, txIn, txIndex, value)
 import Marconi.Cardano.Indexers.UtxoQuery (

@@ -18,6 +18,7 @@ module Marconi.Cardano.Indexers.BlockInfo (
   BlockInfoIndexer,
   mkBlockInfoIndexer,
   blockInfoWorker,
+  blockInfoBuilder,
   StandardBlockInfoIndexer,
   catchupConfigEventHook,
 
@@ -33,7 +34,8 @@ module Marconi.Cardano.Indexers.BlockInfo (
 
 import Cardano.Api qualified as C
 import Cardano.BM.Data.Trace (Trace)
-import Control.Lens ((^.))
+import Cardano.BM.Tracing qualified as BM
+import Control.Lens ((&), (?~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (throwError))
@@ -42,6 +44,7 @@ import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
 import Data.String (fromString)
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Time qualified as Time
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
@@ -53,12 +56,14 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
-  StandardWorkerConfig,
+  StandardWorkerConfig (StandardWorkerConfig),
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.Core qualified as Core
+import System.FilePath ((</>))
 
 data BlockInfo = BlockInfo
   { _blockNo :: !C.BlockNo
@@ -151,6 +156,33 @@ blockInfoWorker
 blockInfoWorker config path = do
   indexer <- mkBlockInfoIndexer path
   mkStandardWorker config indexer
+
+-- | Configure and start the @BlockInfo@ indexer suitable for use in a coordinator.
+blockInfoBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> BM.Trace IO Text
+  -> FilePath
+  -> n (StandardWorker IO BlockEvent BlockInfo Core.SQLiteIndexer)
+blockInfoBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "BlockInfo"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      blockInfoDbPath = path </> dbName
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook
+            ?~ catchupConfigEventHook indexerName textLogger blockInfoDbPath
+      extractBlockInfo :: BlockEvent -> BlockInfo
+      extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = fromBlockEratoBlockInfo b eno t
+      blockInfoWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfigWithTracer
+          (pure . Just . extractBlockInfo)
+          (BM.appendName indexerName indexerEventLogger)
+   in blockInfoWorker blockInfoWorkerConfig (path </> dbName)
 
 type instance Core.Result (BlockInfoBySlotNoQuery event) = Maybe event
 

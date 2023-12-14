@@ -14,6 +14,7 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Marconi.Cardano.ChainIndex.CLI (parseSnapshotOptions)
 import Marconi.Cardano.ChainIndex.CLI qualified as Cli
+import Marconi.Cardano.ChainIndex.Indexers (buildIndexersForSnapshot)
 import Marconi.Cardano.ChainIndex.Utils qualified as Utils
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
@@ -23,7 +24,6 @@ import Marconi.Cardano.Core.Runner (
   runIndexer,
   withDistanceAndTipPreprocessor,
  )
-import Marconi.Cardano.Indexers (buildIndexersForSnapshot)
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
  )

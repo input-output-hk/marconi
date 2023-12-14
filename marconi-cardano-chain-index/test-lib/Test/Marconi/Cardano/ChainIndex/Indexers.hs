@@ -4,7 +4,7 @@
 {- | Generators and helpers for testing @Marconi.Cardano.Indexers@, namely the
 'SyncStatsCoordinator'.
 -}
-module Test.Gen.Marconi.Cardano.Indexers where
+module Test.Gen.Marconi.Cardano.ChainIndex.Indexers where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Tracing qualified as BM
@@ -17,6 +17,7 @@ import Control.Monad.Trans (lift)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Marconi.Cardano.ChainIndex.Indexers qualified as Indexers
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
@@ -28,7 +29,6 @@ import Marconi.Cardano.Core.Types (
   SecurityParam,
   TxIndexInBlock,
  )
-import Marconi.Cardano.Indexers qualified as Indexers
 import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Cardano.Indexers.Coordinator (syncStatsCoordinator)

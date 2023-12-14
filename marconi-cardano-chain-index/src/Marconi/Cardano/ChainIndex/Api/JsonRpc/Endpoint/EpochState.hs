@@ -22,11 +22,11 @@ import Data.Aeson.TH (defaultOptions, deriveJSON, fieldLabelModifier)
 import Data.Char (toLower)
 import GHC.Word (Word64)
 import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.Cardano.ChainIndex.Utils qualified as Util
-import Marconi.Cardano.Indexers (
+import Marconi.Cardano.ChainIndex.Indexers (
   queryableEpochNonce,
   queryableEpochSDD,
  )
+import Marconi.Cardano.ChainIndex.Utils qualified as Util
 import Marconi.Cardano.Indexers.EpochNonce qualified as EpochState
 import Marconi.Cardano.Indexers.EpochSDD qualified as EpochState
 import Marconi.Core qualified as Core

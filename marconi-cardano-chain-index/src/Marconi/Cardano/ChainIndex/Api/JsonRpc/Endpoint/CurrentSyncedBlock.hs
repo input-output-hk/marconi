@@ -24,7 +24,7 @@ import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip (
   fromChainTip,
  )
 import Marconi.Cardano.ChainIndex.Api.Types (HttpServerConfig, configQueryables)
-import Marconi.Cardano.Indexers (queryableCurrentSyncPoint)
+import Marconi.Cardano.ChainIndex.Indexers (queryableCurrentSyncPoint)
 import Marconi.Cardano.Indexers.BlockInfo (BlockInfo)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Cardano.Indexers.CurrentSyncPointQuery qualified as CurrentSyncPoint
