@@ -1730,13 +1730,19 @@ propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabil
 propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   guid <- liftIO nextRandom
-  (_, (actual, expected)) <- liftIO $ Tmp.withSystemTempDirectory (show guid) $ \dir -> do
-    let chainSubset = take (chainSizeSubset args) (eventGenerator args)
-        fileName = dir </> "file.sock"
-    serverStarted <- newQSem 1
-    concurrently
-      (server fileName chainSubset serverStarted)
-      (client fileName chainSubset serverStarted)
+  (_, (actual, expected)) <- liftIO
+    $ Tmp.withSystemTempDirectory
+      ( take 20 $
+          filter ('-' /=) $
+            show guid
+      )
+    $ \dir -> do
+      let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+          fileName = dir </> "file"
+      serverStarted <- newQSem 1
+      concurrently
+        (server fileName chainSubset serverStarted)
+        (client fileName chainSubset serverStarted)
 
   GenM.stop (actual == expected)
   where
