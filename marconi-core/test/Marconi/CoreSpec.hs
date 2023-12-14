@@ -1733,6 +1733,8 @@ propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabili
       mempty
     $ \dir -> do
       let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+          -- We need to make the filename as short as possible, because we're very limited by path
+          -- length
           fileName = dir </> "f"
       serverStarted <- newQSem 1
       concurrently
