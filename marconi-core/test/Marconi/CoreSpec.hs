@@ -196,6 +196,7 @@ import Network.Socket (
 import Network.Socket.ByteString (sendAll)
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as S
+import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.ModelBased qualified as Model
 import Test.QuickCheck (Arbitrary, Gen, Property, (===), (==>))
@@ -1728,14 +1729,15 @@ propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabil
 propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
   (_, (actual, expected)) <- liftIO
-    $ Tmp.withSystemTempFile
-      "stream-socket"
-    $ \path _ -> do
+    $ Tmp.withSystemTempDirectory
+      "stream"
+    $ \dir -> do
       let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+          fileName = dir </> "socket"
       serverStarted <- newQSem 1
       concurrently
-        (server path chainSubset serverStarted)
-        (client path chainSubset serverStarted)
+        (server fileName chainSubset serverStarted)
+        (client fileName chainSubset serverStarted)
 
   GenM.stop (actual == expected)
   where
