@@ -362,13 +362,10 @@ instance
             then blockIndexer (Core.index $ Core.Timed point $ Just blockInMode')
             else pure
     indexer'' <-
-      if snapshotTime || isNewEpoch
-        then
-          pure . resetOnSnapshot
-            <=< snapshotLedgerState
-            <=< snapshotBlock
-            $ indexer'
-        else pure indexer'
+      pure . resetOnSnapshot
+        <=< snapshotLedgerState
+        <=< snapshotBlock
+        $ indexer'
     Core.indexVia coordinator timedEvent indexer''
 
   rollback point =
@@ -593,7 +590,7 @@ buildExtLedgerStateEventIndexer codecConfig securityParam' path = do
           _ -> init immutableEvents
   Core.mkFileIndexer
     path
-    (Just 180_000_000) -- Wait 180s for files to finish writing before terminating
+    Nothing -- (Just 180_000_000) -- Wait 180s for files to finish writing before terminating
     (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
     ( Core.EventBuilder
@@ -663,7 +660,7 @@ buildBlockIndexer codecConfig securityParam' path = do
     Just v -> pure v
   Core.mkFileIndexer
     path
-    (Just 60_000_000) -- Wait 60s for files to finish writing before terminating
+    Nothing -- (Just 60_000_000) -- Wait 60s for files to finish writing before terminating
     (Core.FileStorageConfig False immutableBlocks (comparing metadataBlockNo))
     ( Core.FileBuilder
         "block"
