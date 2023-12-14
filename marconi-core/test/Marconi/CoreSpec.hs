@@ -169,6 +169,7 @@ import Data.Sequence (Seq ((:<|), (:|>)))
 import Data.Sequence qualified as Seq
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
+import Data.UUID.V4 (nextRandom)
 import Data.Word (Word64)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
@@ -196,7 +197,8 @@ import Network.Socket (
 import Network.Socket.ByteString (sendAll)
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as S
-import System.IO.Temp (withSystemTempFile)
+import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.ModelBased qualified as Model
 import Test.QuickCheck (Arbitrary, Gen, Property, (===), (==>))
@@ -1728,12 +1730,14 @@ propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabil
 -}
 propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
-  (_, (actual, expected)) <- liftIO $ withSystemTempFile "prop-with-stream-socket" $ \socketPath _ -> do
+  guid <- liftIO nextRandom
+  (_, (actual, expected)) <- liftIO $ withSystemTempDirectory (show guid) $ \dir -> do
     let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+        fileName = dir </> "file.sock"
     serverStarted <- newQSem 1
     concurrently
-      (server socketPath chainSubset serverStarted)
-      (client socketPath chainSubset serverStarted)
+      (server fileName chainSubset serverStarted)
+      (client fileName chainSubset serverStarted)
 
   GenM.stop (actual == expected)
   where
