@@ -69,13 +69,11 @@ import Marconi.Core qualified as Core
 import Marconi.Core.Preprocessor qualified as Core
 import System.FilePath ((</>))
 
+-- Point instances used only in this module
 type instance
   Core.Point (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent) =
     C.ChainPoint
 type instance Core.Point (Either C.ChainTip (WithDistance BlockEvent)) = C.ChainPoint
-type instance Core.Point BlockEvent = C.ChainPoint
-type instance Core.Point C.ChainTip = C.ChainPoint
-type instance Core.Point [AnyTxBody] = C.ChainPoint
 
 -- Convenience aliases for indexers
 type Coordinator = Core.WithTrace IO Core.Coordinator TipAndBlock

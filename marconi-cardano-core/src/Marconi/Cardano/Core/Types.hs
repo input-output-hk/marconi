@@ -77,6 +77,12 @@ import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Core qualified as Core
 import Prettyprinter (Doc)
 
+-- Point type instances for types of this module
+-- or ones from Cardano.Api used throughout.
+type instance Core.Point BlockEvent = C.ChainPoint
+type instance Core.Point C.ChainTip = C.ChainPoint
+type instance Core.Point [AnyTxBody] = C.ChainPoint
+
 -- | Config type for node retries
 data RetryConfig = RetryConfig
   { baseTimeBeforeNextRetry :: !Word64
