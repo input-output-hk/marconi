@@ -155,7 +155,6 @@ runIndexer env = do
       )
       -- The indexer to run given the previous configuration.
       indexer
-      undefined
 
 -- BLOCKEND runBlockInfoIndexer
 

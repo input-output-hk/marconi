@@ -63,7 +63,6 @@ runIndexers = do
           socketPath
       )
       indexer
-      undefined
 
 getStartingPoint
   :: forall event indexer m

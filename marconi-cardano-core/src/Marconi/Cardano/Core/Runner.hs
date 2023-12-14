@@ -41,7 +41,6 @@ import Cardano.Api.Extended.Streaming (
  )
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
-import Control.Concurrent.STM (TBQueue)
 import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
 import Control.Lens ((^.))
@@ -71,18 +70,18 @@ import Streaming qualified as S
 import Streaming.Prelude qualified as S
 
 -- | Runner pre-processing
-data RunIndexerEventPreprocessing event1 event2 = RunIndexerEventPreprocessing
-  { _runIndexerPreprocessEvent :: event1 -> [Core.ProcessedInput C.ChainPoint event2]
-  , _runIndexerExtractBlockNo :: event2 -> Maybe C.BlockNo
-  , _runIndexerExtractTipDistance :: event2 -> Maybe Word
+data RunIndexerEventPreprocessing event = RunIndexerEventPreprocessing
+  { _runIndexerPreprocessEvent :: ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint event]
+  , _runIndexerExtractBlockNo :: event -> Maybe C.BlockNo
+  , _runIndexerExtractTipDistance :: event -> Maybe Word
   }
 
 Lens.makeLenses ''RunIndexerEventPreprocessing
 
 -- | Common configuration required to run indexers
-data RunIndexerConfig event1 event2 = RunIndexerConfig
+data RunIndexerConfig event = RunIndexerConfig
   { _runIndexerConfigTrace :: MarconiTrace IO
-  , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event1 event2
+  , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing event
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
   , _runIndexerConfigNetworkId :: C.NetworkId
@@ -111,13 +110,12 @@ given indexer.
 If you want to start several indexers, use @runIndexers@.
 -}
 runIndexer
-  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event2 indexer
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) a indexer
      , Core.Closeable IO indexer
-     , Core.Point event2 ~ C.ChainPoint
+     , Core.Point a ~ C.ChainPoint
      )
-  => RunIndexerConfig event1 event2
-  -> indexer event2
-  -> ((event1 -> [Core.ProcessedInput C.ChainPoint event2]) -> IO ())
+  => RunIndexerConfig a
+  -> indexer a
   -> IO ()
 runIndexer
   ( RunIndexerConfig
@@ -125,12 +123,11 @@ runIndexer
       eventProcessing
       retryConfig
       securityParam
-      _networkId
+      networkId
       startingPoint
       socketPath
     )
-  indexer
-  streamRunner = do
+  indexer = do
     withNodeConnectRetry trace retryConfig socketPath $ do
       Trace.logInfo trace $
         PP.pretty $
@@ -138,28 +135,26 @@ runIndexer
       eventQueue <- STM.newTBQueueIO $ fromIntegral securityParam
       cBox <- Concurrent.newMVar indexer
       let processEvent = eventProcessing ^. runIndexerPreprocessEvent
+          runChainSyncStream =
+            withChainSyncBlockEventStream
+              socketPath
+              networkId
+              [startingPoint]
+              (mkEventStream processEvent eventQueue)
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.pretty NoIntersectionFoundLog
-      void $ Concurrent.forkIO $ streamRunner processEvent `catch` whenNoIntersectionFound
+      void $ Concurrent.forkIO $ runChainSyncStream `catch` whenNoIntersectionFound
       Core.processQueue
-        -- TODO: this is not ok, we need to assume that the chain is stable
         (stablePointComputation securityParam eventProcessing)
         Map.empty
         eventQueue
         cBox
 
-runChainSyncStream socketPath networkId startingPoint eventQueue processEvent =
-  withChainSyncBlockEventStream
-    socketPath
-    networkId
-    [startingPoint]
-    (mkEventStream processEvent eventQueue)
-
 stablePointComputation
   :: SecurityParam
-  -> RunIndexerEventPreprocessing event1 event2
-  -> Core.Timed C.ChainPoint (Maybe event2)
+  -> RunIndexerEventPreprocessing event
+  -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
 stablePointComputation securityParam preprocessing (Core.Timed point event) = do
   let distanceM = preprocessing ^. runIndexerExtractTipDistance =<< event
@@ -185,15 +180,15 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: (event -> [Core.ProcessedInput C.ChainPoint a])
+  :: (ChainSyncEvent BlockEvent -> [Core.ProcessedInput C.ChainPoint a])
   -> STM.TBQueue (Core.ProcessedInput C.ChainPoint a)
-  -> S.Stream (S.Of event) IO r
+  -> S.Stream (S.Of (ChainSyncEvent BlockEvent)) IO r
   -> IO r
 mkEventStream processEvent q =
   S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
 
 withDistanceAndTipPreprocessor
-  :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) TipAndBlock
+  :: RunIndexerEventPreprocessing TipAndBlock
 withDistanceAndTipPreprocessor =
   let extractChainTipAndAddDistance
         :: ChainSyncEvent BlockEvent
@@ -218,7 +213,7 @@ withDistanceAndTipPreprocessor =
       blockNoFromBlockEvent _ = Nothing
    in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
 
-withNoPreprocessor :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) BlockEvent
+withNoPreprocessor :: RunIndexerEventPreprocessing BlockEvent
 withNoPreprocessor =
   let eventToProcessedInput
         :: ChainSyncEvent BlockEvent
@@ -231,8 +226,7 @@ withNoPreprocessor =
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
 
-withDistancePreprocessor
-  :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)
+withDistancePreprocessor :: RunIndexerEventPreprocessing (WithDistance BlockEvent)
 withDistancePreprocessor =
   let addDistance
         :: ChainSyncEvent BlockEvent

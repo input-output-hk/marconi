@@ -10,7 +10,6 @@ module Test.Integration (
 ) where
 
 import Cardano.Api.Extended.IPC qualified as C
-import Cardano.Api.Extended.Streaming.ChainSyncEvent (ChainSyncEvent)
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.LogItem (LOContent (LogMessage), loContent)
 import Cardano.Node.Emulator.Generators (knownAddresses, knownXPrvs)
@@ -219,8 +218,8 @@ mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100
 mkEndToEndRunIndexerConfig
   :: Types.MarconiTrace IO
   -> E.Types.NodeServerConfig
-  -> Runner.RunIndexerEventPreprocessing inputEvent outputEvent
-  -> Runner.RunIndexerConfig inputEvent outputEvent
+  -> Runner.RunIndexerEventPreprocessing event
+  -> Runner.RunIndexerConfig event
 mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
   Runner.RunIndexerConfig
     marconiTrace
@@ -233,9 +232,7 @@ mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
     (E.Types.nscSocketPath nscConfig)
 
 anyTxBodyWithDistancePreprocessor
-  :: Runner.RunIndexerEventPreprocessing
-      (ChainSyncEvent Types.BlockEvent)
-      (Distance.WithDistance [AnyTxBody])
+  :: Runner.RunIndexerEventPreprocessing (Distance.WithDistance [AnyTxBody])
 anyTxBodyWithDistancePreprocessor =
   Runner.RunIndexerEventPreprocessing
     (map (fmap (fmap toTxBodys)) . basePreprocessor)

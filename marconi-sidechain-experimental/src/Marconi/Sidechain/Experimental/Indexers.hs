@@ -3,7 +3,6 @@
 module Marconi.Sidechain.Experimental.Indexers where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Extended.Streaming.ChainSyncEvent (ChainSyncEvent)
 import Cardano.BM.Trace (Trace)
 import Control.Lens (makeLenses, over, (^.))
 import Control.Monad.Except (runExceptT)
@@ -26,7 +25,7 @@ import Marconi.Core (CatchupConfig, IndexerError)
 
 -- | Configuration for running indexers via a coordinator.
 data SidechainRunIndexersConfig = SidechainRunIndexersConfig
-  { _sidechainRunIndexersRunIndexerConfig :: !(RunIndexerConfig (ChainSyncEvent BlockEvent) TipAndBlock)
+  { _sidechainRunIndexersRunIndexerConfig :: !(RunIndexerConfig TipAndBlock)
   , _sidechainRunIndexersCoordinator :: !SyncStatsCoordinator
   }
 
@@ -88,4 +87,3 @@ runIndexers = do
     ChainIndex.Runner.runIndexer
       (config ^. sidechainRunIndexersRunIndexerConfig)
       (config ^. sidechainRunIndexersCoordinator)
-      undefined

@@ -96,7 +96,7 @@ run = do
       Left err -> withLogFullError exitFailure sb trace $ Text.pack $ show err
       Right result -> pure result
 
-  runIndexer snapshotConfig snapshotCoordinator undefined
+  runIndexer snapshotConfig snapshotCoordinator
   where
     withLogFullError action sb trace msg = do
       logError trace msg

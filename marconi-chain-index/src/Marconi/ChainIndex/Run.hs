@@ -150,7 +150,6 @@ run appName = withGracefulTermination_ $ do
               socketPath
           )
           coordinator
-          undefined
       runHttpServer' =
         runReaderT runHttpServer $
           HttpServerConfig
