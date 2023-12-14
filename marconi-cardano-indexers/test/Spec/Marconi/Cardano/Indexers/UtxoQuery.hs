@@ -8,7 +8,7 @@ module Spec.Marconi.Cardano.Indexers.UtxoQuery (
 import Cardano.Api qualified as C
 import Control.Lens ((^.), (^..), (^?))
 import Control.Lens qualified as Lens
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
 import Data.List qualified as List
@@ -34,9 +34,13 @@ tests =
     [ testGroup
         "Indexer"
         [ testPropertyNamed
-            "All returned utxos are unspent"
+            "All returned utxos are unspent or spent after the upper bound"
             "propAllUnspent"
             propAllUnspent
+        , testPropertyNamed
+            "All returned utxos are unspent when the queried point is genesis with no upper bound"
+            "propAllUnspentWhenPointGenesis"
+            propAllUnspentWhenPointGenesis
         , testPropertyNamed
             "Future spent has a corresponding txIn"
             "propFutureSpentAreTxIn"
@@ -69,6 +73,36 @@ propAllUnspent = Hedgehog.property $ do
         Core.query point (UtxoQuery.UtxoQueryInput address Nothing Nothing)
   Hedgehog.assert $
     all (> point) (res ^.. Lens.folded . UtxoQuery.spentInfo . Lens.folded . Core.point)
+
+{- | When the @point@ passed to @Core.'query'@ is 'genesis', and there is no provided upper bound,
+the query should return all UTxOs that are unspent given the full history.
+-}
+propAllUnspentWhenPointGenesis :: Property
+propAllUnspentWhenPointGenesis = Hedgehog.property $ do
+  events <- Hedgehog.forAll Test.Mockchain.genMockchainWithInfo
+  let
+    utxoEvents =
+      Test.Utxo.getTimedUtxosEvents $
+        Test.Mockchain.mockchainWithInfoAsMockchain events
+    utxos = utxoEvents ^.. Lens.folded . Core.event . Lens.folded . Lens.folded
+    hasUtxoEvents = not $ null utxos
+
+  Hedgehog.cover 90 "Has at least one UTxO" hasUtxoEvents
+  when hasUtxoEvents $ do
+    -- Take the last UTxO to guarantee the result should
+    -- have at least one element.
+    let
+      event = last utxos
+      address = event ^. Utxo.address
+
+    res :: [UtxoQuery.UtxoResult] <-
+      liftIO $
+        Test.UtxoQuery.withIndexer events $
+          Core.query Core.genesis (UtxoQuery.UtxoQueryInput address Nothing Nothing)
+
+    Hedgehog.assert $
+      -- This should be empty since none of the returned UTxOs should have been spent.
+      null (res ^.. Lens.folded . UtxoQuery.spentInfo . Lens.folded)
 
 -- | If an UTxO has a datum, it should be resolved
 propResolvedDatum :: Property
