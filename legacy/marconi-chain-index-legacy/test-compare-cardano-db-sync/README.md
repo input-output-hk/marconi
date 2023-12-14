@@ -1,6 +1,6 @@
 ## Expose cardano-node's socket to host machine
 
-1. Clone [cardano-db-sync](https://github.com/input-output-hk/cardano-db-sync/), change docker-compose.yaml =volumes= section to following:
+1. Clone [cardano-db-sync](https://github.com/IntersectMBO/cardano-db-sync/), change docker-compose.yaml =volumes= section to following:
    ```yaml
    volumes:
      db-sync-data:

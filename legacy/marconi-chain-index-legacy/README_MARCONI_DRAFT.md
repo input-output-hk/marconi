@@ -140,7 +140,7 @@ Can we provide example queries?
 
 The `marconi` executable is available as a nix flake.
 
-You may either clone the [`plutus-apps`](https://github.com/input-output-hk/plutus-apps)
+You may either clone the [`plutus-apps`](https://github.com/IntersectMBO/plutus-apps)
 repository and run from the top-level:
 ```
 nix build .#marconi

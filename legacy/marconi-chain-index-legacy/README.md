@@ -8,7 +8,7 @@ Currently, this executable only acts as a chain-indexer, and doesn't provide a s
 * [GHC](https://www.haskell.org/downloads/) (`==8.10.7`)
 * [Nix](https://nixos.org/download.html) (`>=2.5.1`)
   * Enable [IOHK's binary cache](https://iohk.zendesk.com/hc/en-us/articles/900000673963-Installing-Nix-on-Linux-distribution-and-setting-up-IOHK-binaries) or else you will build the world!
-* [cardano-node](https://github.com/input-output-hk/cardano-node) ([==1.35.4](https://github.com/input-output-hk/cardano-node/releases/tag/1.35.4))
+* [cardano-node](https://github.com/IntersectMBO/cardano-node) ([==1.35.4](https://github.com/IntersectMBO/cardano-node/releases/tag/1.35.4))
 
 ## How to build from source
 

@@ -438,7 +438,7 @@ propTxInWhenPhase2ValidationFails = Hedgehog.property $ do
       expectedTxIns :: [C.TxIn] = fmap fst txIns
 
   case txScriptValidity of
-    -- this is the same as script is valid, see https://github.com/input-output-hk/cardano-node/pull/4569
+    -- this is the same as script is valid, see https://github.com/IntersectMBO/cardano-node/pull/4569
     C.TxScriptValidityNone ->
       Hedgehog.assert $ and [u `elem` expectedTxIns | u <- computedTxIns]
     (C.TxScriptValidity _ C.ScriptValid) ->

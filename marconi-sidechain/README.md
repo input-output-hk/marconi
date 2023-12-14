@@ -27,7 +27,7 @@ If *not* using **Nix** or **Docker**:
 
 * [GHC](https://www.haskell.org/downloads/) (`==8.10.7`)
 * [Cabal](https://www.haskell.org/cabal/download.html) (`>=3.4.0.0`)
-* [cardano-node](https://github.com/input-output-hk/cardano-node/releases/tag/1.35.4) (`==1.35.4`) running on preview testnet, pre-production testnet or mainnet
+* [cardano-node](https://github.com/IntersectMBO/cardano-node/releases/tag/1.35.4) (`==1.35.4`) running on preview testnet, pre-production testnet or mainnet
 
 ## How to build from source
 

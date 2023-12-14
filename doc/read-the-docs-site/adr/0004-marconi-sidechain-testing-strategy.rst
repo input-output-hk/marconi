@@ -80,7 +80,7 @@ END-TO-END TESTING:
   See RPC-1 in https://github.com/input-output-hk/marconi/issues/93 for a checklist of test cases.
 
 * We will produce tests for the RPC API methods to cover a board set of response data comparing against a source of truth.
-  These tests will compare against results produced by `cardano-db-sync <https://github.com/input-output-hk/cardano-db-sync>`_
+  These tests will compare against results produced by `cardano-db-sync <https://github.com/IntersectMBO/cardano-db-sync>`_
   These tests will ideally be run on mainnet
   see RPC-2 in https://github.com/input-output-hk/marconi/issues/93 for a checklist of test cases.
 

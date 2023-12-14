@@ -260,7 +260,7 @@ allows us to remove the ``source-repository-package`` stanza.
 Sometimes you may want to make a change that spans both `marconi` *and* some of its dependencies.
 The obvious workflow is to make changes in the dependency's repository, update the pin in `marconi` to point to the new commit, test, repeat.
 But this is very tedious and it's much nicer to work with a local checkout where cabal can incrementally rebuild the whole thing.
-https://github.com/input-output-hk/plutus-apps/blob/main/CONTRIBUTING.adoc#how-to-work-with-a-local-copy-of-source-dependencies[Plutus-apps repository] has a nice example of such workflow.
+https://github.com/IntersectMBO/plutus-apps/blob/main/CONTRIBUTING.adoc#how-to-work-with-a-local-copy-of-source-dependencies[Plutus-apps repository] has a nice example of such workflow.
 
 == Working conventions
 

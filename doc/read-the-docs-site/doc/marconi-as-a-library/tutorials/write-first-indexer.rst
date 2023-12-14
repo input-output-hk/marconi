@@ -7,8 +7,8 @@ In this tutorial, we'll show you how to write the simplest possible indexer, and
 
 In order to understand the tutorial, you need to understand:
 
-* Cardano blockchain (specifically `cardano-node <https://github.com/input-output-hk/cardano-node>`_)
-* Haskell (mainly the `cardano-api <https://github.com/input-output-hk/cardano-api>`_, `lens <https://hackage.haskell.org/package/lens>`_, `sqlite-simple <https://hackage.haskell.org/package/sqlite-simple>`_ libraries)
+* Cardano blockchain (specifically `cardano-node <https://github.com/IntersectMBO/cardano-node>`_)
+* Haskell (mainly the `cardano-api <https://github.com/IntersectMBO/cardano-api>`_, `lens <https://hackage.haskell.org/package/lens>`_, `sqlite-simple <https://hackage.haskell.org/package/sqlite-simple>`_ libraries)
 * How chain-indexing works in general
 
 The main building blocks of an indexer are:
@@ -74,7 +74,7 @@ In order to run that you need to start a Cardano node which will produce a UNIX
 socket file. That socket file is what Marconi will use to communicate with the
 node.
 
-Instructions on how to run a Cardano node are detailed `here <https://github.com/input-output-hk/cardano-node>`_ along with the list of Cardano networks.
+Instructions on how to run a Cardano node are detailed `here <https://github.com/IntersectMBO/cardano-node>`_ along with the list of Cardano networks.
 However, in the Marconi Github repository, you can enter a Nix shell which provides the
 `cardano-node` executable by doing::
 

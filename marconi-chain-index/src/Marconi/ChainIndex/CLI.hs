@@ -118,7 +118,7 @@ commonStartFromParser =
         . C8.pack
 
 -- TODO: `pNetworkId` and `pTestnetMagic` are copied from
--- https://github.com/input-output-hk/cardano-node/blob/988c93085022ed3e2aea5d70132b778cd3e622b9/cardano-cli/src/Cardano/CLI/Shelley/Parsers.hs#L2009-L2027
+-- https://github.com/IntersectMBO/cardano-node/blob/988c93085022ed3e2aea5d70132b778cd3e622b9/cardano-cli/src/Cardano/CLI/Shelley/Parsers.hs#L2009-L2027
 -- Use them from there whenever they are exported.
 commonNetworkIdParser :: Opt.Parser C.NetworkId
 commonNetworkIdParser = pMainnetParser Opt.<|> fmap C.Testnet pTestnetMagicParser

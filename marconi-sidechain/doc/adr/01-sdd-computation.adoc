@@ -135,7 +135,7 @@ Then, any chain-indexer (like `marconi-sidechain`) will read these `LedgerEvent`
 At this stage, it is important to note why we suggest to store `LedgerEvent` and not the full `LedgerState`.
 A `LedgerEvent` is derived from the `LedgerState` and describes changes to the `LedgerState` after each block is applied.
 Thus, it is a smaller data structure when compared to `LedgerState`.
-See https://github.com/input-output-hk/cardano-ledger/blob/master/docs/LedgerEvents.md for more information.
+See https://github.com/IntersectMBO/cardano-ledger/blob/master/docs/LedgerEvents.md for more information.
 ====
 
 A container diagram of this solution would look like:
