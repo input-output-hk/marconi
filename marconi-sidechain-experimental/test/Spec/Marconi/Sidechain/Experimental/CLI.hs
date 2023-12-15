@@ -5,6 +5,7 @@ module Spec.Marconi.Sidechain.Experimental.CLI where
 import Data.ByteString.Lazy (ByteString, fromStrict)
 import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
+import Marconi.Sidechain.Experimental.CLI (programParser)
 import Options.Applicative (
   ParserResult (CompletionInvoked, Failure, Success),
   defaultPrefs,
@@ -13,8 +14,6 @@ import Options.Applicative (
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
-
-import Marconi.Sidechain.Experimental.CLI (programParser)
 
 tests :: TestTree
 tests =

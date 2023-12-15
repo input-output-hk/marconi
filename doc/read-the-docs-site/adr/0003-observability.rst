@@ -19,7 +19,7 @@ Context
 -------
 
 Whenever we add new features in Marconi, we inevitably end up in a state where we introduce a significant regression in sync time, CPU/RAM/Disk usage and query performance.
-Currently, developers who are adding new features will typically test those features by running ``marconi-chain-index`` or ``marconi-sidechain``, and manually visualize the CPU/RAM usage by running ``htop`` (or similar), checking syncing speed by reading the logs, and manually run queries after syncing is done.
+Currently, developers who are adding new features will typically test those features by running ``marconi-cardano-chain-index`` or ``marconi-sidechain``, and manually visualize the CPU/RAM usage by running ``htop`` (or similar), checking syncing speed by reading the logs, and manually run queries after syncing is done.
 However, that approach does not give accurate information for detecting regressions, because we only look at the logs at specific points in time and we might miss peaks in memory usage for example.
 Moreover, this testing approach does not scale for delivering on time the different features.
 

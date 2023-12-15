@@ -1,6 +1,6 @@
 module Marconi.Starter.CLI where
 
-import Marconi.ChainIndex.CLI qualified as CLI
+import Marconi.Cardano.ChainIndex.CLI qualified as CLI
 import Options.Applicative qualified as Opt
 
 data Options = Options

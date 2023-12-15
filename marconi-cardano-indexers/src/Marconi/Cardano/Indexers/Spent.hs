@@ -16,6 +16,7 @@ module Marconi.Cardano.Indexers.Spent (
   SpentIndexer,
   mkSpentIndexer,
   spentWorker,
+  spentBuilder,
   StandardSpentIndexer,
   catchupConfigEventHook,
 
@@ -25,7 +26,8 @@ module Marconi.Cardano.Indexers.Spent (
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
-import Control.Lens ((^.))
+import Cardano.BM.Tracing qualified as BM
+import Control.Lens ((&), (?~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
@@ -36,6 +38,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
 import Data.String (fromString)
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -44,12 +47,14 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
-  StandardWorkerConfig,
+  StandardWorkerConfig (StandardWorkerConfig),
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import System.FilePath ((</>))
 
 data SpentInfo = SpentInfo
   { _spentTxOutRef :: C.TxIn
@@ -164,6 +169,35 @@ spentWorker
 spentWorker config path = do
   indexer <- mkSpentIndexer path
   mkStandardWorker config indexer
+
+{- | Convenience wrapper around 'spentWorker' with some defaults for
+creating 'StandardWorkerConfig', including a preprocessor.
+-}
+spentBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> BM.Trace IO Text
+  -> FilePath
+  -> n (StandardWorker IO [AnyTxBody] SpentInfoEvent Core.SQLiteIndexer)
+spentBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "Spent"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      spentDbPath = path </> "spent.db"
+      extractSpent :: AnyTxBody -> [SpentInfo]
+      extractSpent (AnyTxBody _ _ txb) = getInputs txb
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook
+            ?~ catchupConfigEventHook textLogger spentDbPath
+      spentWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfigWithTracer
+          (pure . NonEmpty.nonEmpty . (>>= extractSpent))
+          (BM.appendName indexerName indexerEventLogger)
+   in spentWorker spentWorkerConfig spentDbPath
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery SpentInfoEvent)) m)

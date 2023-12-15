@@ -8,9 +8,9 @@ module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo (
   getPastAddressUtxoHandler,
 ) where
 
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo qualified as ChainIndex
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo qualified as ChainIndex
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr)

@@ -27,8 +27,8 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import Ledger.Test (testnet)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Runner qualified as Runner
+import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody))
 import Marconi.Cardano.Core.Types qualified as Types
-import Marconi.Cardano.Indexers (AnyTxBody (AnyTxBody))
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Helpers qualified as Core.Helpers
 import Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent qualified as Gen.MintTokenEvent
@@ -206,7 +206,7 @@ quantityToZero = C.valueFromList . map (fmap (const 0)) . C.valueToList
 {- Indexers and queries -}
 
 {- | @Core.'CatchupConfig'@ with values suitable for end-to-end tests. The current values are taken
-from those hard-coded in the marconi-chain-index application.
+from those hard-coded in the marconi-cardano-chain-index application.
 -}
 mkEndToEndCatchupConfig :: Core.CatchupConfig
 mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100

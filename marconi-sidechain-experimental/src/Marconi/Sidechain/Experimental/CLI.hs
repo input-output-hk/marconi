@@ -13,12 +13,12 @@ import Cardano.Api qualified as C
 import Data.Aeson (FromJSON, ToJSON)
 import Data.List.NonEmpty (NonEmpty)
 import GHC.Generics (Generic)
+import Marconi.Cardano.ChainIndex.CLI qualified as Cli
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
   RetryConfig,
   TargetAddresses,
  )
-import Marconi.ChainIndex.CLI qualified as Cli
 import Options.Applicative qualified as Opt
 
 -- | Type represents http port for JSON-RPC

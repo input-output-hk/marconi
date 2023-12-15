@@ -7,7 +7,7 @@ Marconi
 
    doc/introduction.rst
    doc/marconi-as-a-library/index
-   doc/marconi-chain-index/index
+   doc/marconi-cardano-chain-index/index
 
 .. toctree::
    :caption: Design and Architecture

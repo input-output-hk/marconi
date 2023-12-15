@@ -1,0 +1,320 @@
+cabal-version: 3.8
+name:          marconi-cardano-chain-index
+version:       1.2.0.0
+license:       Apache-2.0
+license-files:
+  LICENSE
+  NOTICE
+
+author:        Markus Läll
+maintainer:    markus.lall@iohk.io
+homepage:      https://github.com/input-output-hk/marconi#readme
+bug-reports:   https://github.com/input-output-hk/marconi/issues
+description:
+  Please see the README on GitHub at <https://github.com/input-output-hk/marconi#readme>.
+
+build-type:    Simple
+
+source-repository head
+  type:     git
+  location: https://github.com/input-output-hk/marconi
+
+flag ci
+  description: Toggle features on/off when in CI
+  manual:      True
+  default:     True
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    ExplicitForAll
+    FlexibleInstances
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    InstanceSigs
+    MultiParamTypeClasses
+    ScopedTypeVariables
+    StandaloneDeriving
+    TypeApplications
+    TypeFamilies
+
+  ghc-options:
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wmissing-import-lists
+    -Wnoncanonical-monad-instances -Wredundant-constraints
+    -Wunused-packages
+
+common maybe-unix
+  if !os(windows)
+    build-depends: unix
+
+library
+  import:
+    lang
+    , maybe-unix
+
+  hs-source-dirs:  src
+  c-sources:       cbits/rev.c
+  exposed-modules:
+    Marconi.Cardano.ChainIndex.Api.HttpServer
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Echo
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.EpochState
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.MintBurnToken
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.SpentInfoResult
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Routes
+    Marconi.Cardano.ChainIndex.Api.JsonRpc.Server
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Metrics
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Params
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.TargetAddresses
+    Marconi.Cardano.ChainIndex.Api.Rest.Endpoint.Time
+    Marconi.Cardano.ChainIndex.Api.Rest.Routes
+    Marconi.Cardano.ChainIndex.Api.Rest.Server
+    Marconi.Cardano.ChainIndex.Api.Routes
+    Marconi.Cardano.ChainIndex.Api.Types
+    Marconi.Cardano.ChainIndex.CLI
+    Marconi.Cardano.ChainIndex.Error
+    Marconi.Cardano.ChainIndex.Git.Rev
+    Marconi.Cardano.ChainIndex.Git.RevFromGit
+    Marconi.Cardano.ChainIndex.Indexers
+    Marconi.Cardano.ChainIndex.Run
+    Marconi.Cardano.ChainIndex.Snapshot.Run
+    Marconi.Cardano.ChainIndex.Utils
+
+  other-modules:   Paths_marconi_cardano_chain_index
+  autogen-modules: Paths_marconi_cardano_chain_index
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}
+    , marconi-cardano-indexers
+    , marconi-core
+    , marconi-core-json-rpc
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api             ^>=8.20
+    , cardano-crypto-class
+    , cardano-ledger-shelley
+    , cardano-slotting        ^>=0.1.1.1
+    , iohk-monitoring
+    , ouroboros-consensus
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , async
+    , base                  >=4.9 && <5
+    , bytestring
+    , comonad
+    , directory
+    , filepath
+    , lens
+    , mtl
+    , nonempty-containers
+    , optparse-applicative
+    , pretty-simple
+    , process
+    , prometheus-client
+    , servant
+    , servant-server
+    , sqlite-simple
+    , template-haskell
+    , text
+    , time
+    , warp
+
+executable marconi-cardano-chain-index
+  import:         lang
+  hs-source-dirs: app
+  main-is:        Main.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-cardano-chain-index >=1.2.0
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:  base >=4.9 && <5
+
+test-suite marconi-cardano-chain-index-test
+  import:         lang
+  ghc-options:    -Wno-unused-packages
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: test
+  other-modules:
+    Spec.Marconi.Cardano.ChainIndex.Api.Gen
+    Spec.Marconi.Cardano.ChainIndex.Api.Routes
+    Spec.Marconi.Cardano.ChainIndex.CLI
+    Spec.Marconi.Cardano.ChainIndex.CLIInputValidation
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-cardano-chain-index:{marconi-cardano-chain-index, marconi-cardano-chain-index-test-lib}
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
+    , marconi-core:{marconi-core, marconi-core-test-lib}
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                  ^>=8.20
+    , cardano-api-gen              ^>=8.2
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-alonzo        >=1.3.1.1
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-node-emulator
+    , cardano-slotting             ^>=0.1.1.1
+    , hedgehog-extras
+    , iohk-monitoring
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-network
+    , plutus-core
+    , plutus-ledger-api            ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+    , process
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , async
+    , base                  >=4.9 && <5
+    , base16-bytestring
+    , bytestring
+    , cborg
+    , comonad
+    , containers
+    , contra-tracer
+    , directory
+    , filepath
+    , hedgehog
+    , lens
+    , mtl
+    , nonempty-containers
+    , optparse-applicative
+    , postgresql-simple
+    , prettyprinter
+    , serialise
+    , sqlite-simple
+    , stm
+    , streaming
+    , tasty
+    , tasty-golden
+    , tasty-hedgehog
+    , temporary
+    , text
+    , time
+    , transformers
+
+executable marconi-chain-snapshot
+  import:         lang
+  hs-source-dirs: snapshot
+  main-is:        Main.hs
+  ghc-options:    -threaded -rtsopts -with-rtsopts=-N
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:  marconi-cardano-chain-index
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:  base >=4.9 && <5
+
+library marconi-cardano-chain-index-test-lib
+  import:          lang
+
+  -- Needed or else GHC will say that plutus-tx-plugin was not needed for compilation, even though
+  -- we actually use it in the codebase. If we remove the dependency, we get linking errors in other
+  -- components that depend on this library like `marconi-sidechain`.
+  ghc-options:     -Wno-unused-packages
+  visibility:      public
+  hs-source-dirs:  test-lib
+  exposed-modules:
+    Test.Marconi.Cardano.ChainIndex.Api.HttpServer
+    Test.Marconi.Cardano.ChainIndex.Api.JsonRpc
+    Test.Marconi.Cardano.ChainIndex.CLI
+    Test.Marconi.Cardano.ChainIndex.Indexers
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:
+    , marconi-cardano-chain-index
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended, marconi-cardano-core-test-lib}
+    , marconi-cardano-indexers:{marconi-cardano-indexers, marconi-cardano-indexers-test-lib}
+    , marconi-core
+    , marconi-core-json-rpc
+
+  --------------------------
+  -- Other IOG dependencies
+  --------------------------
+  build-depends:
+    , cardano-api                   ^>=8.20
+    , cardano-api-gen               ^>=8.2
+    , cardano-crypto-class
+    , cardano-ledger-core
+    , cardano-node-emulator
+    , cardano-node-socket-emulator
+    , iohk-monitoring
+    , ouroboros-network-protocols
+    , plutus-core
+    , plutus-ledger
+    , plutus-ledger-api             ^>=1.9
+    , plutus-tx
+    , plutus-tx-plugin
+
+  ------------------------
+  -- Non-IOG dependencies
+  ------------------------
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , async
+    , base             >=4.9 && <5
+    , bytestring
+    , containers
+    , contra-tracer
+    , data-default
+    , directory
+    , filepath
+    , hedgehog
+    , hedgehog-extras
+    , lens
+    , mtl
+    , process
+    , streaming
+    , temporary
+    , text
+    , time

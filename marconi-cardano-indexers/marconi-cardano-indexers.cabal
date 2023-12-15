@@ -54,7 +54,6 @@ library
   import:          lang
   hs-source-dirs:  src
   exposed-modules:
-    Marconi.Cardano.Indexers
     Marconi.Cardano.Indexers.BlockInfo
     Marconi.Cardano.Indexers.ChainTip
     Marconi.Cardano.Indexers.Coordinator
@@ -207,7 +206,6 @@ library marconi-cardano-indexers-test-lib
   visibility:      public
   hs-source-dirs:  test-lib
   exposed-modules:
-    Test.Gen.Marconi.Cardano.Indexers
     Test.Gen.Marconi.Cardano.Indexers.BlockInfo
     Test.Gen.Marconi.Cardano.Indexers.Datum
     Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent

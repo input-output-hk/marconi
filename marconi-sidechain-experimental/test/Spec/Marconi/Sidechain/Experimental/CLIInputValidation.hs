@@ -7,9 +7,9 @@ module Spec.Marconi.Sidechain.Experimental.CLIInputValidation where
 import Data.ByteString.Lazy qualified as BSL
 import Data.Functor ((<&>))
 import Data.Maybe (fromJust)
-import Spec.Marconi.Sidechain.Experimental.Utils qualified as U
 import System.FilePath.Posix ((</>))
 import System.Process qualified as IO
+import Test.Marconi.Cardano.ChainIndex.CLI qualified as Test.CLI
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
 
@@ -125,9 +125,9 @@ invalidCliArgWhenStartIngMarconiSideChainTest InvalidArgTestInput{..} = do
               , IO.std_err = IO.CreatePipe
               }
         )
-      =<< U.procFlex
+      =<< Test.CLI.procFlex
         "marconi-sidechain-experimental"
         "MARCONI_SIDECHAIN_EXPERIMENTAL"
         [invalidFlag, invalidArg]
 
-  U.captureHandleContents (fromJust mStderr)
+  Test.CLI.captureHandleContents (fromJust mStderr)

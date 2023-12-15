@@ -24,7 +24,6 @@ import Hedgehog.Gen qualified
 import Marconi.Cardano.Core.Indexer.Worker (StandardWorker (StandardWorker))
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Runner qualified as Runner
-import Marconi.Cardano.Indexers (blockInfoBuilder)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
 import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
@@ -135,7 +134,12 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
     Hedgehog.evalIO $
       either throwIO pure
         =<< runExceptT
-          (blockInfoBuilder (config ^. Runner.runIndexerConfigSecurityParam) catchupConfig trace tempPath)
+          ( BlockInfo.blockInfoBuilder
+              (config ^. Runner.runIndexerConfigSecurityParam)
+              catchupConfig
+              trace
+              tempPath
+          )
   coordinator <- Hedgehog.evalIO $ Core.mkCoordinator [worker]
 
   -- Start the testnet and indexer, and run the query.
