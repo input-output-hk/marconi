@@ -12,6 +12,7 @@ module Marconi.Sidechain.Experimental.CLI (
 import Cardano.Api qualified as C
 import Data.Aeson (FromJSON, ToJSON)
 import Data.List.NonEmpty (NonEmpty)
+import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Marconi.Cardano.ChainIndex.CLI qualified as Cli
 import Marconi.Cardano.Core.Orphans ()
@@ -35,6 +36,8 @@ data CliArgs = CliArgs
   -- ^ TCP/IP port number for JSON-RPC http server
   , networkId :: !C.NetworkId
   -- ^ cardano network id
+  , batchSize :: Word64
+  -- ^ Size of the batches sent to the indexers
   , targetAddresses :: !(Maybe TargetAddresses)
   -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
   , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
@@ -67,6 +70,7 @@ parserCliArgs =
     <*> Cli.commonDbDirParser
     <*> Cli.commonPortParser
     <*> Cli.commonNetworkIdParser
+    <*> Cli.commonBatchSizeParser
     <*> Cli.commonMaybeTargetAddressParser
     <*> Cli.commonMaybeTargetAssetParser
     <*> Cli.commonRetryConfigParser

@@ -27,7 +27,6 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration

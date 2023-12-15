@@ -11,7 +11,7 @@ import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent)
 import Control.Monad (when, (<=<))
 import Control.Monad.Except (runExceptT)
-import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BS
 import Data.List (find, isPrefixOf, sortOn)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)

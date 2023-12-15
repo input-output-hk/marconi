@@ -9,7 +9,8 @@ Usage: marconi-cardano-chain-index [--version] [--debug]
                                      --start-from SLOT-NO:BLOCK-HEADER-HASH] 
                                    [--initial-retry-time NATURAL] 
                                    [--no-max-retry-time | 
-                                     --max-retry-time NATURAL] (-d|--db-dir DIR)
+                                     --max-retry-time NATURAL] 
+                                   [--batch-size INT] (-d|--db-dir DIR) 
                                    [--enable-txoutref] [--disable-utxo] 
                                    [--disable-address-datum] 
                                    [--disable-script-tx] 
@@ -43,6 +44,8 @@ Available options:
   --no-max-retry-time      Unlimited retries.
   --max-retry-time NATURAL Max time (in seconds) allowed after startup for
                            retries. Defaults to 30min.
+  --batch-size INT         Number of blocks send as a batch to the indexers
+                           (default: 3000)
   -d,--db-dir DIR          Directory path where all Marconi-related SQLite
                            databases are located.
   --enable-txoutref        enable txout ref storage.

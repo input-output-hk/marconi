@@ -96,8 +96,8 @@ mkEpochNonceIndexer path = do
               ( epochNo INT NOT NULL
               , nonce BLOB NOT NULL
               , blockNo INT NOT NULL
-              , slotNo INT NOT NULL
-              , blockHeaderHash BLOB NOT NULL
+              , slotNo INT
+              , blockHeaderHash BLOB
               )|]
       nonceInsertQuery =
         [sql|INSERT INTO epoch_nonce

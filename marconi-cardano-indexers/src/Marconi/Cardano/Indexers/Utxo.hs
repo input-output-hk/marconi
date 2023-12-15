@@ -92,9 +92,8 @@ import Marconi.Cardano.Core.Types (
   pattern CurrentEra,
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
+import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 -- | Indexer representation of an UTxO

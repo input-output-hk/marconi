@@ -17,7 +17,6 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Marconi.Cardano.Indexers.Datum qualified as Datum
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Indexers.Datum qualified as Test.Datum
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)

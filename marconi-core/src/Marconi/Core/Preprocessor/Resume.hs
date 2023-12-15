@@ -108,9 +108,9 @@ drainAllDescending
   -> m (Maybe (ProcessedInput (Point event) event))
 drainAllDescending lastPoint timedEvents =
   case NonEmpty.span ((> lastPoint) . Lens.view point) timedEvents of
-    ([], _) -> pure Nothing
-    ([x], _) -> put ResumeDone $> Just (Index x)
-    (x : xs, _) -> put ResumeDone $> Just (IndexAllDescending (x :| xs))
+    ([], _) -> pure Nothing -- No indexing is more recent
+    ([x], _) -> put ResumeDone $> Just (Index x) -- One more recent indexing
+    (x : xs, _) -> put ResumeDone $> Just (IndexAllDescending (x :| xs)) -- Several more recent
 
 drainIndex
   :: ( Ord (Point event)

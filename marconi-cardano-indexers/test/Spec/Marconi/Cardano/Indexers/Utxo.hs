@@ -28,7 +28,6 @@ import Marconi.Cardano.Core.Indexer.Worker (
 import Marconi.Cardano.Core.Logger (nullTracer)
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Gen
 import Test.Tasty (TestTree, testGroup)

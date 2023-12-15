@@ -10,7 +10,11 @@ import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (ReaderT, ask)
 import Data.Text (Text)
-import Marconi.Cardano.ChainIndex.Indexers (MarconiCardanoQueryables, SyncStatsCoordinator)
+import Marconi.Cardano.ChainIndex.Indexers (
+  EpochEvent,
+  MarconiCardanoQueryables,
+  SyncStatsCoordinator,
+ )
 import Marconi.Cardano.ChainIndex.Indexers qualified as ChainIndex.Indexers
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Logger (mkMarconiTrace)
@@ -39,7 +43,7 @@ data SidechainBuildIndexersConfig = SidechainBuildIndexersConfig
   , _sidechainBuildIndexersCatchupConfig :: !CatchupConfig
   , _sidechainBuildIndexersDbPath :: !FilePath
   , _sidechainBuildIndexersEpochStateConfig
-      :: !(EpochState.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent))
+      :: !(EpochState.ExtLedgerStateWorkerConfig IO EpochEvent (WithDistance BlockEvent))
   , _sidechainBuildIndexersMintTokenEventConfig :: !MintTokenEvent.MintTokenEventConfig
   , _sidechainBuildIndexersUtxoConfig :: !Utxo.UtxoIndexerConfig
   }

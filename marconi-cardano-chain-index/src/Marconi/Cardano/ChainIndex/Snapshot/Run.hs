@@ -65,10 +65,12 @@ run = do
   let extLedgerStateConfig =
         ExtLedgerStateWorkerConfig
           Distance.getEvent
+          Distance.chainDistance
           trace
           nodeConfigPath
           volatileEpochStateSnapshotInterval
           securityParam
+          (const $ curry Just)
       snapshotConfig =
         RunIndexerConfig
           marconiTrace

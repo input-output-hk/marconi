@@ -34,7 +34,7 @@ import Control.Monad.Except (
   runExceptT,
  )
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BS
 import Data.Function (on)
 import Data.List (find, sortBy)
 import Data.Maybe (catMaybes, mapMaybe)
@@ -186,10 +186,10 @@ instance
   => Queryable m event (LatestEventsQuery event) ListIndexer
   where
   query p q ix = do
-    let lastEvents =
+    let events' = ix ^. events
+        lastEvents =
           take (fromIntegral $ nbOfEvents q) $
-            filter (\x -> x ^. point <= p) $
-              ix ^. events
+            filter (\x -> x ^. point <= p) events'
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync $ Just lastEvents
     pure lastEvents
@@ -200,7 +200,7 @@ instance
   where
   query p q ix = do
     aHeadOfSync <- isAheadOfSync p ix
-    content <- getDirectoryMetadata ix
+    let content = ix ^. FileIndexer.eventsMetadata
     let validCandidate eventFile =
           (ix ^. eventBuilder . extractPoint) (FileIndexer.fileMetadata eventFile) <= p
             && FileIndexer.hasContent eventFile

@@ -17,6 +17,7 @@ import Control.Monad.Trans (lift)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Marconi.Cardano.ChainIndex.Indexers (EpochEvent)
 import Marconi.Cardano.ChainIndex.Indexers qualified as Indexers
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker (
@@ -144,7 +145,7 @@ buildIndexers
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
-  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
+  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO EpochEvent (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath

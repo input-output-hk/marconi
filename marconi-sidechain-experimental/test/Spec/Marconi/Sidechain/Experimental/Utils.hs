@@ -87,6 +87,7 @@ initTestingCliArgs =
     ""
     3000
     C.Mainnet
+    1000
     Nothing
     Nothing
     retryConfig

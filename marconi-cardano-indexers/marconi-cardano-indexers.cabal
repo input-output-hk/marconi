@@ -109,11 +109,9 @@ library
     , filepath
     , lens
     , mtl
-    , prettyprinter
     , sqlite-simple
     , text
     , time
-    , transformers
     , vector-map
 
 test-suite marconi-cardano-indexers-test

@@ -157,7 +157,7 @@ step
   -> ProcessedInput (Point input) input
   -> m (indexer input)
 step indexer = \case
-  Index e -> index e indexer
+  Index e -> seq e $ index e indexer
   IndexAllDescending es -> indexAllDescending es indexer
   Rollback p -> rollback p indexer
   StableAt p -> setLastStablePoint p indexer

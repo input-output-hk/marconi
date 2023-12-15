@@ -78,6 +78,7 @@ import Marconi.Core.Type (
   _SlotNoBoundsInvalid,
   _StopIndexer,
  )
+import Prettyprinter qualified as Pretty
 
 -- | Event available for the tracer
 data IndexerEvent point
@@ -95,6 +96,18 @@ data IndexerEvent point
 deriving stock instance (Show point) => Show (IndexerEvent point)
 
 newtype IndexerTracer m event = IndexerTracer {_unwrapTracer :: Tracer m (IndexerEvent (Point event))}
+
+instance (Pretty.Pretty point) => Pretty.Pretty (IndexerEvent point) where
+  pretty IndexerIsStarting = "Indexer is starting"
+  pretty (IndexerFailed err) = "Indexer failed: " <> Pretty.pretty (show err)
+  pretty (IndexerQueryFailed err) = "Indexer failed to answer query: " <> Pretty.pretty err
+  pretty IndexerStarted = "Indexer is started"
+  pretty (IndexerIndexes p) = "Indexer indexes point: " <> Pretty.pretty p
+  pretty IndexerHasIndexed = "Indexing is done"
+  pretty (IndexerRollbackTo p) = "Indexer is rolling back to: " <> Pretty.pretty p
+  pretty IndexerHasRollbackedTo = "Rollback is done"
+  pretty IndexerIsClosing = "Closing indexer"
+  pretty IndexerClosed = "Closed"
 
 makeLenses 'IndexerTracer
 
@@ -312,7 +325,7 @@ withTraceM
   -> m (indexer event)
   -> m (WithTrace m indexer event)
 withTraceM tr indexer = do
-  Trace.logDebug tr IndexerIsStarting
+  Trace.logInfo tr IndexerIsStarting
   result <- WithTrace . IndexTransformer (IndexerTrace tr) <$> indexer
   Trace.logInfo tr IndexerStarted
   pure result
@@ -331,7 +344,7 @@ deriving via
 instance (MonadIO m, Closeable m indexer) => Closeable m (WithTrace m indexer) where
   close indexer = do
     let tr = indexer ^. trace
-    Trace.logDebug tr IndexerIsClosing
+    Trace.logInfo tr IndexerIsClosing
     res <- closeVia unwrap indexer
     Trace.logInfo tr IndexerClosed
     pure res
@@ -347,7 +360,7 @@ instance
   where
   close indexer = do
     let tr = indexer ^. trace
-    lift $ Trace.logDebug tr IndexerIsClosing
+    lift $ Trace.logInfo tr IndexerIsClosing
     res <- closeVia unwrap indexer `catchError` (\e -> (lift $ logIndexerError tr e) *> throwError e)
     lift $ Trace.logInfo tr IndexerClosed
     pure res
