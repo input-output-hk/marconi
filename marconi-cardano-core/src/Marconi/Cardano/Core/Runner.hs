@@ -24,11 +24,13 @@ module Marconi.Cardano.Core.Runner (
   runIndexerConfigNetworkId,
   runIndexerConfigChainPoint,
   runIndexerConfigSocketPath,
+  RunSnapshotIndexerConfig (RunSnapshotIndexerConfig),
 
   -- * Process chainSync events
   withNoPreprocessor,
   withDistancePreprocessor,
   withDistanceAndTipPreprocessor,
+  withNoPreprocessorOnSnapshot,
 
   -- * Event types
 ) where
@@ -92,6 +94,13 @@ data RunIndexerConfig rawEvent event = RunIndexerConfig
 
 Lens.makeLenses ''RunIndexerConfig
 
+data RunSnapshotIndexerConfig rawEvent event = RunSnapshotIndexerConfig
+  { _runSnapshotIndexerConfigEventProcessing :: RunIndexerEventPreprocessing rawEvent event
+  , _runSnapshotIndexerConfigSecurityParam :: SecurityParam
+  }
+
+Lens.makeLenses ''RunSnapshotIndexerConfig
+
 -- | Wraps as a datatype log message emitted by the 'runIndexer' et al. functions.
 data RunIndexerLog
   = -- | The last sync points of all indexers that will be used to start the chain-sync protocol.
@@ -123,11 +132,12 @@ runChainSyncIndexer config indexer =
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
 
 runSnapshotIndexer
-  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) BlockEvent indexer
+  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
+     , Core.Point event ~ C.ChainPoint
      )
-  => RunIndexerConfig BlockEvent BlockEvent
-  -> indexer BlockEvent
+  => RunSnapshotIndexerConfig BlockEvent event
+  -> indexer event
   -> S.Stream (S.Of BlockEvent) IO ()
   -> IO ()
 runSnapshotIndexer config indexer stream =
@@ -136,8 +146,8 @@ runSnapshotIndexer config indexer stream =
     eventPreprocessing
     (streamBlockEventEmitter config indexer stream)
   where
-    securityParam = Lens.view runIndexerConfigSecurityParam config
-    eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
+    securityParam = Lens.view runSnapshotIndexerConfigSecurityParam config
+    eventPreprocessing = Lens.view runSnapshotIndexerConfigEventProcessing config
 
 data EventEmitter indexer event a = EventEmitter
   { queue :: STM.TBQueue (Core.ProcessedInput (Core.Point event) event)
@@ -147,8 +157,8 @@ data EventEmitter indexer event a = EventEmitter
 
 runEmitterAndConsumer
   :: ( Core.Point event ~ C.ChainPoint
-     , Ord (Core.Point event)
-     , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
+     , -- , Ord (Core.Point event)
+       Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      )
   => SecurityParam
@@ -206,10 +216,11 @@ chainSyncEventEmitter
       return (EventEmitter eventQueue cBox eventEmitter)
 
 streamBlockEventEmitter
-  :: RunIndexerConfig BlockEvent BlockEvent
-  -> indexer BlockEvent
+  :: (Core.Point event ~ C.ChainPoint)
+  => RunSnapshotIndexerConfig BlockEvent event
+  -> indexer event
   -> S.Stream (S.Of BlockEvent) IO ()
-  -> IO (EventEmitter indexer BlockEvent ())
+  -> IO (EventEmitter indexer event ())
 streamBlockEventEmitter config indexer stream = do
   queue <- STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- Concurrent.newMVar indexer
@@ -217,8 +228,8 @@ streamBlockEventEmitter config indexer stream = do
       emitEvents = mkEventStream processEvent queue stream
   return EventEmitter{queue, indexerMVar, emitEvents}
   where
-    securityParam = Lens.view runIndexerConfigSecurityParam config
-    eventProcessing = Lens.view runIndexerConfigEventProcessing config
+    securityParam = Lens.view runSnapshotIndexerConfigSecurityParam config
+    eventProcessing = Lens.view runSnapshotIndexerConfigEventProcessing config
 
 stablePointComputation
   :: SecurityParam
@@ -292,6 +303,18 @@ withNoPreprocessor =
             timedEvent = Core.Timed point event
          in [Core.Index $ Just <$> timedEvent]
       eventToProcessedInput (RollBackward point _tip) = [Core.Rollback point]
+      blockNoFromBlockEvent = Just . getBlockNo . blockInMode
+   in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
+
+withNoPreprocessorOnSnapshot :: RunIndexerEventPreprocessing BlockEvent BlockEvent
+withNoPreprocessorOnSnapshot =
+  let eventToProcessedInput
+        :: BlockEvent
+        -> [Core.ProcessedInput C.ChainPoint BlockEvent]
+      eventToProcessedInput event =
+        let point = blockEventPoint event
+            timedEvent = Core.Timed point event
+         in [Core.Index $ Just <$> timedEvent]
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
 
