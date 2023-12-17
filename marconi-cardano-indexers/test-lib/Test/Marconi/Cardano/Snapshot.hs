@@ -2,9 +2,8 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Test.Marconi.Cardano.Snapshot (
-  Snapshot (..),
   SnapshotFileData (..),
-  internaliseSnapshot,
+  setupSnapshot,
 ) where
 
 import Cardano.Api qualified as C
@@ -15,8 +14,6 @@ import Data.ByteString qualified as BS
 import Data.List (find, isPrefixOf, sortOn)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent)
-import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerState
 import Marconi.Cardano.Indexers.SnapshotBlockEvent (
   BlockNodeToClientVersion,
   CodecConfig,
@@ -29,20 +26,47 @@ import Marconi.Cardano.Indexers.SnapshotBlockEvent (
 import Marconi.Cardano.Indexers.SnapshotBlockEvent qualified as BlockEvent
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as Stream
-import System.Directory (listDirectory)
+import System.Directory (copyFile, listDirectory)
 import System.FilePath (takeBaseName, (</>))
 
-{- | A 'Snapshot' is an internal representation for a sub-chain which has been
-serialised to disk.
-It stores a ledger state and a stream of blocks. The ledger state is the state
-before the eventual application of the range of blocks in the stream. This
-allows one to simulate the behavior of the blockchain for a specific range of
-blocks which was serialized to disk using the marconi-chain-snapshot executable.
+{- | A snapshot of a sub-chain is a directory containing a series of serialised
+block events and a ledger state of the chain immediately preceding the series of blocks.
+
+'setupSnapshot' is the function which prepares the above data for indexing.
+It creates and returns a stream of block events to be deserialised. The file containing
+the ledger state is copied into Marconi's database.
+
+Ultimately, it provides the necessary infrastructure to be able to simulate a partial
+running node.
 -}
-data Snapshot = Snapshot
-  { snapshotPreviousLedgerState :: ExtLedgerStateEvent
-  , snapshotBlockStream :: Stream (Of BlockEvent) IO ()
-  }
+setupSnapshot
+  :: FilePath
+  -- ^ path to the node config file
+  -> FilePath
+  -- ^ directory which contains the serialized events
+  -> FilePath
+  -- ^ directory to be used as the indexer's DB
+  -> IO (Stream (Of BlockEvent) IO ())
+setupSnapshot nodeConfig inputDir dbDir = do
+  codecConfig <- getConfigCodec' nodeConfig
+  toClientVersion <- getBlockToNodeClientVersion
+  files <- fmap (inputDir </>) <$> listDirectory inputDir
+  let blockFiles = filter isBlockEventFile files
+      ledgerStateFile = findLedgerState files
+      blockStream = mkBlockEventStream codecConfig toClientVersion blockFiles
+  copyFile ledgerStateFile (dbDir </> "epochState" </> "epochState")
+  return blockStream
+  where
+    getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec
+
+    getBlockToNodeClientVersion =
+      maybe (error "Error in getting the node client version") pure blockNodeToNodeVersionM
+
+    isBlockEventFile = isPrefixOf "block_" . takeBaseName
+
+    findLedgerState =
+      maybe (error "Could not find file containing serialized ledger state") id
+        . find (isPrefixOf "epochState_" . takeBaseName)
 
 -- | Necessary information about each file containing a serialised 'BlockEvent'.
 data SnapshotFileData = SnapshotFileData
@@ -88,57 +112,6 @@ mkBlockEventStream codecConfig toClientVersion =
       return (getBlockEvent blockEvent)
     mkFileStream :: [FilePath] -> Stream (Of SnapshotFileData) IO ()
     mkFileStream = Stream.each . sortOn index . fmap mkSnapshotFileData
-
-{- | The function which builds the internal 'Snapshot' to be used in tests.
-It requires a path to the configuration file for the Cardano blockchain
-(preview/preprod/mainnet) which was used to create the snapshot on disk,
-and a path to the directory which contains the actual files.
--}
-internaliseSnapshot
-  :: FilePath
-  -- ^ path to the node config file
-  -> FilePath
-  -- ^ directory which contains the serialized events
-  -> IO Snapshot
-internaliseSnapshot nodeConfig inputDir = do
-  codecConfig <- getConfigCodec' nodeConfig
-  toClientVersion <- getBlockToNodeClientVersion
-  files <- fmap (inputDir </>) <$> listDirectory inputDir
-  let blockFiles = filter isBlockEventFile files
-      ledgerStateFile = findLedgerState files
-      blockStream = mkBlockEventStream codecConfig toClientVersion blockFiles
-  previousLedgerState <- deserialiseLedgerState codecConfig ledgerStateFile
-  return (Snapshot previousLedgerState blockStream)
-  where
-    getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec
-
-    getBlockToNodeClientVersion =
-      maybe (error "Error in getting the node client version") pure blockNodeToNodeVersionM
-
-    isBlockEventFile = isPrefixOf "block_" . takeBaseName
-
-    findLedgerState =
-      maybe (error "Could not find file containing serialized ledger state") id
-        . find (isPrefixOf "epochState_" . takeBaseName)
-
--- | Internalises the ledger state from a serialisation on disk.
-deserialiseLedgerState
-  :: CodecConfig
-  -> FilePath
-  -> IO ExtLedgerStateEvent
-deserialiseLedgerState codecConfig file@(Text.pack . takeBaseName -> name) =
-  case ExtLedgerState.deserialiseMetadata . extractRawMetadata "epochState" $ name of
-    Nothing ->
-      error $ "Malformed metadata for serialized ExtLedgerStateEvent: " <> show name
-    Just meta -> do
-      rawBytes <- BS.readFile file
-      let eExtLedgerState = ExtLedgerState.deserialiseLedgerState codecConfig meta rawBytes
-      case eExtLedgerState of
-        Left err -> error (Text.unpack err)
-        Right mExtLedgerState ->
-          case mExtLedgerState of
-            Nothing -> error "Cannot deserialise ledger state."
-            Just ledger -> return ledger
 
 {- | Splits the file name into the relevant parts which constitute
 the metadata.
