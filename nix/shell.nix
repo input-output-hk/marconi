@@ -1,4 +1,4 @@
-{ repoRoot, inputs, ... }:
+{ repoRoot, inputs, pkgs, ... }:
 
 _cabalProject:
 
@@ -14,6 +14,8 @@ in
     cardano-cli
     cardano-node
     inputs.mithril.packages.mithril-client
+    pkgs.ghcid
+    pkgs.haskellPackages.hoogle
   ];
 
   scripts = {
