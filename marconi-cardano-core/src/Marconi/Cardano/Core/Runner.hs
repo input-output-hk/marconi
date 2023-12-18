@@ -125,8 +125,9 @@ runChainSyncIndexer
   => RunIndexerConfig (ChainSyncEvent BlockEvent) event
   -> indexer event
   -> IO ()
-runChainSyncIndexer config indexer =
-  runEmitterAndConsumer securityParam eventPreprocessing (chainSyncEventEmitter config indexer)
+runChainSyncIndexer config indexer = do
+  _ <- runEmitterAndConsumer securityParam eventPreprocessing (chainSyncEventEmitter config indexer)
+  return ()
   where
     securityParam = Lens.view runIndexerConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
@@ -139,7 +140,7 @@ runSnapshotIndexer
   => RunSnapshotIndexerConfig BlockEvent event
   -> indexer event
   -> S.Stream (S.Of BlockEvent) IO ()
-  -> IO ()
+  -> IO (Concurrent.MVar (indexer event))
 runSnapshotIndexer config indexer stream =
   runEmitterAndConsumer
     securityParam
@@ -164,7 +165,7 @@ runEmitterAndConsumer
   => SecurityParam
   -> RunIndexerEventPreprocessing rawEvent event
   -> IO (EventEmitter indexer event a)
-  -> IO ()
+  -> IO (Concurrent.MVar (indexer event))
 runEmitterAndConsumer
   securityParam
   eventPreprocessing
@@ -177,6 +178,7 @@ runEmitterAndConsumer
           Map.empty
           queue
           indexerMVar
+      return indexerMVar
 
 chainSyncEventEmitter
   :: (Core.Point event ~ C.ChainPoint)

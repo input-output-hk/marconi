@@ -26,7 +26,7 @@ import Marconi.Cardano.Indexers.SnapshotBlockEvent (
 import Marconi.Cardano.Indexers.SnapshotBlockEvent qualified as BlockEvent
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as Stream
-import System.Directory (copyFile, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, listDirectory)
 import System.FilePath (takeBaseName, (</>))
 
 {- | A snapshot of a sub-chain is a directory containing a series of serialised
@@ -54,6 +54,7 @@ setupSnapshot nodeConfig inputDir dbDir = do
   let blockFiles = filter isBlockEventFile files
       ledgerStateFile = findLedgerState files
       blockStream = mkBlockEventStream codecConfig toClientVersion blockFiles
+  createDirectoryIfMissing True (dbDir </> "epochState")
   copyFile ledgerStateFile (dbDir </> "epochState" </> "epochState")
   return blockStream
   where
