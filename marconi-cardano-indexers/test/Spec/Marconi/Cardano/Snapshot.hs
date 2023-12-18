@@ -8,8 +8,9 @@ import Cardano.Api.Shelley qualified as C
 import Control.Concurrent (readMVar)
 import Control.Concurrent.Async (wait, withAsync)
 import Control.Lens qualified as Lens
-import Control.Monad.Except (ExceptT)
+import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.Trans.Except (runExceptT)
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
@@ -26,6 +27,7 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
  )
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.ListIndexer qualified as ListIndexer
+import Marconi.Core.Preprocessor qualified as Preprocessor
 import Marconi.Core.Type (event)
 import Streaming.Prelude qualified as Stream
 import System.Directory (removeDirectoryRecursive)
@@ -46,7 +48,9 @@ tests =
 
 -- TODO:
 --   - Test1: run just with listindexer, see if block events from stream = block events from indexer
---   - Test2: run with ledgerstate coordinator which has list indexer underneath
+--   - Test2: run with ledgerstate coordinator which has list indexer underneath, and calls
+--   buildNextExtLedgerStateEvent to fold the list; test2 checks whether the last ledger state is
+--   equal to the fold
 
 testRunSnapshotIndexer :: TestTree
 testRunSnapshotIndexer =
@@ -72,6 +76,10 @@ testRunSnapshotIndexer =
 
 type instance Core.Point (ExtLedgerStateEvent, BlockEvent) = C.ChainPoint
 
+-- TODO: fix type error, I think it's because instead of WithDistance BlockEvent we have BlockEvent
+-- which means that Core.IsIndex (ExceptT Core.IndexerError IO) event indexer isn't true
+
+-- TODO: use last event indexer?
 testRunSnapshotIndexer2 :: TestTree
 testRunSnapshotIndexer2 =
   testCase "TestRunSnapshotIndexer2" run
@@ -80,7 +88,7 @@ testRunSnapshotIndexer2 =
       let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
           config =
             Core.RunSnapshotIndexerConfig
-              Core.withNoPreprocessorOnSnapshot
+              (Core.withDistancePreprocessorOnSnapshot $ C.ChainTip undefined undefined 10)
               1 -- why does it get stuck if it's 0?
       configFile <- getNodeConfigPath "preprod"
       blockStream <- setupSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10" dbPath
@@ -92,7 +100,7 @@ testRunSnapshotIndexer2 =
               1
               1
       Core.WorkerIndexer listIndexerMVar listWorker <-
-        Core.createWorker "TestListIndexerWorker" Just ListIndexer.mkListIndexer
+        Core.createWorkerWithPreprocessing "TestListIndexerWorker" _ ListIndexer.mkListIndexer
       coordinator <- toRuntimeException $ mkExtLedgerStateCoordinator ledgerConfig dbPath [listWorker]
       actualResult <-
         withAsync (Core.runSnapshotIndexer config coordinator blockStream) $ \runner -> do
