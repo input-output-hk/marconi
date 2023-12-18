@@ -192,6 +192,7 @@ test-suite marconi-cardano-indexers-test
     , tasty
     , tasty-golden
     , tasty-hedgehog
+    , tasty-hunit
     , temporary
     , text
     , time
