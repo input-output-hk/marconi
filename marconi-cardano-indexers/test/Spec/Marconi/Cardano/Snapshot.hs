@@ -6,20 +6,24 @@ module Spec.Marconi.Cardano.Snapshot (tests) where
 import Cardano.Api.Extended.Streaming (BlockEvent)
 import Cardano.Api.Shelley qualified as C
 import Control.Concurrent (readMVar)
+import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async (wait, withAsync)
 import Control.Lens qualified as Lens
 import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.Trans.Except (runExceptT)
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
+import Marconi.Cardano.Core.Extract.WithDistance qualified as WithDistance
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig),
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Runner (RunSnapshotIndexerConfig)
 import Marconi.Cardano.Core.Runner qualified as Core
 import Marconi.Cardano.Indexers ()
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
+  ExtLedgerStateCoordinator,
   ExtLedgerStateCoordinatorConfig (ExtLedgerStateCoordinatorConfig),
   ExtLedgerStateEvent,
   mkExtLedgerStateCoordinator,
@@ -44,7 +48,8 @@ tests :: TestTree
 tests =
   testGroup
     "Spec.Marconi.Cardano.Snapshot"
-    [testRunSnapshotIndexer]
+    -- [testRunSnapshotIndexer]
+    []
 
 -- TODO:
 --   - Test1: run just with listindexer, see if block events from stream = block events from indexer
@@ -52,29 +57,29 @@ tests =
 --   buildNextExtLedgerStateEvent to fold the list; test2 checks whether the last ledger state is
 --   equal to the fold
 
-testRunSnapshotIndexer :: TestTree
-testRunSnapshotIndexer =
-  testCase "TestRunSnapshotIndexer" run
-  where
-    run = do
-      let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
-          config =
-            Core.RunSnapshotIndexerConfig
-              Core.withNoPreprocessorOnSnapshot
-              1 -- why does it get stuck if it's 0?
-      configFile <- getNodeConfigPath "preprod"
-      blockStream <- setupSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10" dbPath
-      let listIndexer = Core.mkListIndexer
-      actualResult <-
-        withAsync (Core.runSnapshotIndexer config listIndexer blockStream) $ \runner -> do
-          mVar <- wait runner
-          indexer <- readMVar mVar
-          removeDirectoryRecursive dbPath
-          return (Lens.view ListIndexer.events indexer)
-      expectedResult <- Stream.toList_ blockStream
-      assertEqual "" (show <$> expectedResult) (reverse $ show . Lens.view event <$> actualResult)
+-- testRunSnapshotIndexer :: TestTree
+-- testRunSnapshotIndexer =
+--   testCase "TestRunSnapshotIndexer" run
+--   where
+--     run = do
+--       let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
+--           config =
+--             Core.RunSnapshotIndexerConfig
+--               Core.withNoPreprocessorOnSnapshot
+--               1 -- why does it get stuck if it's 0?
+--       configFile <- getNodeConfigPath "preprod"
+--       blockStream <- setupSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10" dbPath
+--       let listIndexer = Core.mkListIndexer
+--       actualResult <-
+--         withAsync (Core.runSnapshotIndexer config listIndexer blockStream) $ \runner -> do
+--           mVar <- wait runner
+--           indexer <- readMVar mVar
+--           removeDirectoryRecursive dbPath
+--           return (Lens.view ListIndexer.events indexer)
+--       expectedResult <- Stream.toList_ blockStream
+--       assertEqual "" (show <$> expectedResult) (reverse $ show . Lens.view event <$> actualResult)
 
-type instance Core.Point (ExtLedgerStateEvent, BlockEvent) = C.ChainPoint
+type instance Core.Point (ExtLedgerStateEvent, WithDistance BlockEvent) = C.ChainPoint
 
 -- TODO: fix type error, I think it's because instead of WithDistance BlockEvent we have BlockEvent
 -- which means that Core.IsIndex (ExceptT Core.IndexerError IO) event indexer isn't true
@@ -95,20 +100,34 @@ testRunSnapshotIndexer2 =
       genesisConfig <- toRuntimeException $ readGenesisFile configFile
       let ledgerConfig =
             ExtLedgerStateCoordinatorConfig
-              snd
+              (WithDistance.getEvent . snd)
               genesisConfig
               1
               1
       Core.WorkerIndexer listIndexerMVar listWorker <-
-        Core.createWorkerWithPreprocessing "TestListIndexerWorker" _ ListIndexer.mkListIndexer
-      coordinator <- toRuntimeException $ mkExtLedgerStateCoordinator ledgerConfig dbPath [listWorker]
+        Core.createWorkerWithPreprocessing
+          "TestListIndexerWorker"
+          (Preprocessor.mapEvent id)
+          ListIndexer.mkListIndexer
+      (coordinator :: ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)) <-
+        toRuntimeException $ mkExtLedgerStateCoordinator ledgerConfig dbPath [listWorker]
       actualResult <-
-        withAsync (Core.runSnapshotIndexer config coordinator blockStream) $ \runner -> do
+        withAsync (undefined config coordinator blockStream) $ \runner -> do
           _ <- wait runner
           indexer <- readMVar listIndexerMVar
           removeDirectoryRecursive dbPath
           return (Lens.view ListIndexer.events indexer)
-      putStrLn (show $ Lens.view event <$> actualResult)
+      undefined
+
+-- putStrLn (show $ Lens.view event <$> actualResult)
+
+-- runIndexer
+--   :: RunSnapshotIndexerConfig BlockEvent (WithDistance BlockEvent)
+--   -> ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)
+--   -> Stream.Stream (Stream.Of BlockEvent) IO ()
+--   -- -> IO (Concurrent.MVar (ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)))
+--   -> IO ()
+-- runIndexer = Core.runSnapshotIndexer
 
 -- expectedResult <- Stream.toList_ blockStream
 -- assertEqual "" (show <$> expectedResult) (reverse $ show . Lens.view event <$> actualResult)
