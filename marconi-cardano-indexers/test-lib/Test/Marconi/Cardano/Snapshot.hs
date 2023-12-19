@@ -36,7 +36,7 @@ block events and a ledger state of the chain immediately preceding the series of
 It creates and returns a stream of block events to be deserialised. The file containing
 the ledger state is copied into Marconi's database.
 
-Ultimately, it provides the necessary infrastructure to be able to simulate a partial
+Ultimately, it provides the necessary data to be able to simulate a partial
 running node.
 -}
 setupSnapshot

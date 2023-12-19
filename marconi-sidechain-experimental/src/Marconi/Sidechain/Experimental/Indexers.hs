@@ -85,6 +85,6 @@ runIndexers :: ReaderT SidechainRunIndexersConfig IO ()
 runIndexers = do
   config <- ask
   liftIO $
-    ChainIndex.Runner.runChainSyncIndexer
+    ChainIndex.Runner.runIndexerOnChainSync
       (config ^. sidechainRunIndexersRunIndexerConfig)
       (config ^. sidechainRunIndexersCoordinator)

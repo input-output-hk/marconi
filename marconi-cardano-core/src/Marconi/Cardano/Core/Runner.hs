@@ -8,8 +8,8 @@
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.Cardano.Core.Runner (
   -- * Runner
-  runChainSyncIndexer,
-  runSnapshotIndexer,
+  runIndexerOnChainSync,
+  runIndexerOnSnapshot,
 
   -- ** Runner Config
   RunIndexerConfig (RunIndexerConfig),
@@ -24,7 +24,7 @@ module Marconi.Cardano.Core.Runner (
   runIndexerConfigNetworkId,
   runIndexerConfigChainPoint,
   runIndexerConfigSocketPath,
-  RunSnapshotIndexerConfig (RunSnapshotIndexerConfig),
+  RunIndexerOnSnapshotConfig (RunIndexerOnSnapshotConfig),
 
   -- * Process chainSync events
   withNoPreprocessor,
@@ -96,12 +96,12 @@ data RunIndexerConfig rawEvent event = RunIndexerConfig
 
 Lens.makeLenses ''RunIndexerConfig
 
-data RunSnapshotIndexerConfig rawEvent event = RunSnapshotIndexerConfig
-  { _runSnapshotIndexerConfigEventProcessing :: RunIndexerEventPreprocessing rawEvent event
-  , _runSnapshotIndexerConfigSecurityParam :: SecurityParam
+data RunIndexerOnSnapshotConfig rawEvent event = RunIndexerOnSnapshotConfig
+  { _runIndexerOnSnapshotConfigEventProcessing :: RunIndexerEventPreprocessing rawEvent event
+  , _runIndexerOnSnapshotConfigSecurityParam :: SecurityParam
   }
 
-Lens.makeLenses ''RunSnapshotIndexerConfig
+Lens.makeLenses ''RunIndexerOnSnapshotConfig
 
 -- | Wraps as a datatype log message emitted by the 'runIndexer' et al. functions.
 data RunIndexerLog
@@ -119,7 +119,7 @@ type instance Core.Point BlockEvent = C.ChainPoint
 {- | Connect to the given socket to start a chain sync protocol and start indexing it with the
 given indexer.
 -}
-runChainSyncIndexer
+runIndexerOnChainSync
   :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      , Core.Point event ~ C.ChainPoint
@@ -127,30 +127,30 @@ runChainSyncIndexer
   => RunIndexerConfig (ChainSyncEvent BlockEvent) event
   -> indexer event
   -> IO ()
-runChainSyncIndexer config indexer = do
+runIndexerOnChainSync config indexer = do
   _ <- runEmitterAndConsumer securityParam eventPreprocessing (chainSyncEventEmitter config indexer)
   return ()
   where
     securityParam = Lens.view runIndexerConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
 
-runSnapshotIndexer
+runIndexerOnSnapshot
   :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      , Core.Point event ~ C.ChainPoint
      )
-  => RunSnapshotIndexerConfig BlockEvent event
+  => RunIndexerOnSnapshotConfig BlockEvent event
   -> indexer event
   -> S.Stream (S.Of BlockEvent) IO ()
   -> IO (Concurrent.MVar (indexer event))
-runSnapshotIndexer config indexer stream =
+runIndexerOnSnapshot config indexer stream =
   runEmitterAndConsumer
     securityParam
     eventPreprocessing
     (streamBlockEventEmitter config indexer stream)
   where
-    securityParam = Lens.view runSnapshotIndexerConfigSecurityParam config
-    eventPreprocessing = Lens.view runSnapshotIndexerConfigEventProcessing config
+    securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
+    eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
 
 data EventEmitter indexer event a = EventEmitter
   { queue :: STM.TBQueue (Core.ProcessedInput (Core.Point event) event)
@@ -221,7 +221,7 @@ chainSyncEventEmitter
 
 streamBlockEventEmitter
   :: (Core.Point event ~ C.ChainPoint)
-  => RunSnapshotIndexerConfig BlockEvent event
+  => RunIndexerOnSnapshotConfig BlockEvent event
   -> indexer event
   -> S.Stream (S.Of BlockEvent) IO ()
   -> IO (EventEmitter indexer event ())
@@ -232,8 +232,8 @@ streamBlockEventEmitter config indexer stream = do
       emitEvents = mkEventStream processEvent queue stream
   return EventEmitter{queue, indexerMVar, emitEvents}
   where
-    securityParam = Lens.view runSnapshotIndexerConfigSecurityParam config
-    eventProcessing = Lens.view runSnapshotIndexerConfigEventProcessing config
+    securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
+    eventProcessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
 
 stablePointComputation
   :: SecurityParam

@@ -139,7 +139,7 @@ run appName = withGracefulTermination_ $ do
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
 
   let runIndexer' =
-        Runner.runChainSyncIndexer
+        Runner.runIndexerOnChainSync
           ( Runner.RunIndexerConfig
               marconiTrace
               Runner.withDistanceAndTipPreprocessor
