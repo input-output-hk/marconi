@@ -55,8 +55,7 @@ setupSnapshot nodeConfigPath inputDir dbDir = do
   setupLedgerState ledgerFile dbDir
   getBlockEvents nodeConfigPath blockFiles
 
-{- | Deserialise the files and return the Haskell data for testing.
--}
+-- | Deserialise the files and return the Haskell data for testing.
 deserialiseSnapshot
   :: FilePath
   -- ^ path to the node config file
