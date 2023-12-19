@@ -32,6 +32,7 @@ module Marconi.Cardano.Core.Runner (
   withDistanceAndTipPreprocessor,
   withNoPreprocessorOnSnapshot,
   withDistancePreprocessorOnSnapshot,
+  withDistanceAndTipPreprocessorOnSnapshot,
 
   -- * Event types
 ) where
@@ -290,6 +291,28 @@ withDistanceAndTipPreprocessor =
         [ Core.Rollback x
         , Core.Index $ Core.Timed x $ Just $ TipAndBlock tip Nothing
         ]
+      getDistance (TipAndBlock _ (Just event)) = Just . fromIntegral $ Distance.chainDistance event
+      getDistance _ = Nothing
+      blockNoFromBlockEvent (TipAndBlock _ (Just event)) = Just . getBlockNo . blockInMode $ getEvent event
+      blockNoFromBlockEvent _ = Nothing
+   in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
+
+withDistanceAndTipPreprocessorOnSnapshot
+  :: C.ChainTip -> RunIndexerEventPreprocessing BlockEvent TipAndBlock
+withDistanceAndTipPreprocessorOnSnapshot tip =
+  let extractChainTipAndAddDistance
+        :: BlockEvent
+        -> [Core.ProcessedInput C.ChainPoint TipAndBlock]
+      extractChainTipAndAddDistance x =
+        let point = blockEventPoint x
+            blockWithDistance
+              :: BlockEvent
+              -> WithDistance BlockEvent
+            blockWithDistance (BlockEvent b@(C.BlockInMode block _) epochNo' bt) =
+              let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
+                  withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
+               in withDistance
+         in [Core.Index $ Core.Timed point $ Just $ TipAndBlock tip $ Just $ blockWithDistance x]
       getDistance (TipAndBlock _ (Just event)) = Just . fromIntegral $ Distance.chainDistance event
       getDistance _ = Nothing
       blockNoFromBlockEvent (TipAndBlock _ (Just event)) = Just . getBlockNo . blockInMode $ getEvent event

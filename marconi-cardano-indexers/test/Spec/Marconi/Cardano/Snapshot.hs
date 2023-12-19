@@ -9,7 +9,7 @@ import Control.Concurrent (readMVar)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async (wait, withAsync)
 import Control.Lens qualified as Lens
-import Control.Monad.Except (ExceptT (ExceptT))
+import Control.Monad.Except (ExceptT (ExceptT), MonadTrans (lift))
 import Control.Monad.Trans.Except (runExceptT)
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance (WithDistance))
 import Marconi.Cardano.Core.Extract.WithDistance qualified as WithDistance
@@ -21,11 +21,13 @@ import Marconi.Cardano.Core.Indexer.Worker (
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Runner (RunSnapshotIndexerConfig)
 import Marconi.Cardano.Core.Runner qualified as Core
-import Marconi.Cardano.Indexers ()
+import Marconi.Cardano.Indexers (buildBlockEventCoordinator)
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateCoordinator,
   ExtLedgerStateCoordinatorConfig (ExtLedgerStateCoordinatorConfig),
   ExtLedgerStateEvent,
+  ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
+  extLedgerStateWorker,
   mkExtLedgerStateCoordinator,
   readGenesisFile,
  )
@@ -93,41 +95,54 @@ testRunSnapshotIndexer2 =
       let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
           config =
             Core.RunSnapshotIndexerConfig
-              (Core.withDistancePreprocessorOnSnapshot $ C.ChainTip undefined undefined 10)
+              (Core.withDistanceAndTipPreprocessorOnSnapshot $ C.ChainTip undefined undefined 10)
               1 -- why does it get stuck if it's 0?
       configFile <- getNodeConfigPath "preprod"
       blockStream <- setupSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10" dbPath
       genesisConfig <- toRuntimeException $ readGenesisFile configFile
-      let ledgerConfig =
+      let trace = undefined
+          ledgerConfig =
             ExtLedgerStateCoordinatorConfig
               (WithDistance.getEvent . snd)
               genesisConfig
               1
+              1
+          ledgerWorkerConfig :: ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
+          ledgerWorkerConfig =
+            ExtLedgerStateWorkerConfig
+              WithDistance.getEvent
+              trace
+              configFile
+              100
               1
       Core.WorkerIndexer listIndexerMVar listWorker <-
         Core.createWorkerWithPreprocessing
           "TestListIndexerWorker"
           (Preprocessor.mapEvent id)
           ListIndexer.mkListIndexer
-      (coordinator :: ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)) <-
-        toRuntimeException $ mkExtLedgerStateCoordinator ledgerConfig dbPath [listWorker]
+      -- (coordinator :: ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)) <-
+      --   toRuntimeException $ mkExtLedgerStateCoordinator ledgerConfig dbPath [listWorker]
+      Core.WorkerIndexer _ ledgerCoordinatorWorker <-
+        toRuntimeException $ extLedgerStateWorker ledgerWorkerConfig [listWorker] dbPath
+      blockCoordinator <-
+        buildBlockEventCoordinator
+          trace
+          [ledgerCoordinatorWorker]
       actualResult <-
-        withAsync (undefined config coordinator blockStream) $ \runner -> do
+        -- TODO: how do I create a config with the right type?
+        withAsync (Core.runSnapshotIndexer config blockCoordinator blockStream) $ \runner -> do
           _ <- wait runner
           indexer <- readMVar listIndexerMVar
           removeDirectoryRecursive dbPath
           return (Lens.view ListIndexer.events indexer)
-      undefined
+      putStrLn (show $ Lens.view event <$> actualResult)
 
--- putStrLn (show $ Lens.view event <$> actualResult)
-
--- runIndexer
---   :: RunSnapshotIndexerConfig BlockEvent (WithDistance BlockEvent)
---   -> ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)
---   -> Stream.Stream (Stream.Of BlockEvent) IO ()
---   -- -> IO (Concurrent.MVar (ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)))
---   -> IO ()
--- runIndexer = Core.runSnapshotIndexer
+runIndexer
+  :: RunSnapshotIndexerConfig BlockEvent (ExtLedgerStateEvent, WithDistance BlockEvent)
+  -> ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)
+  -> Stream.Stream (Stream.Of BlockEvent) IO ()
+  -> IO (Concurrent.MVar (ExtLedgerStateCoordinator (ExtLedgerStateEvent, WithDistance BlockEvent)))
+runIndexer = Core.runSnapshotIndexer
 
 -- expectedResult <- Stream.toList_ blockStream
 -- assertEqual "" (show <$> expectedResult) (reverse $ show . Lens.view event <$> actualResult)
