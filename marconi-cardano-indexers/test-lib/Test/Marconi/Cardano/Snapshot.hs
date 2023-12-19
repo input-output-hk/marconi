@@ -55,8 +55,7 @@ setupSnapshot nodeConfigPath inputDir dbDir = do
   setupLedgerState ledgerFile dbDir
   getBlockEvents nodeConfigPath blockFiles
 
-{- | Similar to 'setupSnapshot', but doesn't write anything to disk.
-It returns the stream of block events.
+{- | Deserialise the files and return the Haskell data for testing.
 -}
 deserialiseSnapshot
   :: FilePath
