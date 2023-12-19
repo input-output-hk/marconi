@@ -47,7 +47,6 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types (SecurityParam, TxIndexInBlock (TxIndexInBlock))
 import Marconi.Cardano.Core.Types qualified as Core
-import Marconi.Cardano.Indexers (mintBuilder)
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Cardano.Indexers.MintTokenEvent (
   EventType (BurnEventType, MintEventType),
@@ -625,7 +624,7 @@ indexWithRunner
 indexWithRunner trackedAssetIds events = do
   StandardWorker indexerVar worker <-
     H.evalExceptT $
-      MintTokenEvent.mkMintTokenEventWorker
+      MintTokenEvent.mintTokenEventWorker
         (StandardWorkerConfig "MintTokenEventWorker" 1 (Core.mkCatchupConfig 4 2) pure nullTracer)
         (MintTokenEventConfig trackedAssetIds)
         ":memory:"
@@ -675,7 +674,7 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
     H.evalIO $
       either throwIO pure
         =<< runExceptT
-          ( mintBuilder
+          ( MintTokenEvent.mintTokenEventBuilder
               (config ^. Runner.runIndexerConfigSecurityParam)
               catchupConfig
               mintTokenConfig

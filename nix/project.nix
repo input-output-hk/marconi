@@ -37,8 +37,8 @@ let
           marconi-cardano-indexers.doHaddock = false;
           marconi-cardano-indexers.flags.defer-plugin-errors = false;
 
-          marconi-chain-index.doHaddock = false;
-          marconi-chain-index.flags.defer-plugin-errors = false;
+          marconi-cardano-chain-index.doHaddock = false;
+          marconi-cardano-chain-index.flags.defer-plugin-errors = false;
 
           marconi-sidechain.doHaddock = false;
           marconi-sidechain.flags.defer-plugin-errors = false;
@@ -59,10 +59,10 @@ let
           # is necessary to prevent the error
           # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
           # See https://github.com/input-output-hk/cardano-node/issues/4194.
-          marconi-chain-index.preCheck = "
+          marconi-cardano-chain-index.preCheck = "
             export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
             export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
-            export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-chain-index}/bin/marconi-chain-index
+            export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
           ";
 
           # Needed for running the marconi-sidechain integration tests in CI
@@ -86,7 +86,7 @@ let
           marconi-core.ghcOptions = [ "-Werror" ];
           marconi-cardano-core.ghcOptions = [ "-Werror" ];
           marconi-cardano-indexers.ghcOptions = [ "-Werror" ];
-          marconi-chain-index.ghcOptions = [ "-Werror" ];
+          marconi-cardano-chain-index.ghcOptions = [ "-Werror" ];
           marconi-sidechain.ghcOptions = [ "-Werror" ];
           marconi-sidechain-experimental.ghcOptions = [ "-Werror" ];
           marconi-starter.ghcOptions = [ "-Werror" ];
@@ -99,7 +99,7 @@ let
     (_: prev: {
       hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
         "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
-        "marconi-chain-index.components.exes.marconi-chain-index"
+        "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
         "marconi-sidechain.components.exes.marconi-sidechain"
         "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
       ]

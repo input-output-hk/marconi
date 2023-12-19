@@ -31,7 +31,7 @@ The more in-depth user documentation is available in our http://example.com/TODO
 The Haskell API documentation (Haddock) for the Marconi libraries is hosted here:
 
 * https://input-output-hk.github.io/marconi/main/marconi-core[marconi-core]
-* https://input-output-hk.github.io/marconi/main/marconi-chain-index[marconi-chain-index]
+* https://input-output-hk.github.io/marconi/main/marconi-cardano-chain-index[marconi-cardano-chain-index]
 * https://input-output-hk.github.io/marconi/main/marconi-core-json-rpc[marconi-core-json-rpc]
 
 You may generate them directly with `Cabal` for each component:
@@ -39,7 +39,7 @@ You may generate them directly with `Cabal` for each component:
 ```
 cabal haddock marconi-core
 cabal haddock marconi-core-json-rpc
-cabal haddock marconi-chain-index
+cabal haddock marconi-cardano-chain-index
 ```
 
 [[Architecture]]

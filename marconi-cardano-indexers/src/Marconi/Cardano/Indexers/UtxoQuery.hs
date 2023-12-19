@@ -304,7 +304,7 @@ instance
           Nothing -> mempty
           Just lo -> (["u.slotNo >= :lowerBound"], [":lowerBound" := lo])
         upperBoundFilter = case q ^. upperBound <|> C.chainPointToSlotNo point of
-          Nothing -> (["s.slotNo IS NULL"], [])
+          Nothing -> (["futureSpent.slotNo IS NULL"], [])
           Just hi ->
             ( -- created before the upperBound
 

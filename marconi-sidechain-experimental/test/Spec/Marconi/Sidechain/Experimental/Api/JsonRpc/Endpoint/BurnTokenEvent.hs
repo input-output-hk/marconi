@@ -22,6 +22,8 @@ import Spec.Marconi.Sidechain.Experimental.Utils qualified as Utils
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
 import Test.Gen.Marconi.Cardano.Indexers.MintTokenEvent qualified as Test.MintTokenEvent
 import Test.Helpers qualified
+import Test.Marconi.Cardano.ChainIndex.Api.HttpServer qualified as Test.HttpServer
+import Test.Marconi.Cardano.ChainIndex.Api.JsonRpc qualified as Test.JsonRpc
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (
   testPropertyNamed,
@@ -96,7 +98,7 @@ propQueryMintingPolicyWithMockchain events = Test.Helpers.workspace "." $ \tmp -
     -- Index then query via JSON-RPC handler
     actual <-
       Hedgehog.evalIO $
-        Utils.queryHandlerWithIndexers
+        Test.HttpServer.queryHandlerWithIndexers
           events
           (Utils.mkTestSidechainConfigsFromCliArgs args)
           (Sidechain.getBurnTokenEventsHandler params)
@@ -104,4 +106,4 @@ propQueryMintingPolicyWithMockchain events = Test.Helpers.workspace "." $ \tmp -
     -- Compare actual vs. expected after conversion to common format.
     -- Equality checked on most fields of result.
     uncurry (===) $
-      Utils.uniformGetBurnTokenEventsResult actual burnEventsWithPolicy
+      Test.JsonRpc.uniformGetBurnTokenEventsResult actual burnEventsWithPolicy

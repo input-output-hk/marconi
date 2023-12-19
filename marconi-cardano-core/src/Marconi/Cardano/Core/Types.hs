@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -30,6 +31,7 @@ module Marconi.Cardano.Core.Types (
   -- * Aliases to ease concept mapping between plutus types and cardano types
   TxOutRef,
   txOutRef,
+  AnyTxBody (AnyTxBody),
 
   -- * Reexport from cardano-api-extended
   BlockEvent (..),
@@ -74,6 +76,12 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Core qualified as Core
 import Prettyprinter (Doc)
+
+-- Point type instances for types of this module
+-- or ones from Cardano.Api used throughout.
+type instance Core.Point BlockEvent = C.ChainPoint
+type instance Core.Point C.ChainTip = C.ChainPoint
+type instance Core.Point [AnyTxBody] = C.ChainPoint
 
 -- | Config type for node retries
 data RetryConfig = RetryConfig
@@ -143,6 +151,9 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
     , SQL.ToField
     , SQL.FromField
     )
+
+-- | An existential type representing a transaction with @C.'TxBody' era@ for any Cardano era.
+data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
 
 -- | Common configuration required to run indexers
 data RunIndexerConfig = RunIndexerConfig

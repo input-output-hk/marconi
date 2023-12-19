@@ -18,6 +18,8 @@ import Data.Set.NonEmpty qualified as NESet
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
+import Marconi.Cardano.ChainIndex.Api.Types qualified as ChainIndex.Types
+import Marconi.Cardano.ChainIndex.Utils qualified as ChainIndex.Utils
 import Marconi.Cardano.Core.Extract.WithDistance (getEvent)
 import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
@@ -28,8 +30,6 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
  )
 import Marconi.Cardano.Indexers.MintTokenEvent (MintTokenEventConfig (MintTokenEventConfig))
 import Marconi.Cardano.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig), trackedAddresses)
-import Marconi.ChainIndex.Api.Types qualified as ChainIndex.Types
-import Marconi.ChainIndex.Utils qualified as ChainIndex.Utils
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.Types (
   SidechainHttpServerConfig (SidechainHttpServerConfig),
@@ -122,7 +122,7 @@ mkSidechainEnvFromCliArgs
   -> SecurityParam
   -> IO SidechainEnv
 mkSidechainEnvFromCliArgs trace sb cliArgs@CliArgs{..} securityParam = do
-  -- Local utility copied from Marconi.ChainIndex.Run.run
+  -- Local utility copied from Marconi.Cardano.ChainIndex.Run.run
   -- See note there for motivation.
   let exitWithLogFullError :: Text -> IO a
       exitWithLogFullError msg = do

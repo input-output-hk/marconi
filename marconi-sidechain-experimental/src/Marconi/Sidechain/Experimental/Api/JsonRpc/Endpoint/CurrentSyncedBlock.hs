@@ -9,9 +9,9 @@ module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
   ChainIndex.Tip (..),
 ) where
 
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock qualified as ChainIndex
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip qualified as ChainIndex
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock qualified as ChainIndex
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.CurrentSyncedBlock.Tip qualified as ChainIndex
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, UnusedRequestParams)

@@ -1,0 +1,23 @@
+Invalid option `--disable-address-data'
+
+Did you mean this?
+    --disable-address-datum
+
+Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH) 
+                                   (--mainnet | --testnet-magic NATURAL) 
+                                   [--start-from-genesis | 
+                                     --start-from-last-sync-points | 
+                                     --start-from SLOT-NO:BLOCK-HEADER-HASH] 
+                                   [--initial-retry-time NATURAL] 
+                                   [--no-max-retry-time | 
+                                     --max-retry-time NATURAL] (-d|--db-dir DIR)
+                                   [--enable-txoutref] [--disable-utxo] 
+                                   [--disable-address-datum] 
+                                   [--disable-script-tx] 
+                                   [--disable-epoch-stakepool-size] 
+                                   [--disable-mintburn] [--http-port INT] 
+                                   [(-a|--addresses-to-index BECH32-ADDRESS)] 
+                                   [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
+                                   [--node-config-path ARG]
+
+  marconi

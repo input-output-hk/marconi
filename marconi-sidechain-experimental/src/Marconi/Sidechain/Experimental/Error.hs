@@ -12,7 +12,7 @@ import Control.Concurrent.Async (race)
 import Control.Concurrent.MVar (newEmptyMVar, takeMVar, tryPutMVar)
 import Control.Monad (void)
 import Data.Foldable (traverse_)
-import Marconi.ChainIndex.Error (IndexerError (Timeout))
+import Marconi.Cardano.ChainIndex.Error (IndexerError (Timeout))
 import Marconi.Core qualified as Core
 import System.Posix (Handler (CatchOnce), Signal, installHandler, sigINT, sigTERM)
 

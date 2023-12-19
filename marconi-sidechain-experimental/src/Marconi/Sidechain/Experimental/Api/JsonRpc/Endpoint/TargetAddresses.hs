@@ -3,7 +3,7 @@
 module Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.TargetAddresses where
 
 import Data.Text (Text)
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses qualified as ChainIndex.TargetAddresses
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.TargetAddresses qualified as ChainIndex.TargetAddresses
 import Marconi.Core.JsonRpc (ReaderHandler)
 import Marconi.Sidechain.Experimental.Api.Types (SidechainHttpServerConfig, withChainIndexHandler)
 import Network.JsonRpc.Types (JsonRpc, JsonRpcErr, UnusedRequestParams)

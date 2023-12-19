@@ -131,7 +131,7 @@ import Control.Concurrent.STM (
   TBQueue,
   newTBQueueIO,
  )
-import Control.Exception (bracket, finally)
+import Control.Exception (bracket)
 import Control.Lens (
   Getter,
   Lens',
@@ -169,7 +169,6 @@ import Data.Sequence (Seq ((:<|), (:|>)))
 import Data.Sequence qualified as Seq
 import Data.UUID (UUID)
 import Data.UUID qualified as UUID
-import Data.UUID.V4 (nextRandom)
 import Data.Word (Word64)
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.FromField (FromField)
@@ -197,7 +196,7 @@ import Network.Socket (
 import Network.Socket.ByteString (sendAll)
 import Streaming (Of, Stream)
 import Streaming.Prelude qualified as S
-import System.Directory (removeFile)
+import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Marconi.Core.ModelBased qualified as Model
 import Test.QuickCheck (Arbitrary, Gen, Property, (===), (==>))
@@ -1729,20 +1728,18 @@ propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabil
 -}
 propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
-  let chainSubset = take (chainSizeSubset args) (eventGenerator args)
-
-  serverStarted <- liftIO $ newQSem 1
-  guid <- liftIO nextRandom
-
-  let socketPath = "/tmp/prop-with-stream-socket:" ++ show guid ++ ".sock"
-
-  (_, (actual, expected)) <-
-    liftIO
-      ( concurrently
-          (server socketPath chainSubset serverStarted)
-          (client socketPath chainSubset serverStarted)
-          `finally` removeFile socketPath
-      )
+  (_, (actual, expected)) <- liftIO
+    $ Tmp.withSystemTempDirectory
+      mempty
+    $ \dir -> do
+      let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+          -- We need to make the filename as short as possible, because we're very limited by path
+          -- length
+          fileName = dir </> "f"
+      serverStarted <- newQSem 1
+      concurrently
+        (server fileName chainSubset serverStarted)
+        (client fileName chainSubset serverStarted)
 
   GenM.stop (actual == expected)
   where

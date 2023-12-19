@@ -8,11 +8,11 @@ import Control.Concurrent.Async (race_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (runReaderT)
 import Data.Void (Void)
+import Marconi.Cardano.ChainIndex.CLI qualified as CommonCLI
+import Marconi.Cardano.ChainIndex.Utils qualified as Utils
 import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Types (MarconiTrace, SecurityParam)
-import Marconi.ChainIndex.CLI qualified as CommonCLI
-import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Env (Env (Env))
 import Marconi.Starter.HttpServer qualified as HttpServer

@@ -9,7 +9,7 @@ module Marconi.Sidechain.Experimental.Api.Types (
 import Cardano.Api qualified as C
 import Control.Lens (makeLenses, (^.))
 import Data.List.NonEmpty (NonEmpty)
-import Marconi.ChainIndex.Api.Types qualified as Types
+import Marconi.Cardano.ChainIndex.Api.Types qualified as Types
 import Marconi.Core.JsonRpc (ReaderHandler, withReaderHandler)
 
 {- SERVER CONFIG -}
@@ -33,7 +33,7 @@ makeLenses ''SidechainHttpServerConfig
 {- UTILITIES -}
 
 {- | Specialization of a composition of 'mapError' and 'withReaderT' to facilitate
-mappings between handlers from `marconi-chain-index` using @Types.'HttpServerConfig'@
+mappings between handlers from `marconi-cardano-chain-index` using @Types.'HttpServerConfig'@
 and handlers of this package using 'SidechainHttpServerConfig'.
 -}
 withChainIndexHandler

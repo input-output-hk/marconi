@@ -32,12 +32,12 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
+import Marconi.Cardano.ChainIndex.Utils qualified as Utils
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), SecurityParam (SecurityParam))
 import Marconi.Cardano.Indexers.SyncHelper (mkSyncedSqliteIndexer)
-import Marconi.ChainIndex.Utils qualified as Utils
 import Marconi.Core (
   IndexerError,
   ListIndexer,

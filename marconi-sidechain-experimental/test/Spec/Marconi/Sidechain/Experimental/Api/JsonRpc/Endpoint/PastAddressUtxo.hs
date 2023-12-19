@@ -12,8 +12,8 @@ import Data.Text qualified as Text
 import Hedgehog ((===))
 import Hedgehog qualified
 import Hedgehog.Gen qualified
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.Cardano.Core.Extract.WithDistance (getEvent)
-import Marconi.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Types qualified as ChainIndex
 import Marconi.Core qualified as Core
 import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo qualified as Sidechain
 import Marconi.Sidechain.Experimental.CLI qualified as CLI
@@ -22,6 +22,8 @@ import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
 import Test.Gen.Marconi.Cardano.Core.Types qualified as Test.Types
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 import Test.Helpers qualified
+import Test.Marconi.Cardano.ChainIndex.Api.HttpServer qualified as Test.HttpServer
+import Test.Marconi.Cardano.ChainIndex.Api.JsonRpc qualified as Test.JsonRpc
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (
   testPropertyNamed,
@@ -100,7 +102,7 @@ propQueryTargetAddressesWithMockchain events = Test.Helpers.workspace "." $ \tmp
     -- Index then query via JSON-RPC handler
     actual <-
       Hedgehog.evalIO $
-        Utils.queryHandlerWithIndexers
+        Test.HttpServer.queryHandlerWithIndexers
           events
           (Utils.mkTestSidechainConfigsFromCliArgs args)
           (Sidechain.getPastAddressUtxoHandler params)
@@ -108,4 +110,4 @@ propQueryTargetAddressesWithMockchain events = Test.Helpers.workspace "." $ \tmp
     -- Extract the utxos associated with the selected address from 'expected'
     -- and compare actual vs. expected by sorted (TxIn, Value) pairs.
     uncurry (===) $
-      Utils.uniformGetUtxosFromAddressResult addr actual expected
+      Test.JsonRpc.uniformGetUtxosFromAddressResult addr actual expected

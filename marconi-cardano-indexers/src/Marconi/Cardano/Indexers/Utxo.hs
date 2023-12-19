@@ -36,6 +36,7 @@ module Marconi.Cardano.Indexers.Utxo (
   UtxoIndexerConfig (UtxoIndexerConfig),
   StandardUtxoIndexer,
   utxoWorker,
+  utxoBuilder,
   catchupConfigEventHook,
   trackedAddresses,
   includeScript,
@@ -49,9 +50,11 @@ module Marconi.Cardano.Indexers.Utxo (
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.Trace (Trace)
+import Cardano.BM.Tracing qualified as BM
 import Control.Lens (
   (&),
   (.~),
+  (?~),
   (^.),
  )
 import Control.Lens qualified as Lens
@@ -66,6 +69,7 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Maybe (mapMaybe)
 import Data.String (fromString)
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -75,13 +79,20 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
-  StandardWorkerConfig,
+  StandardWorkerConfig (StandardWorkerConfig),
   mkStandardWorkerWithFilter,
  )
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.Cardano.Core.Types (TxIndexInBlock, TxOut, pattern CurrentEra)
+import Marconi.Cardano.Core.Types (
+  AnyTxBody (AnyTxBody),
+  SecurityParam,
+  TxIndexInBlock,
+  TxOut,
+  pattern CurrentEra,
+ )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import System.FilePath ((</>))
 
 -- | Indexer representation of an UTxO
 data Utxo = Utxo
@@ -212,6 +223,35 @@ utxoWorker workerConfig utxoConfig path = do
       workerConfig
       filtering
       indexer
+
+{- | Convenience wrapper around 'utxoWorker' with some defaults for
+creating 'StandardWorkerConfig', including a preprocessor.
+-}
+utxoBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> UtxoIndexerConfig
+  -> BM.Trace IO Text
+  -> FilePath
+  -> n (StandardWorker IO [AnyTxBody] UtxoEvent Core.SQLiteIndexer)
+utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
+  let indexerName = "Utxo"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      utxoDbPath = path </> "utxo.db"
+      extractUtxos :: AnyTxBody -> [Utxo]
+      extractUtxos (AnyTxBody _ indexInBlock txb) = getUtxosFromTxBody indexInBlock txb
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook ?~ catchupConfigEventHook textLogger utxoDbPath
+      utxoWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfigWithTracer
+          (pure . NonEmpty.nonEmpty . (>>= extractUtxos))
+          (BM.appendName indexerName indexerEventLogger)
+   in utxoWorker utxoWorkerConfig utxoConfig utxoDbPath
 
 instance ToRow (Core.Timed C.ChainPoint Utxo) where
   toRow u =

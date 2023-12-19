@@ -18,6 +18,7 @@ module Marconi.Cardano.Indexers.Datum (
   DatumIndexer,
   mkDatumIndexer,
   datumWorker,
+  datumBuilder,
   StandardDatumIndexer,
 
   -- * Extract
@@ -30,6 +31,8 @@ module Marconi.Cardano.Indexers.Datum (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.BM.Data.Trace (Trace)
+import Cardano.BM.Tracing qualified as BM
 import Cardano.Ledger.Api qualified as Ledger
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
@@ -42,6 +45,8 @@ import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Text (Text)
+import Data.Text qualified as Text
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
@@ -49,12 +54,17 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
-  StandardWorkerConfig,
+  StandardWorkerConfig (StandardWorkerConfig),
   mkStandardWorker,
  )
 import Marconi.Cardano.Core.Orphans ()
+import Marconi.Cardano.Core.Types (
+  AnyTxBody (AnyTxBody),
+  SecurityParam,
+ )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import System.FilePath ((</>))
 
 data DatumInfo = DatumInfo
   { _datumHash :: C.Hash C.ScriptData
@@ -126,6 +136,30 @@ datumWorker
 datumWorker workerConfig path = do
   indexer <- mkDatumIndexer path
   mkStandardWorker workerConfig indexer
+
+{- | Convenience wrapper around 'datumWorker' with some defaults for
+creating 'StandardWorkerConfig', including a preprocessor.
+-}
+datumBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => SecurityParam
+  -> Core.CatchupConfig
+  -> Trace m Text
+  -> FilePath
+  -> n (StandardWorker m [AnyTxBody] DatumEvent Core.SQLiteIndexer)
+datumBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "Datum"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      extractDatum :: AnyTxBody -> [DatumInfo]
+      extractDatum (AnyTxBody _ _ txb) = getDataFromTxBody txb
+      datumWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          catchupConfig
+          (pure . NonEmpty.nonEmpty . (>>= extractDatum))
+          (BM.appendName indexerName indexerEventLogger)
+   in datumWorker datumWorkerConfig (path </> "datum.db")
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery DatumEvent)) m)
