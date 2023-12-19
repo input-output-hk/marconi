@@ -4,6 +4,7 @@
 module Test.Marconi.Cardano.Snapshot (
   SnapshotFileData (..),
   setupSnapshot,
+  deserialiseSnapshot,
 ) where
 
 import Cardano.Api qualified as C
@@ -14,6 +15,8 @@ import Data.ByteString qualified as BS
 import Data.List (find, isPrefixOf, sortOn)
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent)
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerState
 import Marconi.Cardano.Indexers.SnapshotBlockEvent (
   BlockNodeToClientVersion,
   CodecConfig,
@@ -50,7 +53,22 @@ setupSnapshot
 setupSnapshot nodeConfigPath inputDir dbDir = do
   (ledgerFile, blockFiles) <- findSnapshotFiles inputDir
   setupLedgerState ledgerFile dbDir
-  setupBlockEvents nodeConfigPath blockFiles
+  getBlockEvents nodeConfigPath blockFiles
+
+{- | Similar to 'setupSnapshot', but doesn't write anything to disk.
+It returns the stream of block events.
+-}
+deserialiseSnapshot
+  :: FilePath
+  -- ^ path to the node config file
+  -> FilePath
+  -- ^ directory which contains the serialised events
+  -> IO (ExtLedgerStateEvent, Stream (Of BlockEvent) IO ())
+deserialiseSnapshot nodeConfigPath inputDir = do
+  (ledgerFile, blockFiles) <- findSnapshotFiles inputDir
+  blockEvents <- getBlockEvents nodeConfigPath blockFiles
+  ledgerState <- deserialiseLedgerState nodeConfigPath ledgerFile
+  return (ledgerState, blockEvents)
 
 {- | Utility function which searches for the serialised ledger state
 and the serialised block events. The files are expected to be named
@@ -78,19 +96,17 @@ findSnapshotFiles inputDir = do
 {- | Reads the node configuration file which is used to build the stream of
 block events from the snapshot on disk.
 -}
-setupBlockEvents
+getBlockEvents
   :: FilePath
   -- ^ path to the node config file
   -> [FilePath]
   -- ^ paths to the serialised block events
   -> IO (Stream (Of BlockEvent) IO ())
-setupBlockEvents nodeConfigPath blockEventPaths = do
+getBlockEvents nodeConfigPath blockEventPaths = do
   codecConfig <- getConfigCodec' nodeConfigPath
   toClientVersion <- getBlockToNodeClientVersion
   return $ mkBlockEventStream codecConfig toClientVersion blockEventPaths
   where
-    getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec
-
     getBlockToNodeClientVersion =
       maybe (error "Error in getting the node client version") pure blockNodeToNodeVersionM
 
@@ -161,3 +177,28 @@ extractRawMetadata typeOfEvent name =
       , contentFlag == "just" ->
           rawMetadata
     _ -> error $ "Malformed metadata format for: " <> show name
+
+-- | Internalises the ledger state from a serialisation on disk.
+deserialiseLedgerState
+  :: FilePath
+  -- ^ path to the node config file
+  -> FilePath
+  -- ^ path to the serialized ledger state
+  -> IO ExtLedgerStateEvent
+deserialiseLedgerState configFile file@(Text.pack . takeBaseName -> name) = do
+  codecConfig <- getConfigCodec' configFile
+  case ExtLedgerState.deserialiseMetadata . extractRawMetadata "epochState" $ name of
+    Nothing ->
+      error $ "Malformed metadata for serialized ExtLedgerStateEvent: " <> show name
+    Just meta -> do
+      rawBytes <- BS.readFile file
+      let eExtLedgerState = ExtLedgerState.deserialiseLedgerState codecConfig meta rawBytes
+      case eExtLedgerState of
+        Left err -> error (Text.unpack err)
+        Right mExtLedgerState ->
+          case mExtLedgerState of
+            Nothing -> error "Cannot deserialise ledger state."
+            Just ledger -> return ledger
+
+getConfigCodec' :: FilePath -> IO CodecConfig
+getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec

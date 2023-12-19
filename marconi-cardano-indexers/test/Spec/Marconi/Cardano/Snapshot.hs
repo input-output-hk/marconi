@@ -15,17 +15,39 @@ import Streaming.Prelude qualified as Stream
 import System.Directory (removeDirectoryRecursive)
 import System.Environment (getEnv)
 import System.FilePath ((</>))
+import System.IO (IOMode (WriteMode), hPrint, withFile)
 import Test.Marconi.Cardano.Snapshot (
+  deserialiseSnapshot,
   setupSnapshot,
  )
 import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.Golden (goldenVsFileDiff)
 import Test.Tasty.HUnit (assertEqual, testCase)
 
 tests :: TestTree
 tests =
   testGroup
     "Spec.Marconi.Cardano.Snapshot"
-    [testRunListIndexerOnSnapshot]
+    [ testDeserialiseSnapshot
+    , testRunListIndexerOnSnapshot
+    ]
+
+testDeserialiseSnapshot :: TestTree
+testDeserialiseSnapshot =
+  goldenVsFileDiff
+    "TestDeserialiseSnapshot"
+    (\expected actual -> ["diff", "--color=always", expected, actual])
+    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.golden"
+    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out"
+    run
+  where
+    run = do
+      configFile <- getNodeConfigPath Preprod
+      (ledgerState, blockEvents) <-
+        deserialiseSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10/"
+      withFile "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out" WriteMode $ \handle -> do
+        hPrint handle ledgerState
+        Stream.toHandle handle (Stream.map show blockEvents)
 
 testRunListIndexerOnSnapshot :: TestTree
 testRunListIndexerOnSnapshot =
@@ -34,19 +56,19 @@ testRunListIndexerOnSnapshot =
         Core.RunIndexerOnSnapshotConfig
           Core.withNoPreprocessorOnSnapshot
           1
-   in testCase "TestRunListIndexerOnSnapshot" (run Preprod dbPath config)
+   in testCase "TestRunListIndexerOnSnapshot" (runListIndexerTest Preprod dbPath config)
 
 {- | Run a simple list indexer on given snapshot. The list indexer stores
 each event as-is. The test checks whether the resulting set of events
 is equal to the initial set of events.
 -}
-run
+runListIndexerTest
   :: NodeType
   -> FilePath
   -- ^ directory which contains the serialised events
   -> Core.RunIndexerOnSnapshotConfig BlockEvent BlockEvent
   -> IO ()
-run nodeType dbPath config = do
+runListIndexerTest nodeType dbPath config = do
   configFile <- getNodeConfigPath nodeType
   blockStream <- setupSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10" dbPath
   actualResultRaw <-
