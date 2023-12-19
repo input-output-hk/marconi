@@ -31,8 +31,6 @@ module Marconi.Cardano.Core.Runner (
   withDistancePreprocessor,
   withDistanceAndTipPreprocessor,
   withNoPreprocessorOnSnapshot,
-  withDistancePreprocessorOnSnapshot,
-  withDistanceAndTipPreprocessorOnSnapshot,
 
   -- * Event types
 ) where
@@ -309,28 +307,6 @@ withDistanceAndTipPreprocessor =
       blockNoFromBlockEvent _ = Nothing
    in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
 
-withDistanceAndTipPreprocessorOnSnapshot
-  :: C.ChainTip -> RunIndexerEventPreprocessing BlockEvent TipAndBlock
-withDistanceAndTipPreprocessorOnSnapshot tip =
-  let extractChainTipAndAddDistance
-        :: BlockEvent
-        -> [Core.ProcessedInput C.ChainPoint TipAndBlock]
-      extractChainTipAndAddDistance x =
-        let point = blockEventPoint x
-            blockWithDistance
-              :: BlockEvent
-              -> WithDistance BlockEvent
-            blockWithDistance (BlockEvent b@(C.BlockInMode block _) epochNo' bt) =
-              let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
-                  withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
-               in withDistance
-         in [Core.Index $ Core.Timed point $ Just $ TipAndBlock tip $ Just $ blockWithDistance x]
-      getDistance (TipAndBlock _ (Just event)) = Just . fromIntegral $ Distance.chainDistance event
-      getDistance _ = Nothing
-      blockNoFromBlockEvent (TipAndBlock _ (Just event)) = Just . getBlockNo . blockInMode $ getEvent event
-      blockNoFromBlockEvent _ = Nothing
-   in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
-
 withNoPreprocessor :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) BlockEvent
 withNoPreprocessor =
   let eventToProcessedInput
@@ -355,27 +331,6 @@ withNoPreprocessorOnSnapshot =
          in [Core.Index $ Just <$> timedEvent]
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
-
-withDistancePreprocessorOnSnapshot
-  :: C.ChainTip
-  -> RunIndexerEventPreprocessing BlockEvent (WithDistance BlockEvent)
-withDistancePreprocessorOnSnapshot tip =
-  let addDistance
-        :: BlockEvent
-        -> [Core.ProcessedInput C.ChainPoint (WithDistance BlockEvent)]
-      addDistance x =
-        let point = blockEventPoint x
-            blockWithDistance
-              :: BlockEvent
-              -> Core.Timed C.ChainPoint (WithDistance BlockEvent)
-            blockWithDistance (BlockEvent b@(C.BlockInMode block _) epochNo' bt) =
-              let (C.Block (C.BlockHeader _slotNo _hsh currentBlockNo) _) = block
-                  withDistance = Distance.attachDistance currentBlockNo tip (BlockEvent b epochNo' bt)
-               in Core.Timed point withDistance
-         in [Core.Index $ Just <$> blockWithDistance x]
-      getDistance = Just . fromIntegral . Distance.chainDistance
-      blockNoFromBlockEvent = Just . getBlockNo . blockInMode . getEvent
-   in RunIndexerEventPreprocessing addDistance blockNoFromBlockEvent getDistance
 
 withDistancePreprocessor
   :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)
