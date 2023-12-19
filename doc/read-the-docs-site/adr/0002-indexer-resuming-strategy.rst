@@ -19,8 +19,8 @@ Context
 -------
 
 When we start Marconi, we need to define a starting point to the node, and each
-indexers must be able to restart from this point.
-While we usually try to keep the indexers synchronised. We wanted to be able to
+indexer must be able to restart from this point.
+sWhile we usually try to keep the indexers synchronised, we also want the ability to
 add new indexers without having to resynchronised the existing ones.
 
 Initially, each indexer was sending a list of points that it can resume from,
@@ -31,7 +31,9 @@ We want to define an efficient resuming strategy which satifies the following ge
 * fast resuming
 * low hardware resource consumption (CPU and memory)
 * does not require indexer to re-index data they have already indexed
-* indexers are *always* in a consistent state. They *must* delete any indexed information in points that have been rollbacked even if the rollback happens when the indexers are stopped.
+* indexers are *always* in a consistent state.
+  They *must* delete any indexed information in points that have been rollbacked
+  even if the rollback happens when the indexers are stopped.
 
 Decision
 --------
@@ -54,22 +56,23 @@ Decision
 * It's the indexer responsability to ignore new stable points that are past its
   current indexing point, if any.
 
-* We will start a single node chain-sync client for all indexers instead of one node chain sync client per indexer.
+* We will start a single node chain-sync client for all indexers instead of one
+  node chain sync client per indexer.
 
 Argument
 --------
 
-Our different implementations of the resuming so far tried to restart at thhe
+Our different implementations of the resuming so far tried to restart at the
 latest common synchronisation points of all the indexers, even if this point was
 a volatile one.
 The consequence of it was a complex logic to (1) find a valid sync point, (2)
-deal with the potential rollbacks once the chainpoint was chosen.
+manage any potential rollback once the chainpoint was chosen.
 
-Sticking to stable blocks drastically simplified the resuming logic, as we don't
-have to handle rollback that happened while the indexer was offline.
-The counterpart is that we potentially need to reindex volatile blocks, but we
-decided that redoing this work isn't too expensive compared to the logic
-simplification that it introduces.
+Scoping the resume to stable blocks only drastically simplified the resume logic.
+This design removed the complex logic of determining whether rollbacks occurred
+while the indexer(s) were offline.
+This simplification came at the cost of potentially re-indexing the volatile blocks.
+We have determined, this is a small cost to pay for the gained simplifications.
 
 Alternative solutions
 ---------------------

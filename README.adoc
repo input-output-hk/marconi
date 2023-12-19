@@ -9,28 +9,28 @@ image:https://img.shields.io/badge/policy-Cardano%20Engineering%20Handbook-infor
 == Introduction
 
 Marconi is a lightweight customizable solution for indexing and querying the Cardano blockchain.
-It's original purpose is to provide a library that ease the tailored indexing of on-chain
+Its original purpose is to provide a library that eases the tailored indexing of on-chain
 information.
-Although, this repository also contains a set of indexers that are ready to use
+However, this repository also contains a set of indexers that are ready to use
 and some executables that group them.
-While we'd recommend to define indexers that fits your need, you can reuse the
+While we'd recommend defining indexers that fits your need, you can reuse the
 existing ones to test Marconi.
 
 == Key features
 
-- Customizable backend. The core library comes with
+* Customizable backend. The core library comes with
   file:./marconi-core/src/Marconi/Core/Indexer/SQLiteIndexer.hs[SQLite backend],
   a file:./marconi-core/src/Marconi/Core/Indexer/FileIndexer.hs[file backend]
   or a file:./marconi-core/src/Marconi/Core/Indexer/ListIndexer.hs[in-memory backend].
-- file:./marconi-core/src/Marconi/Core/Indexer/SQLiteAggregateQuery.hs[Group indexers]
+* file:./marconi-core/src/Marconi/Core/Indexer/SQLiteAggregateQuery.hs[Group indexers]
   to query them,
-- file:./marconi-core/src/Marconi/Core/Preprocessor/Resume.hs[Resume indexing]
+* file:./marconi-core/src/Marconi/Core/Preprocessor/Resume.hs[Resume indexing]
   (new indexers don't reset existing ones).
-- file:./marconi-core/src/Marconi/Core/Transformer/WithCatchup.hs[Batch insert] to
+* file:./marconi-core/src/Marconi/Core/Transformer/WithCatchup.hs[Batch insert] to
   speed up synchronisation with the node.
-- Logging using
+* Logging using
   https://github.com/input-output-hk/iohk-monitoring-framework[iohk-monitoring-framework].
-- Indexers can be file:./marconi-core/src/Marconi/Core/Coordinator.hs[grouped].
+* Indexers can be file:./marconi-core/src/Marconi/Core/Coordinator.hs[grouped].
 
 A comparison with other chain-indexing projects is also https://example.com/TODO[available].
 
