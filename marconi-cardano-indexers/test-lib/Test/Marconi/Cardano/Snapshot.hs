@@ -8,7 +8,7 @@ module Test.Marconi.Cardano.Snapshot (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent)
-import Control.Monad ((<=<))
+import Control.Monad (when, (<=<))
 import Control.Monad.Except (runExceptT)
 import Data.ByteString qualified as BS
 import Data.List (find, isPrefixOf, sortOn)
@@ -43,31 +43,67 @@ setupSnapshot
   :: FilePath
   -- ^ path to the node config file
   -> FilePath
-  -- ^ directory which contains the serialized events
+  -- ^ directory which contains the serialised events
   -> FilePath
   -- ^ directory to be used as the indexer's DB
   -> IO (Stream (Of BlockEvent) IO ())
-setupSnapshot nodeConfig inputDir dbDir = do
-  codecConfig <- getConfigCodec' nodeConfig
-  toClientVersion <- getBlockToNodeClientVersion
+setupSnapshot nodeConfigPath inputDir dbDir = do
+  (ledgerFile, blockFiles) <- findSnapshotFiles inputDir
+  setupLedgerState ledgerFile dbDir
+  setupBlockEvents nodeConfigPath blockFiles
+
+{- | Utility function which searches for the serialised ledger state
+and the serialised block events. The files are expected to be named
+with a specific prefix.
+-}
+findSnapshotFiles
+  :: FilePath
+  -- ^ directory which contains the serialized events
+  -> IO (FilePath, [FilePath])
+findSnapshotFiles inputDir = do
   files <- fmap (inputDir </>) <$> listDirectory inputDir
   let blockFiles = filter isBlockEventFile files
       ledgerStateFile = findLedgerState files
-      blockStream = mkBlockEventStream codecConfig toClientVersion blockFiles
-  createDirectoryIfMissing True (dbDir </> "epochState")
-  copyFile ledgerStateFile (dbDir </> "epochState" </> "epochState")
-  return blockStream
+  when
+    (null blockFiles)
+    (error "Could not find any files containing serialized block events.")
+  return (ledgerStateFile, blockFiles)
+  where
+    isBlockEventFile = isPrefixOf "block_" . takeBaseName
+
+    findLedgerState =
+      maybe (error "Could not find file containing serialized ledger state.") id
+        . find (isPrefixOf "epochState_" . takeBaseName)
+
+{- | Reads the node configuration file which is used to build the stream of
+block events from the snapshot on disk.
+-}
+setupBlockEvents
+  :: FilePath
+  -- ^ path to the node config file
+  -> [FilePath]
+  -- ^ paths to the serialised block events
+  -> IO (Stream (Of BlockEvent) IO ())
+setupBlockEvents nodeConfigPath blockEventPaths = do
+  codecConfig <- getConfigCodec' nodeConfigPath
+  toClientVersion <- getBlockToNodeClientVersion
+  return $ mkBlockEventStream codecConfig toClientVersion blockEventPaths
   where
     getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec
 
     getBlockToNodeClientVersion =
       maybe (error "Error in getting the node client version") pure blockNodeToNodeVersionM
 
-    isBlockEventFile = isPrefixOf "block_" . takeBaseName
-
-    findLedgerState =
-      maybe (error "Could not find file containing serialized ledger state") id
-        . find (isPrefixOf "epochState_" . takeBaseName)
+-- | Initialises the indexer database with the serialised ledger state.
+setupLedgerState
+  :: FilePath
+  -- ^ path to the serialized ledger state
+  -> FilePath
+  -- ^ directory to be used as the indexer's DB
+  -> IO ()
+setupLedgerState ledgerStatePath dbDir = do
+  createDirectoryIfMissing True (dbDir </> "epochState")
+  copyFile ledgerStatePath (dbDir </> "epochState" </> "epochState")
 
 -- | Necessary information about each file containing a serialised 'BlockEvent'.
 data SnapshotFileData = SnapshotFileData
