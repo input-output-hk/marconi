@@ -134,6 +134,9 @@ runIndexerOnChainSync config indexer = do
     securityParam = Lens.view runIndexerConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
 
+{- | Run an indexer directly from a stream of 'BlockEvent's. Useful for running indexers from
+"snapshots" of the blockchain, i.e. serialised parts of the chain which were stored on disk.
+-}
 runIndexerOnSnapshot
   :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
@@ -152,16 +155,20 @@ runIndexerOnSnapshot config indexer stream =
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
 
+-- | The result of an asynchronous procedure which emits events to be consumed.
 data EventEmitter indexer event a = EventEmitter
   { queue :: STM.TBQueue (Core.ProcessedInput (Core.Point event) event)
   , indexerMVar :: Concurrent.MVar (indexer event)
   , emitEvents :: IO a
   }
 
+{- | Races two threads, one which emits events and the other which consumes them.
+The indexer receives the consumed events. Returns the 'MVar' in which the indexer
+resides, for inspection.
+-}
 runEmitterAndConsumer
   :: ( Core.Point event ~ C.ChainPoint
-     , -- , Ord (Core.Point event)
-       Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
+     , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      )
   => SecurityParam
@@ -182,6 +189,7 @@ runEmitterAndConsumer
           indexerMVar
       return indexerMVar
 
+-- | Emits events from a local running Cardano node via the chain sync protocol.
 chainSyncEventEmitter
   :: (Core.Point event ~ C.ChainPoint)
   => RunIndexerConfig (ChainSyncEvent BlockEvent) event
@@ -219,6 +227,10 @@ chainSyncEventEmitter
               runChainSyncStream `catch` whenNoIntersectionFound
       return (EventEmitter eventQueue cBox eventEmitter)
 
+{- | Emits events from a stream. There is a level of indirection here, since
+instead of consuming the stream a caller will consume the created queue.
+The reason behind this is to provide the same interface as 'chainSyncEventEmitter'.
+-}
 streamBlockEventEmitter
   :: (Core.Point event ~ C.ChainPoint)
   => RunIndexerOnSnapshotConfig BlockEvent event
