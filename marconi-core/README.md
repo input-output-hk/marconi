@@ -17,12 +17,12 @@ ease events extraction and connection to a node or
 
 ## Philosophy
 
-`Marconi` ease the definition and composition of atomic indexers,
+`Marconi` eased the definition and composition of atomic indexers,
 each of them tailored to answer efficiently specific questions.
-The underlying idea is that a dApp usually requires specific information,
+The underlying idea is that a dApp usually requires specific information
 and in the fastest possible way.
 To address this, we need tailored indexers, extracting exactly what is needed to
-provide this information and storing it in the most efficient way.
+provide this information and store most efficiently.
 
 ## What's in there?
 
