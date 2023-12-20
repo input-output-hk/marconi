@@ -13,6 +13,7 @@ import Control.Monad (when, (<=<))
 import Control.Monad.Except (runExceptT)
 import Data.ByteString qualified as BS
 import Data.List (find, isPrefixOf, sortOn)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent)
@@ -66,7 +67,7 @@ deserialiseSnapshot nodeConfigPath inputDir = do
   (ledgerFile, blockFiles) <- findSnapshotFiles inputDir
   blockEvents <- getBlockEvents nodeConfigPath blockFiles
   ledgerState <- deserialiseLedgerState nodeConfigPath ledgerFile
-  return (ledgerState, blockEvents)
+  pure (ledgerState, blockEvents)
 
 {- | Utility function which searches for the serialised ledger state
 and the serialised block events. The files are expected to be named
@@ -83,12 +84,12 @@ findSnapshotFiles inputDir = do
   when
     (null blockFiles)
     (error "Could not find any files containing serialized block events.")
-  return (ledgerStateFile, blockFiles)
+  pure (ledgerStateFile, blockFiles)
   where
     isBlockEventFile = isPrefixOf "block_" . takeBaseName
 
     findLedgerState =
-      maybe (error "Could not find file containing serialized ledger state.") id
+      fromMaybe (error "Could not find file containing serialized ledger state.")
         . find (isPrefixOf "epochState_" . takeBaseName)
 
 {- | Reads the node configuration file which is used to build the stream of
@@ -103,7 +104,7 @@ getBlockEvents
 getBlockEvents nodeConfigPath blockEventPaths = do
   codecConfig <- getConfigCodec' nodeConfigPath
   toClientVersion <- getBlockToNodeClientVersion
-  return $ mkBlockEventStream codecConfig toClientVersion blockEventPaths
+  pure $ mkBlockEventStream codecConfig toClientVersion blockEventPaths
   where
     getBlockToNodeClientVersion =
       maybe (error "Error in getting the node client version") pure blockNodeToNodeVersionM
@@ -160,7 +161,7 @@ mkBlockEventStream codecConfig toClientVersion =
                 case mBlockEvent of
                   Nothing -> error "Cannot deserialise block event"
                   Just be -> be
-      return (getBlockEvent blockEvent)
+      pure (getBlockEvent blockEvent)
     mkFileStream :: [FilePath] -> Stream (Of SnapshotFileData) IO ()
     mkFileStream = Stream.each . sortOn index . fmap mkSnapshotFileData
 
@@ -196,7 +197,7 @@ deserialiseLedgerState configFile file@(Text.pack . takeBaseName -> name) = do
         Right mExtLedgerState ->
           case mExtLedgerState of
             Nothing -> error "Cannot deserialise ledger state."
-            Just ledger -> return ledger
+            Just ledger -> pure ledger
 
 getConfigCodec' :: FilePath -> IO CodecConfig
 getConfigCodec' = either (error . show) pure <=< runExceptT . getConfigCodec

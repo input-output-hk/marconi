@@ -77,7 +77,7 @@ runListIndexerTest nodeType dbPath config = do
       indexer <- readMVar mVar
       -- cleanup temporary indexer database
       removeDirectoryRecursive dbPath
-      return (Lens.view ListIndexer.events indexer)
+      pure (Lens.view ListIndexer.events indexer)
   expectedResult <- Stream.toList_ blockStream
   -- the list indexer stores events in reverse order
   let actualResult = reverse $ Lens.view event <$> actualResultRaw
@@ -94,7 +94,7 @@ configuration file path.
 getNodeConfigPath :: NodeType -> IO FilePath
 getNodeConfigPath nodeType = do
   configDir <- getEnv "CARDANO_NODE_CONFIG"
-  return $ configDir </> "cardano-node" </> toPath nodeType </> "config.json"
+  pure $ configDir </> "cardano-node" </> toPath nodeType </> "config.json"
   where
     toPath Preview = "preview"
     toPath Preprod = "preprod"

@@ -49,6 +49,7 @@ import Control.Concurrent.STM qualified as STM
 import Control.Exception (catch)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
+import Control.Monad (void)
 import Control.Monad.Except (ExceptT)
 import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
@@ -126,8 +127,11 @@ runIndexerOnChainSync
   -> indexer event
   -> IO ()
 runIndexerOnChainSync config indexer = do
-  _ <- runEmitterAndConsumer securityParam eventPreprocessing (chainSyncEventEmitter config indexer)
-  return ()
+  void $
+    runEmitterAndConsumer
+      securityParam
+      eventPreprocessing
+      (chainSyncEventEmitter config indexer)
   where
     securityParam = Lens.view runIndexerConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
@@ -185,7 +189,7 @@ runEmitterAndConsumer
           Map.empty
           queue
           indexerMVar
-      return indexerMVar
+      pure indexerMVar
 
 -- | Emits events from a local running Cardano node via the chain sync protocol.
 chainSyncEventEmitter
@@ -223,7 +227,7 @@ chainSyncEventEmitter
           eventEmitter =
             withNodeConnectRetry trace retryConfig socketPath $
               runChainSyncStream `catch` whenNoIntersectionFound
-      return (EventEmitter eventQueue cBox eventEmitter)
+      pure (EventEmitter eventQueue cBox eventEmitter)
 
 {- | Emits events from a stream. There is a level of indirection here, since
 instead of consuming the stream a caller will consume the created queue.
@@ -240,7 +244,7 @@ streamBlockEventEmitter config indexer stream = do
   indexerMVar <- Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
       emitEvents = mkEventStream processEvent queue stream
-  return EventEmitter{queue, indexerMVar, emitEvents}
+  pure EventEmitter{queue, indexerMVar, emitEvents}
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventProcessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
