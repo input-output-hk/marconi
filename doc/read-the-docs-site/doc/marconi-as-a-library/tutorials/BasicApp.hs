@@ -135,7 +135,7 @@ runIndexer env = do
   indexer <-
     liftIO $ Core.mkCoordinator [Core.worker $ envIndexerWorker env]
   liftIO $
-    Core.runIndexer
+    Core.runIndexerOnChainSync
       ( Core.RunIndexerConfig
           -- The 'Trace' used for logging
           (envTrace env)

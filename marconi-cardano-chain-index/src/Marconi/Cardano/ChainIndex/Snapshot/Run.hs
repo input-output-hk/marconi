@@ -21,7 +21,7 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner (
   RunIndexerConfig (RunIndexerConfig),
-  runIndexer,
+  runIndexerOnChainSync,
   withDistanceAndTipPreprocessor,
  )
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
@@ -96,7 +96,7 @@ run = do
       Left err -> withLogFullError exitFailure sb trace $ Text.pack $ show err
       Right result -> pure result
 
-  runIndexer snapshotConfig snapshotCoordinator
+  runIndexerOnChainSync snapshotConfig snapshotCoordinator
   where
     withLogFullError action sb trace msg = do
       logError trace msg

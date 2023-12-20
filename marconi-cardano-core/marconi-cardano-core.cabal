@@ -89,6 +89,7 @@ library
   ------------------------
   build-depends:
     , aeson
+    , async
     , base                 >=4.9 && <5
     , bytestring
     , cborg
@@ -120,6 +121,11 @@ library cardano-api-extended
     Cardano.Api.Extended.Streaming
     Cardano.Api.Extended.Streaming.Callback
     Cardano.Api.Extended.Streaming.ChainSyncEvent
+
+  --------------------
+  -- Local components
+  --------------------
+  build-depends:   marconi-core
 
   --------------------------
   -- Other IOG dependencies
