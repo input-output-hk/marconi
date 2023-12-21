@@ -45,15 +45,6 @@ module Marconi.Cardano.Core.Types (
   SecurityParam (SecurityParam),
   TxIndexInBlock (TxIndexInBlock),
 
-  -- * Configuration for index runners
-  RunIndexerConfig (RunIndexerConfig),
-  runIndexerConfigTrace,
-  runIndexerConfigRetryConfig,
-  runIndexerConfigSecurityParam,
-  runIndexerConfigNetworkId,
-  runIndexerConfigChainPoint,
-  runIndexerConfigSocketPath,
-
   -- * Block range type for specifying a sub-chain
   BlockRange,
   mkBlockRange,
@@ -154,18 +145,6 @@ newtype TxIndexInBlock = TxIndexInBlock Word64
 
 -- | An existential type representing a transaction with @C.'TxBody' era@ for any Cardano era.
 data AnyTxBody = forall era. (C.IsCardanoEra era) => AnyTxBody C.BlockNo TxIndexInBlock (C.TxBody era)
-
--- | Common configuration required to run indexers
-data RunIndexerConfig = RunIndexerConfig
-  { _runIndexerConfigTrace :: MarconiTrace IO
-  , _runIndexerConfigRetryConfig :: RetryConfig
-  , _runIndexerConfigSecurityParam :: SecurityParam
-  , _runIndexerConfigNetworkId :: C.NetworkId
-  , _runIndexerConfigChainPoint :: C.ChainPoint
-  , _runIndexerConfigSocketPath :: FilePath
-  }
-
-Lens.makeLenses ''RunIndexerConfig
 
 -- * Database file names
 

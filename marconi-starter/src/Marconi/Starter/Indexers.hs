@@ -52,7 +52,7 @@ runIndexers = do
   startingPoint <- getStartingPoint preferedStartingPoint indexer
 
   liftIO $
-    Runner.runIndexer
+    Runner.runIndexerOnChainSync
       ( RunIndexerConfig
           stdoutTrace
           withDistancePreprocessor
