@@ -10,6 +10,7 @@ module Marconi.Cardano.Core.Runner (
   -- * Runner
   runIndexerOnChainSync,
   runIndexerOnSnapshot,
+  runEmitterAndConsumer,
 
   -- ** Runner Config
   RunIndexerConfig (RunIndexerConfig),
@@ -17,6 +18,7 @@ module Marconi.Cardano.Core.Runner (
   runIndexerExtractBlockNo,
   runIndexerExtractTipDistance,
   RunIndexerEventPreprocessing (RunIndexerEventPreprocessing),
+  RunIndexerEventPreprocessingPure,
   runIndexerConfigTrace,
   runIndexerConfigEventProcessing,
   runIndexerConfigRetryConfig,
@@ -74,18 +76,21 @@ import Streaming qualified as S
 import Streaming.Prelude qualified as S
 
 -- | Runner pre-processing
-data RunIndexerEventPreprocessing rawEvent event = RunIndexerEventPreprocessing
-  { _runIndexerPreprocessEvent :: rawEvent -> [Core.ProcessedInput C.ChainPoint event]
+data RunIndexerEventPreprocessing m rawEvent event = RunIndexerEventPreprocessing
+  { _runIndexerPreprocessEvent :: rawEvent -> m (Core.ProcessedInput C.ChainPoint event)
   , _runIndexerExtractBlockNo :: event -> Maybe C.BlockNo
   , _runIndexerExtractTipDistance :: event -> Maybe Word
   }
+
+type RunIndexerEventPreprocessingPure rawEvent event =
+  RunIndexerEventPreprocessing [] rawEvent event
 
 Lens.makeLenses ''RunIndexerEventPreprocessing
 
 -- | Common configuration required to run indexers
 data RunIndexerConfig rawEvent event = RunIndexerConfig
   { _runIndexerConfigTrace :: MarconiTrace IO
-  , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessing rawEvent event
+  , _runIndexerConfigEventProcessing :: RunIndexerEventPreprocessingPure rawEvent event
   , _runIndexerConfigRetryConfig :: RetryConfig
   , _runIndexerConfigSecurityParam :: SecurityParam
   , _runIndexerConfigNetworkId :: C.NetworkId
@@ -96,7 +101,7 @@ data RunIndexerConfig rawEvent event = RunIndexerConfig
 Lens.makeLenses ''RunIndexerConfig
 
 data RunIndexerOnSnapshotConfig rawEvent event = RunIndexerOnSnapshotConfig
-  { _runIndexerOnSnapshotConfigEventProcessing :: RunIndexerEventPreprocessing rawEvent event
+  { _runIndexerOnSnapshotConfigEventProcessing :: RunIndexerEventPreprocessingPure rawEvent event
   , _runIndexerOnSnapshotConfigSecurityParam :: SecurityParam
   }
 
@@ -174,7 +179,7 @@ runEmitterAndConsumer
      , Core.Closeable IO indexer
      )
   => SecurityParam
-  -> RunIndexerEventPreprocessing rawEvent event
+  -> RunIndexerEventPreprocessingPure rawEvent event
   -> IO (EventEmitter indexer event a)
   -> IO (Concurrent.MVar (indexer event))
 runEmitterAndConsumer
@@ -251,7 +256,7 @@ streamBlockEventEmitter config indexer stream = do
 
 stablePointComputation
   :: SecurityParam
-  -> RunIndexerEventPreprocessing rawEvent event
+  -> RunIndexerEventPreprocessingPure rawEvent event
   -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
 stablePointComputation securityParam preprocessing (Core.Timed point event) = do
@@ -286,7 +291,7 @@ mkEventStream processEvent q =
   S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
 
 withDistanceAndTipPreprocessor
-  :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) TipAndBlock
+  :: RunIndexerEventPreprocessingPure (ChainSyncEvent BlockEvent) TipAndBlock
 withDistanceAndTipPreprocessor =
   let extractChainTipAndAddDistance
         :: ChainSyncEvent BlockEvent
@@ -311,7 +316,7 @@ withDistanceAndTipPreprocessor =
       blockNoFromBlockEvent _ = Nothing
    in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
 
-withNoPreprocessor :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) BlockEvent
+withNoPreprocessor :: RunIndexerEventPreprocessingPure (ChainSyncEvent BlockEvent) BlockEvent
 withNoPreprocessor =
   let eventToProcessedInput
         :: ChainSyncEvent BlockEvent
@@ -324,7 +329,7 @@ withNoPreprocessor =
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
 
-withNoPreprocessorOnSnapshot :: RunIndexerEventPreprocessing BlockEvent BlockEvent
+withNoPreprocessorOnSnapshot :: RunIndexerEventPreprocessingPure BlockEvent BlockEvent
 withNoPreprocessorOnSnapshot =
   let eventToProcessedInput
         :: BlockEvent
@@ -337,7 +342,7 @@ withNoPreprocessorOnSnapshot =
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
 
 withDistancePreprocessor
-  :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)
+  :: RunIndexerEventPreprocessingPure (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)
 withDistancePreprocessor =
   let addDistance
         :: ChainSyncEvent BlockEvent

@@ -219,7 +219,7 @@ mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100
 mkEndToEndRunIndexerConfig
   :: Types.MarconiTrace IO
   -> E.Types.NodeServerConfig
-  -> Runner.RunIndexerEventPreprocessing (ChainSyncEvent Types.BlockEvent) event
+  -> Runner.RunIndexerEventPreprocessingPure (ChainSyncEvent Types.BlockEvent) event
   -> Runner.RunIndexerConfig (ChainSyncEvent Types.BlockEvent) event
 mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
   Runner.RunIndexerConfig
@@ -233,7 +233,7 @@ mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
     (E.Types.nscSocketPath nscConfig)
 
 anyTxBodyWithDistancePreprocessor
-  :: Runner.RunIndexerEventPreprocessing
+  :: Runner.RunIndexerEventPreprocessingPure
       (ChainSyncEvent Types.BlockEvent)
       (Distance.WithDistance [AnyTxBody])
 anyTxBodyWithDistancePreprocessor =
