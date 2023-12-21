@@ -179,7 +179,7 @@ runEmitterAndConsumer
      , Core.Closeable IO indexer
      )
   => SecurityParam
-  -> RunIndexerEventPreprocessingPure rawEvent event
+  -> RunIndexerEventPreprocessing m rawEvent event
   -> IO (EventEmitter indexer event a)
   -> IO (Concurrent.MVar (indexer event))
 runEmitterAndConsumer
@@ -256,7 +256,7 @@ streamBlockEventEmitter config indexer stream = do
 
 stablePointComputation
   :: SecurityParam
-  -> RunIndexerEventPreprocessingPure rawEvent event
+  -> RunIndexerEventPreprocessing m rawEvent event
   -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
 stablePointComputation securityParam preprocessing (Core.Timed point event) = do
