@@ -12,6 +12,9 @@ module Marconi.Cardano.Core.Runner (
   runIndexerOnSnapshot,
   runEmitterAndConsumer,
 
+  -- * Emitters
+  streamEmitter,
+
   -- ** Runner Config
   RunIndexerConfig (RunIndexerConfig),
   runIndexerPreprocessEvent,
@@ -157,7 +160,7 @@ runIndexerOnSnapshot config indexer stream =
   runEmitterAndConsumer
     securityParam
     eventPreprocessing
-    (streamBlockEventEmitter config indexer stream)
+    (streamEmitter config indexer stream)
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
@@ -234,17 +237,15 @@ chainSyncEventEmitter
               runChainSyncStream `catch` whenNoIntersectionFound
       pure (EventEmitter eventQueue cBox eventEmitter)
 
-{- | Emits events from a stream. There is a level of indirection here, since
-instead of consuming the stream a caller will consume the created queue.
-The reason behind this is to provide the same interface as 'chainSyncEventEmitter'.
--}
-streamBlockEventEmitter
-  :: (Core.Point event ~ C.ChainPoint)
-  => RunIndexerOnSnapshotConfig BlockEvent event
+streamEmitter
+  :: ( Core.Point event ~ C.ChainPoint
+     , Core.Point pre ~ C.ChainPoint
+     )
+  => RunIndexerOnSnapshotConfig pre event
   -> indexer event
-  -> S.Stream (S.Of BlockEvent) IO ()
+  -> S.Stream (S.Of pre) IO ()
   -> IO (EventEmitter indexer event ())
-streamBlockEventEmitter config indexer stream = do
+streamEmitter config indexer stream = do
   queue <- STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
