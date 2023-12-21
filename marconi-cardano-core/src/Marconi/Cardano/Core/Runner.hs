@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.Cardano.Core.Runner (
@@ -31,6 +32,7 @@ module Marconi.Cardano.Core.Runner (
   withDistancePreprocessor,
   withDistanceAndTipPreprocessor,
   withNoPreprocessorOnSnapshot,
+  withPreprocessorOnSnapshot,
 
   -- * Event types
 ) where
@@ -335,6 +337,21 @@ withNoPreprocessorOnSnapshot =
          in [Core.Index $ Just <$> timedEvent]
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
+
+withPreprocessorOnSnapshot
+  :: forall event
+   . (BlockEvent -> event)
+  -> (event -> Maybe C.BlockNo)
+  -> RunIndexerEventPreprocessing BlockEvent event
+withPreprocessorOnSnapshot f g =
+  let eventToProcessedInput
+        :: BlockEvent
+        -> [Core.ProcessedInput C.ChainPoint event]
+      eventToProcessedInput blockEvent@(f -> event) =
+        let point = blockEventPoint blockEvent
+            timedEvent = Core.Timed point event
+         in [Core.Index $ Just <$> timedEvent]
+   in RunIndexerEventPreprocessing eventToProcessedInput g (const Nothing)
 
 withDistancePreprocessor
   :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)

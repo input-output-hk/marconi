@@ -24,6 +24,7 @@ module Marconi.Cardano.Indexers.BlockInfo (
 
   -- * Extractor
   fromBlockEratoBlockInfo,
+  extractBlockInfo,
 
   -- * Query
   BlockInfoBySlotNoQuery (..),
@@ -64,6 +65,8 @@ import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.Core qualified as Core
 import System.FilePath ((</>))
+
+import Debug.Trace (trace)
 
 data BlockInfo = BlockInfo
   { _blockNo :: !C.BlockNo
@@ -175,8 +178,6 @@ blockInfoBuilder securityParam catchupConfig textLogger path =
         catchupConfig
           & Core.configCatchupEventHook
             ?~ catchupConfigEventHook indexerName textLogger blockInfoDbPath
-      extractBlockInfo :: BlockEvent -> BlockInfo
-      extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = fromBlockEratoBlockInfo b eno t
       blockInfoWorkerConfig =
         StandardWorkerConfig
           indexerName
@@ -197,6 +198,12 @@ blockInfoBySlotNoQuery =
   FROM blockInfo
   WHERE slotNo == :slotNo
   LIMIT 1
+  |]
+
+selectAll =
+  [sql|
+  SELECT *
+  FROM blockInfo
   |]
 
 instance
@@ -226,7 +233,7 @@ instance
           let c = indexer ^. Core.connection
           when (p > indexer ^. Core.dbLastSync) $
             throwError (Core.AheadOfLastSync Nothing)
-          res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam slotNo q)
+          res <- liftIO $ SQL.queryNamed c selectAll (toNamedParam slotNo q) -- (sqlQuery q)
           pure $ fromRows q res
 
 instance
@@ -284,6 +291,10 @@ instance
           )
           (const blockInfoBeforeOrAtSlotNoQuery)
           (const id)
+
+extractBlockInfo :: BlockEvent -> BlockInfo
+extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) =
+  fromBlockEratoBlockInfo b eno t
 
 fromBlockEratoBlockInfo
   :: C.Block era -> C.EpochNo -> POSIXTime -> BlockInfo

@@ -3,11 +3,15 @@
 module Spec.Marconi.Cardano.Snapshot (tests) where
 
 import Cardano.Api.Extended.Streaming (BlockEvent)
-import Control.Concurrent (readMVar)
+import Control.Concurrent (forkIO, readMVar, threadDelay)
 import Control.Concurrent.Async (wait, withAsync)
 import Control.Lens qualified as Lens
+import Control.Monad (forever)
+import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Runner qualified as Core
+import Marconi.Cardano.Indexers.BlockInfo (BlockInfoBySlotNoQuery (BlockInfoBySlotNoQuery))
+import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.ListIndexer qualified as ListIndexer
 import Marconi.Core.Type (event)
@@ -30,6 +34,7 @@ tests =
     "Spec.Marconi.Cardano.Snapshot"
     [ testDeserialiseSnapshot
     , testRunListIndexerOnSnapshot
+    , testBlockInfo
     ]
 
 testDeserialiseSnapshot :: TestTree
@@ -58,6 +63,37 @@ testRunListIndexerOnSnapshot =
           1
    in testCase "TestRunListIndexerOnSnapshot" (runListIndexerTest Preprod dbPath config)
 
+testBlockInfo :: TestTree
+testBlockInfo =
+  let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
+      config =
+        Core.RunIndexerOnSnapshotConfig
+          (Core.withPreprocessorOnSnapshot BlockInfo.extractBlockInfo (Just . Lens.view BlockInfo.blockNo))
+          1
+   in testCase "TestBlockInfo" (runBlockInfo Preprod dbPath config)
+
+runBlockInfo
+  :: NodeType
+  -> FilePath
+  -- ^ directory to be used as the indexer's DB
+  -> Core.RunIndexerOnSnapshotConfig BlockEvent BlockInfo.BlockInfo
+  -> IO ()
+runBlockInfo nodeType dbPath config = do
+  configFile <- getNodeConfigPath nodeType
+  blockStream <- setupSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10" dbPath
+  blockInfoIndexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer (dbPath </> BlockInfo.dbName)
+  let runIndexer = Core.runIndexerOnSnapshot config blockInfoIndexer blockStream
+  actualResult <-
+    withAsync runIndexer $ \runner -> do
+      indexer <- wait runner >>= readMVar
+      result <-
+        toRuntimeException $
+          Core.queryLatest (BlockInfoBySlotNoQuery 10 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo) indexer
+      -- cleanup temporary indexer database
+      removeDirectoryRecursive dbPath
+      pure result
+  print actualResult
+
 {- | Run a simple list indexer on given snapshot. The list indexer stores
 each event as-is. The test checks whether the resulting set of events
 is equal to the initial set of events.
@@ -65,7 +101,7 @@ is equal to the initial set of events.
 runListIndexerTest
   :: NodeType
   -> FilePath
-  -- ^ directory which contains the serialised events
+  -- ^ directory to be used as the indexer's DB
   -> Core.RunIndexerOnSnapshotConfig BlockEvent BlockEvent
   -> IO ()
 runListIndexerTest nodeType dbPath config = do
@@ -99,3 +135,10 @@ getNodeConfigPath nodeType = do
     toPath Preview = "preview"
     toPath Preprod = "preprod"
     toPath Mainnet = "mainnet"
+
+toRuntimeException :: (Monad m, Show e) => ExceptT e m a -> m a
+toRuntimeException action = do
+  result <- runExceptT action
+  case result of
+    Left err -> error (show err)
+    Right a -> pure a
