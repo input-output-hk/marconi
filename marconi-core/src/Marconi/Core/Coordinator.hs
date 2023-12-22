@@ -133,7 +133,7 @@ processQueue f initialState q cBox =
             Left (err :: IndexerError) -> throwIO err
             Right res -> pure (res, g')
         queueStep g'
-   in queueStep attachStable `finally` Con.withMVar cBox close
+   in queueStep attachStable -- `finally` Con.withMVar cBox close
 
 {- | A coordinator step
 (send an input to its workers, wait for an ack of every worker before listening again)

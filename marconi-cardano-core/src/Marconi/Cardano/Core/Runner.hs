@@ -48,7 +48,7 @@ import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async (race_)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch)
+import Control.Exception (Exception (displayException), SomeException (SomeException), catch)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -57,6 +57,7 @@ import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Debug.Trace (trace)
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Logger ()
@@ -186,12 +187,18 @@ runEmitterAndConsumer
     do
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
       emitEvents
-        `race_` Core.processQueue
-          (stablePointComputation securityParam eventPreprocessing)
-          Map.empty
-          queue
-          indexerMVar
+        `race_` consumer queue indexerMVar
       pure indexerMVar
+    where
+      consumer queue indexerMVar =
+        catch
+          ( Core.processQueue
+              (stablePointComputation securityParam eventPreprocessing)
+              Map.empty
+              queue
+              indexerMVar
+          )
+          (\(SomeException e) -> trace (displayException e) $ pure ())
 
 -- | Emits events from a local running Cardano node via the chain sync protocol.
 chainSyncEventEmitter

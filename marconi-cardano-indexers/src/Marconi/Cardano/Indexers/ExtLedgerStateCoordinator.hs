@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
@@ -282,7 +283,7 @@ extLedgerStateWorker config workers path = do
           Right res -> do
             let ledgerStateEvent = ExtLedgerStateEvent res newBlockNo
             lastLedgerState .= ledgerStateEvent
-            pure (ledgerStateEvent, evt)
+            seq ledgerStateEvent $ pure (ledgerStateEvent, evt)
 
       processAsEpochState
         :: ExceptT Core.IndexerError IO (WorkerState input)

@@ -233,7 +233,7 @@ instance
           let c = indexer ^. Core.connection
           when (p > indexer ^. Core.dbLastSync) $
             throwError (Core.AheadOfLastSync Nothing)
-          res <- liftIO $ SQL.queryNamed c selectAll (toNamedParam slotNo q) -- (sqlQuery q)
+          res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam slotNo q) -- (sqlQuery q)
           pure $ fromRows q res
 
 instance
