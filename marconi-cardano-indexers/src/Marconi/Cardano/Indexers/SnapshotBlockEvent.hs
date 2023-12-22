@@ -115,7 +115,7 @@ mkSnapshotBlockEventIndexer path codecConfig = do
     fileStorageConfig =
       Core.FileStorageConfig
         False
-        (const $ const [])
+        Nothing
         (comparing snapshotMetadataBlockNo)
     fileBuilder toVersion =
       Core.FileBuilder
@@ -272,12 +272,12 @@ inBlockRangePreprocessor
   -> BlockRange
   -> Core.Preprocessor m C.ChainPoint a a
 inBlockRangePreprocessor toBlockNo br =
-  Core.scanMaybeEvent filterWithinBlockRange Nothing
+  Core.mapMaybeEvent filterWithinBlockRange
   where
     filterWithinBlockRange input =
       if isInBlockRange (toBlockNo input) br
-        then pure . Just $ input
-        else pure Nothing
+        then Just input
+        else Nothing
 
 encodeBlock
   :: CodecConfig

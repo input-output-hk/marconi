@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
@@ -591,7 +592,8 @@ buildExtLedgerStateEventIndexer codecConfig securityParam' path = do
   Core.mkFileIndexer
     path
     Nothing -- (Just 180_000_000) -- Wait 180s for files to finish writing before terminating
-    (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
+    -- (Core.FileStorageConfig False (Just immutableEpochs) (comparing (Down . metadataBlockNo)))
+    (Core.FileStorageConfig False Nothing (comparing (Down . metadataBlockNo)))
     (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
     ( Core.EventBuilder
         deserialiseMetadata
@@ -661,7 +663,8 @@ buildBlockIndexer codecConfig securityParam' path = do
   Core.mkFileIndexer
     path
     Nothing -- (Just 60_000_000) -- Wait 60s for files to finish writing before terminating
-    (Core.FileStorageConfig False immutableBlocks (comparing metadataBlockNo))
+    -- (Core.FileStorageConfig False (Just immutableBlocks) (comparing metadataBlockNo))
+    (Core.FileStorageConfig False Nothing (comparing metadataBlockNo))
     ( Core.FileBuilder
         "block"
         "cbor"

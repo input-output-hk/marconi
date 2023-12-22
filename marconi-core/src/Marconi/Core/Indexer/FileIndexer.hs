@@ -118,7 +118,7 @@ deriving stock instance (Show meta) => Show (EventInfo meta)
 data FileStorageConfig meta event = FileStorageConfig
   { _keepEmptyEvent :: Bool
   -- ^ Do we create a file for empty event
-  , _eventsToRemove :: Timed (Point event) (Maybe event) -> [EventInfo meta] -> [EventInfo meta]
+  , _eventsToRemove :: Maybe (Timed (Point event) (Maybe event) -> [EventInfo meta] -> [EventInfo meta])
   -- ^ Filtering unction used to decide which events must be removed
   , _fileComparison :: meta -> meta -> Ordering
   -- ^ Function used to sort event files, based on their metadata
@@ -302,14 +302,18 @@ cleanEvents
   => Timed (Point event) (Maybe event)
   -> FileIndexer meta event
   -> m ()
-cleanEvents timedEvent indexer = do
-  dirMetadataE <- runExceptT $ getDirectoryMetadata indexer
-  case dirMetadataE of
-    Left _err -> throwError $ IndexerInternalError "Can't read directory content"
-    Right dirMetadata -> do
-      let removeFilter = indexer ^. storageConfig . eventsToRemove
-          toRemove = removeFilter timedEvent dirMetadata
-      liftIO $ traverse_ removeFile (fullPath indexer <$> toRemove)
+cleanEvents timedEvent indexer =
+  let removeFilterM = indexer ^. storageConfig . eventsToRemove
+   in case removeFilterM of
+        Nothing -> pure ()
+        Just removeFilter -> do
+          liftIO $ putStrLn "We're cursed"
+          dirMetadataE <- runExceptT $ getDirectoryMetadata indexer
+          case dirMetadataE of
+            Left _err -> throwError $ IndexerInternalError "Can't read directory content"
+            Right dirMetadata -> do
+              let toRemove = removeFilter timedEvent dirMetadata
+              liftIO $ traverse_ removeFile (fullPath indexer <$> toRemove)
 
 instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer meta) where
   index timedEvent indexer = do
