@@ -403,6 +403,7 @@ module Marconi.Core (
   nbWorkers,
   mkCoordinator,
   processQueue,
+  CloseSwitch (..),
 
   -- * Common queries
 
@@ -558,6 +559,7 @@ import Marconi.Core.Class (
   queryLatestEither,
  )
 import Marconi.Core.Coordinator (
+  CloseSwitch (..),
   Coordinator,
   channel,
   mkCoordinator,

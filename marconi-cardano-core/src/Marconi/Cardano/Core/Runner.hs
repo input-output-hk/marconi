@@ -135,6 +135,7 @@ runIndexerOnChainSync config indexer = do
       securityParam
       eventPreprocessing
       (chainSyncEventEmitter config indexer)
+      Core.CloseOn
   where
     securityParam = Lens.view runIndexerConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
@@ -156,6 +157,7 @@ runIndexerOnSnapshot config indexer stream =
     securityParam
     eventPreprocessing
     (streamBlockEventEmitter config indexer stream)
+    Core.CloseOff
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
@@ -179,11 +181,13 @@ runEmitterAndConsumer
   => SecurityParam
   -> RunIndexerEventPreprocessing rawEvent event
   -> IO (EventEmitter indexer event a)
+  -> Core.CloseSwitch
   -> IO (Concurrent.MVar (indexer event))
 runEmitterAndConsumer
   securityParam
   eventPreprocessing
-  eventEmitter =
+  eventEmitter
+  closeSwitch =
     do
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
       emitEvents
@@ -191,14 +195,12 @@ runEmitterAndConsumer
       pure indexerMVar
     where
       consumer queue indexerMVar =
-        catch
-          ( Core.processQueue
-              (stablePointComputation securityParam eventPreprocessing)
-              Map.empty
-              queue
-              indexerMVar
-          )
-          (\(SomeException e) -> trace (displayException e) $ pure ())
+        Core.processQueue
+          (stablePointComputation securityParam eventPreprocessing)
+          Map.empty
+          queue
+          indexerMVar
+          closeSwitch
 
 -- | Emits events from a local running Cardano node via the chain sync protocol.
 chainSyncEventEmitter

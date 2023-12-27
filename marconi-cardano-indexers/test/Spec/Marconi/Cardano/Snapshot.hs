@@ -2,11 +2,11 @@
 
 module Spec.Marconi.Cardano.Snapshot (tests) where
 
+import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent)
-import Control.Concurrent (forkIO, readMVar, threadDelay)
+import Control.Concurrent (readMVar)
 import Control.Concurrent.Async (wait, withAsync)
 import Control.Lens qualified as Lens
-import Control.Monad (forever)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Runner qualified as Core
@@ -88,11 +88,14 @@ runBlockInfo nodeType dbPath config = do
       indexer <- wait runner >>= readMVar
       result <-
         toRuntimeException $
-          Core.queryLatest (BlockInfoBySlotNoQuery 10 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo) indexer
+          Core.queryLatest
+            (BlockInfoBySlotNoQuery 12961 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo)
+            indexer
       -- cleanup temporary indexer database
       removeDirectoryRecursive dbPath
       pure result
-  print actualResult
+  let expectedResult = Just (BlockInfo.BlockInfo (C.BlockNo 7) 12540597 (C.EpochNo 0))
+  assertEqual "" expectedResult actualResult
 
 {- | Run a simple list indexer on given snapshot. The list indexer stores
 each event as-is. The test checks whether the resulting set of events
