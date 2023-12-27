@@ -124,4 +124,5 @@ invalidCliArgWhenStartIngMarconiChainIndexTest InvalidArgTestInput{..} = do
               }
         )
       =<< Test.CLI.procFlex "marconi-cardano-chain-index" "MARCONI_CHAIN_INDEX" [invalidFlag, invalidArg]
-  BSL.hGetContents (fromJust mStderr)
+
+  Test.CLI.captureHandleContents (fromJust mStderr)
