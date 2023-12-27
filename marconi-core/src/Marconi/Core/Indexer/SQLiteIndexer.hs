@@ -159,7 +159,7 @@ mkSqliteIndexer
           res <- runLastStablePointQuery h lastStablePointQuery
           pure $ fromMaybe genesis res
      in do
-          _connection <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
+          _connection <- liftIO $ SQL.open ":memory:" -- _databasePath -- TODO clean exception on invalid file
           traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
           -- allow for concurrent insert/query.
           -- see SQLite WAL, https://www.sqlite.org/wal.html

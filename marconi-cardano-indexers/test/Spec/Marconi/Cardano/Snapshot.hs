@@ -35,6 +35,7 @@ tests =
     [ testDeserialiseSnapshot
     , testRunListIndexerOnSnapshot
     , testBlockInfo
+    , testBlockInfoByronSlot6
     ]
 
 testDeserialiseSnapshot :: TestTree
@@ -66,36 +67,53 @@ testRunListIndexerOnSnapshot =
 testBlockInfo :: TestTree
 testBlockInfo =
   let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
+      subChainPath = "test/Spec/Golden/Snapshot/preprod-5-10"
       config =
         Core.RunIndexerOnSnapshotConfig
           (Core.withPreprocessorOnSnapshot BlockInfo.extractBlockInfo (Just . Lens.view BlockInfo.blockNo))
           1
-   in testCase "TestBlockInfo" (runBlockInfo Preprod dbPath config)
+      expectedResult = Just (BlockInfo.BlockInfo (C.BlockNo 7) 12540597 (C.EpochNo 0))
+      query = BlockInfoBySlotNoQuery 12961 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+   in testCase "TestBlockInfo" $ do
+        actualResult <- runBlockInfoTest Preprod subChainPath dbPath config query
+        assertEqual "" expectedResult actualResult
 
-runBlockInfo
+testBlockInfoByronSlot6 :: TestTree
+testBlockInfoByronSlot6 =
+  let dbPath = "test/Spec/Golden/Snapshot/mainnet-1-db/"
+      subChainPath = "test/Spec/Golden/Snapshot/mainnet-snapshots/1"
+      config =
+        Core.RunIndexerOnSnapshotConfig
+          (Core.withPreprocessorOnSnapshot BlockInfo.extractBlockInfo (Just . Lens.view BlockInfo.blockNo))
+          0
+      query = BlockInfoBySlotNoQuery 6 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+   in testCase "Query BlockInfo slot 6, Byron era" $ do
+        actualResult <- runBlockInfoTest Mainnet subChainPath dbPath config query
+        print actualResult
+
+runBlockInfoTest
   :: NodeType
+  -> FilePath
+  -- ^ directory which contains the serialised sub-chain
   -> FilePath
   -- ^ directory to be used as the indexer's DB
   -> Core.RunIndexerOnSnapshotConfig BlockEvent BlockInfo.BlockInfo
-  -> IO ()
-runBlockInfo nodeType dbPath config = do
+  -> BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+  -> IO (Maybe BlockInfo.BlockInfo)
+runBlockInfoTest nodeType subChainPath dbPath config query = do
   configFile <- getNodeConfigPath nodeType
-  blockStream <- setupSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10" dbPath
+  blockStream <- setupSnapshot configFile subChainPath dbPath
   blockInfoIndexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer (dbPath </> BlockInfo.dbName)
   let runIndexer = Core.runIndexerOnSnapshot config blockInfoIndexer blockStream
-  actualResult <-
-    withAsync runIndexer $ \runner -> do
-      indexer <- wait runner >>= readMVar
-      result <-
-        toRuntimeException $
-          Core.queryLatest
-            (BlockInfoBySlotNoQuery 12961 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo)
-            indexer
-      -- cleanup temporary indexer database
-      removeDirectoryRecursive dbPath
-      pure result
-  let expectedResult = Just (BlockInfo.BlockInfo (C.BlockNo 7) 12540597 (C.EpochNo 0))
-  assertEqual "" expectedResult actualResult
+  withAsync runIndexer $ \runner -> do
+    putStrLn "\nWaiting for indexer..."
+    indexer <- wait runner >>= readMVar
+    putStrLn "\nQuerying the database..."
+    toRuntimeException $ Core.queryLatest query indexer
+
+-- cleanup temporary indexer database
+-- removeDirectoryRecursive dbPath
+-- pure result
 
 {- | Run a simple list indexer on given snapshot. The list indexer stores
 each event as-is. The test checks whether the resulting set of events
