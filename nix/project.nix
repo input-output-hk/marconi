@@ -68,6 +68,7 @@ let
           # Needed for running the marconi-sidechain integration tests in CI
           marconi-sidechain.preCheck = "
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
+            export CARDANO_NODE_CONFIG=${../config}
           ";
 
           # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
