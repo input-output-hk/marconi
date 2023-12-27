@@ -115,7 +115,7 @@ invalidOptionalCliFlagsWithExpectedErrors =
 
 invalidCliArgWhenStartIngMarconiChainIndexTest :: InvalidArgTestInput -> IO BSL.ByteString
 invalidCliArgWhenStartIngMarconiChainIndexTest InvalidArgTestInput{..} = do
-  (_mStdin, mStdout, mStderr, _processHandle) <-
+  (_mStdin, _mStdout, mStderr, _processHandle) <-
     IO.createProcess
       . ( \cp ->
             cp
