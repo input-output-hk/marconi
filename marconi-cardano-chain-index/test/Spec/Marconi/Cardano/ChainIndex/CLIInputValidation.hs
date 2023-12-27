@@ -7,6 +7,7 @@ module Spec.Marconi.Cardano.ChainIndex.CLIInputValidation where
 import Data.ByteString.Lazy qualified as BSL
 import Data.Functor ((<&>))
 import Data.Maybe (fromJust)
+import Debug.Trace qualified as Debug
 import System.FilePath.Posix ((</>))
 import System.Process qualified as IO
 import Test.Marconi.Cardano.ChainIndex.CLI qualified as Test.CLI
@@ -115,7 +116,7 @@ invalidOptionalCliFlagsWithExpectedErrors =
 
 invalidCliArgWhenStartIngMarconiChainIndexTest :: InvalidArgTestInput -> IO BSL.ByteString
 invalidCliArgWhenStartIngMarconiChainIndexTest InvalidArgTestInput{..} = do
-  (_mStdin, _mStdout, mStderr, _processHandle) <-
+  (_mStdin, mStdout, mStderr, _processHandle) <-
     IO.createProcess
       . ( \cp ->
             cp
@@ -124,5 +125,10 @@ invalidCliArgWhenStartIngMarconiChainIndexTest InvalidArgTestInput{..} = do
               }
         )
       =<< Test.CLI.procFlex "marconi-cardano-chain-index" "MARCONI_CHAIN_INDEX" [invalidFlag, invalidArg]
+  stdout <- BSL.hGetContents (fromJust mStdout)
+  stderr <- BSL.hGetContents (fromJust mStderr)
+  Debug.traceM ("stdout: " <> show stdout)
+  Debug.traceM ("stderr: " <> show stderr)
+  return stderr
 
-  Test.CLI.captureHandleContents (fromJust mStderr)
+--   Test.CLI.captureHandleContents (fromJust mStderr)
