@@ -67,6 +67,8 @@ let
 
           # Needed for running the marconi-sidechain integration tests in CI
           marconi-sidechain.preCheck = "
+            export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
+            export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
             export CARDANO_NODE_CONFIG=${../config}
           ";
