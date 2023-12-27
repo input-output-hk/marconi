@@ -35,8 +35,6 @@ module Marconi.Core.Indexer.SQLiteIndexer (
   SQL.ToRow (..),
 ) where
 
-import Debug.Trace (trace)
-
 import Control.Concurrent.Async qualified as Async
 import Control.Exception (Handler (Handler), catches)
 import Control.Lens (makeLenses)
@@ -324,7 +322,7 @@ instance (Monad m) => IsSync m event SQLiteIndexer where
   lastSyncPoint indexer = pure $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
-  close indexer = trace "hello" . liftIO $ SQL.close $ indexer ^. connection
+  close indexer = liftIO $ SQL.close $ indexer ^. connection
 
 {- | A helper for the definition of the @Queryable@ typeclass for 'SQLiteIndexer'
 

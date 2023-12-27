@@ -66,8 +66,6 @@ import Marconi.Cardano.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.Core qualified as Core
 import System.FilePath ((</>))
 
-import Debug.Trace (trace)
-
 data BlockInfo = BlockInfo
   { _blockNo :: !C.BlockNo
   , _timestamp :: !Word64
