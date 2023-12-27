@@ -96,17 +96,23 @@ let
     });
 
 
-  cabalProject = cabalProject'.appendOverlays [
-    (_: prev: {
-      hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
-        "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
-        "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
-        "marconi-sidechain.components.exes.marconi-sidechain"
-        "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
-      ]
-        prev.hsPkgs;
-    })
-  ];
+  gitrev-overlay = _: prev: {
+    hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
+      "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
+      "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
+      "marconi-sidechain.components.exes.marconi-sidechain"
+      "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
+    ]
+      prev.hsPkgs;
+  };
+
+
+  cabalProject =
+    # TODO using setGitRevForPaths on aaarch64-darwin introduces a weird bug:
+    # https://ci.iog.io/build/2242186/nixlog/1
+    if system == "aarch64-darwin"
+    then cabalProject'
+    else cabalProject'.appendOverlays [ gitrev-overlay ];
 
 
   project = lib.iogx.mkHaskellProject {
