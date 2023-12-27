@@ -55,40 +55,20 @@ let
           marconi-chain-index-legacy.doHaddock = false;
           marconi-chain-index-legacy.flags.defer-plugin-errors = false;
 
-          # FIXME 
-          # The line `find test` in:
-          #   marconi-cardano-chain-index.preCheck
-          #   marconi-sidechain.preCheck
-          # Is necessary, apparently, to pass on aarch64-darwin.
-          # Otherwise there is an error with the golden files:
-          #   https://ci.iog.io/build/2240560
-          #   https://ci.iog.io/build/2240556
-          # This happenes non-deterministically, so it is hard to reproduce.
-          # The tests will call marconi-cardano-chain-index and marconi-sidechain
-          # with invalid arguments, expecting the executables to produce some 
-          # output on stderr, but actually sometimes on aarch6t4-darwin we get 
-          # an empty string instead.
-          # It's unclear why, but adding a command that produces output 
-          # (like `find test`) seems to fix the issue.
-
           # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
           # is necessary to prevent the error
           # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
           # See https://github.com/input-output-hk/cardano-node/issues/4194.
-          marconi-cardano-chain-index.preCheck = "
+          marconi-cardano-chain-index.components.tests.marconi-cardano-chain-index-test.preCheck = "
             export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
             export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
-            export CARDANO_NODE_CONFIG=${../config}
-            find test
-            echo OMG
           ";
 
           # Needed for running the marconi-sidechain integration tests in CI
-          marconi-sidechain.preCheck = "
+          marconi-sidechain.components.tests.marconi-sidechain-test.preCheck = "
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
             export CARDANO_NODE_CONFIG=${../config}
-            find test
           ";
 
           # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
