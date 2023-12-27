@@ -56,14 +56,20 @@ let
           marconi-chain-index-legacy.flags.defer-plugin-errors = false;
 
           # FIXME 
-          # This line in marconi-cardano-chain-index.preCheck: 
-          #   echo $MARCONI_CHAIN_INDEX
-          # And this line in marconi-sidechain.preCheck: 
-          #   echo $MARCONI_SIDECHAIN in 
-          # Are necessary, apparently, to pass on aarch64-darwin.
+          # The line `find test` in:
+          #   marconi-cardano-chain-index.preCheck
+          #   marconi-sidechain.preCheck
+          # Is necessary, apparently, to pass on aarch64-darwin.
           # Otherwise there is an error with the golden files:
           #   https://ci.iog.io/build/2240560
-          #   https://ci.iog.io/build/2240556/nixlog/1
+          #   https://ci.iog.io/build/2240556
+          # This happenes non-deterministically, so it is hard to reproduce.
+          # The tests will call marconi-cardano-chain-index and marconi-sidechain
+          # with invalid arguments, expecting the executables to produce some 
+          # output on stderr, but actually sometimes on aarch6t4-darwin we get 
+          # an empty string instead.
+          # It's unclear why, but adding a command that produces output 
+          # (like `find test`) seems to fix the issue.
 
           # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
           # is necessary to prevent the error
