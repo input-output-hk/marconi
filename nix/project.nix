@@ -60,6 +60,8 @@ let
           # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
           # See https://github.com/input-output-hk/cardano-node/issues/4194.
           marconi-cardano-chain-index.preCheck = "
+            export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
+            export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
             cd ${../marconi-cardano-chain-index}
           ";
@@ -74,6 +76,7 @@ let
           # The coordinator's build function calls `readGenesisFile` so must know where to look.
           marconi-sidechain-experimental.preCheck = "
             export MARCONI_SIDECHAIN_EXPERIMENTAL=${inputs.self.packages.marconi-sidechain-experimental}/bin/marconi-sidechain-experimental
+            export CARDANO_NODE_CONFIG=${../config}
             cd ${../marconi-sidechain-experimental}
           ";
 
