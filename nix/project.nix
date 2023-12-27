@@ -81,6 +81,7 @@ let
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
             export CARDANO_NODE_CONFIG=${../config}
             find test
+            echo OMG
           ";
 
           # Needed for running the marconi-sidechain integration tests in CI
