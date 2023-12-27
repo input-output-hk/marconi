@@ -63,13 +63,11 @@ let
             export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
             export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
-            cd ${../marconi-cardano-chain-index}
           ";
 
           # Needed for running the marconi-sidechain integration tests in CI
           marconi-sidechain.preCheck = "
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
-            cd ${../marconi-sidechain}
           ";
 
           # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
@@ -77,7 +75,6 @@ let
           marconi-sidechain-experimental.preCheck = "
             export MARCONI_SIDECHAIN_EXPERIMENTAL=${inputs.self.packages.marconi-sidechain-experimental}/bin/marconi-sidechain-experimental
             export CARDANO_NODE_CONFIG=${../config}
-            cd ${../marconi-sidechain-experimental}
           ";
 
           # Needed for running marconi-cardano-indexers snapshot tests in CI
