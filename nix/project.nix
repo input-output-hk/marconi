@@ -59,18 +59,16 @@ let
           # is necessary to prevent the error
           # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
           # See https://github.com/input-output-hk/cardano-node/issues/4194.
-          marconi-cardano-chain-index.components.tests.marconi-cardano-chain-index-test.preCheck = ''
+          marconi-cardano-chain-index.preCheck = ''
             export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
             export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
-            find test
           '';
 
           # Needed for running the marconi-sidechain integration tests in CI
-          marconi-sidechain.components.tests.marconi-sidechain-test.preCheck = ''
+          marconi-sidechain.preCheck = ''
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
             export CARDANO_NODE_CONFIG=${../config}
-            find test
           '';
 
           # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
@@ -102,8 +100,8 @@ let
     (_: prev: {
       hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
         "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
-        # "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
-        # "marconi-sidechain.components.exes.marconi-sidechain"
+        "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
+        "marconi-sidechain.components.exes.marconi-sidechain"
         "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
       ]
         prev.hsPkgs;
