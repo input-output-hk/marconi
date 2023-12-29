@@ -1,4 +1,6 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Spec.Marconi.Cardano.Snapshot (tests) where
 
@@ -8,11 +10,19 @@ import Control.Concurrent (readMVar)
 import Control.Concurrent.Async (wait, withAsync)
 import Control.Lens qualified as Lens
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Data.Aeson qualified as Aeson
+import Data.Aeson.TH qualified as Aeson
+import Data.Aeson.Types (camelTo2)
+import Data.Fixed (Fixed (MkFixed))
+import Data.Time (secondsToNominalDiffTime)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Runner qualified as Core
 import Marconi.Cardano.Indexers.BlockInfo (BlockInfoBySlotNoQuery (BlockInfoBySlotNoQuery))
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
-import Marconi.Core qualified as Core
+import Marconi.Core.Class qualified as Core (queryLatest)
+import Marconi.Core.Indexer.ListIndexer qualified as Core (
+  mkListIndexer,
+ )
 import Marconi.Core.Indexer.ListIndexer qualified as ListIndexer
 import Marconi.Core.Type (event)
 import Streaming.Prelude qualified as Stream
@@ -28,68 +38,20 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsFileDiff)
 import Test.Tasty.HUnit (assertEqual, testCase)
 
-tests :: TestTree
-tests =
-  testGroup
-    "Spec.Marconi.Cardano.Snapshot"
-    [ testDeserialiseSnapshot
-    , testRunListIndexerOnSnapshot
-    , testBlockInfo
-    , testBlockInfoByronSlot6
-    ]
+data BlockInfoResult = BlockInfoResult
+  { blockNo :: Integer
+  , time :: String
+  , epochNo :: Integer
+  }
 
-testDeserialiseSnapshot :: TestTree
-testDeserialiseSnapshot =
-  goldenVsFileDiff
-    "TestDeserialiseSnapshot"
-    (\expected actual -> ["diff", "--color=always", expected, actual])
-    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.golden"
-    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out"
-    run
-  where
-    run = do
-      configFile <- getNodeConfigPath Preprod
-      (ledgerState, blockEvents) <-
-        deserialiseSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10/"
-      withFile "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out" WriteMode $ \handle -> do
-        hPrint handle ledgerState
-        Stream.toHandle handle (Stream.map show blockEvents)
+Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = camelTo2 '_'} ''BlockInfoResult
 
-testRunListIndexerOnSnapshot :: TestTree
-testRunListIndexerOnSnapshot =
-  let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
-      config =
-        Core.RunIndexerOnSnapshotConfig
-          Core.withNoPreprocessorOnSnapshot
-          1
-   in testCase "TestRunListIndexerOnSnapshot" (runListIndexerTest Preprod dbPath config)
-
-testBlockInfo :: TestTree
-testBlockInfo =
-  let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
-      subChainPath = "test/Spec/Golden/Snapshot/preprod-5-10"
-      config =
-        Core.RunIndexerOnSnapshotConfig
-          (Core.withPreprocessorOnSnapshot BlockInfo.extractBlockInfo (Just . Lens.view BlockInfo.blockNo))
-          1
-      expectedResult = Just (BlockInfo.BlockInfo (C.BlockNo 7) 12540597 (C.EpochNo 0))
-      query = BlockInfoBySlotNoQuery 12961 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
-   in testCase "TestBlockInfo" $ do
-        actualResult <- runBlockInfoTest Preprod subChainPath dbPath config query
-        assertEqual "" expectedResult actualResult
-
-testBlockInfoByronSlot6 :: TestTree
-testBlockInfoByronSlot6 =
-  let dbPath = "test/Spec/Golden/Snapshot/mainnet-1-db/"
-      subChainPath = "test/Spec/Golden/Snapshot/mainnet-snapshots/1"
-      config =
-        Core.RunIndexerOnSnapshotConfig
-          (Core.withPreprocessorOnSnapshot BlockInfo.extractBlockInfo (Just . Lens.view BlockInfo.blockNo))
-          0
-      query = BlockInfoBySlotNoQuery 6 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
-   in testCase "Query BlockInfo slot 6, Byron era" $ do
-        actualResult <- runBlockInfoTest Mainnet subChainPath dbPath config query
-        print actualResult
+toResult :: BlockInfo.BlockInfo -> BlockInfoResult
+toResult (BlockInfo.BlockInfo (C.BlockNo bn) timestamp (C.EpochNo en)) =
+  let blockNo = toInteger bn
+      epochNo = toInteger en
+      time = show . secondsToNominalDiffTime . MkFixed . toInteger $ timestamp -- formatTime defaultTimeLocale "%c" .
+   in BlockInfoResult{blockNo, time, epochNo}
 
 runBlockInfoTest
   :: NodeType
@@ -106,7 +68,7 @@ runBlockInfoTest nodeType subChainPath dbPath config query = do
   blockInfoIndexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer (dbPath </> BlockInfo.dbName)
   let runIndexer = Core.runIndexerOnSnapshot config blockInfoIndexer blockStream
   withAsync runIndexer $ \runner -> do
-    putStrLn "\nWaiting for indexer..."
+    putStrLn "\n\nWaiting for indexer..."
     indexer <- wait runner >>= readMVar
     putStrLn "\nQuerying the database..."
     toRuntimeException $ Core.queryLatest query indexer
@@ -163,3 +125,74 @@ toRuntimeException action = do
   case result of
     Left err -> error (show err)
     Right a -> pure a
+
+blockInfoConfig :: Core.RunIndexerOnSnapshotConfig BlockEvent BlockInfo.BlockInfo
+blockInfoConfig =
+  Core.RunIndexerOnSnapshotConfig
+    (Core.withPreprocessorOnSnapshot BlockInfo.extractBlockInfo (Just . Lens.view BlockInfo.blockNo))
+    1 -- is this right?
+
+tests :: TestTree
+tests =
+  testGroup
+    "Spec.Marconi.Cardano.Snapshot"
+    [ testDeserialiseSnapshot
+    , testRunListIndexerOnSnapshot
+    , testBlockInfo
+    , testBlockInfoByronSlot6
+    ]
+
+testDeserialiseSnapshot :: TestTree
+testDeserialiseSnapshot =
+  goldenVsFileDiff
+    "TestDeserialiseSnapshot"
+    (\expected actual -> ["diff", "--color=always", expected, actual])
+    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.golden"
+    "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out"
+    run
+  where
+    run = do
+      configFile <- getNodeConfigPath Preprod
+      (ledgerState, blockEvents) <-
+        deserialiseSnapshot configFile "test/Spec/Golden/Snapshot/preprod-5-10/"
+      withFile "test/Spec/Golden/Snapshot/preprod-5-10-subchain.out" WriteMode $ \handle -> do
+        hPrint handle ledgerState
+        Stream.toHandle handle (Stream.map show blockEvents)
+
+testRunListIndexerOnSnapshot :: TestTree
+testRunListIndexerOnSnapshot =
+  let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
+      config =
+        Core.RunIndexerOnSnapshotConfig
+          Core.withNoPreprocessorOnSnapshot
+          1
+   in testCase "ZZZTestRunListIndexerOnSnapshot" (runListIndexerTest Preprod dbPath config)
+
+testBlockInfo :: TestTree
+testBlockInfo =
+  let dbPath = "test/Spec/Golden/Snapshot/preprod-5-10-db/"
+      subChainPath = "test/Spec/Golden/Snapshot/preprod-5-10"
+      expectedResult = Just (BlockInfo.BlockInfo (C.BlockNo 7) 12540597 (C.EpochNo 0))
+      query = BlockInfoBySlotNoQuery 12961 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+   in testCase "TestBlockInfo" $ do
+        actualResult <- runBlockInfoTest Preprod subChainPath dbPath blockInfoConfig query
+        assertEqual "" expectedResult actualResult
+
+-- Corresponding db-sync query:
+--   with block_info as (select block_no, time, epoch_no from block where slot_no = 6 limit 1) select json_agg(block_info) from block_info;
+testBlockInfoByronSlot6 :: TestTree
+testBlockInfoByronSlot6 =
+  goldenVsFileDiff
+    "TESTINGQuery BlockInfo slot 6, Byron era"
+    (\expected actual -> ["diff", "--color=always", expected, actual])
+    "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot6.out.golden"
+    "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot6.out"
+    run
+  where
+    run = do
+      let dbPath = "test/Spec/Golden/Snapshot/mainnet-1-db/"
+          subChainPath = "../testing-mainnet-snapshots/1"
+          query = BlockInfoBySlotNoQuery 6 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+      Just queryResult <- runBlockInfoTest Mainnet subChainPath dbPath blockInfoConfig query
+      let finalResult = toResult queryResult
+      Aeson.encodeFile "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot6.out" [finalResult]

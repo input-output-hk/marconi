@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -57,6 +58,7 @@ import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Debug.Trace (trace)
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Logger ()
@@ -253,7 +255,7 @@ streamBlockEventEmitter config indexer stream = do
   queue <- STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
-      emitEvents = mkEventStream processEvent queue stream
+      !emitEvents = mkEventStream processEvent queue stream
   pure EventEmitter{queue, indexerMVar, emitEvents}
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
