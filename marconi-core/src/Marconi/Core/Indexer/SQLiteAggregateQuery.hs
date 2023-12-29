@@ -38,7 +38,7 @@ import Marconi.Core.Type (Point)
 -- | A class for indexer that has access to a SQLite database and know the path to this database
 class HasDatabasePath indexer where
   -- | Retrieve the database path from the indexer
-  getDatabasePath :: indexer event -> FilePath
+  getDatabasePath :: indexer event -> SQLite.SQLiteDBLocation
 
 instance HasDatabasePath SQLiteIndexer where
   getDatabasePath = Lens.view SQLite.databasePath
@@ -83,7 +83,7 @@ mkSQLiteAggregateQuery
 mkSQLiteAggregateQuery sources = do
   con <- liftIO $ SQL.open ":memory:"
   let databaseFromSource :: SQLiteSourceProvider m point -> IO FilePath
-      databaseFromSource (SQLiteSourceProvider ix) = Con.withMVar ix (pure . getDatabasePath)
+      databaseFromSource (SQLiteSourceProvider ix) = Con.withMVar ix (pure . SQLite.extractStorageUnsafe . getDatabasePath)
       attachDb name src =
         liftIO $ do
           databasePath <- databaseFromSource src

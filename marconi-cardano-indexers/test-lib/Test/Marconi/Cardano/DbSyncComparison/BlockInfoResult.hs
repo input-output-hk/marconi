@@ -17,6 +17,7 @@ import Data.Time (secondsToNominalDiffTime)
 import Marconi.Cardano.Core.Runner qualified as Core
 import Marconi.Cardano.Indexers.BlockInfo (BlockInfoBySlotNoQuery (BlockInfoBySlotNoQuery))
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 import Test.Marconi.Cardano.DbSyncComparison.Common (
   Era,
@@ -56,7 +57,7 @@ mkBlockInfoQueryBySlotNoTest testName nodeType era slotNo =
     runTest
   where
     runTest = do
-      indexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer (dbPath </> BlockInfo.dbName)
+      indexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer Core.inMemoryDB
       Just queryResult <- queryIndexerOnSnapshot Mainnet subChainPath dbPath blockInfoConfig query indexer
       let finalResult = [toResult queryResult]
       Aeson.encodeFile outFile finalResult

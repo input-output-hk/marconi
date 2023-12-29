@@ -52,6 +52,7 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
@@ -87,7 +88,7 @@ type ExtLedgerState = O.ExtLedgerState (O.HardForkBlock (O.CardanoEras O.Standar
 -- | Smart constructor that creates a 'FileIndexer' that stores Nonce.
 mkEpochNonceIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -> m (Core.SQLiteIndexer EpochNonce)
 mkEpochNonceIndexer path = do
   let createNonce =
@@ -122,7 +123,7 @@ epochNonceWorker
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
   => StandardWorkerConfig n input EpochNonce
   -> EpochNonceWorkerConfig input
-  -> FilePath
+  -> SQLiteDBLocation
   -> m (Core.WorkerIndexer n input EpochNonce (Core.WithTrace n Core.SQLiteIndexer))
 epochNonceWorker workerConfig nonceConfig path = do
   indexer <- Core.withTrace (logger workerConfig) <$> mkEpochNonceIndexer path

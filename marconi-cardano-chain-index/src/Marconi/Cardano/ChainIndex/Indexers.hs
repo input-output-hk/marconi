@@ -4,6 +4,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Marconi.Cardano.ChainIndex.Indexers where
 
@@ -66,6 +67,8 @@ import Marconi.Cardano.Indexers.Spent qualified as Spent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Core.Preprocessor qualified as Core
 import System.FilePath ((</>))
 
@@ -111,7 +114,7 @@ buildIndexers
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
-  -> FilePath
+  -> SQLiteDBLocation
   -> ExceptT
       Core.IndexerError
       IO
@@ -189,7 +192,8 @@ buildIndexers
           blockEventLogger
           [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-    Core.WorkerIndexer chainTipMVar chainTipWorker <- ChainTip.chainTipBuilder mainLogger path
+    Core.WorkerIndexer chainTipMVar chainTipWorker <-
+      ChainTip.chainTipBuilder mainLogger (Core.extractStorageUnsafe path)
 
     mainCoordinator <-
       lift $
@@ -244,7 +248,7 @@ epochNonceBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text
-  -> FilePath
+  -> SQLiteDBLocation
   -> n
       ( Core.WorkerIndexer
           m
@@ -252,7 +256,7 @@ epochNonceBuilder
           Nonce.EpochNonce
           (Core.WithTrace m Core.SQLiteIndexer)
       )
-epochNonceBuilder securityParam catchupConfig textLogger path =
+epochNonceBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
   let indexerName = "EpochNonce"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       epochNonceWorkerConfig =
@@ -266,7 +270,7 @@ epochNonceBuilder securityParam catchupConfig textLogger path =
    in Nonce.epochNonceWorker
         epochNonceWorkerConfig
         (Nonce.EpochNonceWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
-        (path </> "epochNonce.db")
+        (Core.parseDBLocation (path </> "epochNonce.db"))
 
 -- | Configure and start the @EpochSDD@ indexer
 epochSDDBuilder
@@ -274,7 +278,7 @@ epochSDDBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text
-  -> FilePath
+  -> SQLiteDBLocation
   -> n
       ( Core.WorkerIndexer
           m
@@ -282,7 +286,7 @@ epochSDDBuilder
           (NonEmpty SDD.EpochSDD)
           (Core.WithTrace m Core.SQLiteIndexer)
       )
-epochSDDBuilder securityParam catchupConfig textLogger path =
+epochSDDBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
   let indexerName = "EpochSDD"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       epochSDDWorkerConfig =
@@ -296,7 +300,7 @@ epochSDDBuilder securityParam catchupConfig textLogger path =
    in SDD.epochSDDWorker
         epochSDDWorkerConfig
         (SDD.EpochSDDWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
-        (path </> "epochSDD.db")
+        (Core.parseDBLocation (path </> "epochSDD.db"))
 
 -- | Configure and start the @SnapshotBlockEvent@ indexer
 snapshotBlockEventBuilder
@@ -393,7 +397,7 @@ buildIndexersForSnapshot
       ExtLedgerStateCoordinator.extLedgerStateWorker
         epochStateConfig
         (concat snapshotWorkers)
-        path
+        (Core.parseDBLocation path)
 
     blockCoordinator <-
       lift $

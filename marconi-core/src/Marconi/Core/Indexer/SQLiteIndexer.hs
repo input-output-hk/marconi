@@ -10,6 +10,10 @@
 -}
 module Marconi.Core.Indexer.SQLiteIndexer (
   SQLiteIndexer (SQLiteIndexer),
+  SQLiteDBLocation,
+  extractStorageUnsafe,
+  inMemoryDB,
+  parseDBLocation,
   databasePath,
   connection,
   insertPlan,
@@ -62,6 +66,30 @@ import Marconi.Core.Type (
   point,
  )
 
+data SQLiteDBLocation
+  = Memory
+  | Storage !FilePath
+
+unparseDBLocation :: SQLiteDBLocation -> String
+unparseDBLocation Memory = ":memory:"
+unparseDBLocation (Storage path) = path
+
+parseDBLocation :: String -> SQLiteDBLocation
+parseDBLocation "" = Memory
+parseDBLocation ":memory:" = Memory
+parseDBLocation str = Storage str
+
+inMemoryDB :: SQLiteDBLocation
+inMemoryDB = Memory
+
+extractStorageUnsafe :: SQLiteDBLocation -> FilePath
+extractStorageUnsafe (Storage path) = path
+extractStorageUnsafe Memory =
+  error $
+    "Expecting an in-storage SQLite DB, instead of an in-memory one. "
+      <> "The current implementation doesn't allow using an in-memory DB, "
+      <> "please open a feature request at https://github.com/input-output-hk/marconi."
+
 -- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
 data SQLInsertPlan event = forall a.
   (SQL.ToRow a) =>
@@ -102,7 +130,7 @@ newtype GetLastStablePointQuery = GetLastStablePointQuery
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
 data SQLiteIndexer event = SQLiteIndexer
-  { _databasePath :: FilePath
+  { _databasePath :: SQLiteDBLocation
   -- ^ The location of the database
   , _connection :: SQL.Connection
   -- ^ The connection used to interact with the database
@@ -135,7 +163,7 @@ mkSqliteIndexer
      , SQL.ToRow (Point event)
      , Ord (Point event)
      )
-  => FilePath
+  => SQLiteDBLocation
   -> [SQL.Query]
   -- ^ creation statement
   -> [[SQLInsertPlan event]]
@@ -159,7 +187,7 @@ mkSqliteIndexer
           res <- runLastStablePointQuery h lastStablePointQuery
           pure $ fromMaybe genesis res
      in do
-          _connection <- liftIO $ SQL.open ":memory:" -- _databasePath -- TODO clean exception on invalid file
+          _connection <- liftIO $ SQL.open (unparseDBLocation _databasePath) -- TODO clean exception on invalid file
           traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
           -- allow for concurrent insert/query.
           -- see SQLite WAL, https://www.sqlite.org/wal.html
@@ -193,7 +221,7 @@ mkSingleInsertSqliteIndexer
      , SQL.ToRow param
      , Ord (Point event)
      )
-  => FilePath
+  => SQLiteDBLocation
   -> (Timed (Point event) event -> param)
   -- ^ extract @param@ out of a 'Timed'
   -> SQL.Query

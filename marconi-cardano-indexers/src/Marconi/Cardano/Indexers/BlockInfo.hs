@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
@@ -64,6 +65,8 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 data BlockInfo = BlockInfo
@@ -109,7 +112,7 @@ dbName = "blockInfo.db"
 -- | A smart constructor for BlockInfoIndexer
 mkBlockInfoIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -- ^ SQL connection to database
   -> m (Core.SQLiteIndexer BlockInfo)
 mkBlockInfoIndexer path = do
@@ -151,7 +154,7 @@ blockInfoWorker
      )
   => StandardWorkerConfig m input BlockInfo
   -- ^ General indexer configuration
-  -> FilePath
+  -> SQLiteDBLocation
   -- ^ SQLite database location
   -> n (StandardWorker m input BlockInfo Core.SQLiteIndexer)
 blockInfoWorker config path = do
@@ -166,9 +169,9 @@ blockInfoBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace IO Text
-  -> FilePath
+  -> SQLiteDBLocation
   -> n (StandardWorker IO BlockEvent BlockInfo Core.SQLiteIndexer)
-blockInfoBuilder securityParam catchupConfig textLogger path =
+blockInfoBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
   let indexerName = "BlockInfo"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       blockInfoDbPath = path </> dbName
@@ -183,7 +186,7 @@ blockInfoBuilder securityParam catchupConfig textLogger path =
           catchupConfigWithTracer
           (pure . Just . extractBlockInfo)
           (BM.appendName indexerName indexerEventLogger)
-   in blockInfoWorker blockInfoWorkerConfig (path </> dbName)
+   in blockInfoWorker blockInfoWorkerConfig (Core.parseDBLocation (path </> dbName))
 
 type instance Core.Result (BlockInfoBySlotNoQuery event) = Maybe event
 

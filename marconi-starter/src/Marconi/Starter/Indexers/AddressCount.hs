@@ -31,7 +31,7 @@ import Data.Map qualified as Map
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
-import GHC.Generics (Generic)
+import GHC.Generics (Generic, S)
 import Marconi.Cardano.ChainIndex.Utils qualified as Utils
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
@@ -57,13 +57,15 @@ import Marconi.Core (
   point,
  )
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 
 type SQLiteStandardIndexer event = Core.StandardIndexer IO Core.SQLiteIndexer event
 type AddressCountIndexer = SQLiteStandardIndexer AddressCountEvent
 type AddressCountStandardWorker = Core.StandardWorker IO BlockEvent AddressCountEvent SQLiteIndexer
 
 addressCountWorker
-  :: FilePath
+  :: SQLiteDBLocation
   -> SecurityParam
   -> IO
       ( Core.StandardWorker
@@ -188,7 +190,7 @@ eventToRows te =
 
 mkAddressCountSqliteIndexer
   :: (MonadIO m, MonadError IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -> m (SQLiteIndexer AddressCountEvent)
 mkAddressCountSqliteIndexer dbPath = do
   mkSyncedSqliteIndexer
@@ -220,7 +222,7 @@ mkAddressCountSqliteIndexer dbPath = do
 -- | Make a SQLiteIndexer
 mkAddressCountMixedIndexer
   :: (MonadIO m, MonadError IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -- ^ SQLite DB path
   -> SecurityParam
   -- ^ We use securityParam to set the Indexers flush sise to database
@@ -233,7 +235,7 @@ mkAddressCountMixedIndexer dbPath (SecurityParam w64) =
 -- | Make a SQLiteIndexer
 mkAddressCountMixedIndexer'
   :: (MonadIO m, MonadError IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -- ^ SQLite DB path
   -> Word
   -- ^  events keept in memory post flush

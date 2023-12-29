@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.Cardano.Indexers.Spent (
@@ -54,6 +55,8 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 data SpentInfo = SpentInfo
@@ -104,7 +107,7 @@ type StandardSpentIndexer m = StandardSQLiteIndexer m SpentInfoEvent
 
 mkSpentIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -> m (Core.SQLiteIndexer SpentInfoEvent)
 mkSpentIndexer path = do
   let createSpent =
@@ -163,7 +166,7 @@ spentWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => StandardWorkerConfig m input SpentInfoEvent
   -- ^ General configuration of a worker
-  -> FilePath
+  -> SQLiteDBLocation
   -- ^ SQLite database location
   -> n (StandardWorker m input SpentInfoEvent Core.SQLiteIndexer)
 spentWorker config path = do
@@ -178,9 +181,9 @@ spentBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace IO Text
-  -> FilePath
+  -> SQLiteDBLocation
   -> n (StandardWorker IO [AnyTxBody] SpentInfoEvent Core.SQLiteIndexer)
-spentBuilder securityParam catchupConfig textLogger path =
+spentBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
   let indexerName = "Spent"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       spentDbPath = path </> "spent.db"
@@ -197,7 +200,7 @@ spentBuilder securityParam catchupConfig textLogger path =
           catchupConfigWithTracer
           (pure . NonEmpty.nonEmpty . (>>= extractSpent))
           (BM.appendName indexerName indexerEventLogger)
-   in spentWorker spentWorkerConfig spentDbPath
+   in spentWorker spentWorkerConfig (Core.parseDBLocation spentDbPath)
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery SpentInfoEvent)) m)

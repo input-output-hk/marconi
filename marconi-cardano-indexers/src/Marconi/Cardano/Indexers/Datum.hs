@@ -5,6 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.Cardano.Indexers.Datum (
@@ -64,6 +65,8 @@ import Marconi.Cardano.Core.Types (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 data DatumInfo = DatumInfo
@@ -99,7 +102,7 @@ type StandardDatumIndexer m = StandardSQLiteIndexer m DatumEvent
 -- | A smart constructor for 'DatumIndexer'
 mkDatumIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -> m (Core.SQLiteIndexer DatumEvent)
 mkDatumIndexer path = do
   let createDatumQuery =
@@ -130,7 +133,7 @@ datumWorker
   :: (MonadIO m, MonadIO n, MonadError Core.IndexerError n)
   => StandardWorkerConfig m input DatumEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
-  -> FilePath
+  -> SQLiteDBLocation
   -- ^ SQLite database location
   -> n (StandardWorker m input DatumEvent Core.SQLiteIndexer)
 datumWorker workerConfig path = do
@@ -145,9 +148,9 @@ datumBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> Trace m Text
-  -> FilePath
+  -> SQLiteDBLocation
   -> n (StandardWorker m [AnyTxBody] DatumEvent Core.SQLiteIndexer)
-datumBuilder securityParam catchupConfig textLogger path =
+datumBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
   let indexerName = "Datum"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       extractDatum :: AnyTxBody -> [DatumInfo]
@@ -159,7 +162,7 @@ datumBuilder securityParam catchupConfig textLogger path =
           catchupConfig
           (pure . NonEmpty.nonEmpty . (>>= extractDatum))
           (BM.appendName indexerName indexerEventLogger)
-   in datumWorker datumWorkerConfig (path </> "datum.db")
+   in datumWorker datumWorkerConfig (Core.parseDBLocation (path </> "datum.db"))
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery DatumEvent)) m)

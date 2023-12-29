@@ -16,6 +16,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.Cardano.Indexers.Utxo (
@@ -92,6 +93,8 @@ import Marconi.Cardano.Core.Types (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 -- | Indexer representation of an UTxO
@@ -128,7 +131,7 @@ type StandardUtxoIndexer m = StandardSQLiteIndexer m UtxoEvent
 -- | Make a SQLiteIndexer for Utxos
 mkUtxoIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -- ^ SQL connection to database
   -> m UtxoIndexer
 mkUtxoIndexer path = do
@@ -193,7 +196,7 @@ utxoWorker
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> UtxoIndexerConfig
   -- ^ Specific configuration of the indexer (mostly for logging purpose)
-  -> FilePath
+  -> SQLiteDBLocation
   -- ^ SQLite database location
   -> n (StandardWorker m input UtxoEvent Core.SQLiteIndexer)
 utxoWorker workerConfig utxoConfig path = do
@@ -233,9 +236,9 @@ utxoBuilder
   -> Core.CatchupConfig
   -> UtxoIndexerConfig
   -> BM.Trace IO Text
-  -> FilePath
+  -> SQLiteDBLocation
   -> n (StandardWorker IO [AnyTxBody] UtxoEvent Core.SQLiteIndexer)
-utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
+utxoBuilder securityParam catchupConfig utxoConfig textLogger (Core.extractStorageUnsafe -> path) =
   let indexerName = "Utxo"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       utxoDbPath = path </> "utxo.db"
@@ -251,7 +254,7 @@ utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
           catchupConfigWithTracer
           (pure . NonEmpty.nonEmpty . (>>= extractUtxos))
           (BM.appendName indexerName indexerEventLogger)
-   in utxoWorker utxoWorkerConfig utxoConfig utxoDbPath
+   in utxoWorker utxoWorkerConfig utxoConfig (Core.parseDBLocation utxoDbPath)
 
 instance ToRow (Core.Timed C.ChainPoint Utxo) where
   toRow u =

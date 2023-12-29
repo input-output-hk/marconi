@@ -17,6 +17,7 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Marconi.Cardano.Indexers.Datum qualified as Datum
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Indexers.Datum qualified as Test.Datum
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
@@ -47,7 +48,7 @@ propResolveDatum = Hedgehog.property $ do
       Hedgehog.Gen.element
         =<< Hedgehog.Gen.filter (not . null) (pure $ mapMaybe sequenceA events)
   datumInfo <- Hedgehog.forAll $ Hedgehog.Gen.element $ event ^.. Core.event . Lens.folded
-  emptyIndexer <- Hedgehog.evalExceptT $ Datum.mkDatumIndexer ":memory:"
+  emptyIndexer <- Hedgehog.evalExceptT $ Datum.mkDatumIndexer Core.inMemoryDB
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
   retrievedEvents <-
     Hedgehog.evalExceptT $
