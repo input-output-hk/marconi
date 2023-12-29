@@ -140,6 +140,7 @@ tests =
     , testRunListIndexerOnSnapshot
     , testBlockInfo
     , testBlockInfoByronSlot6
+    , testBlockInfoByronSlot206938
     ]
 
 testDeserialiseSnapshot :: TestTree
@@ -183,7 +184,7 @@ testBlockInfo =
 testBlockInfoByronSlot6 :: TestTree
 testBlockInfoByronSlot6 =
   goldenVsFileDiff
-    "TESTINGQuery BlockInfo slot 6, Byron era"
+    "Query BlockInfo slot 6, Byron era"
     (\expected actual -> ["diff", "--color=always", expected, actual])
     "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot6.out.golden"
     "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot6.out"
@@ -191,8 +192,27 @@ testBlockInfoByronSlot6 =
   where
     run = do
       let dbPath = "test/Spec/Golden/Snapshot/mainnet-1-db/"
-          subChainPath = "../testing-mainnet-snapshots/1"
+          subChainPath = "../mainnet-snapshots/1"
           query = BlockInfoBySlotNoQuery 6 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
       Just queryResult <- runBlockInfoTest Mainnet subChainPath dbPath blockInfoConfig query
       let finalResult = toResult queryResult
       Aeson.encodeFile "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot6.out" [finalResult]
+
+-- Corresponding db-sync query:
+--   with block_info as (select block_no, time, epoch_no from block where slot_no = 206938 limit 1) select json_agg(block_info) from block_info;
+testBlockInfoByronSlot206938 :: TestTree
+testBlockInfoByronSlot206938 =
+  goldenVsFileDiff
+    "TESTING Query BlockInfo slot 206938, Byron era"
+    (\expected actual -> ["diff", "--color=always", expected, actual])
+    "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot206938.out.golden"
+    "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot206938.out"
+    run
+  where
+    run = do
+      let dbPath = "test/Spec/Golden/Snapshot/mainnet-1-db/"
+          subChainPath = "../mainnet-snapshots/1"
+          query = BlockInfoBySlotNoQuery 206938 :: BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+      Just queryResult <- runBlockInfoTest Mainnet subChainPath dbPath blockInfoConfig query
+      let finalResult = toResult queryResult
+      Aeson.encodeFile "test/Spec/Golden/Snapshot/mainnet/byron1/blockinfo-slot206938.out" [finalResult]
