@@ -13,6 +13,7 @@ import Data.Aeson qualified as Aeson
 import Data.Aeson.TH qualified as Aeson
 import Data.Aeson.Types (camelTo2)
 import Data.Fixed (Fixed (MkFixed))
+import Data.List qualified as List
 import Data.Time (secondsToNominalDiffTime)
 import Marconi.Cardano.Core.Runner qualified as Core
 import Marconi.Cardano.Indexers.BlockInfo (BlockInfoBySlotNoQuery (BlockInfoBySlotNoQuery))
@@ -58,14 +59,14 @@ mkBlockInfoQueryBySlotNoTest testName nodeType era slotNo =
   where
     runTest = do
       indexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer Core.inMemoryDB
-      Just queryResult <- queryIndexerOnSnapshot Mainnet subChainPath dbPath blockInfoConfig query indexer
-      let finalResult = [toResult queryResult]
+      queryResult <- queryIndexerOnSnapshot Mainnet subChainPath dbPath blockInfoConfig query indexer
+      let finalResult = List.singleton . toResult <$> queryResult
       Aeson.encodeFile outFile finalResult
 
     outFile = pathToOutFile nodeType era slotNo
     goldenFile = pathToGoldenFile nodeType era slotNo
-    dbPath = "test/Spec/Golden/Snapshot/mainnet-1-db/"
-    subChainPath = "../mainnet-snapshots/1"
+    dbPath = "test/Spec/Golden/Snapshot/block-info-db/"
+    subChainPath = "../../mainnet-snapshots" </> eraToString era
     query = BlockInfoBySlotNoQuery slotNo
 
 blockInfoConfig :: Core.RunIndexerOnSnapshotConfig BlockEvent BlockInfo.BlockInfo
