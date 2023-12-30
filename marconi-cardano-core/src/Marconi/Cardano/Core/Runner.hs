@@ -58,7 +58,6 @@ import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Debug.Trace (trace)
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Logger ()
