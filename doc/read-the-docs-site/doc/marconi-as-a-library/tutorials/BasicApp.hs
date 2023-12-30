@@ -54,7 +54,6 @@ import Marconi.Cardano.Core.Types (
 import Marconi.Cardano.Indexers.SyncHelper qualified as Core
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, inMemoryDB)
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Core.JsonRpc qualified as Core
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 
