@@ -35,6 +35,7 @@ nodeTypeToString Preview = "preview"
 nodeTypeToString Preprod = "preprod"
 nodeTypeToString Mainnet = "mainnet"
 
+-- | The Cardano era the snapshot is a part of.
 data Era
   = Byron1
   | Byron2
@@ -60,6 +61,9 @@ eraToString =
     Babbage1 -> "babbage1"
     Babbage2 -> "babbage2"
 
+{- | Runs an indexer on a snapshot, and allows the user to query
+ the information which was accumulated from the snapshot.
+-}
 queryIndexerOnSnapshot
   :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
@@ -98,6 +102,10 @@ getNodeConfigPath nodeType = do
       </> nodeTypeToString nodeType
       </> "config.json"
 
+{- | Utility function for avoiding the usage of 'ExceptT'. This
+ is a reasonable approach because if any failure happened the
+ test can no longer continue and should abort.
+-}
 toRuntimeException :: (Monad m, Show e) => ExceptT e m a -> m a
 toRuntimeException action = do
   result <- runExceptT action

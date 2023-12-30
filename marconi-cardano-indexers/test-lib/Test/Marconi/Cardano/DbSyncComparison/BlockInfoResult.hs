@@ -31,6 +31,7 @@ import Test.Marconi.Cardano.DbSyncComparison.Common (
 import Test.Tasty (TestTree)
 import Test.Tasty.Golden (goldenVsFileDiff)
 
+-- | The result type which will be transformed into JSON.
 data BlockInfoResult = BlockInfoResult
   { blockNo :: Integer
   , time :: String
@@ -39,15 +40,28 @@ data BlockInfoResult = BlockInfoResult
 
 Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = camelTo2 '_'} ''BlockInfoResult
 
+-- | Process the result of the query for serialising to JSON.
 toResult :: BlockInfo.BlockInfo -> BlockInfoResult
 toResult (BlockInfo.BlockInfo (C.BlockNo bn) timestamp (C.EpochNo en)) =
   let blockNo = toInteger bn
       epochNo = toInteger en
-      time = show . secondsToNominalDiffTime . MkFixed . toInteger $ timestamp -- formatTime defaultTimeLocale "%c" .
+      time = show . secondsToNominalDiffTime . MkFixed . toInteger $ timestamp
    in BlockInfoResult{blockNo, time, epochNo}
 
--- Db-sync query:
---  with block_info as (select block_no, time, epoch_no from block where slot_no = :slot_no limit 1) select json_agg(block_info) from block_info;
+{- | Runs the 'BlockInfo' indexer on the snapshot and queries the indexer on the 'C.SlotNo' argument.
+ The result is slightly processed and written to disk as JSON.
+ This result is compared to the expected output, which was generated using the following query on Db-Sync:
+
+   with block_info as
+      ( select block_no, time, epoch_no
+        from block
+        where slot_no = :slot_no
+        limit 1
+      )
+   select json_agg(block_info) from block_info;
+
+ where :slot_no is the argument.
+-}
 mkBlockInfoQueryBySlotNoTest :: String -> NodeType -> Era -> C.SlotNo -> TestTree
 mkBlockInfoQueryBySlotNoTest testName nodeType era slotNo =
   goldenVsFileDiff
