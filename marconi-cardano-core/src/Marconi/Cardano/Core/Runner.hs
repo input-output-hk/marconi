@@ -57,7 +57,10 @@ import Control.Lens qualified as Lens
 import Control.Monad (void)
 import Control.Monad.Except (ExceptT)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Identity (Identity, IdentityT (runIdentityT))
+import Control.Monad.Morph (MFunctor (hoist), generalize)
 import Control.Monad.State.Strict (MonadState (put), State, gets)
+import Control.Monad.Trans (MonadTrans, lift)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -81,13 +84,13 @@ import Streaming.Prelude qualified as S
 
 -- | Runner pre-processing
 data RunIndexerEventPreprocessing m rawEvent event = RunIndexerEventPreprocessing
-  { _runIndexerPreprocessEvent :: rawEvent -> m (Core.ProcessedInput C.ChainPoint event)
+  { _runIndexerPreprocessEvent :: rawEvent -> m [Core.ProcessedInput C.ChainPoint event]
   , _runIndexerExtractBlockNo :: event -> Maybe C.BlockNo
   , _runIndexerExtractTipDistance :: event -> Maybe Word
   }
 
 type RunIndexerEventPreprocessingPure rawEvent event =
-  RunIndexerEventPreprocessing [] rawEvent event
+  RunIndexerEventPreprocessing (IdentityT Identity) rawEvent event
 
 Lens.makeLenses ''RunIndexerEventPreprocessing
 
@@ -162,7 +165,7 @@ runIndexerOnSnapshot config indexer stream =
   runEmitterAndConsumer
     securityParam
     eventPreprocessing
-    (streamEmitter securityParam eventPreprocessing indexer stream)
+    (streamEmitter runIdentityT securityParam eventPreprocessing indexer stream)
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
@@ -230,7 +233,7 @@ chainSyncEventEmitter
               socketPath
               networkId
               [startingPoint]
-              (mkEventStream processEvent eventQueue)
+              (runIdentityT . mkEventStream processEvent eventQueue)
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.pretty NoIntersectionFoundLog
@@ -242,18 +245,21 @@ chainSyncEventEmitter
 streamEmitter
   :: ( Core.Point event ~ C.ChainPoint
      , Core.Point pre ~ C.ChainPoint
-     , Foldable m
+     , MonadTrans t
+     , MFunctor t
+     , Monad (t IO)
      )
-  => SecurityParam
-  -> RunIndexerEventPreprocessing m pre event
+  => (t IO () -> IO ())
+  -> SecurityParam
+  -> RunIndexerEventPreprocessing (t Identity) pre event
   -> indexer event
   -> S.Stream (S.Of pre) IO ()
   -> IO (EventEmitter indexer event ())
-streamEmitter securityParam eventProcessing indexer stream = do
+streamEmitter runM securityParam eventProcessing indexer stream = do
   queue <- liftIO $ STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- liftIO $ Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
-      emitEvents = mkEventStream processEvent queue stream
+      emitEvents = runM $ mkEventStream processEvent queue stream
   pure EventEmitter{queue, indexerMVar, emitEvents}
 
 stablePointComputation
@@ -283,15 +289,29 @@ getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
 getBlockNo (C.BlockInMode block _eraInMode) =
   case C.getBlockHeader block of C.BlockHeader _ _ b -> b
 
--- | Event preprocessing, to ease the coordinator work
+{- | Event preprocessing, to ease the coordinator work
+ mkEventStream
+   :: (inputEvent -> [Core.ProcessedInput (Core.Point inputEvent) outputEvent])
+   -> STM.TBQueue (Core.ProcessedInput (Core.Point inputEvent) outputEvent)
+   -> S.Stream (S.Of inputEvent) IO r
+   -> IO r
+ mkEventStream processEvent q =
+   S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
+-}
 mkEventStream
-  :: (Foldable m)
-  => (inputEvent -> m (Core.ProcessedInput (Core.Point inputEvent) outputEvent))
+  :: forall t inputEvent outputEvent r
+   . (MFunctor t, MonadTrans t, Monad (t IO))
+  => (inputEvent -> t Identity [Core.ProcessedInput (Core.Point inputEvent) outputEvent])
   -> STM.TBQueue (Core.ProcessedInput (Core.Point inputEvent) outputEvent)
   -> S.Stream (S.Of inputEvent) IO r
-  -> IO r
+  -> t IO r
 mkEventStream processEvent q =
-  S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
+  ( S.mapM_ $
+      fmap (STM.atomically . traverse_ (STM.writeTBQueue q))
+        . hoist generalize
+        . processEvent
+  )
+    . hoist lift
 
 withDistanceAndTipPreprocessor
   :: RunIndexerEventPreprocessingPure (ChainSyncEvent BlockEvent) TipAndBlock
@@ -317,7 +337,10 @@ withDistanceAndTipPreprocessor =
       getDistance _ = Nothing
       blockNoFromBlockEvent (TipAndBlock _ (Just event)) = Just . getBlockNo . blockInMode $ getEvent event
       blockNoFromBlockEvent _ = Nothing
-   in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
+   in RunIndexerEventPreprocessing
+        (pure . extractChainTipAndAddDistance)
+        blockNoFromBlockEvent
+        getDistance
 
 withNoPreprocessor :: RunIndexerEventPreprocessingPure (ChainSyncEvent BlockEvent) BlockEvent
 withNoPreprocessor =
@@ -330,7 +353,7 @@ withNoPreprocessor =
          in [Core.Index $ Just <$> timedEvent]
       eventToProcessedInput (RollBackward point _tip) = [Core.Rollback point]
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
-   in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
+   in RunIndexerEventPreprocessing (pure . eventToProcessedInput) blockNoFromBlockEvent (const Nothing)
 
 withNoPreprocessorOnSnapshot :: RunIndexerEventPreprocessingPure BlockEvent BlockEvent
 withNoPreprocessorOnSnapshot =
@@ -342,7 +365,7 @@ withNoPreprocessorOnSnapshot =
             timedEvent = Core.Timed point event
          in [Core.Index $ Just <$> timedEvent]
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
-   in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
+   in RunIndexerEventPreprocessing (pure . eventToProcessedInput) blockNoFromBlockEvent (const Nothing)
 
 withDistancePreprocessor
   :: RunIndexerEventPreprocessingPure (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)
@@ -363,7 +386,7 @@ withDistancePreprocessor =
       addDistance (RollBackward x _tip) = [Core.Rollback x]
       getDistance = Just . fromIntegral . Distance.chainDistance
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode . getEvent
-   in RunIndexerEventPreprocessing addDistance blockNoFromBlockEvent getDistance
+   in RunIndexerEventPreprocessing (pure . addDistance) blockNoFromBlockEvent getDistance
 
 blockEventPoint :: BlockEvent -> C.ChainPoint
 blockEventPoint (BlockEvent (C.BlockInMode block _) _epochNo' _bt) =

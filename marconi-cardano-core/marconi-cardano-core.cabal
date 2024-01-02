@@ -95,6 +95,7 @@ library
     , cborg
     , containers
     , lens
+    , mmorph
     , mtl
     , nonempty-containers
     , prettyprinter
