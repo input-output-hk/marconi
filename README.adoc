@@ -1,4 +1,4 @@
-= https://github.com/input-output-hk/marconi[Cardano Blockchain Indexer Framework]
+= https://github.com/input-output-hk/marconi[Marconi]
 :email: plutus@iohk.io
 :author: Input Output Global
 :toc: left
@@ -22,8 +22,8 @@ existing ones to test Marconi.
 
 * Customizable backend. The core library comes with
   link:./marconi-core/src/Marconi/Core/Indexer/SQLiteIndexer.hs[SQLite backend],
-  a file:./marconi-core/src/Marconi/Core/Indexer/FileIndexer.hs[file backend]
-  or a file:./marconi-core/src/Marconi/Core/Indexer/ListIndexer.hs[in-memory backend].
+  a link:./marconi-core/src/Marconi/Core/Indexer/FileIndexer.hs[file backend]
+  or a link:./marconi-core/src/Marconi/Core/Indexer/ListIndexer.hs[in-memory backend].
 * link:./marconi-core/src/Marconi/Core/Indexer/SQLiteAggregateQuery.hs[Group indexers]
   to query them,
 * link:./marconi-core/src/Marconi/Core/Preprocessor/Resume.hs[Resume indexing]
@@ -59,6 +59,7 @@ The Haskell API documentation (Haddock) for the Marconi libraries is hosted here
 
 You may generate them directly with `Cabal` for each component:
 
+```
 cabal haddock marconi-core
 cabal haddock marconi-core-json-rpc
 cabal haddock marconi-cardano-core
