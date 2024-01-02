@@ -10,7 +10,7 @@ Marconi provides few out-of-the-box indexing solutions and the existing
 executables were designed either as an example or to suit specific needs,
 not to address a general indexing need.
 
-`cardano-node https://github.com/input-output-hk/cardano-node`
+`cardano-node <https://github.com/input-output-hk/cardano-node>`_
 --------------------------------------------------------------
 
 cardano-node doesn't offer any kind of indexing out-of-the-box.
@@ -18,7 +18,7 @@ However, through the mini-protocols, one can get access to a stream of blocks
 that can be processed.
 The mini-protocol is what Marconi uses internally to synchronise with the node.
 
-`cardano-db-sync https://github.com/input-output-hk/cardano-db-sync`
+`cardano-db-sync <https://github.com/input-output-hk/cardano-db-sync>`_
 --------------------------------------------------------------------
 
 cardano-db-sync is the reference indexing solution for Cardano.
@@ -34,7 +34,7 @@ indepedently), while Marconi use a SQLite database embedded in the solution
 ``cardano-db-sync`` doesn't provide any kind of API on top of it, and many
 people uses ``blockfrost`` on top of it to access it through an API.
 
-`Kupo https://cardanosolutions.github.io/kupo/`
+`Kupo <https://cardanosolutions.github.io/kupo/>`_
 -----------------------------------------------
 
 Kupo is also a predefined indexing solution.
@@ -45,7 +45,7 @@ It doesn't have the modularity of Marconi, but it's an out of the box solutions
 that works.
 
 
-`Scrolls https://github.com/txpipe/scrolls`
+`Scrolls <https://github.com/txpipe/scrolls>`_
 -------------------------------------------
 
 Scrolls is an aggregator of on-chain data, with a no-sql storage.
@@ -58,7 +58,7 @@ Scrolls is one step further than Marconi in the "one aggregator to
 answer one specific question" direction.
 
 
-`Carp https://dcspark.github.io/carp/`
+`Carp <https://dcspark.github.io/carp/>`_
 --------------------------------------
 
 Carp is another modular indexing solution.
