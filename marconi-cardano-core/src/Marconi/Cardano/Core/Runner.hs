@@ -56,6 +56,7 @@ import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
 import Control.Monad.Except (ExceptT)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (MonadState (put), State, gets)
 import Data.Foldable (traverse_)
 import Data.Map (Map)
@@ -241,15 +242,16 @@ chainSyncEventEmitter
 streamEmitter
   :: ( Core.Point event ~ C.ChainPoint
      , Core.Point pre ~ C.ChainPoint
+     , Foldable m
      )
   => SecurityParam
-  -> RunIndexerEventPreprocessing [] pre event
+  -> RunIndexerEventPreprocessing m pre event
   -> indexer event
   -> S.Stream (S.Of pre) IO ()
   -> IO (EventEmitter indexer event ())
 streamEmitter securityParam eventProcessing indexer stream = do
-  queue <- STM.newTBQueueIO $ fromIntegral securityParam
-  indexerMVar <- Concurrent.newMVar indexer
+  queue <- liftIO $ STM.newTBQueueIO $ fromIntegral securityParam
+  indexerMVar <- liftIO $ Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
       emitEvents = mkEventStream processEvent queue stream
   pure EventEmitter{queue, indexerMVar, emitEvents}
@@ -283,7 +285,8 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: (inputEvent -> [Core.ProcessedInput (Core.Point inputEvent) outputEvent])
+  :: (Foldable m)
+  => (inputEvent -> m (Core.ProcessedInput (Core.Point inputEvent) outputEvent))
   -> STM.TBQueue (Core.ProcessedInput (Core.Point inputEvent) outputEvent)
   -> S.Stream (S.Of inputEvent) IO r
   -> IO r
