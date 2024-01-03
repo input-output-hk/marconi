@@ -19,6 +19,7 @@ import Cardano.Node.Emulator.Internal.Node.TimeSlot qualified as E.TimeSlot
 import Cardano.Node.Emulator.LogMessages (EmulatorMsg (ChainEvent))
 import Cardano.Node.Socket.Emulator qualified as E
 import Cardano.Node.Socket.Emulator.Types qualified as E.Types
+import Control.Lens ((^.))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Tracer (condTracing)
 import Data.Default (def)
@@ -92,7 +93,6 @@ unboundedValidityRange :: (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUppe
 unboundedValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
 
 {- Transaction operations -}
-
 validateAndSubmitTx
   :: (MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode
@@ -218,7 +218,7 @@ mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100
 mkEndToEndRunIndexerConfig
   :: Types.MarconiTrace IO
   -> E.Types.NodeServerConfig
-  -> Runner.RunIndexerEventPreprocessingPure (ChainSyncEvent Types.BlockEvent) event
+  -> Runner.RunIndexerEventPreprocessing (ChainSyncEvent Types.BlockEvent) event
   -> Runner.RunIndexerConfig (ChainSyncEvent Types.BlockEvent) event
 mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
   Runner.RunIndexerConfig
@@ -232,20 +232,19 @@ mkEndToEndRunIndexerConfig marconiTrace nscConfig preprocessor =
     (E.Types.nscSocketPath nscConfig)
 
 anyTxBodyWithDistancePreprocessor
-  :: Runner.RunIndexerEventPreprocessingPure
+  :: Runner.RunIndexerEventPreprocessing
       (ChainSyncEvent Types.BlockEvent)
       (Distance.WithDistance [AnyTxBody])
 anyTxBodyWithDistancePreprocessor =
   Runner.RunIndexerEventPreprocessing
-    undefined -- TODO WILL (map (fmap (fmap toTxBodys)) . basePreprocessor)
+    (map (fmap (fmap toTxBodys)) . basePreprocessor)
     (fmap (\(AnyTxBody bn _ _) -> bn) . listToMaybe . Distance.getEvent)
     (Just . fromIntegral . Distance.chainDistance)
-
--- where
---   -- Taken from 'buildIndexers'
---   getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> Types.TxIndexInBlock -> C.Tx era -> AnyTxBody
---   getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
---   toTxBodys :: Types.BlockEvent -> [AnyTxBody]
---   toTxBodys (Types.BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
---     zipWith (getTxBody bn) [0 ..] txs
---   basePreprocessor = Runner.withDistancePreprocessor ^. Runner.runIndexerPreprocessEvent
+  where
+    -- Taken from 'buildIndexers'
+    getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> Types.TxIndexInBlock -> C.Tx era -> AnyTxBody
+    getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+    toTxBodys :: Types.BlockEvent -> [AnyTxBody]
+    toTxBodys (Types.BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+      zipWith (getTxBody bn) [0 ..] txs
+    basePreprocessor = Runner.withDistancePreprocessor ^. Runner.runIndexerPreprocessEvent
