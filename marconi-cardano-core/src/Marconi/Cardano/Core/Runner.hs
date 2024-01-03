@@ -156,7 +156,7 @@ runIndexerOnSnapshot config indexer stream =
   runEmitterAndConsumer
     securityParam
     eventPreprocessing
-    (streamEmitter config indexer stream)
+    (streamEmitter securityParam eventPreprocessing indexer stream)
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
@@ -237,19 +237,17 @@ streamEmitter
   :: ( Core.Point event ~ C.ChainPoint
      , Core.Point pre ~ C.ChainPoint
      )
-  => RunIndexerOnSnapshotConfig pre event
+  => SecurityParam
+  -> RunIndexerEventPreprocessing pre event
   -> indexer event
   -> S.Stream (S.Of pre) IO ()
   -> IO (EventEmitter indexer event ())
-streamEmitter config indexer stream = do
+streamEmitter securityParam eventProcessing indexer stream = do
   queue <- STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
       emitEvents = mkEventStream processEvent queue stream
   pure EventEmitter{queue, indexerMVar, emitEvents}
-  where
-    securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
-    eventProcessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
 
 stablePointComputation
   :: SecurityParam
