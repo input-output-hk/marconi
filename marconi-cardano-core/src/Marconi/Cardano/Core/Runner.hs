@@ -10,9 +10,11 @@ module Marconi.Cardano.Core.Runner (
   -- * Runner
   runIndexerOnChainSync,
   runIndexerOnSnapshot,
+  runEmitterAndConsumerWithPreprocessing,
   runEmitterAndConsumer,
 
   -- * Emitters
+  streamEmitterWithPreprocessing,
   streamEmitter,
 
   -- ** Runner Config
@@ -132,7 +134,7 @@ runIndexerOnChainSync
   -> IO ()
 runIndexerOnChainSync config indexer = do
   void $
-    runEmitterAndConsumer
+    runEmitterAndConsumerWithPreprocessing
       securityParam
       eventPreprocessing
       (chainSyncEventEmitter config indexer)
@@ -153,10 +155,10 @@ runIndexerOnSnapshot
   -> S.Stream (S.Of BlockEvent) IO ()
   -> IO (Concurrent.MVar (indexer event))
 runIndexerOnSnapshot config indexer stream =
-  runEmitterAndConsumer
+  runEmitterAndConsumerWithPreprocessing
     securityParam
     eventPreprocessing
-    (streamEmitter securityParam eventPreprocessing indexer stream)
+    (streamEmitterWithPreprocessing securityParam eventPreprocessing indexer stream)
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
@@ -172,7 +174,7 @@ data EventEmitter indexer event a = EventEmitter
 The indexer receives the consumed events. Returns the 'MVar' in which the indexer
 resides, for inspection.
 -}
-runEmitterAndConsumer
+runEmitterAndConsumerWithPreprocessing
   :: ( Core.Point event ~ C.ChainPoint
      , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
@@ -181,7 +183,7 @@ runEmitterAndConsumer
   -> RunIndexerEventPreprocessing rawEvent event
   -> IO (EventEmitter indexer event a)
   -> IO (Concurrent.MVar (indexer event))
-runEmitterAndConsumer
+runEmitterAndConsumerWithPreprocessing
   securityParam
   eventPreprocessing
   eventEmitter =
@@ -189,7 +191,36 @@ runEmitterAndConsumer
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
       emitEvents
         `race_` Core.processQueue
-          (stablePointComputation securityParam eventPreprocessing)
+          ( stablePointComputation
+              (eventPreprocessing ^. runIndexerExtractTipDistance)
+              (eventPreprocessing ^. runIndexerExtractBlockNo)
+              securityParam
+          )
+          Map.empty
+          queue
+          indexerMVar
+      pure indexerMVar
+
+runEmitterAndConsumer
+  :: ( Core.Point event ~ C.ChainPoint
+     , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
+     , Core.Closeable IO indexer
+     )
+  => SecurityParam
+  -> IO (EventEmitter indexer event a)
+  -> IO (Concurrent.MVar (indexer event))
+runEmitterAndConsumer
+  securityParam
+  eventEmitter =
+    do
+      EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
+      emitEvents
+        `race_` Core.processQueue
+          ( stablePointComputation
+              (const Nothing)
+              (const Nothing)
+              securityParam
+          )
           Map.empty
           queue
           indexerMVar
@@ -224,7 +255,7 @@ chainSyncEventEmitter
               socketPath
               networkId
               [startingPoint]
-              (mkEventStream processEvent eventQueue)
+              (mkEventStreamWithPreprocessing processEvent eventQueue)
           whenNoIntersectionFound NoIntersectionFound =
             Trace.logError trace $
               PP.pretty NoIntersectionFoundLog
@@ -233,7 +264,7 @@ chainSyncEventEmitter
               runChainSyncStream `catch` whenNoIntersectionFound
       pure (EventEmitter eventQueue cBox eventEmitter)
 
-streamEmitter
+streamEmitterWithPreprocessing
   :: ( Core.Point event ~ C.ChainPoint
      , Core.Point pre ~ C.ChainPoint
      )
@@ -242,21 +273,35 @@ streamEmitter
   -> indexer event
   -> S.Stream (S.Of pre) IO ()
   -> IO (EventEmitter indexer event ())
-streamEmitter securityParam eventProcessing indexer stream = do
+streamEmitterWithPreprocessing securityParam eventProcessing indexer stream = do
   queue <- STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
-      emitEvents = mkEventStream processEvent queue stream
+      emitEvents = mkEventStreamWithPreprocessing processEvent queue stream
+  pure EventEmitter{queue, indexerMVar, emitEvents}
+
+streamEmitter
+  :: ( Core.Point event ~ C.ChainPoint
+     )
+  => SecurityParam
+  -> indexer event
+  -> S.Stream (S.Of (Core.ProcessedInput (Core.Point event) event)) IO ()
+  -> IO (EventEmitter indexer event ())
+streamEmitter securityParam indexer stream = do
+  queue <- STM.newTBQueueIO $ fromIntegral securityParam
+  indexerMVar <- Concurrent.newMVar indexer
+  let emitEvents = mkEventStream queue stream
   pure EventEmitter{queue, indexerMVar, emitEvents}
 
 stablePointComputation
-  :: SecurityParam
-  -> RunIndexerEventPreprocessing rawEvent event
+  :: (event -> Maybe Word)
+  -> (event -> Maybe C.BlockNo)
+  -> SecurityParam
   -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
-stablePointComputation securityParam preprocessing (Core.Timed point event) = do
-  let distanceM = preprocessing ^. runIndexerExtractTipDistance =<< event
-      blockNoM = preprocessing ^. runIndexerExtractBlockNo =<< event
+stablePointComputation tryGetDistance tryGetBlockNo securityParam (Core.Timed point event) = do
+  let distanceM = tryGetDistance =<< event
+      blockNoM = tryGetBlockNo =<< event
   case (distanceM, blockNoM) of
     (Just distance, Just blockNo) ->
       if distance > fromIntegral securityParam
@@ -277,13 +322,20 @@ getBlockNo (C.BlockInMode block _eraInMode) =
   case C.getBlockHeader block of C.BlockHeader _ _ b -> b
 
 -- | Event preprocessing, to ease the coordinator work
-mkEventStream
+mkEventStreamWithPreprocessing
   :: (inputEvent -> [Core.ProcessedInput (Core.Point inputEvent) outputEvent])
   -> STM.TBQueue (Core.ProcessedInput (Core.Point inputEvent) outputEvent)
   -> S.Stream (S.Of inputEvent) IO r
   -> IO r
-mkEventStream processEvent q =
+mkEventStreamWithPreprocessing processEvent q =
   S.mapM_ $ STM.atomically . traverse_ (STM.writeTBQueue q) . processEvent
+
+mkEventStream
+  :: STM.TBQueue (Core.ProcessedInput (Core.Point outputEvent) outputEvent)
+  -> S.Stream (S.Of (Core.ProcessedInput (Core.Point outputEvent) outputEvent)) IO r
+  -> IO r
+mkEventStream q =
+  S.mapM_ (STM.atomically . STM.writeTBQueue q)
 
 withDistanceAndTipPreprocessor
   :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) TipAndBlock
