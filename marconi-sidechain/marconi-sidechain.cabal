@@ -87,7 +87,7 @@ library
   build-depends:
     , aeson
     , async
-    , base                  >=4.9 && <5
+    , base                       >=4.9 && <5
     , bytestring
     , data-default
     , directory
@@ -96,13 +96,13 @@ library
     , http-types
     , lens
     , mtl
-    , optparse-applicative
+    , optparse-applicative-fork
     , pretty-simple
     , prettyprinter
     , prometheus-client
     , servant
     , servant-server
-    , stm                   >=2.5
+    , stm                        >=2.5
     , text
     , time
     , wai-extra
@@ -180,8 +180,8 @@ executable db-utils-exe
   -- Non-IOG dependencies
   ------------------------
   build-depends:
-    , base                  >=4.9 && <5
-    , optparse-applicative
+    , base                       >=4.9 && <5
+    , optparse-applicative-fork
 
 test-suite marconi-sidechain-test
   import:             lang
@@ -234,7 +234,7 @@ test-suite marconi-sidechain-test
   build-depends:
     , aeson
     , aeson-pretty
-    , base                    >=4.9 && <5
+    , base                       >=4.9 && <5
     , bytestring
     , containers
     , directory
@@ -244,7 +244,7 @@ test-suite marconi-sidechain-test
     , http-client
     , lens
     , mtl
-    , optparse-applicative
+    , optparse-applicative-fork
     , process
     , resourcet
     , servant

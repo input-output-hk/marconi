@@ -98,18 +98,18 @@ library
   build-depends:
     , aeson
     , async
-    , base                  >=4.9 && <5
+    , base                       >=4.9 && <5
     , bytestring
     , directory
     , lens
     , mtl
     , nonempty-containers
-    , optparse-applicative
+    , optparse-applicative-fork
     , pretty-simple
     , prometheus-client
     , servant
     , servant-server
-    , stm                   >=2.5
+    , stm                        >=2.5
     , text
     , warp
 
@@ -180,7 +180,7 @@ test-suite marconi-sidechain-experimental-test
   build-depends:
     , aeson
     , aeson-pretty
-    , base                    >=4.9 && <5
+    , base                       >=4.9 && <5
     , bytestring
     , containers
     , directory
@@ -190,7 +190,7 @@ test-suite marconi-sidechain-experimental-test
     , lens
     , mtl
     , nonempty-containers
-    , optparse-applicative
+    , optparse-applicative-fork
     , process
     , resourcet
     , servant
