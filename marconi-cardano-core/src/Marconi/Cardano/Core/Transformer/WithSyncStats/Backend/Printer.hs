@@ -21,10 +21,10 @@ import Prettyprinter (Pretty (pretty), (<+>))
 import Text.Printf (printf)
 
 {- | Creates a simple pretty-printing backend which prints the number of processed blocks and
-		the number of rollbacks to a given tracer.
+  the number of rollbacks to a given tracer.
 
-		Takes a @NominalDiffTime@ which determines how frequently we send stats to Prometheus and a
-		@MarconiTrace IO@ with which it performs the tracing.
+  Takes a @NominalDiffTime@ which determines how frequently we send stats to Prometheus and a
+  @MarconiTrace IO@ with which it performs the tracing.
 -}
 mkLogBackend :: MarconiTrace IO -> NominalDiffTime -> StatsBackend
 mkLogBackend tracer timeBetween =

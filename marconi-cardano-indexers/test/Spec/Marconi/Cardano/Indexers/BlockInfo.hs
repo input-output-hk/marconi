@@ -9,6 +9,7 @@ module Spec.Marconi.Cardano.Indexers.BlockInfo (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent.Async qualified as Async
 import Control.Exception (throwIO)
@@ -119,7 +120,7 @@ propTrippingBlockInfoJSON = Hedgehog.property $ do
 endToEndBlockInfo :: Hedgehog.Property
 endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
   -- Setup
-  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
+  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo" BM.Info
   let marconiTrace = mkMarconiTrace trace
 
   -- Local node config and connect info, with slots of length 100ms
