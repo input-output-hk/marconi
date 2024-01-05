@@ -59,16 +59,17 @@ let
           # is necessary to prevent the error
           # `../dist-newstyle/cache/plan.json: openBinaryFile: does not exist (No such file or directory)`.
           # See https://github.com/input-output-hk/cardano-node/issues/4194.
-          marconi-cardano-chain-index.preCheck = "
+          marconi-cardano-chain-index.preCheck = ''
             export CARDANO_CLI=${inputs.cardano-node.legacyPackages.cardano-cli}/bin/cardano-cli${pkgs.stdenv.hostPlatform.extensions.executable}
             export CARDANO_NODE=${inputs.cardano-node.legacyPackages.cardano-node}/bin/cardano-node${pkgs.stdenv.hostPlatform.extensions.executable}
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
-          ";
+          '';
 
           # Needed for running the marconi-sidechain integration tests in CI
-          marconi-sidechain.preCheck = "
+          marconi-sidechain.preCheck = ''
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
-          ";
+            export CARDANO_NODE_CONFIG=${../config}
+          '';
 
           # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
           # The coordinator's build function calls `readGenesisFile` so must know where to look.
@@ -95,17 +96,23 @@ let
     });
 
 
-  cabalProject = cabalProject'.appendOverlays [
-    (_: prev: {
-      hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
-        "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
-        "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
-        "marconi-sidechain.components.exes.marconi-sidechain"
-        "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
-      ]
-        prev.hsPkgs;
-    })
-  ];
+  gitrev-overlay = _: prev: {
+    hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
+      "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
+      "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
+      "marconi-sidechain.components.exes.marconi-sidechain"
+      "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
+    ]
+      prev.hsPkgs;
+  };
+
+
+  cabalProject =
+    # TODO using setGitRevForPaths on aaarch64-darwin introduces a weird bug:
+    # https://ci.iog.io/build/2242186/nixlog/1
+    if system == "aarch64-darwin"
+    then cabalProject'
+    else cabalProject'.appendOverlays [ gitrev-overlay ];
 
 
   project = lib.iogx.mkHaskellProject {
