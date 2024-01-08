@@ -1,6 +1,7 @@
 option --addresses-to-index: Invalid address (not a valid Bech32 address representation): "stake_test17rphkx6acpnf78fuvxn0mkew3l0fd058hzquvz7w36x4gtcljw6kf"
 
-Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH) 
+Usage: marconi-cardano-chain-index [--version] [--debug]
+                                   (-s|--socket-path FILE-PATH) 
                                    (--mainnet | --testnet-magic NATURAL) 
                                    [--start-from-genesis | 
                                      --start-from-last-sync-points | 

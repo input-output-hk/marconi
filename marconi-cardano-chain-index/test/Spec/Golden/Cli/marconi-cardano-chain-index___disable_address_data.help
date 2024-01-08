@@ -3,7 +3,8 @@ Invalid option `--disable-address-data'
 Did you mean this?
     --disable-address-datum
 
-Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH) 
+Usage: marconi-cardano-chain-index [--version] [--debug]
+                                   (-s|--socket-path FILE-PATH) 
                                    (--mainnet | --testnet-magic NATURAL) 
                                    [--start-from-genesis | 
                                      --start-from-last-sync-points | 

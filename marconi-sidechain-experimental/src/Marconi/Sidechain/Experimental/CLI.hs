@@ -23,7 +23,9 @@ import Options.Applicative qualified as Opt
 
 -- | Type represents http port for JSON-RPC
 data CliArgs = CliArgs
-  { socketFilePath :: !FilePath
+  { debugMode :: !Bool
+  -- ^ verbose logging
+  , socketFilePath :: !FilePath
   -- ^ POSIX socket file to communicate with cardano node
   , nodeConfigPath :: !FilePath
   -- ^ Path to the node config
@@ -38,7 +40,9 @@ data CliArgs = CliArgs
   , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   -- ^ a list of asset to track
   , optionsRetryConfig :: !RetryConfig
+  -- ^ set up retry configuration when the node socket is unavailable
   , optionsChainPoint :: !Cli.StartingPoint
+  -- ^ synchronisation start point
   }
   deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -57,7 +61,8 @@ programParser =
 parserCliArgs :: Opt.Parser CliArgs
 parserCliArgs =
   CliArgs
-    <$> Cli.commonSocketPathParser
+    <$> Cli.commonDebugModeParser
+    <*> Cli.commonSocketPathParser
     <*> Cli.commonNodeConfigPathParser
     <*> Cli.commonDbDirParser
     <*> Cli.commonPortParser

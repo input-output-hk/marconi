@@ -1,6 +1,7 @@
 option --match-asset-id: Failed to deserialise deadbeef0000000000000000000000000000000000000000000000000000000000 as AssetName. Unable to deserialise AssetName (the bytestring should be no longer than 32 bytes long which corresponds to a hex representation of 64 characters)
 
-Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH) 
+Usage: marconi-cardano-chain-index [--version] [--debug]
+                                   (-s|--socket-path FILE-PATH) 
                                    (--mainnet | --testnet-magic NATURAL) 
                                    [--start-from-genesis | 
                                      --start-from-last-sync-points | 

@@ -164,13 +164,16 @@ multiAddressesParser = fmap (NESet.fromList . NEList.fromList . concat) . some .
      39920450|679a55b523ff8d61942b2583b76e5d49498468164802ef1ebe513c685d6fb5c2|X(002f9787436835852ea78d3c45fc3d436b324184
 -}
 data CommonOptions = CommonOptions
-  { optionsSocketPath :: !String
+  { debugMode :: !Bool
+  -- ^ verbose logging
+  , optionsSocketPath :: !String
   -- ^ POSIX socket file to communicate with cardano node
   , optionsNetworkId :: !NetworkId
   -- ^ cardano network id
   , optionsChainPoint :: !StartingPoint
   -- ^ The starting point of the indexers
   , optionsRetryConfig :: !RetryConfig
+  -- ^ set up retry configuration when the node socket is unavailable
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -228,7 +231,8 @@ snapshotProgramParser =
 commonOptionsParser :: Opt.Parser CommonOptions
 commonOptionsParser =
   CommonOptions
-    <$> commonSocketPathParser
+    <$> commonDebugModeParser
+    <*> commonSocketPathParser
     <*> commonNetworkIdParser
     <*> commonStartFromParser
     <*> commonRetryConfigParser
@@ -300,6 +304,12 @@ mintBurnDbPath o =
     else Just (optionsDbPath o </> mintBurnDbName)
 
 -- * Common CLI parsers for other derived programs.
+
+commonDebugModeParser :: Opt.Parser Bool
+commonDebugModeParser =
+  Opt.switch $
+    Opt.long "debug"
+      <> Opt.help "Verbose logging"
 
 commonSocketPathParser :: Opt.Parser String
 commonSocketPathParser =
