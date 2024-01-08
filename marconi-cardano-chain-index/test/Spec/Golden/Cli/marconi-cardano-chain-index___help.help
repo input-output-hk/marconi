@@ -1,7 +1,8 @@
 marconi - a lightweight customizable solution for indexing and querying the
 Cardano blockchain
 
-Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH) 
+Usage: marconi-cardano-chain-index [--version] [--debug]
+                                   (-s|--socket-path FILE-PATH) 
                                    (--mainnet | --testnet-magic NATURAL) 
                                    [--start-from-genesis | 
                                      --start-from-last-sync-points | 
@@ -23,6 +24,7 @@ Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH)
 Available options:
   -h,--help                Show this help text
   --version                Show marconi version
+  --debug                  Verbose logging
   -s,--socket-path FILE-PATH
                            Path to node socket.
   --mainnet                Use the mainnet magic id.
