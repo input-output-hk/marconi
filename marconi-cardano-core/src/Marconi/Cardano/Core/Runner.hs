@@ -48,8 +48,9 @@ import Cardano.Api.Extended.Streaming (
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async (race_)
+import Control.Concurrent.STM (atomically, check, isEmptyTBQueue)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch)
+import Control.Exception (catch, finally)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -190,11 +191,11 @@ runEmitterAndConsumer
   closeSwitch =
     do
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
-      emitEvents
+      (emitEvents `finally` atomically (check =<< isEmptyTBQueue queue))
         `race_` consumer queue indexerMVar
       pure indexerMVar
     where
-      consumer queue indexerMVar =
+      consumer queue indexerMVar = do
         Core.processQueue
           (stablePointComputation securityParam eventPreprocessing)
           Map.empty
@@ -254,7 +255,7 @@ streamBlockEventEmitter config indexer stream = do
   queue <- STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- Concurrent.newMVar indexer
   let processEvent = eventProcessing ^. runIndexerPreprocessEvent
-      !emitEvents = mkEventStream processEvent queue stream
+      emitEvents = mkEventStream processEvent queue stream
   pure EventEmitter{queue, indexerMVar, emitEvents}
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
