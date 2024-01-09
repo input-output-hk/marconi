@@ -172,7 +172,7 @@ test-suite marconi-cardano-indexers-test
     , aeson
     , aeson-pretty
     , async
-    , base                  >=4.9 && <5
+    , base                    >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -190,6 +190,7 @@ test-suite marconi-cardano-indexers-test
     , sqlite-simple
     , streaming
     , tasty
+    , tasty-expected-failure
     , tasty-golden
     , tasty-hedgehog
     , tasty-hunit

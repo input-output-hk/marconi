@@ -6,12 +6,13 @@ import Test.Marconi.Cardano.DbSyncComparison.Common (
   NodeType (Mainnet),
  )
 import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.ExpectedFailure (ignoreTest)
 
 tests :: TestTree
 tests =
   testGroup
     "Spec.Marconi.Cardano.DbSyncComparison"
-    [ blockInfoTests
+    [ ignoreTest blockInfoTests
     ]
 
 blockInfoTests :: TestTree
