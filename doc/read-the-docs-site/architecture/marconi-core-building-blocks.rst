@@ -80,7 +80,7 @@ The type of a worker (slightly simplified) is the following:
      , workerState :: MVar (indexer event)
      -- ^ the indexer controlled by this worker
      , transformInput :: Preprocessor (ExceptT IndexerError m) point input event
-     -- ^ adapt the input event givent by the coordinator to the worker type
+     -- ^ adapt the input event given by the coordinator to the worker type
      , hoistError :: forall a. n a -> ExceptT IndexerError IO a
      -- ^ adapt the monadic stack of the indexer to the one of the worker
      }
@@ -92,7 +92,7 @@ Here are the important bits:
   Any concrete indexer type will work as long as it implements the ``IsIndex`` typeclass.
 - The indexer is put in an ``MVar`` to allow access to it from other threads.
   We'll come back to it later.
-- We provide a preprocessor, which can be seen as a functon that transforms the input send by the coordinator into events.
+- We provide a preprocessor, which can be seen as a function that transforms the input send by the coordinator into events.
 - ``hoistError`` ensures that we know how to translate the base monad of the indexer into ``ExceptT IndexerError IO`` which is the base monad of a worker.
 
 Once we have a list of workers, we can use it to create a coordinator using the ``mkCoordinator`` function.
@@ -174,7 +174,7 @@ Queryable
 ---------
 
 The whole point of an indexer is to expose information about the event they index.
-In Marconi, it's done through the ``Queryable`` typeclass, which has the following deifinition:
+In Marconi, it's done through the ``Queryable`` typeclass, which has the following definition:
 
 .. code-block:: haskell
 
