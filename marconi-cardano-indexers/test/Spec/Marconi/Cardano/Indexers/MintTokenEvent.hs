@@ -13,6 +13,7 @@ module Spec.Marconi.Cardano.Indexers.MintTokenEvent (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Gen qualified as CEGen
+import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async qualified as Async
@@ -658,7 +659,7 @@ queryListIndexerEventsMatchingTargetAssetIds assetIds indexer = do
 endToEndMintTokenEvent :: H.Property
 endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
   -- Setup
-  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent"
+  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndMintTokenEvent" BM.Info
   let marconiTrace = mkMarconiTrace trace
 
   -- Local node config and connect info, with slots of length 100ms

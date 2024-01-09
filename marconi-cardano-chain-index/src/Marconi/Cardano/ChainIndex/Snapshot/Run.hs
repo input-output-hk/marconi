@@ -7,6 +7,7 @@ module Marconi.Cardano.ChainIndex.Snapshot.Run (
 import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError)
+import Cardano.BM.Tracing qualified as BM
 import Control.Monad (unless)
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
@@ -43,7 +44,7 @@ appName = "marconi-chain-snapshot"
 -}
 run :: IO ()
 run = do
-  (trace, sb) <- defaultStdOutLogger appName
+  (trace, sb) <- defaultStdOutLogger appName BM.Info
   options <- parseSnapshotOptions
   nodeConfigPath <- getNodeConfigPath options sb trace
 

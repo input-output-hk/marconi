@@ -4,6 +4,7 @@ module Marconi.Sidechain.Experimental.Run where
 
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logInfo)
+import Cardano.BM.Tracing qualified as BM
 import Control.Exception (finally)
 import Control.Lens ((^.))
 import Control.Monad.Reader (runReaderT)
@@ -13,6 +14,7 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger)
 import Marconi.Core (IndexerError)
 import Marconi.Sidechain.Experimental.Api.HttpServer (runHttpServer)
 import Marconi.Sidechain.Experimental.CLI (
+  CliArgs (debugMode),
   getVersion,
   parseCli,
  )
@@ -32,8 +34,9 @@ import Text.Pretty.Simple (pShowDarkBg)
 run :: IO ()
 run =
   do
-    (trace, sb) <- defaultStdOutLogger "marconi-sidechain-experimental"
     cliArgs <- parseCli
+    let logLevel = if debugMode cliArgs then BM.Debug else BM.Info
+    (trace, sb) <- defaultStdOutLogger "marconi-sidechain-experimental" logLevel
 
     logInfo trace $ "marconi-sidechain-" <> Text.pack getVersion
     logInfo trace . Text.toStrict $ pShowDarkBg cliArgs

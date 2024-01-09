@@ -6,6 +6,7 @@ module Marconi.Cardano.ChainIndex.Run where
 import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
+import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent.Async (race_)
 import Control.Exception (finally)
 import Control.Monad (unless)
@@ -59,10 +60,15 @@ import qualified Marconi.Core.Indexer.SQLiteIndexer as Core
 
 run :: Text -> IO ()
 run appName = withGracefulTermination_ $ do
-  (trace, sb) <- defaultStdOutLogger appName
-  let marconiTrace = mkMarconiTrace trace
-
   o <- Cli.parseOptions
+
+  let logLevel =
+        if Cli.debugMode $ Cli.commonOptions o
+          then BM.Debug
+          else BM.Info
+  (trace, sb) <- defaultStdOutLogger appName logLevel
+
+  let marconiTrace = mkMarconiTrace trace
 
   logInfo trace $ appName <> "-" <> Text.pack Cli.getVersion
   logInfo trace $ Text.toStrict . pShowDarkBg $ o
