@@ -242,9 +242,12 @@ chainSyncEventEmitter
               runChainSyncStream `catch` whenNoIntersectionFound
       pure (EventEmitter eventQueue cBox eventEmitter)
 
+{- | Emits events from a stream. There is a level of indirection here, since
+instead of consuming the stream a caller will consume the created queue.
+The reason behind this is to provide the same interface as 'chainSyncEventEmitter'.
+-}
 streamEmitter
-  :: ( Core.Point event ~ C.ChainPoint
-     )
+  :: (Core.Point event ~ C.ChainPoint)
   => (pre -> [Core.ProcessedInput C.ChainPoint event])
   -> SecurityParam
   -> indexer event
