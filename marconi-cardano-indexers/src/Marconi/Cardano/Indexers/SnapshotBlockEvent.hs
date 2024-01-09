@@ -46,7 +46,6 @@ import Data.Time (nominalDiffTimeToSeconds)
 import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
-import Debug.Trace (trace)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorkerConfig (eventExtractor, logger, workerName),
  )
