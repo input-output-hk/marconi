@@ -11,7 +11,7 @@ executables were designed either as an example or to suit specific needs,
 not to address a general indexing need.
 
 `cardano-node <https://github.com/input-output-hk/cardano-node>`_
---------------------------------------------------------------
+-----------------------------------------------------------------
 
 cardano-node doesn't offer any kind of indexing out-of-the-box.
 However, through the mini-protocols, one can get access to a stream of blocks
@@ -19,7 +19,7 @@ that can be processed.
 The mini-protocol is what Marconi uses internally to synchronise with the node.
 
 `cardano-db-sync <https://github.com/input-output-hk/cardano-db-sync>`_
---------------------------------------------------------------------
+-----------------------------------------------------------------------
 
 cardano-db-sync is the reference indexing solution for Cardano.
 It's exhaustive and is ready to use out of the box.
@@ -35,7 +35,7 @@ indepedently), while Marconi use a SQLite database embedded in the solution
 people uses ``blockfrost`` on top of it to access it through an API.
 
 `Kupo <https://cardanosolutions.github.io/kupo/>`_
------------------------------------------------
+--------------------------------------------------
 
 Kupo is also a predefined indexing solution.
 As Marconi, it uses ``SQLite`` as a backend.
@@ -46,7 +46,7 @@ that works.
 
 
 `Scrolls <https://github.com/txpipe/scrolls>`_
--------------------------------------------
+----------------------------------------------
 
 Scrolls is an aggregator of on-chain data, with a no-sql storage.
 Use `node-to-node` protocol to synchronised, which is at the same time
@@ -59,7 +59,7 @@ answer one specific question" direction.
 
 
 `Carp <https://dcspark.github.io/carp/>`_
---------------------------------------
+-----------------------------------------
 
 Carp is another modular indexing solution.
 It uses postgres database for storage and provides a set of indexers that you
