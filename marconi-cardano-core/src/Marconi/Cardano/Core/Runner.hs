@@ -181,7 +181,9 @@ runEmitterAndConsumer
      , Core.Closeable IO indexer
      )
   => (event -> Maybe Word)
+  -- ^ A tip extraction function
   -> (event -> Maybe C.BlockNo)
+  -- ^ A block extraction function
   -> SecurityParam
   -> IO (EventEmitter indexer event a)
   -> IO (Concurrent.MVar (indexer event))
@@ -249,6 +251,7 @@ The reason behind this is to provide the same interface as 'chainSyncEventEmitte
 streamEmitter
   :: (Core.Point event ~ C.ChainPoint)
   => (pre -> [Core.ProcessedInput C.ChainPoint event])
+  -- ^ A preprocessing function
   -> SecurityParam
   -> indexer event
   -> S.Stream (S.Of pre) IO ()
@@ -261,13 +264,15 @@ streamEmitter processEvent securityParam indexer stream = do
 
 stablePointComputation
   :: (event -> Maybe Word)
+  -- ^ A tip extraction function
   -> (event -> Maybe C.BlockNo)
+  -- ^ A block extraction function
   -> SecurityParam
   -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
-stablePointComputation tryGetDistance tryGetBlockNo securityParam (Core.Timed point event) = do
-  let distanceM = tryGetDistance =<< event
-      blockNoM = tryGetBlockNo =<< event
+stablePointComputation tipExtractor blockExtractor securityParam (Core.Timed point event) = do
+  let distanceM = tipExtractor =<< event
+      blockNoM = blockExtractor =<< event
   case (distanceM, blockNoM) of
     (Just distance, Just blockNo) ->
       if distance > fromIntegral securityParam
