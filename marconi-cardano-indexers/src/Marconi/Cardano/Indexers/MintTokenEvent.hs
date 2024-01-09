@@ -319,9 +319,9 @@ mintTokenEventBuilder
   -> Core.CatchupConfig
   -> MintTokenEventConfig
   -> BM.Trace IO Text
-  -> SQLiteDBLocation
+  -> FilePath
   -> n (StandardWorker IO [AnyTxBody] MintTokenBlockEvents Core.SQLiteIndexer)
-mintTokenEventBuilder securityParam catchupConfig mintEventConfig textLogger (Core.extractStorageUnsafe -> path) =
+mintTokenEventBuilder securityParam catchupConfig mintEventConfig textLogger path =
   let indexerName = "MintTokenEvent"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       mintDbPath = path </> "mint.db"

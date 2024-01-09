@@ -21,7 +21,6 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as EpochStat
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core (CatchupConfig, IndexerError)
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 
 {- TYPE -}
 
@@ -67,7 +66,7 @@ sidechainBuildIndexers config =
       (config ^. sidechainBuildIndexersEpochStateConfig)
       tracer
       (mkMarconiTrace tracer)
-      (Core.parseDBLocation $ config ^. sidechainBuildIndexersDbPath)
+      (config ^. sidechainBuildIndexersDbPath)
   where
     tracer = config ^. sidechainBuildIndexersTrace
 

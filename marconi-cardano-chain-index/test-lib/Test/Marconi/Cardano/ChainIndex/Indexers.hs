@@ -48,8 +48,6 @@ import Marconi.Cardano.Indexers.Utxo (UtxoEvent)
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
 import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import Test.Gen.Marconi.Cardano.Indexers.Datum qualified as Test.Datum
@@ -149,7 +147,7 @@ buildIndexers
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
-  -> SQLiteDBLocation
+  -> FilePath
   -> ExceptT
       Core.IndexerError
       IO
@@ -225,7 +223,7 @@ buildIndexers
           [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
     Core.WorkerIndexer chainTipMVar chainTipWorker <-
-      ChainTip.chainTipBuilder mainLogger (Core.extractStorageUnsafe path)
+      ChainTip.chainTipBuilder mainLogger path
 
     mainCoordinator <-
       lift $

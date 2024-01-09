@@ -18,7 +18,6 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Types qualified as Core.Types
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Sidechain.Experimental.Api.Types (
   SidechainHttpServerConfig (SidechainHttpServerConfig),
  )
@@ -58,7 +57,7 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
         (config ^. Indexers.sidechainBuildIndexersEpochStateConfig)
         trace
         (mkMarconiTrace trace)
-        (Core.parseDBLocation $ config ^. Indexers.sidechainBuildIndexersDbPath)
+        (config ^. Indexers.sidechainBuildIndexersDbPath)
 
   buildIndexersConfig <- either (liftIO . throwIO) pure res
 

@@ -236,9 +236,9 @@ utxoBuilder
   -> Core.CatchupConfig
   -> UtxoIndexerConfig
   -> BM.Trace IO Text
-  -> SQLiteDBLocation
+  -> FilePath
   -> n (StandardWorker IO [AnyTxBody] UtxoEvent Core.SQLiteIndexer)
-utxoBuilder securityParam catchupConfig utxoConfig textLogger (Core.extractStorageUnsafe -> path) =
+utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
   let indexerName = "Utxo"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       utxoDbPath = path </> "utxo.db"

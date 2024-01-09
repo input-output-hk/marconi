@@ -67,7 +67,6 @@ import Marconi.Cardano.Indexers.Spent qualified as Spent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
 import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Core.Preprocessor qualified as Core
 import System.FilePath ((</>))
@@ -114,7 +113,7 @@ buildIndexers
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
-  -> SQLiteDBLocation
+  -> FilePath
   -> ExceptT
       Core.IndexerError
       IO
@@ -193,7 +192,7 @@ buildIndexers
           [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
     Core.WorkerIndexer chainTipMVar chainTipWorker <-
-      ChainTip.chainTipBuilder mainLogger (Core.extractStorageUnsafe path)
+      ChainTip.chainTipBuilder mainLogger path
 
     mainCoordinator <-
       lift $
@@ -248,7 +247,7 @@ epochNonceBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text
-  -> SQLiteDBLocation
+  -> FilePath
   -> n
       ( Core.WorkerIndexer
           m
@@ -256,7 +255,7 @@ epochNonceBuilder
           Nonce.EpochNonce
           (Core.WithTrace m Core.SQLiteIndexer)
       )
-epochNonceBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
+epochNonceBuilder securityParam catchupConfig textLogger path =
   let indexerName = "EpochNonce"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       epochNonceWorkerConfig =
@@ -278,7 +277,7 @@ epochSDDBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace m Text
-  -> SQLiteDBLocation
+  -> FilePath
   -> n
       ( Core.WorkerIndexer
           m
@@ -286,7 +285,7 @@ epochSDDBuilder
           (NonEmpty SDD.EpochSDD)
           (Core.WithTrace m Core.SQLiteIndexer)
       )
-epochSDDBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
+epochSDDBuilder securityParam catchupConfig textLogger path =
   let indexerName = "EpochSDD"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       epochSDDWorkerConfig =
@@ -397,7 +396,7 @@ buildIndexersForSnapshot
       ExtLedgerStateCoordinator.extLedgerStateWorker
         epochStateConfig
         (concat snapshotWorkers)
-        (Core.parseDBLocation path)
+        path
 
     blockCoordinator <-
       lift $

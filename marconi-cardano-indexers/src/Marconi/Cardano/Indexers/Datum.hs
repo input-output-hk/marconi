@@ -148,9 +148,9 @@ datumBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> Trace m Text
-  -> SQLiteDBLocation
+  -> FilePath
   -> n (StandardWorker m [AnyTxBody] DatumEvent Core.SQLiteIndexer)
-datumBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
+datumBuilder securityParam catchupConfig textLogger path =
   let indexerName = "Datum"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       extractDatum :: AnyTxBody -> [DatumInfo]

@@ -685,7 +685,7 @@ endToEndMintTokenEvent = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
               catchupConfig
               mintTokenConfig
               trace
-              (Core.parseDBLocation tempPath)
+              tempPath
           )
   coordinator <- H.evalIO $ Core.mkCoordinator [worker]
 

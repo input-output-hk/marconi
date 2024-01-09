@@ -55,7 +55,6 @@ import System.Posix.Signals (
  )
 import qualified Marconi.Cardano.Indexers.ExtLedgerStateCoordinator as ExtLedgerState
 import qualified Marconi.Cardano.Core.Extract.WithDistance as Distance
-import qualified Marconi.Core.Indexer.SQLiteIndexer as Core
 #endif
 
 run :: Text -> IO ()
@@ -135,7 +134,7 @@ run appName = withGracefulTermination_ $ do
         )
         trace
         marconiTrace
-        (Core.parseDBLocation . Cli.optionsDbPath $ o)
+        (Cli.optionsDbPath o)
   (indexerLastStablePoint, queryables, coordinator) <-
     ( case mindexers of
         Left err -> withLogFullError exitFailure $ Text.pack $ show err

@@ -143,7 +143,7 @@ endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
               (config ^. Runner.runIndexerConfigSecurityParam)
               catchupConfig
               trace
-              (Core.parseDBLocation tempPath)
+              tempPath
           )
   coordinator <- Hedgehog.evalIO $ Core.mkCoordinator [worker]
 

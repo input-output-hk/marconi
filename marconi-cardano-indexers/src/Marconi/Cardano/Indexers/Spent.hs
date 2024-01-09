@@ -181,9 +181,9 @@ spentBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace IO Text
-  -> SQLiteDBLocation
+  -> FilePath
   -> n (StandardWorker IO [AnyTxBody] SpentInfoEvent Core.SQLiteIndexer)
-spentBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
+spentBuilder securityParam catchupConfig textLogger path =
   let indexerName = "Spent"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       spentDbPath = path </> "spent.db"

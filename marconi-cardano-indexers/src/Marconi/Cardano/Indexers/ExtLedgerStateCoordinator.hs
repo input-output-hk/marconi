@@ -75,8 +75,6 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (BlockEvent, SecurityParam (SecurityParam), blockInMode)
 import Marconi.Core (IsSync (lastStablePoint))
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Core.Preprocessor qualified as Core
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
@@ -249,7 +247,7 @@ extLedgerStateWorker
      )
   => ExtLedgerStateWorkerConfig IO (WithDistance input)
   -> [Core.Worker (ExtLedgerStateEvent, WithDistance input) C.ChainPoint]
-  -> SQLiteDBLocation
+  -> FilePath
   -> m
       ( Core.WorkerIndexer
           IO
@@ -257,7 +255,7 @@ extLedgerStateWorker
           (ExtLedgerStateEvent, WithDistance input)
           (Core.WithTrace IO ExtLedgerStateCoordinator)
       )
-extLedgerStateWorker config workers (Core.extractStorageUnsafe -> path) = do
+extLedgerStateWorker config workers path = do
   genesisCfg <- readGenesisFile $ workerNodeConfigPath config
   let extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
       extract = workerEventExtractor config

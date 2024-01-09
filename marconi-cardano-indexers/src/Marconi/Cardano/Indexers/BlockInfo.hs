@@ -169,9 +169,9 @@ blockInfoBuilder
   => SecurityParam
   -> Core.CatchupConfig
   -> BM.Trace IO Text
-  -> SQLiteDBLocation
+  -> FilePath
   -> n (StandardWorker IO BlockEvent BlockInfo Core.SQLiteIndexer)
-blockInfoBuilder securityParam catchupConfig textLogger (Core.extractStorageUnsafe -> path) =
+blockInfoBuilder securityParam catchupConfig textLogger path =
   let indexerName = "BlockInfo"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       blockInfoDbPath = path </> dbName

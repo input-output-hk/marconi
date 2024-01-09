@@ -11,7 +11,9 @@
 module Marconi.Core.Indexer.SQLiteIndexer (
   SQLiteIndexer (SQLiteIndexer),
   SQLiteDBLocation,
-  extractStorageUnsafe,
+  pattern Memory,
+  pattern Storage,
+  ExpectedPersistentDB (..),
   inMemoryDB,
   parseDBLocation,
   databasePath,
@@ -40,7 +42,7 @@ module Marconi.Core.Indexer.SQLiteIndexer (
 ) where
 
 import Control.Concurrent.Async qualified as Async
-import Control.Exception (Handler (Handler), catches)
+import Control.Exception (Exception, Handler (Handler), catches)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
@@ -67,28 +69,32 @@ import Marconi.Core.Type (
  )
 
 data SQLiteDBLocation
-  = Memory
-  | Storage !FilePath
+  = Memory_
+  | Storage_ !FilePath
+
+pattern Memory :: SQLiteDBLocation
+pattern Memory <- Memory_
+
+pattern Storage :: FilePath -> SQLiteDBLocation
+pattern Storage fp <- Storage_ fp
+{-# COMPLETE Memory, Storage #-}
 
 unparseDBLocation :: SQLiteDBLocation -> String
 unparseDBLocation Memory = ":memory:"
 unparseDBLocation (Storage path) = path
 
 parseDBLocation :: String -> SQLiteDBLocation
-parseDBLocation "" = Memory
-parseDBLocation ":memory:" = Memory
-parseDBLocation str = Storage str
+parseDBLocation "" = Memory_
+parseDBLocation ":memory:" = Memory_
+parseDBLocation str = Storage_ str
 
 inMemoryDB :: SQLiteDBLocation
-inMemoryDB = Memory
+inMemoryDB = Memory_
 
-extractStorageUnsafe :: SQLiteDBLocation -> FilePath
-extractStorageUnsafe (Storage path) = path
-extractStorageUnsafe Memory =
-  error $
-    "Expecting an in-storage SQLite DB, instead of an in-memory one. "
-      <> "The current implementation doesn't allow using an in-memory DB, "
-      <> "please open a feature request at https://github.com/input-output-hk/marconi."
+data ExpectedPersistentDB = ExpectedPersistentDB
+  deriving (Show)
+
+instance Exception ExpectedPersistentDB
 
 -- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
 data SQLInsertPlan event = forall a.
