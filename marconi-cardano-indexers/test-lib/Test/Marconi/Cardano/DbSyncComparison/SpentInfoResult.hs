@@ -1,13 +1,13 @@
-{- | TODO: Move this to the right place once ana's work is merged
-then add to cabal file.
--}
+-- | Utilities for comparing the @Spent.'SpentInfoEvent'@ indexer to cardano-db-sync results.
 module Test.Marconi.Cardano.DbSyncComparison.SpentInfoResult where
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
+import Cardano.Api.Shelley qualified as C
 import Control.Exception (throwIO)
 import Control.Monad.Except (runExceptT)
 import Data.Aeson qualified as Aeson
+import Data.ByteString.Short qualified as BSS
 import Data.List.NonEmpty (nonEmpty)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Indexers.Spent qualified as Spent
@@ -67,7 +67,7 @@ spentInfoIndexerConfig = Runner.RunIndexerOnSnapshotConfig preprocessor 1
     extractSpent (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader slotNo hash _) txs) _) _ _) =
       map (mkIndexedTimedSpent (C.ChainPoint slotNo hash) . C.getTxBody) txs
 
--- TODO: remark on undefined or replace it with a dummy hash.
+-- TODO: PLT-6165 consider undefined in place of empty hash here
 
 {- | Create a 'ChainPoint' from a 'SlotNo' with arbitrary hash.
 Used solely for testing here, where the hash information of chain point is
@@ -77,4 +77,4 @@ NOTE: This is needed since the only way to query SpentInfo at a given slot numbe
 writing, is to use the 'ChainPoint' provided to 'query' with 'EventAtQuery'.
 -}
 chainPointAtSlotNo :: C.SlotNo -> C.ChainPoint
-chainPointAtSlotNo = flip C.ChainPoint undefined
+chainPointAtSlotNo = flip C.ChainPoint (C.HeaderHash BSS.empty)
