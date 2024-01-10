@@ -78,16 +78,19 @@ queryIndexerOnSnapshot
   -> FilePath
   -- ^ directory to be used as the indexer's DB
   -> Core.RunIndexerOnSnapshotConfig BlockEvent event
-  -> query -- BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+  -> Maybe C.ChainPoint
+  -- ^ Optional point to pass to @Core.'query'@. Else, use @Core.'queryLatest'@.
+  -> query
   -> indexer event
   -> IO (Core.Result query)
-queryIndexerOnSnapshot nodeType subChainPath dbPath config query indexer = do
+queryIndexerOnSnapshot nodeType subChainPath dbPath config point query indexer = do
   configFile <- getNodeConfigPath nodeType
   blockStream <- setupSnapshot configFile subChainPath dbPath
   let runIndexer = Core.runIndexerOnSnapshot config indexer blockStream
   withAsync runIndexer $ \runner -> do
     finalState <- wait runner >>= readMVar
-    toRuntimeException $ Core.queryLatest query finalState
+    toRuntimeException $
+      maybe Core.queryLatest Core.query point query finalState
 
 {- | The path to a data directory containing configuration files
 is set to an environment variable. This function retrieves the right

@@ -73,7 +73,8 @@ mkBlockInfoQueryBySlotNoTest testName nodeType era slotNo =
   where
     runTest = do
       indexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer Core.inMemoryDB
-      queryResult <- queryIndexerOnSnapshot Mainnet subChainPath dbPath blockInfoConfig query indexer
+      queryResult <-
+        queryIndexerOnSnapshot Mainnet subChainPath dbPath blockInfoConfig Nothing query indexer
       let finalResult = List.singleton . toResult <$> queryResult
       Aeson.encodeFile outFile finalResult
 
