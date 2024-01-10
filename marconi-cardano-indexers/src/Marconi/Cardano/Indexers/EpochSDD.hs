@@ -61,6 +61,7 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
@@ -91,7 +92,7 @@ instance SQL.FromRow (Core.Timed C.ChainPoint EpochSDD) where
 -- | Smart constructor that creates a 'FileIndexer' that stores SDD.
 mkEpochSDDIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -> m (Core.SQLiteIndexer (NonEmpty EpochSDD))
 mkEpochSDDIndexer path = do
   let createSDD =
@@ -128,7 +129,7 @@ epochSDDWorker
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
   => StandardWorkerConfig n input (NonEmpty EpochSDD)
   -> EpochSDDWorkerConfig input
-  -> FilePath
+  -> SQLiteDBLocation
   -> m (Core.WorkerIndexer n input (NonEmpty EpochSDD) (Core.WithTrace n Core.SQLiteIndexer))
 epochSDDWorker workerConfig nonceConfig path = do
   indexer <- Core.withTrace (logger workerConfig) <$> mkEpochSDDIndexer path

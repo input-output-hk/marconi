@@ -28,6 +28,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
 import Marconi.Cardano.Core.Logger (nullTracer)
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Gen
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Gen
 import Test.Tasty (TestTree, testGroup)
@@ -74,7 +75,7 @@ propRoundTripAtSlotUtxo :: Hedgehog.Property
 propRoundTripAtSlotUtxo = Hedgehog.property $ do
   events <- Hedgehog.forAll $ Gen.getTimedUtxosEvents <$> Gen.genMockchain
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
-  emptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer ":memory:"
+  emptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer Core.inMemoryDB
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
   retrievedEvents <-
     Hedgehog.evalExceptT $ Core.query (event ^. Core.point) Core.EventAtQuery indexer
@@ -87,7 +88,7 @@ propRoundTripUtxo = Hedgehog.property $ do
   let filterNonEmpty (Core.Timed _ Nothing) = Nothing
       filterNonEmpty (Core.Timed p (Just utxos)) = Just $ Core.Timed p utxos
       nonEmptyEvents = mapMaybe filterNonEmpty events
-  emptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer ":memory:"
+  emptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer Core.inMemoryDB
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
   retrievedEvents <- Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
   nonEmptyEvents === retrievedEvents
@@ -96,7 +97,7 @@ propRoundTripUtxo = Hedgehog.property $ do
 propActLikeListIndexerOnEventAt :: Hedgehog.Property
 propActLikeListIndexerOnEventAt = Hedgehog.property $ do
   events <- Hedgehog.forAll $ Gen.getTimedUtxosEvents <$> Gen.genMockchain
-  testedEmptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer ":memory:"
+  testedEmptyIndexer <- Hedgehog.evalExceptT $ Utxo.mkUtxoIndexer Core.inMemoryDB
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events testedEmptyIndexer
   referenceIndexer <- Core.indexAll events Core.mkListIndexer
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
@@ -149,7 +150,7 @@ propRunnerTracksSelectedAddress = Hedgehog.property $ do
             nullTracer
         )
         (Utxo.UtxoIndexerConfig followedAddresses True)
-        ":memory:"
+        Core.inMemoryDB
   -- we create a coordinator to perform indexing through the worker
   coordinator <- liftIO $ Core.mkCoordinator [w]
   void $ Hedgehog.evalExceptT $ Core.indexAllDescending eventsWithDistance coordinator
@@ -196,7 +197,7 @@ propRunnerDoesntTrackUnselectedAddress = Hedgehog.property $ do
             nullTracer
         )
         (Utxo.UtxoIndexerConfig followedAddresses True)
-        ":memory:"
+        Core.inMemoryDB
   -- we create a coordinator to perform indexing through the worker
   coordinator <- liftIO $ Core.mkCoordinator [w]
   void $ Hedgehog.evalExceptT $ Core.indexAllDescending eventsWithDistance coordinator

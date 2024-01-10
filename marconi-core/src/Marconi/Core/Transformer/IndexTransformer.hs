@@ -36,6 +36,7 @@ import Marconi.Core.Class (
   queryLatest,
  )
 import Marconi.Core.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
 import Marconi.Core.Transformer.Class (IndexerTrans (unwrap))
 import Marconi.Core.Type (Point, QueryError, Result, Timed)
 
@@ -154,7 +155,7 @@ getDatabasePathVia
   :: (HasDatabasePath indexer)
   => Getter s (indexer event)
   -> s
-  -> FilePath
+  -> SQLiteDBLocation
 getDatabasePathVia l = getDatabasePath . view l
 
 instance

@@ -19,6 +19,7 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer qualified as SQL
 
 {- | A simple table to store the last stable point of an indexer.
 
@@ -86,7 +87,7 @@ mkSingleInsertSyncedSqliteIndexer
      , SQL.ToRow param
      , Core.Point event ~ C.ChainPoint
      )
-  => FilePath
+  => SQL.SQLiteDBLocation
   -> (Core.Timed (Core.Point event) event -> param)
   -> SQL.Query
   -- ^ the creation query
@@ -111,7 +112,7 @@ mkSyncedSqliteIndexer
      , MonadError Core.IndexerError m
      , Core.Point event ~ C.ChainPoint
      )
-  => FilePath
+  => SQL.SQLiteDBLocation
   -> [SQL.Query]
   -- ^ cration statement
   -> [[Core.SQLInsertPlan event]]

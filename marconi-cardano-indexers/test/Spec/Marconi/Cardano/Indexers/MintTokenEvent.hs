@@ -69,6 +69,8 @@ import Marconi.Cardano.Indexers.MintTokenEvent (
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.MintTokenEventQuery qualified as MintTokenEventQuery
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (inMemoryDB)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -203,7 +205,8 @@ unitTests =
 propActLikeListIndexerOnEventsMatchingQuery :: H.Property
 propActLikeListIndexerOnEventsMatchingQuery = H.property $ do
   events <- H.forAll genTimedEvents
-  sqlIndexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:" >>= Core.indexAll events
+  sqlIndexer <-
+    H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer Core.inMemoryDB >>= Core.indexAll events
   listIndexer <- Core.indexAll events Core.mkListIndexer
   (actualResult :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
     H.evalExceptT $ Core.queryLatest MintTokenEvent.AllEvents sqlIndexer
@@ -215,7 +218,8 @@ propActLikeListIndexerOnEventsMatchingQuery = H.property $ do
 propActLikeListIndexerOnQueryByAssetId :: H.Property
 propActLikeListIndexerOnQueryByAssetId = H.property $ do
   events <- H.forAll genTimedEvents
-  sqlIndexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:" >>= Core.indexAll events
+  sqlIndexer <-
+    H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer Core.inMemoryDB >>= Core.indexAll events
   listIndexer <- Core.indexAll events Core.mkListIndexer
 
   (allTimedEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
@@ -255,7 +259,8 @@ propActLikeListIndexerOnQueryByAssetIdWithUpperLowerBounds = H.property $ do
   (allEvents :: [Core.Timed C.ChainPoint MintTokenBlockEvents]) <-
     H.evalExceptT $ Core.queryLatest Core.allEvents listIndexer
 
-  sqlIndexer <- H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer ":memory:" >>= Core.indexAll events
+  sqlIndexer <-
+    H.evalExceptT $ MintTokenEvent.mkMintTokenIndexer Core.inMemoryDB >>= Core.indexAll events
 
   H.cover 10 "At least two blocks with mint/burn events" $
     length allEvents > 1
@@ -628,7 +633,7 @@ indexWithRunner trackedAssetIds events = do
       MintTokenEvent.mintTokenEventWorker
         (StandardWorkerConfig "MintTokenEventWorker" 1 (Core.mkCatchupConfig 4 2) pure nullTracer)
         (MintTokenEventConfig trackedAssetIds)
-        ":memory:"
+        inMemoryDB
 
   -- We create a coordinator to perform indexing through the worker
   coordinator <- liftIO $ Core.mkCoordinator [worker]
@@ -1018,7 +1023,8 @@ mkMintCombine securityParam = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir
   let blockInfoPath = dir </> "blockInfo.db"
   let catchupConfig = Core.mkCatchupConfig 4 2
 
-  Right blockInfoIndexer <- runExceptT $ BlockInfo.mkBlockInfoIndexer blockInfoPath
+  Right blockInfoIndexer <-
+    runExceptT $ BlockInfo.mkBlockInfoIndexer (Core.parseDBLocation blockInfoPath)
 
   blockInfoVar <-
     liftIO $
@@ -1036,7 +1042,8 @@ mkMintCombine securityParam = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir
 
   let mintPath = dir </> "mint.db"
 
-  Right mintTokenIndexer <- runExceptT $ MintTokenEvent.mkMintTokenIndexer mintPath
+  Right mintTokenIndexer <-
+    runExceptT $ MintTokenEvent.mkMintTokenIndexer (Core.parseDBLocation mintPath)
 
   mintTokenVar <-
     liftIO $
