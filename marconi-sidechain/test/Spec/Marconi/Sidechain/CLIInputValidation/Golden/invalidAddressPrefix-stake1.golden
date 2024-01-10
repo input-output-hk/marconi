@@ -1,16 +1,19 @@
 option --addresses-to-index: Invalid address (not a valid Bech32 address representation): "stake1uyehkck0lajq8gr28t9uxnuvgcqrc6070x3k9r8048z8y5gh6ffgw"
 
-Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
-                         --node-config-path ARG (-d|--db-dir DIR) 
-                         [--http-port INT] (--mainnet | --testnet-magic NATURAL)
-                         [--max-indexing-depth | --min-indexing-depth NATURAL] 
-                         [(-a|--addresses-to-index BECH32-ADDRESS)] 
-                         [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
-                         [--fail-if-resyncing-from-genesis] 
-                         [--disable-epoch-stakepool-size] 
-                         [--initial-retry-time NATURAL] 
-                         [--no-max-retry-time | --max-retry-time NATURAL] 
-                         [(-n|--slot-no SLOT-NO)
-                           (-b|--block-header-hash BLOCK-HEADER-HASH)]
+Usage: marconi-sidechain 
+  [--version]
+  (-s|--socket-path FILE-PATH)
+  --node-config-path ARG
+  (-d|--db-dir DIR)
+  [--http-port INT]
+  (--mainnet | --testnet-magic NATURAL)
+  [--max-indexing-depth | --min-indexing-depth NATURAL]
+  [(-a|--addresses-to-index BECH32-ADDRESS)]
+  [(--match-asset-id POLICY_ID[.ASSET_NAME])]
+  [--fail-if-resyncing-from-genesis]
+  [--disable-epoch-stakepool-size]
+  [--initial-retry-time NATURAL]
+  [--no-max-retry-time | --max-retry-time NATURAL]
+  [(-n|--slot-no SLOT-NO) (-b|--block-header-hash BLOCK-HEADER-HASH)]
 
   marconi-sidechain
