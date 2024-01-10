@@ -118,7 +118,7 @@ library
   build-depends:
     , aeson
     , async
-    , base                  >=4.9 && <5
+    , base                       >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -129,7 +129,7 @@ library
     , mtl
     , mwc-random
     , nonempty-containers
-    , optparse-applicative
+    , optparse-applicative-fork
     , pretty-simple
     , prettyprinter
     , process
@@ -361,7 +361,7 @@ test-suite marconi-chain-index-legacy-test
   build-depends:
     , aeson
     , async
-    , base                  >=4.9 && <5
+    , base                       >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -372,7 +372,7 @@ test-suite marconi-chain-index-legacy-test
     , hedgehog
     , lens
     , nonempty-containers
-    , optparse-applicative
+    , optparse-applicative-fork
     , postgresql-simple
     , prettyprinter
     , serialise
@@ -429,7 +429,7 @@ test-suite marconi-chain-index-legacy-test-compare-cardano-db-sync
   build-depends:
     , aeson
     , async
-    , base                    >=4.9 && <5
+    , base                       >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -439,7 +439,7 @@ test-suite marconi-chain-index-legacy-test-compare-cardano-db-sync
     , hedgehog
     , lens
     , mtl
-    , optparse-applicative
+    , optparse-applicative-fork
     , postgresql-simple
     , prettyprinter
     , serialise
