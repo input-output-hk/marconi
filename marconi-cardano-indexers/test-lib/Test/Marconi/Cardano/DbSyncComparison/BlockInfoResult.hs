@@ -21,10 +21,10 @@ import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 import Test.Marconi.Cardano.DbSyncComparison.Common (
-  Era,
-  NodeType (Mainnet),
+  DbSyncComparisonConfig (DbSyncComparisonConfig),
   eraToString,
-  nodeTypeToString,
+  pathToGoldenFile,
+  pathToOutFile,
   queryIndexerOnSnapshot,
   toRuntimeException,
  )
@@ -62,10 +62,10 @@ toResult (BlockInfo.BlockInfo (C.BlockNo bn) timestamp (C.EpochNo en)) =
 
  where :slot_no is the argument.
 -}
-mkBlockInfoQueryBySlotNoTest :: String -> NodeType -> Era -> C.SlotNo -> TestTree
-mkBlockInfoQueryBySlotNoTest testName nodeType era slotNo =
+mkBlockInfoQueryBySlotNoTest :: DbSyncComparisonConfig -> TestTree
+mkBlockInfoQueryBySlotNoTest cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
   goldenVsFileDiff
-    testName
+    ("At slot number " <> show slotNo)
     (\expected actual -> ["diff", "--color=always", expected, actual])
     goldenFile
     outFile
@@ -74,13 +74,12 @@ mkBlockInfoQueryBySlotNoTest testName nodeType era slotNo =
     runTest = do
       indexer <- toRuntimeException $ BlockInfo.mkBlockInfoIndexer Core.inMemoryDB
       queryResult <-
-        queryIndexerOnSnapshot Mainnet subChainPath dbPath blockInfoConfig Nothing query indexer
+        queryIndexerOnSnapshot nodeType subChainPath dbPath blockInfoConfig Nothing query indexer
       let finalResult = List.singleton . toResult <$> queryResult
       Aeson.encodeFile outFile finalResult
 
-    outFile = pathToOutFile nodeType era slotNo
-    goldenFile = pathToGoldenFile nodeType era slotNo
-    dbPath = "test/Spec/Golden/Snapshot/block-info-db/"
+    outFile = pathToOutFile cfg
+    goldenFile = pathToGoldenFile cfg
     subChainPath = "../../mainnet-snapshots" </> eraToString era
     query = BlockInfoBySlotNoQuery slotNo
 
@@ -89,10 +88,3 @@ blockInfoConfig =
   Core.RunIndexerOnSnapshotConfig
     (Core.withPreprocessorOnSnapshot BlockInfo.extractBlockInfo (Just . Lens.view BlockInfo.blockNo))
     1 -- is this right?
-
-pathToOutFile :: NodeType -> Era -> C.SlotNo -> FilePath
-pathToOutFile (nodeTypeToString -> nodeType) (eraToString -> era) (C.unSlotNo -> slotNo) =
-  "test/Spec/Golden/Snapshot" </> nodeType </> era </> "blockinfo-slot" <> show slotNo <> ".out"
-
-pathToGoldenFile :: NodeType -> Era -> C.SlotNo -> FilePath
-pathToGoldenFile nt e s = pathToOutFile nt e s <> ".golden"
