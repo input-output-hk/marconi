@@ -1,19 +1,16 @@
 option --match-asset-id: Failed to deserialise 1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810 as PolicyId. Incorrect number of bytes
 
-Usage: marconi-sidechain 
-  [--version]
-  (-s|--socket-path FILE-PATH)
-  --node-config-path ARG
-  (-d|--db-dir DIR)
-  [--http-port INT]
-  (--mainnet | --testnet-magic NATURAL)
-  [--max-indexing-depth | --min-indexing-depth NATURAL]
-  [(-a|--addresses-to-index BECH32-ADDRESS)]
-  [(--match-asset-id POLICY_ID[.ASSET_NAME])]
-  [--fail-if-resyncing-from-genesis]
-  [--disable-epoch-stakepool-size]
-  [--initial-retry-time NATURAL]
-  [--no-max-retry-time | --max-retry-time NATURAL]
-  [(-n|--slot-no SLOT-NO) (-b|--block-header-hash BLOCK-HEADER-HASH)]
+Usage: marconi-sidechain [--version] (-s|--socket-path FILE-PATH)
+                         --node-config-path ARG (-d|--db-dir DIR) 
+                         [--http-port INT] (--mainnet | --testnet-magic NATURAL)
+                         [--max-indexing-depth | --min-indexing-depth NATURAL] 
+                         [(-a|--addresses-to-index BECH32-ADDRESS)] 
+                         [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
+                         [--fail-if-resyncing-from-genesis] 
+                         [--disable-epoch-stakepool-size] 
+                         [--initial-retry-time NATURAL] 
+                         [--no-max-retry-time | --max-retry-time NATURAL] 
+                         [(-n|--slot-no SLOT-NO)
+                           (-b|--block-header-hash BLOCK-HEADER-HASH)]
 
   marconi-sidechain
