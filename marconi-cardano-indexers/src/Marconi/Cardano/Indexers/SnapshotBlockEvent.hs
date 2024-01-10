@@ -36,7 +36,7 @@ import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Lazy qualified as BS.Lazy
 import Data.ByteString.Short qualified as BS.Short
 import Data.Data (Proxy (Proxy))
-import Data.Fixed (Fixed (MkFixed))
+import Data.Fixed (Fixed (MkFixed), HasResolution (resolution), Pico)
 import Data.Map qualified as Map
 import Data.Ord (comparing)
 import Data.Text (Text)
@@ -44,6 +44,8 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
 import Data.Time (nominalDiffTimeToSeconds)
 import Data.Time.Clock (secondsToNominalDiffTime)
+import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Word (Word64)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorkerConfig (eventExtractor, logger, workerName),
  )
@@ -287,7 +289,14 @@ encodeBlock
 encodeBlock codecConfig blockToNode block =
   O.encodeNodeToClient codecConfig blockToNode (C.toConsensusBlock $ blockInMode block)
     <> CBOR.encodeWord64 ((\(C.EpochNo e) -> e) $ epochNo block)
-    <> CBOR.encodeWord64 (fromIntegral $ (\(MkFixed x) -> x) $ nominalDiffTimeToSeconds $ blockTime block)
+    <> CBOR.encodeWord64 (fromPosixToWord . blockTime $ block)
+
+fromPosixToWord :: POSIXTime -> Word64
+fromPosixToWord =
+  fromIntegral . picoToIntegralPart . nominalDiffTimeToSeconds
+  where
+    picoToIntegralPart pico@(MkFixed num) =
+      num `div` resolution pico
 
 decodeBlock
   :: CodecConfig
@@ -296,8 +305,16 @@ decodeBlock
 decodeBlock codecConfig blockToNode = do
   block <- C.fromConsensusBlock C.CardanoMode <$> O.decodeNodeToClient codecConfig blockToNode
   epochNo' <- fromIntegral <$> CBOR.decodeWord64
-  time' <- secondsToNominalDiffTime . MkFixed . fromIntegral <$> CBOR.decodeWord64
+  time' <- fromWordToPosix <$> CBOR.decodeWord64
   pure $ BlockEvent block epochNo' time'
+
+fromWordToPosix :: Word64 -> POSIXTime
+fromWordToPosix =
+  secondsToNominalDiffTime . integralToPico . fromIntegral
+  where
+    integralToPico i =
+      -- the 'undefined' won't be evaluated, 'resolution' is a function from types to data
+      MkFixed $ i * resolution (undefined :: Pico)
 
 serializeChainPoint :: C.ChainPoint -> BS.ByteString
 serializeChainPoint =
