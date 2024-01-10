@@ -1,14 +1,20 @@
 option --match-asset-id: Failed to deserialise 1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810f2f2 as PolicyId. Incorrect number of bytes
 
 Usage: marconi-sidechain-experimental 
-         [--version] [--debug] (-s|--socket-path FILE-PATH)
-         --node-config-path ARG (-d|--db-dir DIR) [--http-port INT] 
-         (--mainnet | --testnet-magic NATURAL) 
-         [(-a|--addresses-to-index BECH32-ADDRESS)] 
-         [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
-         [--initial-retry-time NATURAL] 
-         [--no-max-retry-time | --max-retry-time NATURAL] 
-         [--start-from-genesis | --start-from-last-sync-points | 
-           --start-from SLOT-NO:BLOCK-HEADER-HASH]
+  [--version]
+  [--debug]
+  (-s|--socket-path FILE-PATH)
+  --node-config-path ARG
+  (-d|--db-dir DIR)
+  [--http-port INT]
+  (--mainnet | --testnet-magic NATURAL)
+  [(-a|--addresses-to-index BECH32-ADDRESS)]
+  [(--match-asset-id POLICY_ID[.ASSET_NAME])]
+  [--initial-retry-time NATURAL]
+  [--no-max-retry-time | --max-retry-time NATURAL]
+  [ --start-from-genesis
+  | --start-from-last-sync-points
+  | --start-from SLOT-NO:BLOCK-HEADER-HASH
+  ]
 
   marconi-sidechain
