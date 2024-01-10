@@ -25,10 +25,10 @@ import Test.Tasty (TestTree)
 import Test.Tasty.Golden (goldenVsFileDiff)
 
 -- | TODO: docstring with sql query?
-mkSpentInfoEventAtQueryTest :: String -> DbSyncComparisonConfig -> TestTree
-mkSpentInfoEventAtQueryTest testName cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
+mkSpentInfoEventAtQueryTest :: DbSyncComparisonConfig -> TestTree
+mkSpentInfoEventAtQueryTest cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
   goldenVsFileDiff
-    testName
+    ("At slot number " <> show slotNo)
     (\expected actual -> ["diff", "--color=always", expected, actual])
     goldenFile
     outFile

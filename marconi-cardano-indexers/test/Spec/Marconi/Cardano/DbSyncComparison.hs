@@ -1,10 +1,13 @@
 module Spec.Marconi.Cardano.DbSyncComparison where
 
+import Cardano.Api qualified as C
 import Test.Marconi.Cardano.DbSyncComparison.BlockInfoResult (mkBlockInfoQueryBySlotNoTest)
 import Test.Marconi.Cardano.DbSyncComparison.Common (
+  DbSyncComparisonConfig (DbSyncComparisonConfig),
   Era (Allegra, Alonzo1, Alonzo2, Babbage1, Babbage2, Byron1, Byron2, Mary, Shelley),
   NodeType (Mainnet),
  )
+import Test.Marconi.Cardano.DbSyncComparison.SpentInfoResult (mkSpentInfoEventAtQueryTest)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.ExpectedFailure (ignoreTest)
 
@@ -53,4 +56,21 @@ spentInfoTests :: TestTree
 spentInfoTests =
   testGroup
     "SpentInfo tests"
-    []
+    [ mkSpentInfoEventAtQueryTest $ spentInfoConfig Mainnet Allegra 18728839
+    , mkSpentInfoEventAtQueryTest $ spentInfoConfig Mainnet Babbage1 72316896
+    ]
+
+{- Config creation -}
+
+goldenDir :: FilePath
+goldenDir = "test/Spec/Golden/Snapshot"
+
+spentInfoConfig :: NodeType -> Era -> C.SlotNo -> DbSyncComparisonConfig
+spentInfoConfig nodeType era slotNo =
+  DbSyncComparisonConfig
+    nodeType
+    era
+    slotNo
+    "test/Spec/Golden/Snapshot/spent-info-db/"
+    goldenDir
+    "spentinfo"
