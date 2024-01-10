@@ -33,6 +33,7 @@ import Marconi.Core (
   point,
   query,
  )
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Starter.Indexers.AddressCount (
   AddressCountEvent (AddressCountEvent, unAddressCountEvent),
   AddressCountQuery (AddressCountQuery),
@@ -72,7 +73,7 @@ hprop_listIndexerAndSqliteIndexerReturnSameQueryResult = do
     addrs <- fmap Set.fromList $ H.forAll $ Gen.list (Range.linear 1 20) genAddressAny
     mkPropertyListIndexerAndSqliteIndexerReturnSameQueryResult
       (Gen.list (Range.linear 1 5) $ genAddressCountEvent addrs)
-      (mkAddressCountSqliteIndexer ":memory:")
+      (mkAddressCountSqliteIndexer Core.inMemoryDB)
       mkQuery
 
 mkPropertyListIndexerAndSqliteIndexerReturnSameQueryResult

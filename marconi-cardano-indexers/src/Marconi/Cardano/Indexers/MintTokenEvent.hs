@@ -145,6 +145,8 @@ import Marconi.Cardano.Core.Types (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
@@ -300,7 +302,7 @@ mintTokenEventWorker
   -> MintTokenEventConfig
   -- ^ Specific configuration of the indexer (mostly for logging purpose and filtering for target
   -- asset ids)
-  -> FilePath
+  -> SQLiteDBLocation
   -> n (StandardWorker m input MintTokenBlockEvents Core.SQLiteIndexer)
 mintTokenEventWorker workerConfig (MintTokenEventConfig mTrackedAssetIds) dbPath = do
   sqliteIndexer <- mkMintTokenIndexer dbPath
@@ -336,7 +338,7 @@ mintTokenEventBuilder securityParam catchupConfig mintEventConfig textLogger pat
           catchupConfigWithTracer
           (pure . fmap MintTokenBlockEvents . NonEmpty.nonEmpty . (>>= extractMint))
           (BM.appendName indexerName indexerEventLogger)
-   in mintTokenEventWorker mintTokenWorkerConfig mintEventConfig mintDbPath
+   in mintTokenEventWorker mintTokenWorkerConfig mintEventConfig (Core.parseDBLocation mintDbPath)
 
 -- | Only keep the MintTokenEvents at a block if they mint a target 'AssetId'.
 filterByTargetAssetIds
@@ -405,7 +407,7 @@ fromMaryAssetName (AssetName n) = C.AssetName $ Short.fromShort n -- from cardan
 
 mkMintTokenIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -> m MintTokenEventIndexer
 mkMintTokenIndexer dbPath = do
   let createMintPolicyEvent =

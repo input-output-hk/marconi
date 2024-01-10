@@ -10,6 +10,12 @@
 -}
 module Marconi.Core.Indexer.SQLiteIndexer (
   SQLiteIndexer (SQLiteIndexer),
+  SQLiteDBLocation,
+  pattern Memory,
+  pattern Storage,
+  ExpectedPersistentDB (..),
+  inMemoryDB,
+  parseDBLocation,
   databasePath,
   connection,
   insertPlan,
@@ -36,7 +42,7 @@ module Marconi.Core.Indexer.SQLiteIndexer (
 ) where
 
 import Control.Concurrent.Async qualified as Async
-import Control.Exception (Handler (Handler), catches)
+import Control.Exception (Exception, Handler (Handler), catches)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
@@ -61,6 +67,34 @@ import Marconi.Core.Type (
   Timed,
   point,
  )
+
+data SQLiteDBLocation
+  = Memory_
+  | Storage_ !FilePath
+
+pattern Memory :: SQLiteDBLocation
+pattern Memory <- Memory_
+
+pattern Storage :: FilePath -> SQLiteDBLocation
+pattern Storage fp <- Storage_ fp
+{-# COMPLETE Memory, Storage #-}
+
+unparseDBLocation :: SQLiteDBLocation -> String
+unparseDBLocation Memory = ":memory:"
+unparseDBLocation (Storage path) = path
+
+parseDBLocation :: String -> SQLiteDBLocation
+parseDBLocation "" = Memory_
+parseDBLocation ":memory:" = Memory_
+parseDBLocation str = Storage_ str
+
+inMemoryDB :: SQLiteDBLocation
+inMemoryDB = Memory_
+
+data ExpectedPersistentDB = ExpectedPersistentDB
+  deriving (Show)
+
+instance Exception ExpectedPersistentDB
 
 -- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
 data SQLInsertPlan event = forall a.
@@ -102,7 +136,7 @@ newtype GetLastStablePointQuery = GetLastStablePointQuery
 
 -- | Provide the minimal elements required to use a SQLite database to back an indexer.
 data SQLiteIndexer event = SQLiteIndexer
-  { _databasePath :: FilePath
+  { _databasePath :: SQLiteDBLocation
   -- ^ The location of the database
   , _connection :: SQL.Connection
   -- ^ The connection used to interact with the database
@@ -135,7 +169,7 @@ mkSqliteIndexer
      , SQL.ToRow (Point event)
      , Ord (Point event)
      )
-  => FilePath
+  => SQLiteDBLocation
   -> [SQL.Query]
   -- ^ creation statement
   -> [[SQLInsertPlan event]]
@@ -159,7 +193,7 @@ mkSqliteIndexer
           res <- runLastStablePointQuery h lastStablePointQuery
           pure $ fromMaybe genesis res
      in do
-          _connection <- liftIO $ SQL.open _databasePath -- TODO clean exception on invalid file
+          _connection <- liftIO $ SQL.open (unparseDBLocation _databasePath) -- TODO clean exception on invalid file
           traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
           -- allow for concurrent insert/query.
           -- see SQLite WAL, https://www.sqlite.org/wal.html
@@ -193,7 +227,7 @@ mkSingleInsertSqliteIndexer
      , SQL.ToRow param
      , Ord (Point event)
      )
-  => FilePath
+  => SQLiteDBLocation
   -> (Timed (Point event) event -> param)
   -- ^ extract @param@ out of a 'Timed'
   -> SQL.Query

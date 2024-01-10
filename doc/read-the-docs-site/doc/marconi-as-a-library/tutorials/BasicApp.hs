@@ -53,6 +53,7 @@ import Marconi.Cardano.Core.Types (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Core
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, inMemoryDB)
 import Marconi.Core.JsonRpc qualified as Core
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 
@@ -120,7 +121,7 @@ runBlockInfoListIndexer = do
 -- BLOCKSTART runBlockInfoSqliteIndexer
 runBlockInfoSqliteIndexer :: IO ()
 runBlockInfoSqliteIndexer = do
-  worker <- mkBlockInfoSqliteIndexerWorker ":memory:"
+  worker <- mkBlockInfoSqliteIndexerWorker inMemoryDB
   withIndexerBuildEnv worker $ \env -> liftIO $ runIndexer env
 
 -- BLOCKEND runBlockInfoSqliteIndexer
@@ -177,7 +178,7 @@ runBlockInfoListIndexerHttp = do
 -- BLOCKSTART runBlockInfoSqliteIndexerHttp
 runBlockInfoSqliteIndexerHttp :: IO ()
 runBlockInfoSqliteIndexerHttp = do
-  worker <- mkBlockInfoSqliteIndexerWorker ":memory:"
+  worker <- mkBlockInfoSqliteIndexerWorker inMemoryDB
   withIndexerBuildEnv worker $ \env -> do
     let blockInfoWorker = envIndexerWorker env
     let blockInfoIndexerVar = Core.workerIndexerVar blockInfoWorker
@@ -293,7 +294,7 @@ instance
 
 -- | Creation of the worker which wraps the 'Core.SQLiteIndexer' of our indexer.
 mkBlockInfoSqliteIndexerWorker
-  :: FilePath
+  :: SQLiteDBLocation
   -- ^ Path of the SQLite database file
   -> IO
       ( Core.WorkerIndexer
@@ -312,7 +313,7 @@ mkBlockInfoSqliteIndexerWorker dbPath = do
 -- | Creation of 'Core.SQLiteIndexer' for the 'BlockInfoEvent' indexer.
 mkBlockInfoSqliteIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -- ^ Path of the SQLite database file
   -> m (Core.SQLiteIndexer BlockInfoEvent)
 mkBlockInfoSqliteIndexer dbPath = do

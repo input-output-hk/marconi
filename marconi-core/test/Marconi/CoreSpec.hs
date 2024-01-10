@@ -181,6 +181,7 @@ import GHC.Generics (Generic)
 import Marconi.Core (Streamable (streamFrom), unwrap, withStream)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, inMemoryDB, parseDBLocation)
 import Network.Socket (
   Family (AF_UNIX),
   SockAddr (SockAddrUnix),
@@ -641,7 +642,7 @@ lastSyncPointBasedModelProperty gen runner =
     Core.lastSyncPoint
 
 sqliteModelIndexerWithFile
-  :: FilePath -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
+  :: SQLiteDBLocation -> ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
 sqliteModelIndexerWithFile filepath = do
   let extractor :: TestPoint -> Maybe Int
       extractor (TestPoint 0 _) = Nothing
@@ -682,7 +683,7 @@ sqliteModelIndexerWithFile filepath = do
     (Core.GetLastStablePointQuery "SELECT pointSlotNo, pointHash FROM sync")
 
 sqliteModelIndexer :: ExceptT Core.IndexerError IO (Core.SQLiteIndexer TestEvent)
-sqliteModelIndexer = sqliteModelIndexerWithFile ":memory:"
+sqliteModelIndexer = sqliteModelIndexerWithFile inMemoryDB
 
 instance
   ( MonadIO m
@@ -727,7 +728,7 @@ mixedModelNoMemoryIndexerWithFile
       IO
       (Core.MixedIndexer Core.SQLiteIndexer Core.ListIndexer TestEvent)
 mixedModelNoMemoryIndexerWithFile f = do
-  dbIndexer <- sqliteModelIndexerWithFile f
+  dbIndexer <- sqliteModelIndexerWithFile (parseDBLocation f)
   resultE <- runExceptT $ Core.standardMixedIndexer 0 1 dbIndexer
   case resultE of
     Left _err -> throwError $ Core.OtherIndexError "Could not create standardMixedIndexer"
@@ -1333,7 +1334,7 @@ resumeSQLiteLastSyncTest =
   Tasty.testProperty "SQLiteIndexer - stop and restart restore lastStablePoint" $
     Test.withMaxSuccess 100 $
       resumeLastSyncProperty
-        sqliteModelIndexerWithFile
+        (sqliteModelIndexerWithFile . parseDBLocation)
         (Lens.view chainWithoutEmptyEvents <$> Test.arbitrary)
 
 resumeMixedLastSyncTest :: Tasty.TestTree

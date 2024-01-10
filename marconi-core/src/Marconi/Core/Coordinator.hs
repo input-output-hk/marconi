@@ -19,6 +19,7 @@ module Marconi.Core.Coordinator (
   mkCoordinator,
   step,
   processQueue,
+  CloseSwitch (..),
 ) where
 
 import Control.Concurrent (MVar, QSemN, ThreadId)
@@ -93,6 +94,9 @@ mkCoordinator workers' = do
   threadIds' <- startWorkers channel' errorBox' endTokens' tokens'
   pure $ Coordinator workers' threadIds' tokens' endTokens' channel' errorBox' nb
 
+-- | Should the indexer be closed after running its action?
+data CloseSwitch = CloseOn | CloseOff
+
 {- | Read a queue of events, processing them synchronously on each worker
 
  Note that this function silently throw an @IndexError@ if the event processing fails.
@@ -108,8 +112,9 @@ processQueue
   -> s
   -> STM.TBQueue (ProcessedInput (Point event) event)
   -> Con.MVar (indexer event)
+  -> CloseSwitch
   -> IO r
-processQueue f initialState q cBox =
+processQueue f initialState q cBox closeSwitch =
   let attachStable :: Preprocessor IO (Point event) event event
       attachStable = flip preprocessor initialState $ \case
         Index timedEvent -> do
@@ -133,7 +138,12 @@ processQueue f initialState q cBox =
             Left (err :: IndexerError) -> throwIO err
             Right res -> pure (res, g')
         queueStep g'
-   in queueStep attachStable `finally` Con.withMVar cBox close
+
+      closeIndexer =
+        case closeSwitch of
+          CloseOn -> Con.withMVar cBox close
+          CloseOff -> pure ()
+   in queueStep attachStable `finally` closeIndexer
 
 {- | A coordinator step
 (send an input to its workers, wait for an ack of every worker before listening again)

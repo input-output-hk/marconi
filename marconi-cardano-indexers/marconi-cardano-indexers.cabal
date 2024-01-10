@@ -123,6 +123,7 @@ test-suite marconi-cardano-indexers-test
   main-is:        Spec.hs
   hs-source-dirs: test
   other-modules:
+    Spec.Marconi.Cardano.DbSyncComparison
     Spec.Marconi.Cardano.Indexers
     Spec.Marconi.Cardano.Indexers.BlockInfo
     Spec.Marconi.Cardano.Indexers.ChainTip
@@ -171,7 +172,7 @@ test-suite marconi-cardano-indexers-test
     , aeson
     , aeson-pretty
     , async
-    , base                  >=4.9 && <5
+    , base                    >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -189,6 +190,7 @@ test-suite marconi-cardano-indexers-test
     , sqlite-simple
     , streaming
     , tasty
+    , tasty-expected-failure
     , tasty-golden
     , tasty-hedgehog
     , tasty-hunit
@@ -215,7 +217,9 @@ library marconi-cardano-indexers-test-lib
     Test.Gen.Marconi.Cardano.Indexers.UtxoQuery
     Test.Helpers
     Test.Integration
-    Test.Marconi.Cardano.Snapshot
+    Test.Marconi.Cardano.Chain.Snapshot
+    Test.Marconi.Cardano.DbSyncComparison.BlockInfoResult
+    Test.Marconi.Cardano.DbSyncComparison.Common
 
   --------------------
   -- Local components
@@ -247,6 +251,7 @@ library marconi-cardano-indexers-test-lib
   -- Non-IOG dependencies
   ------------------------
   build-depends:
+    , aeson
     , async
     , base             >=4.9 && <5
     , bytestring
@@ -260,6 +265,8 @@ library marconi-cardano-indexers-test-lib
     , lens
     , mtl
     , streaming
+    , tasty
+    , tasty-golden
     , temporary
     , text
     , time
