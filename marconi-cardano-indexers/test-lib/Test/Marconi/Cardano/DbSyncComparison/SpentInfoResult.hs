@@ -30,7 +30,11 @@ import Test.Marconi.Cardano.DbSyncComparison.Common (
 import Test.Tasty (TestTree)
 import Test.Tasty.Golden (goldenVsFileDiff)
 
--- | TODO: docstring with sql query?
+{- | Builds a golden test for the @Core.'EventAtQuery'@ for @Spent.'SpentInfoEvent'@
+and compares it to manually generated results from `cardano-db-sync`. See documentation
+section "Generating results from cardano-db-sync data" for the SQL query run to generate
+golden files.
+-}
 mkSpentInfoEventAtQueryTest :: DbSyncComparisonConfig -> TestTree
 mkSpentInfoEventAtQueryTest cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
   goldenVsFileDiff
