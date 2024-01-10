@@ -1,6 +1,7 @@
 option --match-asset-id: Failed to deserialise 1cdc58c3b6d1ab11dd047ac9e3a2ec26aabf0839abe37b791cb810 as PolicyId. Incorrect number of bytes
 
-Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH) 
+Usage: marconi-cardano-chain-index [--version] [--debug]
+                                   (-s|--socket-path FILE-PATH) 
                                    (--mainnet | --testnet-magic NATURAL) 
                                    [--start-from-genesis | 
                                      --start-from-last-sync-points | 

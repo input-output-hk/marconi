@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Test.Marconi.Cardano.Snapshot (
+module Test.Marconi.Cardano.Chain.Snapshot (
   SnapshotFileData (..),
   setupSnapshot,
   deserialiseSnapshot,

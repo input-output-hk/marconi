@@ -1,6 +1,7 @@
 option --match-asset-id: Expected Base16-encoded bytestring, but got 00aPolicyIdOfCorrectLength000000000000000000000000000000000000; invalid character at offset: 3
 
-Usage: marconi-cardano-chain-index [--version] (-s|--socket-path FILE-PATH) 
+Usage: marconi-cardano-chain-index [--version] [--debug]
+                                   (-s|--socket-path FILE-PATH) 
                                    (--mainnet | --testnet-magic NATURAL) 
                                    [--start-from-genesis | 
                                      --start-from-last-sync-points | 

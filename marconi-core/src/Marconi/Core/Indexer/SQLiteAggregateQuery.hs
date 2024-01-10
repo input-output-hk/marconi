@@ -18,6 +18,7 @@ module Marconi.Core.Indexer.SQLiteAggregateQuery (
 ) where
 
 import Control.Concurrent qualified as Con
+import Control.Exception (throw)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -38,7 +39,7 @@ import Marconi.Core.Type (Point)
 -- | A class for indexer that has access to a SQLite database and know the path to this database
 class HasDatabasePath indexer where
   -- | Retrieve the database path from the indexer
-  getDatabasePath :: indexer event -> FilePath
+  getDatabasePath :: indexer event -> SQLite.SQLiteDBLocation
 
 instance HasDatabasePath SQLiteIndexer where
   getDatabasePath = Lens.view SQLite.databasePath
@@ -83,7 +84,7 @@ mkSQLiteAggregateQuery
 mkSQLiteAggregateQuery sources = do
   con <- liftIO $ SQL.open ":memory:"
   let databaseFromSource :: SQLiteSourceProvider m point -> IO FilePath
-      databaseFromSource (SQLiteSourceProvider ix) = Con.withMVar ix (pure . getDatabasePath)
+      databaseFromSource (SQLiteSourceProvider ix) = Con.withMVar ix (pure . expectPersistentDB . getDatabasePath)
       attachDb name src =
         liftIO $ do
           databasePath <- databaseFromSource src
@@ -93,6 +94,9 @@ mkSQLiteAggregateQuery sources = do
             [":path" := databasePath, ":name" := name]
   void $ Map.traverseWithKey attachDb sources
   pure $ SQLiteAggregateQuery (Map.elems sources) con
+  where
+    expectPersistentDB (SQLite.Storage path) = path
+    expectPersistentDB SQLite.Memory = throw SQLite.ExpectedPersistentDB
 
 instance (MonadIO m) => Closeable m (SQLiteAggregateQuery m point) where
   close indexer = liftIO $ SQL.close $ indexer ^. aggregateConnection

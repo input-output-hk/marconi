@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -5,6 +6,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Allow the execution of indexers on a Cardano node using the chain sync protocol
 module Marconi.Cardano.Core.Runner (
@@ -36,6 +38,7 @@ module Marconi.Cardano.Core.Runner (
   withDistancePreprocessor,
   withDistanceAndTipPreprocessor,
   withNoPreprocessorOnSnapshot,
+  withPreprocessorOnSnapshot,
 
   -- * Event types
 ) where
@@ -50,8 +53,9 @@ import Cardano.Api.Extended.Streaming (
 import Cardano.BM.Trace qualified as Trace
 import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async (race_)
+import Control.Concurrent.STM (atomically, check, isEmptyTBQueue)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch)
+import Control.Exception (catch, finally)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -138,6 +142,7 @@ runIndexerOnChainSync config indexer = do
       (eventPreprocessing ^. runIndexerExtractBlockNo)
       securityParam
       (chainSyncEventEmitter config indexer)
+      Core.CloseOn
   where
     securityParam = Lens.view runIndexerConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerConfigEventProcessing config
@@ -160,6 +165,7 @@ runIndexerOnSnapshot config indexer stream =
     (eventPreprocessing ^. runIndexerExtractBlockNo)
     securityParam
     (streamEmitter (eventPreprocessing ^. runIndexerPreprocessEvent) securityParam indexer stream)
+    Core.CloseOff
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
     eventPreprocessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
@@ -186,16 +192,22 @@ runEmitterAndConsumer
   -- ^ A block extraction function
   -> SecurityParam
   -> IO (EventEmitter indexer event a)
+  -> Core.CloseSwitch
   -> IO (Concurrent.MVar (indexer event))
 runEmitterAndConsumer
   tipExtractor
   blockExtractor
   securityParam
-  eventEmitter =
+  eventEmitter
+  closeSwitch =
     do
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
-      emitEvents
-        `race_` Core.processQueue
+      (emitEvents `finally` atomically (check =<< isEmptyTBQueue queue))
+        `race_` consumer queue indexerMVar
+      pure indexerMVar
+    where
+      consumer queue indexerMVar = do
+        Core.processQueue
           ( stablePointComputation
               tipExtractor
               blockExtractor
@@ -204,7 +216,7 @@ runEmitterAndConsumer
           Map.empty
           queue
           indexerMVar
-      pure indexerMVar
+          closeSwitch
 
 -- | Emits events from a local running Cardano node via the chain sync protocol.
 chainSyncEventEmitter
@@ -354,6 +366,21 @@ withNoPreprocessorOnSnapshot =
          in [Core.Index $ Just <$> timedEvent]
       blockNoFromBlockEvent = Just . getBlockNo . blockInMode
    in RunIndexerEventPreprocessing eventToProcessedInput blockNoFromBlockEvent (const Nothing)
+
+withPreprocessorOnSnapshot
+  :: forall event
+   . (BlockEvent -> event)
+  -> (event -> Maybe C.BlockNo)
+  -> RunIndexerEventPreprocessing BlockEvent event
+withPreprocessorOnSnapshot f g =
+  let eventToProcessedInput
+        :: BlockEvent
+        -> [Core.ProcessedInput C.ChainPoint event]
+      eventToProcessedInput blockEvent@(f -> event) =
+        let point = blockEventPoint blockEvent
+            timedEvent = Core.Timed point event
+         in [Core.Index $ Just <$> timedEvent]
+   in RunIndexerEventPreprocessing eventToProcessedInput g (const Nothing)
 
 withDistancePreprocessor
   :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) (WithDistance BlockEvent)

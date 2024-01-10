@@ -16,6 +16,7 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Marconi.Cardano.Indexers.Spent qualified as Spent
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Indexers.Spent qualified as Test.Spent
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)
@@ -50,7 +51,7 @@ propRoundTripAtSlotSpent :: Hedgehog.Property
 propRoundTripAtSlotSpent = Hedgehog.property $ do
   events <- Hedgehog.forAll Test.Spent.genSpentInfoEvents
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
-  emptyIndexer <- Hedgehog.evalExceptT $ Spent.mkSpentIndexer ":memory:"
+  emptyIndexer <- Hedgehog.evalExceptT $ Spent.mkSpentIndexer Core.inMemoryDB
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
   retrievedEvents <-
     Hedgehog.evalExceptT $ Core.query (event ^. Core.point) Core.EventAtQuery indexer
@@ -63,7 +64,7 @@ propRoundTripSpent = Hedgehog.property $ do
   let filterNonEmpty (Core.Timed _ Nothing) = Nothing
       filterNonEmpty (Core.Timed p (Just utxos)) = Just $ Core.Timed p utxos
       nonEmptyEvents = mapMaybe filterNonEmpty events
-  emptyIndexer <- Hedgehog.evalExceptT $ Spent.mkSpentIndexer ":memory:"
+  emptyIndexer <- Hedgehog.evalExceptT $ Spent.mkSpentIndexer Core.inMemoryDB
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events emptyIndexer
   retrievedEvents <- Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
   nonEmptyEvents === retrievedEvents
@@ -74,7 +75,7 @@ propRoundTripSpent = Hedgehog.property $ do
 propActLikeListIndexerOnEventAt :: Hedgehog.Property
 propActLikeListIndexerOnEventAt = Hedgehog.property $ do
   events <- Hedgehog.forAll Test.Spent.genSpentInfoEvents
-  testedEmptyIndexer <- Hedgehog.evalExceptT $ Spent.mkSpentIndexer ":memory:"
+  testedEmptyIndexer <- Hedgehog.evalExceptT $ Spent.mkSpentIndexer Core.inMemoryDB
   indexer <- Hedgehog.evalExceptT $ Core.indexAll events testedEmptyIndexer
   referenceIndexer <- Core.indexAll events Core.mkListIndexer
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events

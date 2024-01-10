@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
@@ -24,6 +25,7 @@ module Marconi.Cardano.Indexers.BlockInfo (
 
   -- * Extractor
   fromBlockEratoBlockInfo,
+  extractBlockInfo,
 
   -- * Query
   BlockInfoBySlotNoQuery (..),
@@ -63,6 +65,8 @@ import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 data BlockInfo = BlockInfo
@@ -108,7 +112,7 @@ dbName = "blockInfo.db"
 -- | A smart constructor for BlockInfoIndexer
 mkBlockInfoIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
-  => FilePath
+  => SQLiteDBLocation
   -- ^ SQL connection to database
   -> m (Core.SQLiteIndexer BlockInfo)
 mkBlockInfoIndexer path = do
@@ -150,7 +154,7 @@ blockInfoWorker
      )
   => StandardWorkerConfig m input BlockInfo
   -- ^ General indexer configuration
-  -> FilePath
+  -> SQLiteDBLocation
   -- ^ SQLite database location
   -> n (StandardWorker m input BlockInfo Core.SQLiteIndexer)
 blockInfoWorker config path = do
@@ -175,8 +179,6 @@ blockInfoBuilder securityParam catchupConfig textLogger path =
         catchupConfig
           & Core.configCatchupEventHook
             ?~ catchupConfigEventHook indexerName textLogger blockInfoDbPath
-      extractBlockInfo :: BlockEvent -> BlockInfo
-      extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) = fromBlockEratoBlockInfo b eno t
       blockInfoWorkerConfig =
         StandardWorkerConfig
           indexerName
@@ -184,7 +186,7 @@ blockInfoBuilder securityParam catchupConfig textLogger path =
           catchupConfigWithTracer
           (pure . Just . extractBlockInfo)
           (BM.appendName indexerName indexerEventLogger)
-   in blockInfoWorker blockInfoWorkerConfig (path </> dbName)
+   in blockInfoWorker blockInfoWorkerConfig (Core.parseDBLocation (path </> dbName))
 
 type instance Core.Result (BlockInfoBySlotNoQuery event) = Maybe event
 
@@ -284,6 +286,10 @@ instance
           )
           (const blockInfoBeforeOrAtSlotNoQuery)
           (const id)
+
+extractBlockInfo :: BlockEvent -> BlockInfo
+extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) =
+  fromBlockEratoBlockInfo b eno t
 
 fromBlockEratoBlockInfo
   :: C.Block era -> C.EpochNo -> POSIXTime -> BlockInfo

@@ -22,10 +22,10 @@ import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
 
 -- | StdOut logger, only log stuff above the Info level
-defaultStdOutLogger :: Text -> IO (Trace IO Text, BM.Switchboard Text)
-defaultStdOutLogger appName = do
+defaultStdOutLogger :: Text -> BM.Severity -> IO (Trace IO Text, BM.Switchboard Text)
+defaultStdOutLogger appName logLevel = do
   cfg <- BM.defaultConfigStdout
-  BM.setMinSeverity cfg BM.Info
+  BM.setMinSeverity cfg logLevel
   BM.setupTrace_ cfg appName
 
 -- | Builds a 'MarconiTrace' from a base tracer.

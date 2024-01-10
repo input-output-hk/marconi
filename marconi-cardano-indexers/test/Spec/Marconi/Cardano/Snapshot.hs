@@ -8,18 +8,19 @@ import Control.Concurrent.Async (wait, withAsync)
 import Control.Lens qualified as Lens
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Runner qualified as Core
-import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.ListIndexer qualified as Core (
+  mkListIndexer,
+ )
 import Marconi.Core.Indexer.ListIndexer qualified as ListIndexer
 import Marconi.Core.Type (event)
 import Streaming.Prelude qualified as Stream
 import System.Directory (removeDirectoryRecursive)
-import System.Environment (getEnv)
-import System.FilePath ((</>))
 import System.IO (IOMode (WriteMode), hPrint, withFile)
-import Test.Marconi.Cardano.Snapshot (
+import Test.Marconi.Cardano.Chain.Snapshot (
   deserialiseSnapshot,
   setupSnapshot,
  )
+import Test.Marconi.Cardano.DbSyncComparison.Common (NodeType (Preprod), getNodeConfigPath)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsFileDiff)
 import Test.Tasty.HUnit (assertEqual, testCase)
@@ -65,7 +66,7 @@ is equal to the initial set of events.
 runListIndexerTest
   :: NodeType
   -> FilePath
-  -- ^ directory which contains the serialised events
+  -- ^ directory to be used as the indexer's DB
   -> Core.RunIndexerOnSnapshotConfig BlockEvent BlockEvent
   -> IO ()
 runListIndexerTest nodeType dbPath config = do
@@ -83,19 +84,3 @@ runListIndexerTest nodeType dbPath config = do
   let actualResult = reverse $ Lens.view event <$> actualResultRaw
   -- 'BlockEvent' doesn't have an 'Eq' instance, so a workaround is needed
   assertEqual "" (show <$> expectedResult) (show <$> actualResult)
-
--- | The Cardano network type used to create the snapshot.
-data NodeType = Preview | Preprod | Mainnet
-
-{- | The path to a data directory containing configuration files
-is set to an environment variable. This function retrieves the right
-configuration file path.
--}
-getNodeConfigPath :: NodeType -> IO FilePath
-getNodeConfigPath nodeType = do
-  configDir <- getEnv "CARDANO_NODE_CONFIG"
-  pure $ configDir </> "cardano-node" </> toPath nodeType </> "config.json"
-  where
-    toPath Preview = "preview"
-    toPath Preprod = "preprod"
-    toPath Mainnet = "mainnet"

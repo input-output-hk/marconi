@@ -222,7 +222,8 @@ buildIndexers
           blockEventLogger
           [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
-    Core.WorkerIndexer chainTipMVar chainTipWorker <- ChainTip.chainTipBuilder mainLogger path
+    Core.WorkerIndexer chainTipMVar chainTipWorker <-
+      ChainTip.chainTipBuilder mainLogger path
 
     mainCoordinator <-
       lift $

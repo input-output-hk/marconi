@@ -9,6 +9,7 @@ module Spec.Marconi.Cardano.Indexers.BlockInfo (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent (readMVar, threadDelay)
 import Control.Concurrent.Async qualified as Async
 import Control.Exception (throwIO)
@@ -26,6 +27,7 @@ import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Indexers.BlockInfo qualified as Test.BlockInfo
 import Test.Helpers qualified as Helpers
 import Test.Integration qualified as Integration
@@ -82,7 +84,8 @@ propRoundTripAtSlotBlockInfo :: Hedgehog.Property
 propRoundTripAtSlotBlockInfo = Hedgehog.property $ do
   events <- Hedgehog.forAll Test.BlockInfo.genBlockInfoEvents
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
-  indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
+  indexer <-
+    Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer Core.inMemoryDB >>= Core.indexAll events)
   retrievedEvents <-
     Hedgehog.evalExceptT $ Core.query (event ^. Core.point) Core.EventAtQuery indexer
   event ^. Core.event === retrievedEvents
@@ -92,7 +95,8 @@ propRoundTripBlockInfo :: Hedgehog.Property
 propRoundTripBlockInfo = Hedgehog.property $ do
   events <- Hedgehog.forAll Test.BlockInfo.genBlockInfoEvents
   let nonEmptyEvents = mapMaybe sequenceA events
-  indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
+  indexer <-
+    Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer Core.inMemoryDB >>= Core.indexAll events)
   retrievedEvents <- Hedgehog.evalExceptT $ Core.queryLatest Core.allEvents indexer
   nonEmptyEvents === retrievedEvents
 
@@ -100,7 +104,8 @@ propRoundTripBlockInfo = Hedgehog.property $ do
 propActLikeListIndexerOnEventAt :: Hedgehog.Property
 propActLikeListIndexerOnEventAt = Hedgehog.property $ do
   events <- Hedgehog.forAll Test.BlockInfo.genBlockInfoEvents
-  indexer <- Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer ":memory:" >>= Core.indexAll events)
+  indexer <-
+    Hedgehog.evalExceptT (BlockInfo.mkBlockInfoIndexer Core.inMemoryDB >>= Core.indexAll events)
   referenceIndexer <- Core.indexAll events Core.mkListIndexer
   event <- Hedgehog.forAll $ Hedgehog.Gen.element events
   (testedResult :: Maybe BlockInfo.BlockInfo) <-
@@ -119,7 +124,7 @@ propTrippingBlockInfoJSON = Hedgehog.property $ do
 endToEndBlockInfo :: Hedgehog.Property
 endToEndBlockInfo = Helpers.unitTestWithTmpDir "." $ \tempPath -> do
   -- Setup
-  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo"
+  (trace, _) <- liftIO $ defaultStdOutLogger "endToEndBlockInfo" BM.Info
   let marconiTrace = mkMarconiTrace trace
 
   -- Local node config and connect info, with slots of length 100ms

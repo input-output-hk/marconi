@@ -5,6 +5,7 @@
 module Spec.Marconi.Sidechain.Experimental.Utils where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Tracing qualified as BM
 import Control.Exception (throwIO)
 import Control.Lens (set, (^.))
 import Control.Monad.Except (runExceptT)
@@ -38,7 +39,7 @@ import Test.Marconi.Cardano.ChainIndex.Indexers qualified as Test.Indexers
 mkTestSidechainConfigsFromCliArgs
   :: (MonadIO m) => CliArgs -> m (SidechainHttpServerConfig, Test.Indexers.TestBuildIndexersResult)
 mkTestSidechainConfigsFromCliArgs cliArgs = do
-  (trace, _) <- liftIO $ defaultStdOutLogger "marconi-sidechain-experimental-test"
+  (trace, _) <- liftIO $ defaultStdOutLogger "marconi-sidechain-experimental-test" BM.Info
   let
     -- Fixing security param at 0. No rollbacks.
     securityParam = 0
@@ -79,6 +80,7 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
 initTestingCliArgs :: CliArgs
 initTestingCliArgs =
   CliArgs
+    False
     ""
     ""
     -- dbPath "" uses temporary files

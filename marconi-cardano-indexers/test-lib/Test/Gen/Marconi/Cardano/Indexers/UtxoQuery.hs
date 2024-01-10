@@ -18,6 +18,7 @@ import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery (UtxoQueryEvent)
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -108,16 +109,17 @@ mkUtxoQuery
       )
 mkUtxoQuery = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
   let blockInfoPath = dir </> "blockInfo.db"
-  Right blockInfoIndexer <- runExceptT $ BlockInfo.mkBlockInfoIndexer blockInfoPath
+  Right blockInfoIndexer <-
+    runExceptT $ BlockInfo.mkBlockInfoIndexer (Core.parseDBLocation blockInfoPath)
   blockInfoVar <- liftIO $ Concurrent.newMVar blockInfoIndexer
   let datumPath = dir </> "datum.db"
-  Right datumIndexer <- runExceptT $ Datum.mkDatumIndexer datumPath
+  Right datumIndexer <- runExceptT $ Datum.mkDatumIndexer (Core.parseDBLocation datumPath)
   datumVar <- liftIO $ Concurrent.newMVar datumIndexer
   let spentPath = dir </> "spent.db"
-  Right spentIndexer <- runExceptT $ Spent.mkSpentIndexer spentPath
+  Right spentIndexer <- runExceptT $ Spent.mkSpentIndexer (Core.parseDBLocation spentPath)
   spentVar <- liftIO $ Concurrent.newMVar spentIndexer
   let utxoPath = dir </> "utxo.db"
-  Right utxoIndexer <- runExceptT $ Utxo.mkUtxoIndexer utxoPath
+  Right utxoIndexer <- runExceptT $ Utxo.mkUtxoIndexer (Core.parseDBLocation utxoPath)
   utxoVar <- liftIO $ Concurrent.newMVar utxoIndexer
   let indexers = UtxoQueryIndexers utxoVar spentVar datumVar blockInfoVar
   utxoQuery <- UtxoQuery.mkUtxoSQLiteQuery $ utxoQueryIndexersAsAggregate indexers
