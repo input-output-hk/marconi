@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Test.Marconi.Cardano.DbSyncComparison.Common (
   -- * Runner
@@ -8,8 +9,11 @@ module Test.Marconi.Cardano.DbSyncComparison.Common (
   -- * Utils
   toRuntimeException,
   getNodeConfigPath,
+  pathToOutFile,
+  pathToGoldenFile,
 
   -- * Types
+  DbSyncComparisonConfig (..),
   NodeType (..),
   nodeTypeToString,
   Era (..),
@@ -26,6 +30,33 @@ import Marconi.Core qualified as Core
 import System.Environment (getEnv)
 import System.FilePath ((</>))
 import Test.Marconi.Cardano.Chain.Snapshot (setupSnapshot)
+
+data DbSyncComparisonConfig = DbSyncComparisonConfig
+  { dbSyncComparisonNodeType :: NodeType
+  , dbSyncComparisonEra :: Era
+  , dbSyncComparisonSlotNo :: C.SlotNo
+  , dbSyncComparisonDbPath :: FilePath
+  , dbSyncComparisonGoldenDir :: String
+  -- ^ Base directory in which golden files are located.
+  -- See 'pathToOutFile' and 'pathToGoldenFile'.
+  , dbSyncComparisonName :: String
+  -- ^ Identifier for the comparison, e.g. "blockinfo"
+  }
+
+pathToOutFile :: DbSyncComparisonConfig -> FilePath
+pathToOutFile
+  ( DbSyncComparisonConfig
+      (nodeTypeToString -> nodeType)
+      (eraToString -> era)
+      (C.unSlotNo -> slotNo)
+      _
+      gdir
+      nm
+    ) =
+    gdir </> nodeType </> era </> nm <> "-slot" <> show slotNo <> ".out"
+
+pathToGoldenFile :: DbSyncComparisonConfig -> FilePath
+pathToGoldenFile cfg = pathToOutFile cfg <> ".golden"
 
 -- | The Cardano network type used to create the snapshot.
 data NodeType = Preview | Preprod | Mainnet
