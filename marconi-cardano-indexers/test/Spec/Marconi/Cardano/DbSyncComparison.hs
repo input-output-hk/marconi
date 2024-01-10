@@ -57,6 +57,10 @@ spentInfoTests =
   testGroup
     "SpentInfo tests"
     [ mkSpentInfoEventAtQueryTest $ spentInfoConfig Mainnet Allegra 18728839
+    , -- NOTE: This slot is known to have a block with at least one transaction whose script is
+      -- invalid. It's here to have at least one test of the logic indexing collateral as spent
+      -- rather than the usual transaction TxIns.
+      mkSpentInfoEventAtQueryTest $ spentInfoConfig Mainnet Alonzo2 59438205
     , mkSpentInfoEventAtQueryTest $ spentInfoConfig Mainnet Babbage1 72316896
     ]
 
