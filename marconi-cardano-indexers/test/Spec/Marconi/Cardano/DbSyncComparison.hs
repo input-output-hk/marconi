@@ -13,6 +13,7 @@ tests =
   testGroup
     "Spec.Marconi.Cardano.DbSyncComparison"
     [ ignoreTest blockInfoTests
+    , ignoreTest spentInfoTests
     ]
 
 blockInfoTests :: TestTree
@@ -47,3 +48,9 @@ blockInfoTests =
     , mkBlockInfoQueryBySlotNoTest "At slot number 87198551" Mainnet Babbage2 87198551
     , mkBlockInfoQueryBySlotNoTest "At slot number 89596758" Mainnet Babbage2 89596758
     ]
+
+spentInfoTests :: TestTree
+spentInfoTests =
+  testGroup
+    "SpentInfo tests"
+    []
