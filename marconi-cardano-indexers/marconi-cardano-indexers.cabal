@@ -172,7 +172,7 @@ test-suite marconi-cardano-indexers-test
     , aeson
     , aeson-pretty
     , async
-    , base                       >=4.9 && <5
+    , base                    >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -184,7 +184,7 @@ test-suite marconi-cardano-indexers-test
     , hedgehog
     , lens
     , mtl
-    , optparse-applicative-fork
+    , optparse-applicative
     , postgresql-simple
     , prettyprinter
     , sqlite-simple

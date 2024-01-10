@@ -262,7 +262,7 @@ test-suite marconi-cardano-core-test
     , aeson
     , aeson-pretty
     , async
-    , base                       >=4.9 && <5
+    , base                  >=4.9 && <5
     , base16-bytestring
     , bytestring
     , cborg
@@ -275,7 +275,7 @@ test-suite marconi-cardano-core-test
     , lens
     , mtl
     , nonempty-containers
-    , optparse-applicative-fork
+    , optparse-applicative
     , postgresql-simple
     , prettyprinter
     , serialise
