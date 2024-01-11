@@ -159,52 +159,60 @@ Lens.makeLenses ''PreprocessorState
   and we check if it should be saved (we save every `snapshotInterval + 1` time)
 -}
 updateLatestLedgerState
-  :: (MonadIO io, MonadState (PreprocessorState output input) io, MonadError Core.IndexerError io)
+  :: forall io output input
+   . (MonadIO io, MonadState (PreprocessorState output input) io, MonadError Core.IndexerError io)
   => Bool
   -> Core.Timed C.ChainPoint ExtLedgerStateEvent
   -> io (Maybe C.ChainPoint)
-updateLatestLedgerState isVolatile' event = do
-  let resetBlockCounter = do
+updateLatestLedgerState isVolatile' event =
+  let resetBlockCounterIfNeeded = do
         timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
         when (timeToNextSnapshot == 0) $ do
           snapshotInterval' <- Lens.use $ persistConfig . snapshotInterval
           persistConfig . blocksToNextSnapshot .= snapshotInterval'
-  volatileLedgerStates' <- Lens.use volatileLedgerStates
-  snapshotCandidate <- case volatileLedgerStates' of
-    -- If we didn't start indexing volatile event yet
-    Seq.Empty -> do
-      eventToSave <- Lens.use lastLedgerState
-      if isVolatile'
-        then do
-          -- We save the last stable event before we reach volatile ones
-          persistConfig . blocksToNextSnapshot .= 0
-          volatileLedgerStates %= (event Seq.<|)
-        else do
-          persistConfig . blocksToNextSnapshot -= 1
-      timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
-      pure $ guard (timeToNextSnapshot == 0) $> eventToSave
-    -- If we're already indexing volatile event
-    xs Seq.:|> oldestLedgerState -> do
-      max' <- Lens.use maxLength
-      current <- Lens.use currentLength
-      let bufferIsFull = max' <= current
-      if bufferIsFull
-        then volatileLedgerStates .= (event Seq.<| xs)
-        else do
-          volatileLedgerStates %= (event Seq.<|)
-          currentLength += 1
-      timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
-      pure $ guard (timeToNextSnapshot == 0 && bufferIsFull) $> oldestLedgerState
-  lastLedgerState .= event
-  resetBlockCounter
-  case snapshotCandidate of
-    Nothing -> pure Nothing
-    Just eventToSave -> do
-      let savePoint = eventToSave ^. Core.point
-      indexer <- Lens.use $ persistConfig . ledgerStateIndexer
-      indexer' <- Core.setLastStablePoint savePoint =<< Core.index (Just <$> eventToSave) indexer
-      persistConfig . ledgerStateIndexer .= indexer'
-      pure $ Just savePoint
+      storeNewSnapshot :: io (Maybe (Core.Timed C.ChainPoint ExtLedgerStateEvent))
+      storeNewSnapshot = do
+        volatileLedgerStates' <- Lens.use volatileLedgerStates
+        case volatileLedgerStates' of
+          -- If we didn't start indexing volatile event yet
+          Seq.Empty -> do
+            eventToSave <- Lens.use lastLedgerState
+            if isVolatile'
+              then do
+                -- we reached the first volatile event
+                -- We always save the last stable event before we reach volatile ones
+                persistConfig . blocksToNextSnapshot .= 0
+                volatileLedgerStates %= (event Seq.<|)
+              else do
+                persistConfig . blocksToNextSnapshot -= 1
+            timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
+            lastLedgerState .= event
+            pure $ guard (timeToNextSnapshot == 0) $> eventToSave
+          -- If we're already indexing volatile event
+          xs Seq.:|> oldestLedgerState -> do
+            max' <- Lens.use maxLength
+            current <- Lens.use currentLength
+            let bufferIsFull = max' <= current
+            if bufferIsFull
+              then volatileLedgerStates .= (event Seq.<| xs)
+              else do
+                volatileLedgerStates %= (event Seq.<|)
+                currentLength += 1
+            timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
+            lastLedgerState .= event
+            pure $ guard (timeToNextSnapshot == 0 && bufferIsFull) $> oldestLedgerState
+      saveSnapshot eventToSave = do
+        let savePoint = eventToSave ^. Core.point
+        indexer <- Lens.use $ persistConfig . ledgerStateIndexer
+        indexer' <- Core.setLastStablePoint savePoint =<< Core.index (Just <$> eventToSave) indexer
+        persistConfig . ledgerStateIndexer .= indexer'
+        pure $ Just savePoint
+   in do
+        snapshotCandidate <- storeNewSnapshot
+        resetBlockCounterIfNeeded
+        case snapshotCandidate of
+          Nothing -> pure Nothing
+          Just eventToSave -> saveSnapshot eventToSave
 
 -- | Configuration of the worker
 data ExtLedgerStateWorkerConfig m output input = ExtLedgerStateWorkerConfig
