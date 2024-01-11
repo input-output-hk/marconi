@@ -56,7 +56,16 @@ spentInfoTests :: TestTree
 spentInfoTests =
   testGroup
     "SpentInfo tests"
-    [ mkSpentInfoEventAtQueryTest "At slot number 18728839" $ spentInfoConfig Mainnet Allegra 18728839
+    [ mkSpentInfoEventAtQueryTest "At slot number 3801600" $ spentInfoConfig Mainnet Byron2 3801600
+    , mkSpentInfoEventAtQueryTest "At slot number 3901600" $ spentInfoConfig Mainnet Byron2 3901600
+    , -- NOTE: This one should return nothing.
+      mkSpentInfoEventAtQueryTest "At slot number 4492800" $ spentInfoConfig Mainnet Shelley 4492800
+    , mkSpentInfoEventAtQueryTest "At slot number 4520900" $ spentInfoConfig Mainnet Shelley 4520900
+    , mkSpentInfoEventAtQueryTest "At slot number 16588800" $ blockInfoConfig Mainnet Allegra 16588800
+    , mkSpentInfoEventAtQueryTest "At slot number 18728839" $ spentInfoConfig Mainnet Allegra 18728839
+    , mkSpentInfoEventAtQueryTest "At slot number 23068800" $ spentInfoConfig Mainnet Mary 23068800
+    , mkSpentInfoEventAtQueryTest "At slot number 39916975" $ blockInfoConfig Mainnet Alonzo1 39916975
+    , mkSpentInfoEventAtQueryTest "At slot number 43372972" $ blockInfoConfig Mainnet Alonzo2 43372972
     , -- NOTE: This slot is known to have a block with at least one transaction whose script is
       -- invalid. It's here to have at least one test of the logic indexing collateral as spent
       -- rather than the usual transaction TxIns.
