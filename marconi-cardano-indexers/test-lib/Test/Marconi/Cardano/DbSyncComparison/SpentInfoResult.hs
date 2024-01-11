@@ -35,10 +35,10 @@ and compares it to manually generated results from `cardano-db-sync`. See docume
 section "Generating results from cardano-db-sync data" for the SQL query run to generate
 golden files.
 -}
-mkSpentInfoEventAtQueryTest :: DbSyncComparisonConfig -> TestTree
-mkSpentInfoEventAtQueryTest cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
+mkSpentInfoEventAtQueryTest :: String -> DbSyncComparisonConfig -> TestTree
+mkSpentInfoEventAtQueryTest testName cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
   goldenVsFileDiff
-    ("At slot number " <> show slotNo)
+    testName
     (\expected actual -> ["diff", "--color=always", expected, actual])
     goldenFile
     outFile

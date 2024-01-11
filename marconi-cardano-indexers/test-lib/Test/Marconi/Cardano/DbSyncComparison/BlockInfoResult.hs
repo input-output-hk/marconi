@@ -62,10 +62,10 @@ toResult (BlockInfo.BlockInfo (C.BlockNo bn) timestamp (C.EpochNo en)) =
 
  where :slot_no is the argument.
 -}
-mkBlockInfoQueryBySlotNoTest :: DbSyncComparisonConfig -> TestTree
-mkBlockInfoQueryBySlotNoTest cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
+mkBlockInfoQueryBySlotNoTest :: String -> DbSyncComparisonConfig -> TestTree
+mkBlockInfoQueryBySlotNoTest testName cfg@(DbSyncComparisonConfig nodeType era slotNo dbPath _ _) =
   goldenVsFileDiff
-    ("At slot number " <> show slotNo)
+    testName
     (\expected actual -> ["diff", "--color=always", expected, actual])
     goldenFile
     outFile
