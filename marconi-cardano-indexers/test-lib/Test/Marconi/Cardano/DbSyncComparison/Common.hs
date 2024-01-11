@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Test.Marconi.Cardano.DbSyncComparison.Common (
   -- * Runner
@@ -8,8 +9,11 @@ module Test.Marconi.Cardano.DbSyncComparison.Common (
   -- * Utils
   toRuntimeException,
   getNodeConfigPath,
+  pathToOutFile,
+  pathToGoldenFile,
 
   -- * Types
+  DbSyncComparisonConfig (..),
   NodeType (..),
   nodeTypeToString,
   Era (..),
@@ -26,6 +30,33 @@ import Marconi.Core qualified as Core
 import System.Environment (getEnv)
 import System.FilePath ((</>))
 import Test.Marconi.Cardano.Chain.Snapshot (setupSnapshot)
+
+data DbSyncComparisonConfig = DbSyncComparisonConfig
+  { dbSyncComparisonNodeType :: NodeType
+  , dbSyncComparisonEra :: Era
+  , dbSyncComparisonSlotNo :: C.SlotNo
+  , dbSyncComparisonDbPath :: FilePath
+  , dbSyncComparisonGoldenDir :: String
+  -- ^ Base directory in which golden files are located.
+  -- See 'pathToOutFile' and 'pathToGoldenFile'.
+  , dbSyncComparisonName :: String
+  -- ^ Identifier for the comparison, e.g. "blockinfo"
+  }
+
+pathToOutFile :: DbSyncComparisonConfig -> FilePath
+pathToOutFile
+  ( DbSyncComparisonConfig
+      (nodeTypeToString -> nodeType)
+      (eraToString -> era)
+      (C.unSlotNo -> slotNo)
+      _
+      gdir
+      nm
+    ) =
+    gdir </> nodeType </> era </> nm <> "-slot" <> show slotNo <> ".out"
+
+pathToGoldenFile :: DbSyncComparisonConfig -> FilePath
+pathToGoldenFile cfg = pathToOutFile cfg <> ".golden"
 
 -- | The Cardano network type used to create the snapshot.
 data NodeType = Preview | Preprod | Mainnet
@@ -78,16 +109,19 @@ queryIndexerOnSnapshot
   -> FilePath
   -- ^ directory to be used as the indexer's DB
   -> Core.RunIndexerOnSnapshotConfig BlockEvent event
-  -> query -- BlockInfoBySlotNoQuery BlockInfo.BlockInfo
+  -> Maybe C.ChainPoint
+  -- ^ Optional point to pass to @Core.'query'@. Else, use @Core.'queryLatest'@.
+  -> query
   -> indexer event
   -> IO (Core.Result query)
-queryIndexerOnSnapshot nodeType subChainPath dbPath config query indexer = do
+queryIndexerOnSnapshot nodeType subChainPath dbPath config point query indexer = do
   configFile <- getNodeConfigPath nodeType
   blockStream <- setupSnapshot configFile subChainPath dbPath
   let runIndexer = Core.runIndexerOnSnapshot config indexer blockStream
   withAsync runIndexer $ \runner -> do
     finalState <- wait runner >>= readMVar
-    toRuntimeException $ Core.queryLatest query finalState
+    toRuntimeException $
+      maybe Core.queryLatest Core.query point query finalState
 
 {- | The path to a data directory containing configuration files
 is set to an environment variable. This function retrieves the right
