@@ -88,7 +88,7 @@ chainPointAtSlotNo = flip C.ChainPoint (C.HeaderHash BSS.empty)
 
 {- $sql-query
    Results were generated using the following SQL query (PostgreSQL 11.19) on the
-   database created from 'cardano-db-sync', varying the slot number according to the test.
+   database created from 'cardano-db-sync-13.1.1.3', varying the slot number according to the test.
    This creates the resulting JSON golden file.
 
    Note the result is sorted according to fields 'spentTxOutRef' then 'spentAtTxId', to avoid
