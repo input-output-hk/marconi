@@ -141,7 +141,7 @@ Lens.makeLenses ''ExtLedgerStatePersistConfig
 
 -- | The state maintained by the preprocessor of the indexer to decide how to handle incoming events
 data PreprocessorState output input = PreprocessorState
-  { _ledgerStates :: Seq (Core.Timed C.ChainPoint ExtLedgerStateEvent)
+  { _volatileLedgerStates :: Seq (Core.Timed C.ChainPoint ExtLedgerStateEvent)
   -- ^ The last computed ledger state
   , _lastLedgerState :: Core.Timed C.ChainPoint ExtLedgerStateEvent
   , _currentLength :: Word64
@@ -164,38 +164,42 @@ updateLatestLedgerState
   -> Core.Timed C.ChainPoint ExtLedgerStateEvent
   -> io (Maybe C.ChainPoint)
 updateLatestLedgerState isVolatile' event = do
-  ledgerStates' <- Lens.use ledgerStates
-  snapshotCandidate <- case ledgerStates' of
-    -- If we didn't start volatile event yet
+  let resetBlockCounter = do
+        timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
+        when (timeToNextSnapshot == 0) $ do
+          snapshotInterval' <- Lens.use $ persistConfig . snapshotInterval
+          persistConfig . blocksToNextSnapshot .= snapshotInterval'
+  volatileLedgerStates' <- Lens.use volatileLedgerStates
+  snapshotCandidate <- case volatileLedgerStates' of
+    -- If we didn't start indexing volatile event yet
     Seq.Empty -> do
       eventToSave <- Lens.use lastLedgerState
       if isVolatile'
-        then -- We save the last stable event before we reach volatile ones
-        do
+        then do
+          -- We save the last stable event before we reach volatile ones
           persistConfig . blocksToNextSnapshot .= 0
-          ledgerStates %= (event Seq.<|)
+          volatileLedgerStates %= (event Seq.<|)
         else do
           persistConfig . blocksToNextSnapshot -= 1
       timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
       pure $ guard (timeToNextSnapshot == 0) $> eventToSave
+    -- If we're already indexing volatile event
     xs Seq.:|> oldestLedgerState -> do
       max' <- Lens.use maxLength
       current <- Lens.use currentLength
       let bufferIsFull = max' <= current
-      when isVolatile' $ do
-        if bufferIsFull
-          then ledgerStates .= (event Seq.<| xs)
-          else do
-            ledgerStates %= (event Seq.<|)
-            currentLength += 1
+      if bufferIsFull
+        then volatileLedgerStates .= (event Seq.<| xs)
+        else do
+          volatileLedgerStates %= (event Seq.<|)
+          currentLength += 1
       timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
       pure $ guard (timeToNextSnapshot == 0 && bufferIsFull) $> oldestLedgerState
   lastLedgerState .= event
+  resetBlockCounter
   case snapshotCandidate of
     Nothing -> pure Nothing
     Just eventToSave -> do
-      snapshotInterval' <- Lens.use $ persistConfig . snapshotInterval
-      persistConfig . blocksToNextSnapshot .= snapshotInterval'
       let savePoint = eventToSave ^. Core.point
       indexer <- Lens.use $ persistConfig . ledgerStateIndexer
       indexer' <- Core.setLastStablePoint savePoint =<< Core.index (Just <$> eventToSave) indexer
@@ -235,8 +239,8 @@ extLedgerStatePreprocessor genesisCfg config initialState =
    in flip Core.preprocessorM (pure initialState) $ \case
         Core.Rollback p -> do
           -- Remove the invalid ledger state from the list of ledger states
-          (dropped, kept) <- Lens.uses ledgerStates (Seq.spanl ((p <) . Lens.view Core.point))
-          ledgerStates .= kept
+          (dropped, kept) <- Lens.uses volatileLedgerStates (Seq.spanl ((p <) . Lens.view Core.point))
+          volatileLedgerStates .= kept
           case kept of
             Seq.Empty -> pure ()
             latest Seq.:<| _ -> lastLedgerState .= latest
@@ -295,7 +299,7 @@ saveLastStable
   :: (MonadIO io, MonadState (PreprocessorState output input) io, MonadError Core.IndexerError io)
   => io ExtLedgerStateFileIndexer
 saveLastStable = do
-  ledgerStates' <- Lens.use ledgerStates
+  ledgerStates' <- Lens.use volatileLedgerStates
   eventToSave <- case ledgerStates' of
     Seq.Empty ->
       Just <$> Lens.use lastLedgerState
