@@ -8,6 +8,14 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+{- | The datum indexer stores datum (as 'Cardano.Api.ScriptData')
+ with their hash, and information about the first slot where these
+ data appear on chain.
+
+ Note that we don't store all the occurences of the data onchain.
+ So if you want to check if a datum is present in a given transaction,
+ you need to join this indexer with an indexer that contains this information.
+-}
 module Marconi.Cardano.Indexers.Datum (
   -- * Event
   DatumInfo (DatumInfo),
@@ -107,8 +115,10 @@ mkDatumIndexer
 mkDatumIndexer path = do
   let createDatumQuery =
         [sql|CREATE TABLE IF NOT EXISTS datum
+             -- we store datum once disregarding how often it appears onchain
              ( datumHash BLOB PRIMARY KEY
              , datum BLOB
+             -- ChainPoint: the first occurence of a datum
              , slotNo INT
              , blockHeaderHash BLOB
              )|]

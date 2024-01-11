@@ -5,7 +5,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
--- | Store SDD in a SQLIte table
+-- | Store the Stakepool delegation distribution in a SQLIte table
 module Marconi.Cardano.Indexers.EpochSDD (
   -- * Event types and lenses
   EpochSDD (EpochSDD),

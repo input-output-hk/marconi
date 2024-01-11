@@ -7,7 +7,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
--- | An Indexer that stores BlockInfo
+-- | An Indexer that stores BlockInfo (timestamp, block header hash, epoch number and block number of each block)
 module Marconi.Cardano.Indexers.BlockInfo (
   -- * Event
   BlockInfo (BlockInfo),
@@ -90,7 +90,7 @@ type BlockInfoIndexer = Core.SQLiteIndexer BlockInfo
 type StandardBlockInfoIndexer m = StandardSQLiteIndexer m BlockInfo
 
 instance SQL.ToRow (Core.Timed C.ChainPoint BlockInfo) where
-  toRow b = SQL.toRow (b ^. Core.point) ++ SQL.toRow (b ^. Core.event)
+  toRow b = SQL.toRow (b ^. Core.point) <> SQL.toRow (b ^. Core.event)
 
 instance SQL.ToRow BlockInfo where
   toRow b =
