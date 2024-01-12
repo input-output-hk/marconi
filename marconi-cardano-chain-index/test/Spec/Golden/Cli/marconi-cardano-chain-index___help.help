@@ -44,7 +44,7 @@ Available options:
   --no-max-retry-time      Unlimited retries.
   --max-retry-time NATURAL Max time (in seconds) allowed after startup for
                            retries. Defaults to 30min.
-  --batch-size INT         Number of blocks send as a batch to the indexers
+  --batch-size INT         Number of blocks sent as a batch to the indexers
                            (default: 3000)
   -d,--db-dir DIR          Directory path where all Marconi-related SQLite
                            databases are located.
