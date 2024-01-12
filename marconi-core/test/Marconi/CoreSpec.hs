@@ -1728,22 +1728,21 @@ propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabil
      such that the client can consume from the socket as a stream.
 -}
 propWithStreamSocket :: Property
-propWithStreamSocket = monadicExceptTIO @() $
-  GenM.forAllM genChainWithInstability $ \args -> do
-    (_, (actual, expected)) <- liftIO
-      $ Tmp.withSystemTempDirectory
-        mempty
-      $ \dir -> do
-        let chainSubset = take (chainSizeSubset args) (eventGenerator args)
-            -- We need to make the filename as short as possible, because we're very limited by path
-            -- length
-            fileName = dir </> "f"
-        serverStarted <- newQSem 1
-        concurrently
-          (server fileName chainSubset serverStarted)
-          (client fileName chainSubset serverStarted)
+propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
+  (_, (actual, expected)) <- liftIO
+    $ Tmp.withSystemTempDirectory
+      "a"
+    $ \dir -> do
+      let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+          -- We need to make the filename as short as possible, because we're very limited by path
+          -- length
+          fileName = dir </> "f"
+      serverStarted <- newQSem 1
+      concurrently
+        (server fileName chainSubset serverStarted)
+        (client fileName chainSubset serverStarted)
 
-    GenM.stop (actual == expected)
+  GenM.stop (actual == expected)
   where
     server socketPath chainSubset serverStarted = bracket (runUnixSocketServer socketPath) close $ \s -> do
       signalQSem serverStarted
