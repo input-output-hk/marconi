@@ -175,6 +175,7 @@ data CommonOptions = CommonOptions
   , optionsRetryConfig :: !RetryConfig
   -- ^ set up retry configuration when the node socket is unavailable
   , batchSizeConfig :: !Word64
+  -- ^ Size of the batches sent to the indexers
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -366,7 +367,7 @@ commonBatchSizeParser =
     $ Opt.long "batch-size"
       <> Opt.metavar "INT"
       <> Opt.value 3000
-      <> Opt.help "Number of blocks send as a batch to the indexers"
+      <> Opt.help "Number of blocks sent as a batch to the indexers"
       <> Opt.showDefault
 
 {- | Parse the addresses to index. Addresses should be given in Bech32 format

@@ -5,6 +5,7 @@
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -27,7 +28,6 @@ module Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateEvent (..),
   ExtLedgerConfig,
   ExtLedgerStateCoordinator (ExtLedgerStateCoordinator),
-  ExtLedgerStateCoordinatorConfig (ExtLedgerStateCoordinatorConfig),
   ExtLedgerStateWorkerConfig (..),
   EpochMetadata,
 
@@ -108,11 +108,6 @@ data ExtLedgerStateEvent = ExtLedgerStateEvent
 
 type instance Core.Point ExtLedgerStateEvent = C.ChainPoint
 
-newtype ExtLedgerStateCoordinatorConfig = ExtLedgerStateCoordinatorConfig
-  { _configGenesisConfig :: C.GenesisConfig
-  -- ^ used to bootstrap the ledger state
-  }
-
 -- | Metadata used to create 'ExtLedgerStateEventIndexer' filenames
 data EpochMetadata = EpochMetadata
   { metadataBlockNo :: Maybe C.BlockNo
@@ -131,9 +126,9 @@ Lens.makeLenses ''ExtLedgerStateCoordinator
 
 data ExtLedgerStatePersistConfig = ExtLedgerStatePersistConfig
   { _blocksToNextSnapshot :: Word64
-  -- ^ Number of block before the next snapshot
+  -- ^ Number of block before the next snapshot (must be at least 1)
   , _snapshotInterval :: Word64
-  -- ^ Track the previous snapshot, used for resuming
+  -- ^ Track the previous snapshot, used for resuming (can't start at 0)
   , _ledgerStateIndexer :: ExtLedgerStateFileIndexer
   }
 
@@ -142,11 +137,12 @@ Lens.makeLenses ''ExtLedgerStatePersistConfig
 -- | The state maintained by the preprocessor of the indexer to decide how to handle incoming events
 data PreprocessorState output input = PreprocessorState
   { _volatileLedgerStates :: Seq (Core.Timed C.ChainPoint ExtLedgerStateEvent)
-  -- ^ The last computed ledger state
+  -- ^ storage for volatile ledger states
   , _lastLedgerState :: Core.Timed C.ChainPoint ExtLedgerStateEvent
+  -- ^ The last computed ledger state
   , _currentLength :: Word64
-  -- ^ stored ledger state
-  , _maxLength :: Word64
+  -- ^ The number of volatile ledger states that are stored
+  , _securityParam :: Word64
   -- ^ how many of them do we keep in memory
   , _persistConfig :: ExtLedgerStatePersistConfig
   -- ^ the indexer that saves snapshots
@@ -154,7 +150,7 @@ data PreprocessorState output input = PreprocessorState
 
 Lens.makeLenses ''PreprocessorState
 
-{- | Used to maintain a list of `maxLength` ledger states in memory.
+{- | Used to maintain a list of `securityParam` ledger states in memory.
   When full, the oldest stored ledger state is pushed out of the queue
   and we check if it should be saved (we save every `snapshotInterval + 1` time)
 -}
@@ -190,7 +186,7 @@ updateLatestLedgerState isVolatile' event =
             pure $ guard (timeToNextSnapshot == 0) $> eventToSave
           -- If we're already indexing volatile event
           xs Seq.:|> oldestLedgerState -> do
-            max' <- Lens.use maxLength
+            max' <- Lens.use securityParam
             current <- Lens.use currentLength
             let bufferIsFull = max' <= current
             if bufferIsFull
@@ -312,7 +308,7 @@ saveLastStable = do
     Seq.Empty ->
       Just <$> Lens.use lastLedgerState
     _xs Seq.:|> oldestLedgerState -> do
-      max' <- Lens.use maxLength
+      max' <- Lens.use securityParam
       current <- Lens.use currentLength
       let bufferIsFull = max' <= current
       if bufferIsFull
@@ -366,7 +362,7 @@ extLedgerStateWorker config workers path = do
   liftIO $ createDirectoryIfMissing True rootDir
   ledgerStateIndexer' <- buildExtLedgerStateEventIndexer configCodec rootDir
   let snapshotInterval' = workerSnapshotInterval config
-      persistConfig' = ExtLedgerStatePersistConfig snapshotInterval' snapshotInterval' ledgerStateIndexer'
+      persistConfig' = mkExtLedgerStatePersistConfig snapshotInterval' ledgerStateIndexer'
   coordinator' <-
     Core.withTrace indexerEventLogger
       <$> mkExtLedgerStateCoordinator workers
@@ -382,6 +378,15 @@ extLedgerStateWorker config workers path = do
   pure $
     Core.WorkerIndexer workerState $
       Core.Worker indexerName workerState eventPreprocessing id
+
+{- | Smart constructor for ExtLedgerStatePersistConfig, ensure that the time to next snapshot is at
+least one block (saving each ledger state)
+-}
+mkExtLedgerStatePersistConfig
+  :: Word64 -> Core.FileIndexer EpochMetadata ExtLedgerStateEvent -> ExtLedgerStatePersistConfig
+mkExtLedgerStatePersistConfig snapshotInterval' =
+  let curatedSnapshotInterval = max 1 snapshotInterval'
+   in ExtLedgerStatePersistConfig curatedSnapshotInterval curatedSnapshotInterval
 
 instance
   ( MonadIO m

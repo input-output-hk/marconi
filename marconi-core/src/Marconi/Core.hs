@@ -612,9 +612,9 @@ import Marconi.Core.Indexer.SQLiteAggregateQuery (
 import Marconi.Core.Indexer.SQLiteIndexer (
   GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
   InsertPointQuery (InsertPointQuery),
-  SQLiteDBLocation (..),
   SQLInsertPlan (..),
   SQLRollbackPlan (..),
+  SQLiteDBLocation (..),
   SQLiteIndexer (..),
   SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   ToRow (..),
@@ -626,7 +626,7 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   mkSqliteIndexer,
   parseDBLocation,
   querySQLiteIndexerWith,
-  querySyncedOnlySQLiteIndexerWith
+  querySyncedOnlySQLiteIndexerWith,
  )
 import Marconi.Core.Preprocessor (
   Preprocessor,
