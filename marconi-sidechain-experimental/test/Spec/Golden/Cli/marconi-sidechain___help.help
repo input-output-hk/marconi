@@ -27,7 +27,7 @@ Available options:
   --http-port INT          JSON-RPC http port number (default: 3000)
   --mainnet                Use the mainnet magic id.
   --testnet-magic NATURAL  Specify a testnet magic id.
-  --batch-size INT         Number of blocks send as a batch to the indexers
+  --batch-size INT         Number of blocks sent as a batch to the indexers
                            (default: 3000)
   -a,--addresses-to-index BECH32-ADDRESS
                            Bech32 Shelley addresses to index. i.e
