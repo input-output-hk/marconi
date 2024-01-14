@@ -201,10 +201,14 @@ runEmitterAndConsumer
   closeSwitch =
     do
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
-      (emitEvents `finally` atomically (check =<< isEmptyTBQueue queue))
-        `race_` consumer queue indexerMVar
+      emitter emitEvents queue `race_` consumer queue indexerMVar
       pure indexerMVar
     where
+      emitter emitEvents queue = case closeSwitch of
+        Core.CloseOn -> void emitEvents
+        Core.CloseOff -> do
+          void emitEvents
+          atomically $ check =<< isEmptyTBQueue queue
       consumer queue indexerMVar = do
         Core.processQueue
           ( stablePointComputation
