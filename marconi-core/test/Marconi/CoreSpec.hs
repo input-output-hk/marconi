@@ -1735,9 +1735,9 @@ propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabili
     -- path length.
     let
       fileName = dir </> "f"
-      failMsg = "Socket path: " <> fileName
+      failMsg = "\nSocket path: " <> fileName
 
-    first (const failMsg) <$> try @SomeException (runTestWithSocketFile args fileName)
+    first ((<> failMsg) . show) <$> try @SomeException (runTestWithSocketFile args fileName)
 
   -- Swallowing the error and letting the test fail with the socket path message
   -- is a workaround to enable reporting the path when the test throws an exception before
