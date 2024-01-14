@@ -54,7 +54,7 @@ import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async (race_)
 import Control.Concurrent.STM (atomically, check, isEmptyTBQueue)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch, finally)
+import Control.Exception (catch)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -201,10 +201,14 @@ runEmitterAndConsumer
   closeSwitch =
     do
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
-      (emitEvents `finally` atomically (check =<< isEmptyTBQueue queue))
-        `race_` consumer queue indexerMVar
+      emitter emitEvents queue `race_` consumer queue indexerMVar
       pure indexerMVar
     where
+      emitter emitEvents queue = case closeSwitch of
+        Core.CloseOn -> void emitEvents
+        Core.CloseOff -> do
+          void emitEvents
+          atomically $ check =<< isEmptyTBQueue queue
       consumer queue indexerMVar = do
         Core.processQueue
           ( stablePointComputation
