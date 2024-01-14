@@ -10,7 +10,7 @@ module Gen.Marconi.ChainIndex.Legacy.Types (
   genChainPoints,
   genChainPoint,
   genChainPoint',
-  genExecutionUnits,
+  CGen.genExecutionUnits,
   genSlotNo,
   genTxBodyContentWithTxInsCollateral,
   genTxBodyContentForPlutusScripts,
@@ -280,7 +280,7 @@ genWitnessAndHashInEra era = do
     C.ScriptWitness C.ScriptWitnessForSpending <$> case script of
       C.PlutusScript version plutusScript -> do
         scriptData <- CGen.genHashableScriptData
-        executionUnits <- genExecutionUnits
+        executionUnits <- CGen.genExecutionUnits
         pure $
           C.PlutusScriptWitness
             scriptLanguageInEra
@@ -292,15 +292,6 @@ genWitnessAndHashInEra era = do
       C.SimpleScript simpleScript ->
         pure $ C.SimpleScriptWitness scriptLanguageInEra (C.SScript simpleScript)
   pure (witness, C.hashScript script)
-
-{- | TODO Copy-paste from cardano-node: cardano-api/gen/Gen/Cardano/Api/Typed.hs
- Copied from cardano-api. Delete when this function is reexported
--}
-genExecutionUnits :: Gen C.ExecutionUnits
-genExecutionUnits =
-  C.ExecutionUnits
-    <$> Gen.integral (Range.constant 0 1000)
-    <*> Gen.integral (Range.constant 0 1000)
 
 genTxOutTxContext :: C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
 genTxOutTxContext era =
@@ -446,8 +437,8 @@ genProtocolParametersForPlutusScripts =
           ]
       )
     <*> (Just <$> genExecutionUnitPrices)
-    <*> (Just <$> genExecutionUnits)
-    <*> (Just <$> genExecutionUnits)
+    <*> (Just <$> CGen.genExecutionUnits)
+    <*> (Just <$> CGen.genExecutionUnits)
     <*> (Just <$> genNat)
     <*> (Just <$> genNat)
     <*> (Just <$> genNat)

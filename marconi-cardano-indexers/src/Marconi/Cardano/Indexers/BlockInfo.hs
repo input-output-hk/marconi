@@ -66,7 +66,6 @@ import Marconi.Cardano.Core.Types (BlockEvent (BlockEvent), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper (mkSingleInsertSyncedSqliteIndexer)
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 
 data BlockInfo = BlockInfo

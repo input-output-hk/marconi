@@ -11,7 +11,7 @@ module Test.Gen.Marconi.Cardano.Core.Types (
   genChainPoints,
   genChainPoint,
   genChainPoint',
-  genExecutionUnits,
+  CGen.genExecutionUnits,
   genSlotNo,
   genTxBodyContentWithTxInsCollateral,
   genTxBodyContentForPlutusScripts,
@@ -28,7 +28,7 @@ module Test.Gen.Marconi.Cardano.Core.Types (
   genHashScriptData,
   genAssetId,
   genPolicyId,
-  genQuantity,
+  CGen.genQuantity,
   CGen.genEpochNo,
   genPoolId,
 ) where
@@ -60,7 +60,6 @@ import Data.Word (Word64)
 import GHC.Natural (Natural)
 import Hedgehog (Gen, MonadGen)
 import Hedgehog.Gen qualified as Gen
-import Hedgehog.Range (Range)
 import Hedgehog.Range qualified as Range
 import Marconi.Cardano.Core.Types (TargetAddresses)
 import PlutusCore.Evaluation.Machine.ExBudgetingDefaults (defaultCostModelParams)
@@ -290,7 +289,7 @@ genWitnessAndHashInEra era = do
     C.ScriptWitness C.ScriptWitnessForSpending <$> case script of
       C.PlutusScript version plutusScript -> do
         scriptData <- CGen.genHashableScriptData
-        executionUnits <- genExecutionUnits
+        executionUnits <- CGen.genExecutionUnits
         pure $
           C.PlutusScriptWitness
             scriptLanguageInEra
@@ -302,15 +301,6 @@ genWitnessAndHashInEra era = do
       C.SimpleScript simpleScript ->
         pure $ C.SimpleScriptWitness scriptLanguageInEra (C.SScript simpleScript)
   pure (witness, C.hashScript script)
-
-{- | TODO Copy-paste from cardano-node: cardano-api/gen/Gen/Cardano/Api/Typed.hs
- Copied from cardano-api. Delete when this function is reexported
--}
-genExecutionUnits :: Gen C.ExecutionUnits
-genExecutionUnits =
-  C.ExecutionUnits
-    <$> Gen.integral (Range.constant 0 1000)
-    <*> Gen.integral (Range.constant 0 1000)
 
 {- | Generate a @C.'TxOut'@ in the given era. It can contain Shelley or Byron addresses.
 For a version that only gives Shelley addresses, see 'genShelleyTxOutTxContext'.
@@ -474,8 +464,8 @@ genProtocolParametersForPlutusScripts =
           ]
       )
     <*> (Just <$> genExecutionUnitPrices)
-    <*> (Just <$> genExecutionUnits)
-    <*> (Just <$> genExecutionUnits)
+    <*> (Just <$> CGen.genExecutionUnits)
+    <*> (Just <$> CGen.genExecutionUnits)
     <*> (Just <$> genNat)
     <*> (Just <$> genNat)
     <*> (Just <$> genNat)
@@ -517,10 +507,6 @@ genPolicyId =
     , -- and some from the full range of the type
       (1, C.PolicyId <$> CGen.genScriptHash)
     ]
-
--- TODO Copied from cardano-api. Delete once reexported
-genQuantity :: Range Integer -> Gen C.Quantity
-genQuantity range = fromInteger <$> Gen.integral range
 
 genPoolId :: Gen (C.Hash C.StakePoolKey)
 genPoolId = C.StakePoolKeyHash . KeyHash . mkDummyHash <$> Gen.int (Range.linear 0 10)

@@ -18,7 +18,6 @@ import Marconi.Cardano.Core.Runner (
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types (SecurityParam)
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Env (Env, envCliArgs, envStdoutTrace)
 import Marconi.Starter.Env qualified as Env

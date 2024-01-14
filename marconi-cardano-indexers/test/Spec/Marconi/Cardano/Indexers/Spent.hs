@@ -16,7 +16,6 @@ import Hedgehog qualified
 import Hedgehog.Gen qualified
 import Marconi.Cardano.Indexers.Spent qualified as Spent
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Test.Gen.Marconi.Cardano.Indexers.Spent qualified as Test.Spent
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (testPropertyNamed)

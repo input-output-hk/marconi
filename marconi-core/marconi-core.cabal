@@ -109,6 +109,7 @@ library
     , lens
     , mtl
     , network
+    , prettyprinter
     , sqlite-simple
     , stm
     , streaming

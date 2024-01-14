@@ -3,7 +3,7 @@ option --addresses-to-index: Invalid address (not a valid Bech32 address represe
 Usage: marconi-sidechain-experimental 
          [--version] [--debug] (-s|--socket-path FILE-PATH)
          --node-config-path ARG (-d|--db-dir DIR) [--http-port INT] 
-         (--mainnet | --testnet-magic NATURAL) 
+         (--mainnet | --testnet-magic NATURAL) [--batch-size INT] 
          [(-a|--addresses-to-index BECH32-ADDRESS)] 
          [(--match-asset-id POLICY_ID[.ASSET_NAME])] 
          [--initial-retry-time NATURAL] 

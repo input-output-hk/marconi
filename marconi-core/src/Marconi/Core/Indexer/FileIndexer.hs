@@ -10,6 +10,8 @@ events we keep or to use it for sparse events.
 module Marconi.Core.Indexer.FileIndexer (
   FileIndexer (FileIndexer),
   FileStorageConfig (..),
+  FileCleanup,
+  withPartition,
   FileBuilder (FileBuilder),
   EventBuilder (EventBuilder),
   mkFileIndexer,
@@ -28,29 +30,36 @@ module Marconi.Core.Indexer.FileIndexer (
   fileIndexerLastSyncPoint,
   fullPath,
   getDirectoryMetadata,
+  eventsMetadata,
   EventInfo (..),
 ) where
 
-import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem (QSem)
 import Control.Concurrent.QSem qualified as Con
 import Control.Exception (Exception (displayException), bracket_, handle)
+import Control.Lens (Traversal')
 import Control.Lens qualified as Lens
-import Control.Lens.Operators ((.~), (^.))
-import Control.Monad (forM_, join, unless, void, when)
+import Control.Lens.Operators ((%~), (.=), (.~), (?~), (^.))
+import Control.Monad (forM_, join, unless, when)
 import Control.Monad.Except (ExceptT (ExceptT), MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
+import Control.Monad.State (State)
+import Control.Monad.State qualified as State
+import Data.ByteString.Builder (Builder)
+import Data.ByteString.Builder qualified as BS.Builder
+import Data.ByteString.Lazy (ByteString)
+import Data.ByteString.Lazy qualified as BS
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Function ((&))
+import Data.List qualified as List
 import Data.Maybe (fromMaybe, isJust)
+import Data.Ord (Down (Down))
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Marconi.Core.Class (
   Closeable (close),
   HasGenesis (genesis),
-  IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
+  IsIndex (index, indexAll, indexAllDescending, rollback, setLastStablePoint),
   IsSync (lastStablePoint, lastSyncPoint),
  )
 import Marconi.Core.Type (
@@ -61,7 +70,7 @@ import Marconi.Core.Type (
   event,
   point,
  )
-import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory, removeFile)
+import System.Directory qualified as Directory
 import System.FilePath ((</>))
 import System.FilePath qualified as FilePath
 import System.Timeout (timeout)
@@ -76,8 +85,8 @@ data FileBuilder meta event = FileBuilder
   -- ^ The suffix used in the filename of the events
   , _fileEventIdentifier :: Timed (Point event) (Maybe event) -> [Text]
   -- ^ build a list of identifier used in the filename of an event
-  , _serialiseEvent :: event -> ByteString
-  , _serialisePoint :: Point event -> ByteString
+  , _serialiseEvent :: event -> Builder
+  , _serialisePoint :: Point event -> Builder
   }
 
 Lens.makeLenses ''FileBuilder
@@ -107,6 +116,31 @@ data EventInfo meta = EventInfo
 
 deriving stock instance (Show meta) => Show (EventInfo meta)
 
+data FileCleanup meta event = FileCleanUp
+  { _eventsInfo :: [EventInfo meta]
+  -- ^ store the events info of the current files
+  , _partitionEvents
+      :: Timed (Point event) (Maybe event)
+      -> [EventInfo meta]
+      -> ([EventInfo meta], [EventInfo meta])
+  -- ^ The first part are the kept events, the second the removed events
+  }
+
+Lens.makeLenses ''FileCleanup
+
+withPartition
+  :: (Timed (Point event) (Maybe event) -> [EventInfo meta] -> ([EventInfo meta], [EventInfo meta]))
+  -> Maybe (FileCleanup meta event)
+withPartition = Just . FileCleanUp []
+
+decideCleanUp
+  :: Timed (Point event) (Maybe event) -> State (FileCleanup meta event) [EventInfo meta]
+decideCleanUp evt = do
+  s <- State.get
+  let (keep, remove) = (s ^. partitionEvents $ evt) (s ^. eventsInfo)
+  eventsInfo .= keep
+  pure remove
+
 {- | The datatype used to configure the way we store files, including:
 
       - control over which events are saved
@@ -118,8 +152,8 @@ deriving stock instance (Show meta) => Show (EventInfo meta)
 data FileStorageConfig meta event = FileStorageConfig
   { _keepEmptyEvent :: Bool
   -- ^ Do we create a file for empty event
-  , _eventsToRemove :: Timed (Point event) (Maybe event) -> [EventInfo meta] -> [EventInfo meta]
-  -- ^ Filtering unction used to decide which events must be removed
+  , _cleanupConfig :: Maybe (FileCleanup meta event)
+  -- ^ Filtering function used to decide which events must be removed
   , _fileComparison :: meta -> meta -> Ordering
   -- ^ Function used to sort event files, based on their metadata
   }
@@ -163,6 +197,22 @@ data FileIndexer meta event = FileIndexer
 
 Lens.makeLenses ''FileIndexer
 
+eventsMetadata :: Traversal' (FileIndexer meta event) [EventInfo meta]
+eventsMetadata = storageConfig . cleanupConfig . traverse . eventsInfo
+
+timedEventInfo
+  :: FileIndexer meta event
+  -> Timed (Point event) (Maybe event)
+  -> Maybe (EventInfo meta)
+timedEventInfo indexer evt =
+  let meta =
+        (indexer ^. eventBuilder . deserialiseMeta)
+          . (indexer ^. fileBuilder . fileEventIdentifier)
+          $ evt
+      hasContent = isJust $ evt ^. event
+      path = toFilename indexer evt
+   in (\m -> EventInfo hasContent m path) <$> meta
+
 compareMeta
   :: FileIndexer meta event
   -> meta
@@ -183,8 +233,8 @@ mkFileIndexer
   -> FileBuilder meta event
   -> EventBuilder meta event
   -> m (FileIndexer meta event)
-mkFileIndexer path writeFilesAsyncTimeout storageCfg filenameBuilder' eventBuilder' = do
-  liftIO $ createDirectoryIfMissing True path
+mkFileIndexer path' writeFilesAsyncTimeout storageCfg filenameBuilder' eventBuilder' = do
+  liftIO $ Directory.createDirectoryIfMissing True path'
   fileWriteTokens <-
     case writeFilesAsyncTimeout of
       Just timeoutValue -> liftIO $ do
@@ -193,7 +243,7 @@ mkFileIndexer path writeFilesAsyncTimeout storageCfg filenameBuilder' eventBuild
       Nothing -> pure Nothing
   let indexer =
         FileIndexer
-          path
+          path'
           storageCfg
           filenameBuilder'
           eventBuilder'
@@ -201,23 +251,29 @@ mkFileIndexer path writeFilesAsyncTimeout storageCfg filenameBuilder' eventBuild
           genesis
           fileWriteTokens
   lastStablePoint' <- fromMaybe genesis <$> readCurrentStable indexer
+  unsortedMetadata <- runExceptT $ getDirectoryMetadata indexer
+  let metadata = case unsortedMetadata of
+        Left _err -> []
+        Right xs -> List.sortOn (Down . (eventBuilder' ^. extractPoint) . fileMetadata) xs
   let indexer' =
         indexer
           & fileIndexerLastSyncPoint .~ lastStablePoint'
           & fileIndexerLastStablePoint .~ lastStablePoint'
+          & eventsMetadata .~ metadata
   rollback lastStablePoint' indexer'
 
-toFilename :: FilePath -> FileBuilder meta event -> Timed (Point event) (Maybe event) -> FilePath
-toFilename dir indexer evt =
-  let eventId = (indexer ^. fileEventIdentifier) evt
+toFilename :: FileIndexer meta event -> Timed (Point event) (Maybe event) -> FilePath
+toFilename indexer evt =
+  let dir = indexer ^. eventDirectory
+      eventId = (indexer ^. fileBuilder . fileEventIdentifier) evt
       contentFlag = case evt ^. event of
         Just _ -> "just"
         Nothing -> "nothing"
       filename =
         Text.unpack $
-          (Text.intercalate "_" $ indexer ^. eventPrefix : contentFlag : eventId)
+          (Text.intercalate "_" $ indexer ^. fileBuilder . eventPrefix : contentFlag : eventId)
             <> "."
-            <> (indexer ^. eventSuffix)
+            <> (indexer ^. fileBuilder . eventSuffix)
    in dir </> filename
 
 handleIOErrors :: (MonadIO m, MonadError IndexerError m) => IO a -> m a
@@ -251,7 +307,7 @@ extractEventsInfo expectedPrefix metaExtractor eventDir =
             pure [EventInfo hasContent' meta path]
           _other -> pure []
    in do
-        files <- liftIO $ listDirectory eventDir
+        files <- liftIO $ Directory.listDirectory eventDir
         join <$> traverse extractEventInfo files
 
 getDirectoryMetadata
@@ -288,38 +344,40 @@ writeTimedEvent
   :: (MonadIO m, MonadError IndexerError m)
   => Timed (Point event) (Maybe event)
   -> FileIndexer meta event
-  -> m ()
-writeTimedEvent timedEvent indexer =
-  let filename = toFilename (indexer ^. eventDirectory) (indexer ^. fileBuilder) timedEvent
-      write :: (MonadIO m, MonadError IndexerError m) => FilePath -> ByteString -> m ()
+  -> m (FileIndexer meta event)
+writeTimedEvent timedEvent indexer = do
+  let filename = toFilename indexer timedEvent
+      eventInfo = timedEventInfo indexer timedEvent
+      write :: (MonadIO m, MonadError IndexerError m) => FilePath -> Builder -> m ()
       write filepath = handleIOErrors . writeIndexer indexer filepath
-   in case timedEvent ^. event of
-        Nothing -> when (indexer ^. storageConfig . keepEmptyEvent) $ write filename ""
-        Just evt -> write filename (indexer ^. fileBuilder . serialiseEvent $ evt)
+  case timedEvent ^. event of
+    Nothing -> when (indexer ^. storageConfig . keepEmptyEvent) $ write filename ""
+    Just evt -> write filename (indexer ^. fileBuilder . serialiseEvent $ evt)
+  pure $ indexer & maybe id addInfo eventInfo
 
 cleanEvents
-  :: (MonadIO m, MonadError IndexerError m)
+  :: (MonadIO io)
   => Timed (Point event) (Maybe event)
   -> FileIndexer meta event
-  -> m ()
-cleanEvents timedEvent indexer = do
-  dirMetadataE <- runExceptT $ getDirectoryMetadata indexer
-  case dirMetadataE of
-    Left _err -> throwError $ IndexerInternalError "Can't read directory content"
-    Right dirMetadata -> do
-      let removeFilter = indexer ^. storageConfig . eventsToRemove
-          toRemove = removeFilter timedEvent dirMetadata
-      liftIO $ traverse_ removeFile (fullPath indexer <$> toRemove)
+  -> io (FileIndexer meta event)
+cleanEvents timedEvent indexer =
+  let cleanupConfigM = indexer ^. storageConfig . cleanupConfig
+   in case cleanupConfigM of
+        Nothing -> pure indexer
+        Just cleanupConfig' -> do
+          let (toRemove, cleanupConfig'') = State.runState (decideCleanUp timedEvent) cleanupConfig'
+          liftIO $ traverse_ Directory.removeFile (fullPath indexer <$> toRemove)
+          pure $ indexer & storageConfig . cleanupConfig ?~ cleanupConfig''
 
-instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer meta) where
+instance (MonadIO io, MonadError IndexerError io) => IsIndex io event (FileIndexer meta) where
   index timedEvent indexer = do
     let currentPoint = timedEvent ^. point
         setLastSync ix = ix & fileIndexerLastSyncPoint .~ currentPoint
-    cleanEvents timedEvent indexer
-    writeTimedEvent timedEvent indexer
-    pure $ setLastSync indexer
+    indexer' <- cleanEvents timedEvent indexer
+    indexer'' <- writeTimedEvent timedEvent indexer'
+    pure $ setLastSync indexer''
 
-  indexAllDescending timedEvents indexer =
+  indexAll timedEvents indexer =
     case toList timedEvents of
       [] -> pure indexer
       x : _ -> do
@@ -328,16 +386,20 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
         traverse_ (flip writeTimedEvent indexer) timedEvents
         pure $ setLastSync indexer
 
+  indexAllDescending = indexAll . reverse . toList
+
   rollback p indexer = do
-    filesWithMetadata <- runExceptT $ getDirectoryMetadata indexer
-    case filesWithMetadata of
-      Left _err -> throwError $ IndexerInternalError "can't parse directory content"
-      Right xs -> forM_ xs $ \eventFile -> do
-        let pt = indexer ^. eventBuilder . extractPoint $ fileMetadata eventFile
-        when (pt > p) $ do
-          let filename = fullPath indexer eventFile
-          liftIO $ removeFile filename
-    pure $ indexer & fileIndexerLastSyncPoint .~ p
+    let filesWithMetadata = indexer ^. eventsMetadata
+        extractPoint' = indexer ^. eventBuilder . extractPoint
+        (keep, remove) = List.partition ((<= p) . extractPoint' . fileMetadata) filesWithMetadata
+    forM_ remove $ \eventFile -> do
+      let filename = fullPath indexer eventFile
+      liftIO $ Directory.removeFile filename
+    let indexer' =
+          indexer
+            & fileIndexerLastSyncPoint .~ p
+            & eventsMetadata .~ keep
+    pure indexer'
 
   setLastStablePoint p indexer = do
     let currentStable = indexer ^. fileIndexerLastStablePoint
@@ -346,6 +408,9 @@ instance (MonadIO m, MonadError IndexerError m) => IsIndex m event (FileIndexer 
         indexer' <- writeStable p indexer
         pure $ indexer' & fileIndexerLastStablePoint .~ p
       else pure indexer
+
+addInfo :: EventInfo meta -> FileIndexer meta event -> FileIndexer meta event
+addInfo info indexer = indexer & eventsMetadata %~ (info :)
 
 lastStableFilename :: FileIndexer meta event -> FilePath
 lastStableFilename indexer =
@@ -362,7 +427,7 @@ readCurrentStable
 readCurrentStable indexer = do
   let f = lastStableFilename indexer
       deserialise = indexer ^. eventBuilder . deserialisePoint
-  fileExists <- liftIO $ doesFileExist f
+  fileExists <- liftIO $ Directory.doesFileExist f
   if fileExists
     then do
       res <- deserialise <$> liftIO (BS.readFile f)
@@ -371,17 +436,15 @@ readCurrentStable indexer = do
         Right r -> pure $ Just r
     else pure Nothing
 
-writeIndexer :: (MonadIO m) => FileIndexer meta event -> FilePath -> ByteString -> m ()
+writeIndexer :: (MonadIO m) => FileIndexer meta event -> FilePath -> Builder -> m ()
 writeIndexer indexer =
-  {- `isJust (indexer ^. fileIndexerWriteTokens) == True` means that we need to write the file
+  {- `isJust (indexer ^. fileIndexerWriteEnv) == True` means that we need to write the file
    asynchronously.
 
    It carries a semaphore which we wait on during the action. This means that, elsewhere in the
    program (given a termination command for example), we can determine when the write has
    finished. -}
-  case indexer ^. fileIndexerWriteEnv of
-    Just fileWriteEnv -> writeFileAsync fileWriteEnv
-    Nothing -> writeFileSync
+  maybe writeFileSync writeFileAsync (indexer ^. fileIndexerWriteEnv)
 
 writeStable
   :: (MonadIO m)
@@ -398,7 +461,7 @@ instance (MonadIO m, MonadError IndexerError m) => Closeable m (FileIndexer meta
   {- If we've got a write token it means a write is occurring asynchronously.
      We need to wait for it to finish before closing. -}
   close :: FileIndexer meta event -> m ()
-  close indexer =
+  close indexer = do
     case indexer ^. fileIndexerWriteEnv of
       Just fileWriteEnv -> do
         res <-
@@ -409,16 +472,17 @@ instance (MonadIO m, MonadError IndexerError m) => Closeable m (FileIndexer meta
         unless (isJust res) (throwError IndexerCloseTimeoutError)
       Nothing -> pure ()
 
--- * File writing | TODO https://input-output.atlassian.net/browse/PLT-7809
-writeFileSync :: (MonadIO m) => FilePath -> ByteString -> m ()
-writeFileSync filepath content = liftIO $ BS.writeFile filepath content
+-- * File writing
 
-writeFileAsync :: (MonadIO m) => AsyncWriteFileConfig -> FilePath -> ByteString -> m ()
-writeFileAsync fileWriteEnv filepath content =
+writeFileSync :: (MonadIO m) => FilePath -> Builder -> m ()
+-- TODO https://input-output.atlassian.net/browse/PLT-7809
+writeFileSync filepath content = liftIO $ BS.Builder.writeFile filepath content
+
+writeFileAsync :: (MonadIO m) => AsyncWriteFileConfig -> FilePath -> Builder -> m ()
+writeFileAsync fileWriteEnv filepath content = do
   let sem = fileWriteEnv ^. fileWriteEnvSem
-   in liftIO . void $
-        forkIO $
-          bracket_
-            (Con.waitQSem sem)
-            (Con.signalQSem sem)
-            (BS.writeFile filepath content)
+  liftIO $
+    bracket_
+      (Con.waitQSem sem)
+      (Con.signalQSem sem)
+      (BS.Builder.writeFile filepath content)

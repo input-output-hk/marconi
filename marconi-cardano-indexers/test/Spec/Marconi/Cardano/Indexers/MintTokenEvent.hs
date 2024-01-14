@@ -69,8 +69,6 @@ import Marconi.Cardano.Indexers.MintTokenEvent (
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.MintTokenEventQuery qualified as MintTokenEventQuery
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (inMemoryDB)
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import System.FilePath ((</>))
 import System.IO.Temp qualified as Tmp
 import Test.Gen.Cardano.Api.Typed qualified as CGen
@@ -633,7 +631,7 @@ indexWithRunner trackedAssetIds events = do
       MintTokenEvent.mintTokenEventWorker
         (StandardWorkerConfig "MintTokenEventWorker" 1 (Core.mkCatchupConfig 4 2) pure nullTracer)
         (MintTokenEventConfig trackedAssetIds)
-        inMemoryDB
+        Core.inMemoryDB
 
   -- We create a coordinator to perform indexing through the worker
   coordinator <- liftIO $ Core.mkCoordinator [worker]

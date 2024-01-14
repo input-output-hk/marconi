@@ -10,7 +10,7 @@ import Cardano.BM.Backend.Switchboard qualified as BM
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (Trace, logError)
 import Control.Lens (makeLenses, (^.))
-import Control.Monad (unless)
+import Control.Monad (guard, unless)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (toJSON)
 import Data.List.NonEmpty qualified as NEList
@@ -19,15 +19,20 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Marconi.Cardano.ChainIndex.Api.Types qualified as ChainIndex.Types
+import Marconi.Cardano.ChainIndex.Indexers qualified as Indexers
 import Marconi.Cardano.ChainIndex.Utils qualified as ChainIndex.Utils
-import Marconi.Cardano.Core.Extract.WithDistance (getEvent)
+import Marconi.Cardano.Core.Extract.WithDistance (chainDistance, getEvent)
 import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner qualified as ChainIndex.Runner
 import Marconi.Cardano.Core.Types (SecurityParam)
+import Marconi.Cardano.Indexers.EpochNonce qualified as EpochNonce
+import Marconi.Cardano.Indexers.EpochSDD qualified as EpochSDD
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
+  ExtLedgerStateEvent (extLedgerState),
   ExtLedgerStateWorkerConfig (ExtLedgerStateWorkerConfig),
  )
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator qualified as ExtLedgerState
 import Marconi.Cardano.Indexers.MintTokenEvent (MintTokenEventConfig (MintTokenEventConfig))
 import Marconi.Cardano.Indexers.Utxo (UtxoIndexerConfig (UtxoIndexerConfig), trackedAddresses)
 import Marconi.Core qualified as Core
@@ -37,6 +42,7 @@ import Marconi.Sidechain.Experimental.Api.Types (
 import Marconi.Sidechain.Experimental.CLI (
   CliArgs (
     CliArgs,
+    batchSize,
     dbDir,
     httpPort,
     networkId,
@@ -92,9 +98,24 @@ mkSidechainBuildIndexersConfig trace CliArgs{..} securityParam =
         (map C.AddressShelley . NEList.toList . NESet.toList)
         targetAddresses
     -- Hard-coded with the same values as chain-index
-    catchupConfig = Core.mkCatchupConfig 5000 100
+    catchupConfig = Core.mkCatchupConfig batchSize 100
+    -- Extract useful information from the Ledger event and blocks
+    extLedgerStateAsEvent previousLedgerStateEvent ledgerStateEvent _blockEvent = do
+      previousEpochNo <- ExtLedgerState.getEpochNo $ extLedgerState previousLedgerStateEvent
+      epochNo <- ExtLedgerState.getEpochNo $ extLedgerState ledgerStateEvent
+      guard $ epochNo /= previousEpochNo
+      let sdd = EpochSDD.getEpochSDD ledgerStateEvent
+          nonce = EpochNonce.getEpochNonce ledgerStateEvent
+      pure $ Indexers.EpochEvent epochNo sdd nonce
     -- Snapshot config hard-coded as in chain-index
-    epochStateConfig = ExtLedgerStateWorkerConfig getEvent trace nodeConfigPath 100 securityParam
+    epochStateConfig =
+      ExtLedgerStateWorkerConfig
+        getEvent
+        chainDistance
+        nodeConfigPath
+        100000
+        securityParam
+        extLedgerStateAsEvent
     mintBurnConfig = MintTokenEventConfig targetAssets
     -- Explicitly does not include the script.
     utxoConfig = UtxoIndexerConfig filteredAddresses False

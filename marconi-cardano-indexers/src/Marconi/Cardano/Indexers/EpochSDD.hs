@@ -57,6 +57,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   ExtLedgerStateEvent (ExtLedgerStateEvent),
+  getEpochNo,
   newEpochPreprocessor,
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
@@ -165,20 +166,6 @@ getEpochSDD (ExtLedgerStateEvent ledgerState blockNo) = NonEmpty.nonEmpty $ do
   epochNo <- toList $ getEpochNo ledgerState
   (poolId, lovelace) <- Map.toList $ getStakeMap ledgerState
   pure $ EpochSDD epochNo poolId lovelace blockNo
-
-getEpochNo
-  :: O.ExtLedgerState (O.CardanoBlock O.StandardCrypto)
-  -> Maybe C.EpochNo
-getEpochNo extLedgerState' = case O.ledgerState extLedgerState' of
-  O.LedgerStateByron _st -> Nothing
-  O.LedgerStateShelley st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateAllegra st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateMary st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateAlonzo st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateBabbage st -> getEpochNoFromShelleyBlock st
-  O.LedgerStateConway st -> getEpochNoFromShelleyBlock st
-  where
-    getEpochNoFromShelleyBlock = Just . Ledger.nesEL . O.shelleyLedgerState
 
 {- | From LedgerState, get epoch stake pool delegation: a mapping of pool ID to amount staked in
  lovelace. We do this by getting the 'ssStakeMark stake snapshot and then use 'ssDelegations' and

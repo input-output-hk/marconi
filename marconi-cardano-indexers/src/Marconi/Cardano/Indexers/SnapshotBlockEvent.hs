@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Marconi.Cardano.Indexers.SnapshotBlockEvent (
@@ -31,9 +32,9 @@ import Control.Monad.Cont (MonadTrans (lift))
 import Control.Monad.Except (MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (bimap))
-import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
-import Data.ByteString.Lazy qualified as BS.Lazy
+import Data.ByteString.Builder (Builder)
+import Data.ByteString.Lazy qualified as BS
 import Data.ByteString.Short qualified as BS.Short
 import Data.Data (Proxy (Proxy))
 import Data.Fixed (Fixed (MkFixed), HasResolution (resolution), Pico)
@@ -51,8 +52,6 @@ import Marconi.Cardano.Core.Indexer.Worker (
  )
 import Marconi.Cardano.Core.Types (BlockRange, isInBlockRange)
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.FileIndexer (mkFileIndexer)
-import Marconi.Core.Preprocessor qualified as Core
 import Ouroboros.Consensus.Block qualified as O
 import Ouroboros.Consensus.Byron.Ledger.Block qualified as O
 import Ouroboros.Consensus.Cardano.Block qualified as O
@@ -107,7 +106,7 @@ mkSnapshotBlockEventIndexer path codecConfig = do
       (throwError $ Core.IndexerInternalError "Can't find block to Node version")
       pure
       blockNodeToNodeVersionM
-  mkFileIndexer
+  Core.mkFileIndexer
     path
     Nothing
     fileStorageConfig
@@ -117,7 +116,7 @@ mkSnapshotBlockEventIndexer path codecConfig = do
     fileStorageConfig =
       Core.FileStorageConfig
         False
-        (const $ const [])
+        (Core.withPartition $ const (,[]))
         (comparing snapshotMetadataBlockNo)
     fileBuilder toVersion =
       Core.FileBuilder
@@ -186,15 +185,14 @@ deserialiseSnapshotBlockEvent codecConfig blockToNode _ =
     (Text.pack . show)
     (Just . SnapshotBlockEvent . snd)
     . CBOR.deserialiseFromBytes (decodeBlock codecConfig blockToNode)
-    . BS.fromStrict
 
 serializeSnapshotBlockEvent
   :: CodecConfig
   -> BlockNodeToClientVersion
   -> SnapshotBlockEvent
-  -> BS.ByteString
+  -> Builder
 serializeSnapshotBlockEvent codecConfig blockToNode =
-  CBOR.toStrictByteString
+  CBOR.toBuilder
     . encodeBlock codecConfig blockToNode
     . getBlockEvent
 
@@ -316,13 +314,13 @@ fromWordToPosix =
       -- the 'undefined' won't be evaluated, 'resolution' is a function from types to data
       MkFixed $ i * resolution (undefined :: Pico)
 
-serializeChainPoint :: C.ChainPoint -> BS.ByteString
+serializeChainPoint :: C.ChainPoint -> Builder
 serializeChainPoint =
   let pointEncoding :: C.ChainPoint -> CBOR.Encoding
       pointEncoding C.ChainPointAtGenesis = CBOR.encodeBool False
       pointEncoding (C.ChainPoint (C.SlotNo s) (C.HeaderHash bhh)) =
         CBOR.encodeBool True <> CBOR.encodeWord64 s <> CBOR.encodeBytes (BS.Short.fromShort bhh)
-   in CBOR.toStrictByteString . pointEncoding
+   in CBOR.toBuilder . pointEncoding
 
 deserialiseChainPoint :: BS.ByteString -> Either Text C.ChainPoint
 deserialiseChainPoint bs =
@@ -334,6 +332,6 @@ deserialiseChainPoint bs =
             bhh <- C.HeaderHash . BS.Short.toShort <$> CBOR.decodeBytes
             pure $ C.ChainPoint s bhh
           else pure C.ChainPointAtGenesis
-   in case CBOR.deserialiseFromBytes pointDecoding . BS.fromStrict $ bs of
-        Right (remain, res) | BS.Lazy.null remain -> Right res
+   in case CBOR.deserialiseFromBytes pointDecoding bs of
+        Right (remain, res) | BS.null remain -> Right res
         _other -> Left "Can't read chainpoint"
