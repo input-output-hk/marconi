@@ -145,7 +145,7 @@ buildIndexers
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
-  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO EpochEvent (WithDistance BlockEvent)
+  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
@@ -181,6 +181,7 @@ buildIndexers
     Core.WorkerIndexer _epochStateMVar epochStateWorker <-
       ExtLedgerStateCoordinator.extLedgerStateWorker
         epochStateConfig
+        epochStateTextLogger
         [epochSDDWorker, epochNonceWorker]
         path
 
