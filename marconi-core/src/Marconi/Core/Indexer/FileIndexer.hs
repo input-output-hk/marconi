@@ -461,7 +461,7 @@ instance (MonadIO m, MonadError IndexerError m) => Closeable m (FileIndexer meta
   {- If we've got a write token it means a write is occurring asynchronously.
      We need to wait for it to finish before closing. -}
   close :: FileIndexer meta event -> m ()
-  close indexer =
+  close indexer = do
     case indexer ^. fileIndexerWriteEnv of
       Just fileWriteEnv -> do
         res <-
@@ -472,8 +472,10 @@ instance (MonadIO m, MonadError IndexerError m) => Closeable m (FileIndexer meta
         unless (isJust res) (throwError IndexerCloseTimeoutError)
       Nothing -> pure ()
 
--- * File writing | TODO https://input-output.atlassian.net/browse/PLT-7809
+-- * File writing
+
 writeFileSync :: (MonadIO m) => FilePath -> Builder -> m ()
+-- TODO https://input-output.atlassian.net/browse/PLT-7809
 writeFileSync filepath content = liftIO $ BS.Builder.writeFile filepath content
 
 writeFileAsync :: (MonadIO m) => AsyncWriteFileConfig -> FilePath -> Builder -> m ()

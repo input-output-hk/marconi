@@ -112,7 +112,6 @@ mkSidechainBuildIndexersConfig trace CliArgs{..} securityParam =
       ExtLedgerStateWorkerConfig
         getEvent
         chainDistance
-        trace
         nodeConfigPath
         100000
         securityParam

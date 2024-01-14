@@ -139,7 +139,6 @@ run appName = withGracefulTermination_ $ do
         ( ExtLedgerState.ExtLedgerStateWorkerConfig
             Distance.getEvent
             Distance.chainDistance
-            trace
             nodeConfigPath
             epochStateSnapshotInterval
             securityParam

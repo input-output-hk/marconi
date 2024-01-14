@@ -66,7 +66,6 @@ run = do
         ExtLedgerStateWorkerConfig
           Distance.getEvent
           Distance.chainDistance
-          trace
           nodeConfigPath
           volatileEpochStateSnapshotInterval
           securityParam

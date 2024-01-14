@@ -211,13 +211,11 @@ updateLatestLedgerState isVolatile' event =
           Just eventToSave -> saveSnapshot eventToSave
 
 -- | Configuration of the worker
-data ExtLedgerStateWorkerConfig m output input = ExtLedgerStateWorkerConfig
+data ExtLedgerStateWorkerConfig output input = ExtLedgerStateWorkerConfig
   { workerEventExtractor :: input -> BlockEvent
   -- ^ Get the blockEvent (required to compute the ledger state) from the event
   , workerDistanceExtractor :: input -> Word64
   -- ^ Get the distance to the tip
-  , workerLogger :: BM.Trace m Text
-  -- ^ The logger
   , workerNodeConfigPath :: FilePath
   -- ^ Location of the node config, used to initialise the ledger state
   , workerSnapshotInterval :: Word64
@@ -233,7 +231,7 @@ coordinator.
 -}
 extLedgerStatePreprocessor
   :: C.GenesisConfig
-  -> ExtLedgerStateWorkerConfig m output input
+  -> ExtLedgerStateWorkerConfig output input
   -> PreprocessorState input output
   -> Core.Preprocessor (ExceptT Core.IndexerError IO) C.ChainPoint input output
 extLedgerStatePreprocessor genesisCfg config initialState =
@@ -296,6 +294,7 @@ extLedgerStatePreprocessor genesisCfg config initialState =
         Core.Stop -> do
           -- TODO close the indexer in a separateThread
           indexer <- saveLastStable
+          persistConfig . ledgerStateIndexer .= indexer
           Core.close indexer
           pure [Core.Stop]
 
@@ -340,7 +339,8 @@ extLedgerStateWorker
      , Core.Point output ~ C.ChainPoint
      , Core.Point input ~ C.ChainPoint
      )
-  => ExtLedgerStateWorkerConfig IO output input
+  => ExtLedgerStateWorkerConfig output input
+  -> BM.Trace IO Text
   -> [Core.Worker output C.ChainPoint]
   -> FilePath
   -> m
@@ -350,11 +350,11 @@ extLedgerStateWorker
           output
           (Core.WithTrace IO (ExtLedgerStateCoordinator output))
       )
-extLedgerStateWorker config workers path = do
+extLedgerStateWorker config tracer workers path = do
   genesisCfg <- readGenesisFile $ workerNodeConfigPath config
   let SecurityParam securityParam' = workerSecurityParam config
       indexerName = "ExtLedgerStateEvent"
-      indexerEventLogger = BM.contramap (fmap $ fmap $ Text.pack . show) $ workerLogger config
+      indexerEventLogger = BM.contramap (fmap $ fmap $ Text.pack . show) tracer
       rootDir = path </> "ledgerState"
       initialExtLedgerStateEvent' = initialExtLedgerStateEvent genesisCfg
       extLedgerCfg = CE.mkExtLedgerConfig genesisCfg

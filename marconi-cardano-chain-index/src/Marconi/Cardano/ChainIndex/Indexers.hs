@@ -114,7 +114,7 @@ buildIndexers
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
-  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO EpochEvent (WithDistance BlockEvent)
+  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
@@ -151,6 +151,7 @@ buildIndexers
     Core.WorkerIndexer _ledgerStateMVar ledgerStateWorker <-
       ExtLedgerStateCoordinator.extLedgerStateWorker
         ledgerStateConfig
+        ledgerStateTextLogger
         [epochSDDWorker, epochNonceWorker]
         path
 
@@ -347,7 +348,6 @@ buildIndexersForSnapshot
   :: SecurityParam
   -> Core.CatchupConfig
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig
-      IO
       (ExtLedgerStateEvent, WithDistance BlockEvent)
       (WithDistance BlockEvent)
   -> BM.Trace IO Text
@@ -372,6 +372,7 @@ buildIndexersForSnapshot
         mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
         blockEventTextLogger = BM.appendName "blockEvent" textLogger
         blockEventLogger = BM.appendName "blockEvent" mainLogger
+        ledgerStateTextLogger = BM.appendName "ledgerState" blockEventTextLogger
         snapshotBlockEventTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
         snapshotExtLedgerStateTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
 
@@ -398,6 +399,7 @@ buildIndexersForSnapshot
     Core.WorkerIndexer _ledgerStateMVar snapshotWorker <-
       ExtLedgerStateCoordinator.extLedgerStateWorker
         ledgerStateConfig
+        ledgerStateTextLogger
         (concat snapshotWorkers)
         path
 

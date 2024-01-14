@@ -43,7 +43,7 @@ data SidechainBuildIndexersConfig = SidechainBuildIndexersConfig
   , _sidechainBuildIndexersCatchupConfig :: !CatchupConfig
   , _sidechainBuildIndexersDbPath :: !FilePath
   , _sidechainBuildIndexersEpochStateConfig
-      :: !(EpochState.ExtLedgerStateWorkerConfig IO EpochEvent (WithDistance BlockEvent))
+      :: !(EpochState.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent))
   , _sidechainBuildIndexersMintTokenEventConfig :: !MintTokenEvent.MintTokenEventConfig
   , _sidechainBuildIndexersUtxoConfig :: !Utxo.UtxoIndexerConfig
   }
