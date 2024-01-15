@@ -38,15 +38,17 @@ existing ones to test Marconi.
 A comparison with other chain-indexing projects is also
 link:./doc/read-the-docs-site/architecture/comparison-other-chain-indexing-projects.rst[available].
 
+////
 == Quick start
 
-To be completed...
+To be completed
+////
 
 == Documentation
 
 === User documentation
 
-The more in-depth user documentation is available in our http://example.com/TODO[website].
+A more complete user manual should be available soon.
 
 === Haddock documentation
 
@@ -69,7 +71,7 @@ cabal haddock marconi-cardano-indexers
 [[Architecture]]
 == Architecture overview
 
-See the http://example.com/TODO[Design and Architecture] section the website for more in-depth explainations.
+See the link:./doc/read-the-docs-site/architecture/index.rst[Design and Architecture] section the website for more in-depth explainations.
 
 == CONTRIBUTING
 
@@ -82,9 +84,11 @@ See link:CONTRIBUTING{outfilesuffix}[CONTRIBUTING] for comprehensive documentati
 
 Issues can be filed in the https://github.com/input-output-hk/marconi/issues[GitHub Issue tracker].
 
+////
 == Roadmap
 
 To be completed...
+////
 
 == Licensing
 
