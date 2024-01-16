@@ -460,6 +460,7 @@ module Marconi.Core (
 
   -- *** SQLite
   createIndexTable,
+  autoVacuum,
 
   -- ** Delay
   WithDelay,
@@ -698,7 +699,7 @@ import Marconi.Core.Transformer.WithCatchup (
   mkCatchupConfig,
   withCatchup,
  )
-import Marconi.Core.Transformer.WithCatchup.SQLite (createIndexTable)
+import Marconi.Core.Transformer.WithCatchup.SQLite (autoVacuum, createIndexTable)
 import Marconi.Core.Transformer.WithDelay (
   HasDelayConfig (delayCapacity),
   WithDelay,

@@ -43,7 +43,7 @@ import Control.Concurrent.Async qualified as Async
 import Control.Exception (Exception, Handler (Handler), catches)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
-import Control.Monad (when, (<=<))
+import Control.Monad (void, when, (<=<))
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (toList), traverse_)
@@ -347,7 +347,10 @@ instance (Monad m) => IsSync m event SQLiteIndexer where
   lastSyncPoint indexer = pure $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
-  close indexer = liftIO $ SQL.close $ indexer ^. connection
+  close indexer = liftIO $ do
+    let c = indexer ^. connection
+    void $ SQL.execute_ c "PRAGMA optimize"
+    SQL.close c
 
 {- | A helper for the definition of the @Queryable@ typeclass for 'SQLiteIndexer'
 

@@ -22,9 +22,10 @@ module Marconi.Core.Transformer.WithCatchup (
 ) where
 
 import Control.Lens qualified as Lens
-import Control.Lens.Operators ((%~), (+~), (.~), (?~), (^.))
+import Control.Lens.Operators ((%~), (+~), (.~), (^.), (^?))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Function ((&))
+import Data.Maybe (fromMaybe)
 import Data.Word (Word64)
 import Marconi.Core.Class (
   Closeable,
@@ -69,7 +70,7 @@ mkCatchupConfig batchSize bypassDistance = CatchupConfig batchSize bypassDistanc
 
 Lens.makeLenses ''CatchupConfig
 
-data CatchupContext event = CatchupContext
+data Catchingup event = Catchingup
   { _contextDistanceComputation :: Point event -> event -> Word64
   -- ^ How we compute distance to tip
   , _contextCatchupConfig :: CatchupConfig
@@ -82,15 +83,19 @@ data CatchupContext event = CatchupContext
   -- ^ The latest last stable point stored in the batch
   }
 
-Lens.makeLenses ''CatchupContext
+Lens.makeLenses ''Catchingup
 
-contextCatchupBypassDistance :: Lens.Lens' (CatchupContext event) Word64
+data CatchupContext event = Ongoing (Catchingup event) | Done
+
+Lens.makePrisms ''CatchupContext
+
+contextCatchupBypassDistance :: Lens.Lens' (Catchingup event) Word64
 contextCatchupBypassDistance = contextCatchupConfig . configCatchupBypassDistance
 
-contextCatchupBatchSize :: Lens.Lens' (CatchupContext event) Word64
+contextCatchupBatchSize :: Lens.Lens' (Catchingup event) Word64
 contextCatchupBatchSize = contextCatchupConfig . configCatchupBatchSize
 
-contextCatchupEventHook :: Lens.Lens' (CatchupContext event) (Maybe (CatchupEvent -> IO ()))
+contextCatchupEventHook :: Lens.Lens' (Catchingup event) (Maybe (CatchupEvent -> IO ()))
 contextCatchupEventHook = contextCatchupConfig . configCatchupEventHook
 
 {-- | WithCatchup is used to speed up the synchronisation of indexers by preparing batches of events
@@ -112,8 +117,8 @@ withCatchup
   -> indexer event
   -- ^ the underlying indexer
   -> WithCatchup indexer event
-withCatchup computeDistance config =
-  WithCatchup . IndexTransformer (CatchupContext computeDistance config 0 [] Nothing)
+withCatchup computeDistance cfg =
+  WithCatchup . IndexTransformer (Ongoing $ Catchingup computeDistance cfg 0 [] Nothing)
 
 deriving via
   (IndexTransformer CatchupContext indexer)
@@ -145,14 +150,14 @@ instance IndexerTrans WithCatchup where
  the behaviour of this transformer
 -}
 class HasCatchupConfig indexer where
-  catchupBypassDistance :: Lens.Lens' (indexer event) Word64
-  catchupBatchSize :: Lens.Lens' (indexer event) Word64
-  catchupEventHook :: Lens.Lens' (indexer event) (Maybe (CatchupEvent -> IO ()))
+  catchupBypassDistance :: Lens.Traversal' (indexer event) Word64
+  catchupBatchSize :: Lens.Traversal' (indexer event) Word64
+  catchupEventHook :: Lens.Traversal' (indexer event) (CatchupEvent -> IO ())
 
 instance {-# OVERLAPPING #-} HasCatchupConfig (WithCatchup indexer) where
-  catchupBypassDistance = catchupWrapper . wrapperConfig . contextCatchupBypassDistance
-  catchupBatchSize = catchupWrapper . wrapperConfig . contextCatchupBatchSize
-  catchupEventHook = catchupWrapper . wrapperConfig . contextCatchupEventHook
+  catchupBypassDistance = catchupWrapper . wrapperConfig . _Ongoing . contextCatchupBypassDistance
+  catchupBatchSize = catchupWrapper . wrapperConfig . _Ongoing . contextCatchupBatchSize
+  catchupEventHook = catchupWrapper . wrapperConfig . _Ongoing . contextCatchupEventHook . traverse
 
 instance
   {-# OVERLAPPABLE #-}
@@ -172,17 +177,17 @@ instance
   catchupBatchSize = unwrapMap . catchupBatchSize
   catchupEventHook = unwrapMap . catchupEventHook
 
-catchupDistance :: Lens.Lens' (WithCatchup indexer event) (Point event -> event -> Word64)
-catchupDistance = catchupWrapper . wrapperConfig . contextDistanceComputation
+config :: Lens.Lens' (WithCatchup indexer event) (CatchupContext event)
+config = catchupWrapper . wrapperConfig
 
-catchupBuffer :: Lens.Lens' (WithCatchup indexer event) [Timed (Point event) (Maybe event)]
-catchupBuffer = catchupWrapper . wrapperConfig . contextCatchupBuffer
+catchupBuffer :: Lens.Traversal' (WithCatchup indexer event) [Timed (Point event) (Maybe event)]
+catchupBuffer = config . _Ongoing . contextCatchupBuffer
 
-catchupBufferLength :: Lens.Lens' (WithCatchup indexer event) Word64
-catchupBufferLength = catchupWrapper . wrapperConfig . contextCatchupBufferLength
+catchupBufferLength :: Lens.Traversal' (WithCatchup indexer event) Word64
+catchupBufferLength = config . _Ongoing . contextCatchupBufferLength
 
-catchupLastStable :: Lens.Lens' (WithCatchup indexer event) (Maybe (Point event))
-catchupLastStable = catchupWrapper . wrapperConfig . contextCatchupLastStable
+catchupLastStable :: Lens.Traversal' (WithCatchup indexer event) (Point event)
+catchupLastStable = config . _Ongoing . contextCatchupLastStable . traverse
 
 resetBuffer :: WithCatchup indexer event -> WithCatchup indexer event
 resetBuffer = (catchupBufferLength .~ 0) . (catchupBuffer .~ [])
@@ -191,40 +196,50 @@ instance
   (MonadIO m, IsIndex m event indexer, Ord (Point event))
   => IsIndex m event (WithCatchup indexer)
   where
-  index timedEvent@(Timed p e) indexer =
-    let bufferIsFull ix = (ix ^. catchupBufferLength) >= (ix ^. catchupBatchSize)
-        pushEvent ix =
-          ix
-            & catchupBuffer %~ (timedEvent :)
-            & catchupBufferLength +~ 1
-        hasCaughtUp = case e of
-          Nothing -> False
-          Just e' -> (indexer ^. catchupDistance) p e' < indexer ^. catchupBypassDistance
-        sendBatch ix = do
-          ix' <- indexAllDescendingVia caughtUpIndexer (ix ^. catchupBuffer) ix
-          ix'' <- case ix' ^. catchupLastStable of
-            Nothing -> pure ix'
-            Just lastStable -> setLastStablePointVia caughtUpIndexer lastStable ix'
-          pure $ resetBuffer ix''
-     in if hasCaughtUp
-          then do
-            maybe (pure ()) (\f -> liftIO $ f Synced) $ indexer ^. catchupEventHook
-            indexer' <-
-              if null (indexer ^. catchupBuffer)
-                then pure indexer
-                else sendBatch indexer
-            indexVia caughtUpIndexer timedEvent indexer'
-          else do
-            let indexer' = pushEvent indexer
-            if bufferIsFull indexer'
-              then sendBatch indexer'
-              else pure indexer'
+  index timedEvent@(Timed p e) indexer = case indexer ^. config of
+    Done -> indexVia caughtUpIndexer timedEvent indexer
+    Ongoing cfg -> do
+      let batchSize ix = ix ^? catchupBatchSize
+          bufferLength ix = ix ^? catchupBufferLength
+          bufferIsFull ix = fromMaybe False $ do
+            l <- bufferLength ix
+            s <- batchSize ix
+            pure $ l >= s
+          bypassDistance = cfg ^. contextCatchupConfig . configCatchupBypassDistance
+          pushEvent ix =
+            ix
+              & catchupBuffer %~ (timedEvent :)
+              & catchupBufferLength +~ 1
+          hasCaughtUp = case e of
+            Nothing -> False
+            Just e' -> (cfg ^. contextDistanceComputation) p e' < bypassDistance
+          sendBatch ix = do
+            let catchupBuffer' = ix ^. catchupBuffer
+            let lastStable = ix ^? catchupLastStable
+            ix' <- indexAllDescendingVia caughtUpIndexer catchupBuffer' ix
+            ix'' <- case lastStable of
+              Nothing -> pure ix'
+              Just lastStable' -> setLastStablePointVia caughtUpIndexer lastStable' ix'
+            pure $ resetBuffer ix''
+          triggerHook = case cfg ^. contextCatchupEventHook of
+            Nothing -> pure ()
+            Just hook -> liftIO $ hook Synced
+      if hasCaughtUp
+        then do
+          triggerHook
+          indexer' <- sendBatch indexer
+          indexVia caughtUpIndexer timedEvent (indexer' & config .~ Done)
+        else do
+          let indexer' = pushEvent indexer
+          if bufferIsFull indexer'
+            then sendBatch indexer'
+            else pure indexer'
 
   rollback p indexer =
     let updateBuffer ix = ix & catchupBuffer %~ dropWhile ((> p) . Lens.view point)
         setBufferSize ix = ix & catchupBufferLength .~ (fromIntegral $ length $ ix ^. catchupBuffer)
         indexer' = setBufferSize $ updateBuffer indexer
-     in if indexer' ^. catchupBufferLength == 0
+     in if null $ indexer' ^. catchupBuffer -- on an empty buffer, we just forward the rollback
           then rollbackVia caughtUpIndexer p indexer'
           else pure indexer'
 
@@ -232,7 +247,7 @@ instance
     if null $ ix ^. catchupBuffer
       then -- on an empty buffer, we just forward the update
         setLastStablePointVia caughtUpIndexer p ix
-      else pure $ ix & catchupLastStable ?~ p
+      else pure $ ix & catchupLastStable .~ p
 
 instance
   (Applicative m, Resetable m event indexer)
