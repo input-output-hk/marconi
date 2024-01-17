@@ -210,7 +210,7 @@ data UtxoQueryInput = UtxoQueryInput
   , _lowerBound :: Maybe C.SlotNo
   -- ^ Inclusive lowerBound
   , _upperBound :: Maybe C.SlotNo
-  -- ^ Inclusive upperBound (utxo spent after this point displaed with their spent information)
+  -- ^ Inclusive upperBound (utxo spent after this point displayed with their spent information)
   }
   deriving (Generic, ToJSON, FromJSON)
 
