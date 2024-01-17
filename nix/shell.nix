@@ -22,7 +22,7 @@ in
     start-benchmark-machine = {
       enable = false;
       group = "benchmarking";
-      exec = repoRoot.scripts.start-benchmarking-machine;
+      exec = repoRoot.nix.scripts.start-benchmarking-machine;
       description = ''
         Start the benchmarking NixOS VM exposing Grafana dashboards and Prometheus metrics for Marconi.
       '';

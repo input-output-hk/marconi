@@ -66,6 +66,99 @@ $ nix build github:input-output-hk/marconi#marconi-sidechain
 Both commands will produce a `result` directory containing the executable
 `result/bin/marconi-sidechain`.
 
+### NixOS module
+
+If you have NixOS running, you can use the flake output `nixModules.marconi-sidechain` in your `configuration.nix`.
+
+A minimal NixOS configuration example (with monitoring enabled using Prometheus and Grafana) would look like
+
+```
+let
+cardano-node = import
+  (builtins.fetchTarball {
+    url = https://github.com/input-output-hk/cardano-node/archive/refs/tags/8.4.0-pre.tar.gz;
+  }) {};
+marconi = (builtins.getFlake "github:input-output-hk/marconi");
+in
+{
+  imports = [
+    cardano-node.nixosModules.cardano-node
+    marconi.nixosModules.marconi-sidechain
+  ];
+
+  services.cardano-node = {
+    enable = true;
+    environment = "mainnet";
+    stateDir = "/var/lib/cardano-node/mainnet";
+    runtimeDir = i: "/var/lib/cardano-node/mainnet";
+    socketPath = i : "${config.services.cardano-node.runtimeDir i}/cardano-node.socket";
+    databasePath = i : "${config.services.cardano-node.stateDir i}/db";
+  };
+
+  services.marconi-sidechain = {
+    enable = true;
+    executable = "${marconi.packages.x86_64-linux.marconi-sidechain-experimental}/bin/marconi-sidechain-experimental";
+    # Or you can use:
+    # executable = "${pkgs.nix}/bin/nix run github:input-output-hk/marconi#marconi-sidechain-experimental --";
+    nodeSocketPath = "${config.services.cardano-node.socketPath 1}";
+    network = "mainnet";
+    nodeConfigFile = "/home/kolam/git/iog/marconi/config/cardano-node/mainnet/config.json";
+    databaseDir = "/var/lib/cardano-node/mainnet/marconi-sidechain-experimental";
+    maxRetryTime = 30;
+    port = 8090;
+    monitoring = {
+      enable = true;
+    };
+  };
+
+  services.prometheus = {
+    enable = true;
+    port = 9001;
+
+    exporters = {
+      node = {
+        enable = true;
+        enabledCollectors = [ "systemd" ];
+        port = 9002;
+      };
+    };
+
+    globalConfig = {
+      scrape_interval = "30s";
+    };
+
+    scrapeConfigs = [
+      {
+        job_name = "systemd";
+        static_configs = [{
+          targets = [ "127.0.0.1:9002" ];
+        }];
+      }
+    ];
+  };
+
+  services.grafana = {
+    enable = true;
+
+    settings = {
+      server = {
+        http_addr = "0.0.0.0";
+        http_port = 3000;
+      };
+      security = {
+        admin_user = "admin";
+        admin_password = "admin";
+      };
+    };
+
+    provision = {
+      enable = true;
+    };
+  };
+
+  # ...
+```
+
 ## Command line summary
 
 Run `marconi-sidechain`, `$(cabal exec -- which marconi-sidechain) --help` or `cabal run marconi-sidechain:exe:marconi-sidechain -- --help` for a general synopsis of the command line options depending on your installation method.
