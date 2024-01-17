@@ -347,10 +347,7 @@ instance (Monad m) => IsSync m event SQLiteIndexer where
   lastSyncPoint indexer = pure $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
-  close indexer = liftIO $ do
-    let c = indexer ^. connection
-    void $ SQL.execute_ c "PRAGMA optimize"
-    SQL.close c
+  close indexer = liftIO $ SQL.close $ indexer ^. connection
 
 {- | A helper for the definition of the @Queryable@ typeclass for 'SQLiteIndexer'
 

@@ -2,7 +2,6 @@
 
 module Marconi.Core.Transformer.WithCatchup.SQLite (
   createIndexTable,
-  autoVacuum,
 ) where
 
 import Cardano.BM.Data.Trace (Trace)
@@ -69,8 +68,3 @@ createIndexTable indexerName stdoutTrace c indexName createIndexStatement = do
         <> "' for "
         <> indexerName
         <> " indexer..."
-
-autoVacuum :: Trace IO Text -> SQL.Connection -> IO ()
-autoVacuum logger c = do
-  SQL.execute_ c "PRAGMA auto_vaccum = 1"
-  logInfo logger "Auto vaccum is on"

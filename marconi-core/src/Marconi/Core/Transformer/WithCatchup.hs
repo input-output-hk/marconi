@@ -1,5 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 {- | The catch-up mechanism buffered events to pass them in batch to an indexer, to reduce the time
@@ -71,15 +72,15 @@ mkCatchupConfig batchSize bypassDistance = CatchupConfig batchSize bypassDistanc
 Lens.makeLenses ''CatchupConfig
 
 data Catchingup event = Catchingup
-  { _contextDistanceComputation :: Point event -> event -> Word64
+  { _catchingupDistanceComputation :: Point event -> event -> Word64
   -- ^ How we compute distance to tip
-  , _contextCatchupConfig :: CatchupConfig
+  , _catchingupConfig :: CatchupConfig
   -- ^ How far from the block should we be to bypass the catchup mechanism (in number of blocks)
-  , _contextCatchupBufferLength :: Word64
+  , _catchingupConfigBufferLength :: Word64
   -- ^ How many event do we have in the batch
-  , _contextCatchupBuffer :: [Timed (Point event) (Maybe event)]
+  , _catchingupConfigBuffer :: [Timed (Point event) (Maybe event)]
   -- ^ Where we store the event that must be batched
-  , _contextCatchupLastStable :: Maybe (Point event)
+  , _catchingupConfigLastStable :: Maybe (Point event)
   -- ^ The latest last stable point stored in the batch
   }
 
@@ -90,13 +91,13 @@ data CatchupContext event = Ongoing (Catchingup event) | Done
 Lens.makePrisms ''CatchupContext
 
 contextCatchupBypassDistance :: Lens.Lens' (Catchingup event) Word64
-contextCatchupBypassDistance = contextCatchupConfig . configCatchupBypassDistance
+contextCatchupBypassDistance = catchingupConfig . configCatchupBypassDistance
 
 contextCatchupBatchSize :: Lens.Lens' (Catchingup event) Word64
-contextCatchupBatchSize = contextCatchupConfig . configCatchupBatchSize
+contextCatchupBatchSize = catchingupConfig . configCatchupBatchSize
 
 contextCatchupEventHook :: Lens.Lens' (Catchingup event) (Maybe (CatchupEvent -> IO ()))
-contextCatchupEventHook = contextCatchupConfig . configCatchupEventHook
+contextCatchupEventHook = catchingupConfig . configCatchupEventHook
 
 {-- | WithCatchup is used to speed up the synchronisation of indexers by preparing batches of events
  - that will be submitted via `indexAll` to the underlying indexer.
@@ -181,13 +182,13 @@ config :: Lens.Lens' (WithCatchup indexer event) (CatchupContext event)
 config = catchupWrapper . wrapperConfig
 
 catchupBuffer :: Lens.Traversal' (WithCatchup indexer event) [Timed (Point event) (Maybe event)]
-catchupBuffer = config . _Ongoing . contextCatchupBuffer
+catchupBuffer = config . _Ongoing . catchingupConfigBuffer
 
 catchupBufferLength :: Lens.Traversal' (WithCatchup indexer event) Word64
-catchupBufferLength = config . _Ongoing . contextCatchupBufferLength
+catchupBufferLength = config . _Ongoing . catchingupConfigBufferLength
 
 catchupLastStable :: Lens.Traversal' (WithCatchup indexer event) (Point event)
-catchupLastStable = config . _Ongoing . contextCatchupLastStable . traverse
+catchupLastStable = config . _Ongoing . catchingupConfigLastStable . traverse
 
 resetBuffer :: WithCatchup indexer event -> WithCatchup indexer event
 resetBuffer = (catchupBufferLength .~ 0) . (catchupBuffer .~ [])
@@ -205,14 +206,14 @@ instance
             l <- bufferLength ix
             s <- batchSize ix
             pure $ l >= s
-          bypassDistance = cfg ^. contextCatchupConfig . configCatchupBypassDistance
+          bypassDistance = cfg ^. catchingupConfig . configCatchupBypassDistance
           pushEvent ix =
             ix
               & catchupBuffer %~ (timedEvent :)
               & catchupBufferLength +~ 1
           hasCaughtUp = case e of
             Nothing -> False
-            Just e' -> (cfg ^. contextDistanceComputation) p e' < bypassDistance
+            Just e' -> (cfg ^. catchingupDistanceComputation) p e' < bypassDistance
           sendBatch ix = do
             let catchupBuffer' = ix ^. catchupBuffer
             let lastStable = ix ^? catchupLastStable
