@@ -43,7 +43,7 @@ import Control.Concurrent.Async qualified as Async
 import Control.Exception (Exception, Handler (Handler), catches)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
-import Control.Monad (void, when, (<=<))
+import Control.Monad (when, (<=<))
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (toList), traverse_)
