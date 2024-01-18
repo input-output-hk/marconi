@@ -8,7 +8,6 @@ import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Trace (logInfo)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO)
-import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
@@ -49,14 +48,12 @@ createIndexTable indexerName stdoutTrace c indexName createIndexStatement = do
   (doesIndexExist :: Bool) <-
     liftIO $
       fmap ((> (0 :: Int)) . sum . concat) $
-        SQL.query_
+        SQL.queryNamed
           c
-          ( [sql|SELECT COUNT(*)
+          [sql|SELECT COUNT(*)
                  FROM sqlite_master
-                 WHERE type='index' AND name='|]
-              <> fromString indexName
-              <> "'"
-          )
+                 WHERE type == 'index' AND name == :indexName|]
+          [":indexName" SQL.:= indexName]
   unless doesIndexExist $ do
     logInfo stdoutTrace $
       "Creating SQL index table '"
