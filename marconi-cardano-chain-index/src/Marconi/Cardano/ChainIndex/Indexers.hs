@@ -31,12 +31,10 @@ import Marconi.Cardano.Core.Transformer.WithSyncStats (WithSyncStats)
 import Marconi.Cardano.Core.Types (
   AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
-  BlockRange,
   MarconiTrace,
   SecurityParam,
   TipAndBlock (TipAndBlock),
   TxIndexInBlock,
-  blockRangeFst,
  )
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Cardano.Indexers.ChainTip qualified as ChainTip
@@ -56,6 +54,7 @@ import Marconi.Cardano.Indexers.MintTokenEventQuery (
   MintTokenEventIndexerQuery (MintTokenEventIndexerQuery),
  )
 import Marconi.Cardano.Indexers.SnapshotBlockEvent (
+  BlockRange,
   SnapshotBlockEvent (SnapshotBlockEvent),
   SnapshotMetadata,
   SnapshotWorkerConfig (SnapshotWorkerConfig, blockRange, currentBlockNo),
@@ -309,7 +308,7 @@ snapshotBlockEventBuilder
   -> Core.CatchupConfig
   -> BM.Trace m Text
   -> FilePath
-  -> BlockRange
+  -> SnapshotBlockEvent.BlockRange
   -> FilePath
   -> n
       ( Core.WorkerIndexer
@@ -353,7 +352,7 @@ buildIndexersForSnapshot
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
-  -> [BlockRange]
+  -> [SnapshotBlockEvent.BlockRange]
   -> FilePath
   -> ExceptT
       Core.IndexerError
@@ -486,5 +485,5 @@ justBeforeBlockRangePreprocessor toBlockNo br =
         offset
           | leftRange == 0 = 0
           | otherwise = 1
-        leftRange = Lens.view blockRangeFst br
+        leftRange = Lens.view SnapshotBlockEvent.blockRangeFst br
         inputWord = C.unBlockNo . toBlockNo $ input

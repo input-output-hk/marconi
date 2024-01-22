@@ -28,7 +28,6 @@ import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToField qualified as SQL
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
-import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam))
 import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Byron.Ledger qualified as O
 import Ouroboros.Consensus.Cardano.Block qualified as O
@@ -424,8 +423,3 @@ decodeLedgerState =
     alonzo = Comp O.decodeShelleyLedgerState
     babbage = Comp O.decodeShelleyLedgerState
     conway = Comp O.decodeShelleyLedgerState
-
--- * SecurityParam
-
-deriving newtype instance SQL.ToField SecurityParam
-deriving newtype instance SQL.FromField SecurityParam

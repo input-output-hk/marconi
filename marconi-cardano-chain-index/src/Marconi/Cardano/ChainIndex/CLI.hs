@@ -30,17 +30,11 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.ChainIndex.Git.Rev (gitRev)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
-  BlockRange,
   RetryConfig (RetryConfig),
   TargetAddresses,
   UtxoIndexerConfig (UtxoIndexerConfig),
-  addressDatumDbName,
-  epochStateDbName,
-  mintBurnDbName,
-  mkBlockRange,
-  scriptTxDbName,
-  utxoDbName,
  )
+import Marconi.Cardano.Indexers.SnapshotBlockEvent (BlockRange, mkBlockRange)
 import Options.Applicative (ReadM, eitherReader, execParserPure)
 import Paths_marconi_cardano_chain_index (version)
 
@@ -536,3 +530,20 @@ readBlockRange rawBlockRange =
         "Block range is not formatted correctly. "
           <> "Please provide a pair of positive numbers, "
           <> "without any spaces."
+
+-- * Database file names
+
+utxoDbName :: FilePath
+utxoDbName = "utxo.db"
+
+addressDatumDbName :: FilePath
+addressDatumDbName = "addressdatum.db"
+
+scriptTxDbName :: FilePath
+scriptTxDbName = "scripttx.db"
+
+epochStateDbName :: FilePath
+epochStateDbName = "epochstate.db"
+
+mintBurnDbName :: FilePath
+mintBurnDbName = "mintburn.db"
