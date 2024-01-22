@@ -1770,7 +1770,7 @@ propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabili
       waitQSem serverStarted
 
       -- We need to delay because otherwise we might try to connect before @accept s@ runs
-      threadDelay 100
+      threadDelay 5000
       bracket (runUnixSocketClient socketPath) close $ \s -> do
         let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
             stream :: Stream (Of Int) IO () = streamFrom s
