@@ -9,7 +9,7 @@ import Cardano.BM.Trace (logError, logInfo)
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent.Async (race_)
 import Control.Exception (finally)
-import Control.Monad (unless)
+import Control.Monad (guard, unless)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
 import Data.Aeson (toJSON)
@@ -55,6 +55,10 @@ import System.Posix.Signals (
  )
 import qualified Marconi.Cardano.Indexers.ExtLedgerStateCoordinator as ExtLedgerState
 import qualified Marconi.Cardano.Core.Extract.WithDistance as Distance
+import qualified Marconi.Cardano.Indexers.EpochSDD as EpochSDD
+import qualified Marconi.Cardano.Indexers.EpochNonce as EpochNonce
+import qualified Marconi.Cardano.ChainIndex.Indexers as Indexers
+import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (ExtLedgerStateEvent(extLedgerState))
 #endif
 
 run :: Text -> IO ()
@@ -74,8 +78,8 @@ run appName = withGracefulTermination_ $ do
 
   createDirectoryIfMissing True (Cli.optionsDbPath o)
 
-  let batchSize = 5000
-      volatileEpochStateSnapshotInterval = 1000
+  let batchSize = Cli.batchSizeConfig $ Cli.commonOptions o
+      epochStateSnapshotInterval = 100000
       filteredAddresses = shelleyAddressesToAddressAny $ Cli.optionsTargetAddresses o
       filteredAssetIds = Cli.optionsTargetAssets o
       includeScript = not $ Cli.optionsDisableScript o
@@ -117,6 +121,13 @@ run appName = withGracefulTermination_ $ do
         Utils.querySecurityParam @Void networkId socketPath
 
   let SecurityParam stopCatchupDistance = securityParam
+      extLedgerStateAsEvent previousLedgerStateEvent ledgerStateEvent _blockEvent = do
+        previousEpochNo <- ExtLedgerState.getEpochNo $ extLedgerState previousLedgerStateEvent
+        epochNo <- ExtLedgerState.getEpochNo $ extLedgerState ledgerStateEvent
+        guard $ epochNo /= previousEpochNo
+        let sdd = EpochSDD.getEpochSDD ledgerStateEvent
+            nonce = EpochNonce.getEpochNonce ledgerStateEvent
+        pure $ Indexers.EpochEvent epochNo sdd nonce
 
   mindexers <-
     runExceptT $
@@ -127,10 +138,11 @@ run appName = withGracefulTermination_ $ do
         (MintTokenEvent.MintTokenEventConfig filteredAssetIds)
         ( ExtLedgerState.ExtLedgerStateWorkerConfig
             Distance.getEvent
-            trace
+            Distance.chainDistance
             nodeConfigPath
-            volatileEpochStateSnapshotInterval
+            epochStateSnapshotInterval
             securityParam
+            extLedgerStateAsEvent
         )
         trace
         marconiTrace
@@ -176,6 +188,10 @@ shelleyAddressesToAddressAny :: Maybe TargetAddresses -> [C.AddressAny]
 shelleyAddressesToAddressAny Nothing = []
 shelleyAddressesToAddressAny (Just targetAddresses) =
   fmap C.AddressShelley $ NEList.toList $ NESet.toList targetAddresses
+
+getBlockNo :: C.BlockInMode C.CardanoMode -> C.BlockNo
+getBlockNo (C.BlockInMode block _eraInMode) =
+  case C.getBlockHeader block of C.BlockHeader _ _ b -> b
 
 getStartingPoint :: Cli.StartingPoint -> C.ChainPoint -> C.ChainPoint
 getStartingPoint preferredStartingPoint indexerLastSyncPoint =

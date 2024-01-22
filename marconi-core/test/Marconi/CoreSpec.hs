@@ -131,7 +131,7 @@ import Control.Concurrent.STM (
   TBQueue,
   newTBQueueIO,
  )
-import Control.Exception (bracket)
+import Control.Exception (SomeException, bracket, try)
 import Control.Lens (
   Getter,
   Lens',
@@ -156,6 +156,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT)
 import Control.Monad.Trans.State (StateT, evalStateT, gets)
 import Control.Tracer qualified as Tracer
+import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Either (fromRight)
 import Data.Foldable (Foldable (foldl'), find)
@@ -1729,21 +1730,32 @@ propWithStreamTBQueue = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabil
 -}
 propWithStreamSocket :: Property
 propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstability $ \args -> do
-  (_, (actual, expected)) <- liftIO
-    $ Tmp.withSystemTempDirectory
-      mempty
-    $ \dir -> do
-      let chainSubset = take (chainSizeSubset args) (eventGenerator args)
-          -- We need to make the filename as short as possible, because we're very limited by path
-          -- length
-          fileName = dir </> "f"
-      serverStarted <- newQSem 1
-      concurrently
-        (server fileName chainSubset serverStarted)
-        (client fileName chainSubset serverStarted)
+  res <- liftIO $ Tmp.withSystemTempDirectory "a" $ \dir -> do
+    -- We need to make the filename as short as possible, because we're very limited by socket
+    -- path length.
+    let
+      fileName = dir </> "f"
+      failMsg = "\nSocket path: " <> fileName
 
-  GenM.stop (actual == expected)
+    first ((<> failMsg) . show) <$> try @SomeException (runTestWithSocketFile args fileName)
+
+  -- Swallowing the error and letting the test fail with the socket path message
+  -- is a workaround to enable reporting the path when the test throws an exception before
+  -- completion. 'GenM.monitor' or other failure reporting tools don't fire if an
+  -- exception is thrown first, but it can't be put within 'withSystemTempDirectory' since
+  -- PropertyM m is not 'MonadMask'. Temporary measure to support PLT-9260.
+  case res of
+    Left msg -> GenM.assertWith False msg
+    Right (actual, expected) -> GenM.stop (actual === expected)
   where
+    runTestWithSocketFile args fileName = do
+      let chainSubset = take (chainSizeSubset args) (eventGenerator args)
+      serverStarted <- newQSem 1
+      snd
+        <$> concurrently
+          (server fileName chainSubset serverStarted)
+          (client fileName chainSubset serverStarted)
+
     server socketPath chainSubset serverStarted = bracket (runUnixSocketServer socketPath) close $ \s -> do
       signalQSem serverStarted
       (conn, _) <- accept s

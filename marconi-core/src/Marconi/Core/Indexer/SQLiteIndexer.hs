@@ -10,9 +10,7 @@
 -}
 module Marconi.Core.Indexer.SQLiteIndexer (
   SQLiteIndexer (SQLiteIndexer),
-  SQLiteDBLocation,
-  pattern Memory,
-  pattern Storage,
+  SQLiteDBLocation (Memory, Storage),
   ExpectedPersistentDB (..),
   inMemoryDB,
   parseDBLocation,
@@ -69,27 +67,20 @@ import Marconi.Core.Type (
  )
 
 data SQLiteDBLocation
-  = Memory_
-  | Storage_ !FilePath
-
-pattern Memory :: SQLiteDBLocation
-pattern Memory <- Memory_
-
-pattern Storage :: FilePath -> SQLiteDBLocation
-pattern Storage fp <- Storage_ fp
-{-# COMPLETE Memory, Storage #-}
+  = Memory
+  | Storage !FilePath
 
 unparseDBLocation :: SQLiteDBLocation -> String
 unparseDBLocation Memory = ":memory:"
 unparseDBLocation (Storage path) = path
 
 parseDBLocation :: String -> SQLiteDBLocation
-parseDBLocation "" = Memory_
-parseDBLocation ":memory:" = Memory_
-parseDBLocation str = Storage_ str
+parseDBLocation "" = Memory
+parseDBLocation ":memory:" = Memory
+parseDBLocation str = Storage str
 
 inMemoryDB :: SQLiteDBLocation
-inMemoryDB = Memory_
+inMemoryDB = Memory
 
 data ExpectedPersistentDB = ExpectedPersistentDB
   deriving (Show)

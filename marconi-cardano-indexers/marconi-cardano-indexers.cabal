@@ -109,11 +109,9 @@ library
     , filepath
     , lens
     , mtl
-    , prettyprinter
     , sqlite-simple
     , text
     , time
-    , transformers
     , vector-map
 
 test-suite marconi-cardano-indexers-test
@@ -220,6 +218,7 @@ library marconi-cardano-indexers-test-lib
     Test.Marconi.Cardano.Chain.Snapshot
     Test.Marconi.Cardano.DbSyncComparison.BlockInfoResult
     Test.Marconi.Cardano.DbSyncComparison.Common
+    Test.Marconi.Cardano.DbSyncComparison.SpentInfoResult
 
   --------------------
   -- Local components

@@ -17,7 +17,6 @@ import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadIO)
 import Control.Monad.Except (ExceptT, MonadError, MonadTrans (lift))
 import Data.List.NonEmpty (NonEmpty)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Traversable (for)
@@ -67,8 +66,6 @@ import Marconi.Cardano.Indexers.Spent qualified as Spent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Cardano.Indexers.UtxoQuery qualified as UtxoQuery
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
-import Marconi.Core.Preprocessor qualified as Core
 import System.FilePath ((</>))
 
 -- Point instances used only in this module
@@ -91,6 +88,13 @@ type CurrentSyncPointIndexer =
 type EpochNonceIndexer = Core.WithTrace IO Core.SQLiteIndexer Nonce.EpochNonce
 type EpochSDDIndexer = Core.WithTrace IO Core.SQLiteIndexer (NonEmpty SDD.EpochSDD)
 
+data EpochEvent = EpochEvent
+  { epochNo :: C.EpochNo
+  , epochSDD :: Maybe (NonEmpty SDD.EpochSDD)
+  , epochNonce :: Maybe Nonce.EpochNonce
+  }
+type instance Core.Point EpochEvent = C.ChainPoint
+
 -- | Container for all the queryable indexers.
 data MarconiCardanoQueryables = MarconiCardanoQueryables
   { _queryableEpochNonce :: !(MVar EpochNonceIndexer)
@@ -110,7 +114,7 @@ buildIndexers
   -> Core.CatchupConfig
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
-  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
+  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
@@ -126,7 +130,7 @@ buildIndexers
   catchupConfig
   utxoConfig
   mintEventConfig
-  epochStateConfig
+  ledgerStateConfig
   textLogger
   prettyLogger
   path = do
@@ -135,20 +139,19 @@ buildIndexers
         blockEventTextLogger = BM.appendName "blockEvent" textLogger
         blockEventLogger = BM.appendName "blockEvent" mainLogger
         txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
-        epochStateTextLogger = BM.appendName "epochState" blockEventTextLogger
-        epochSDDTextLogger = BM.appendName "epochSDD" epochStateTextLogger
-        epochNonceTextLogger = BM.appendName "epochNonce" epochStateTextLogger
+        ledgerStateTextLogger = BM.appendName "ledgerState" blockEventTextLogger
 
     StandardWorker blockInfoMVar blockInfoWorker <-
       BlockInfo.blockInfoBuilder securityParam catchupConfig blockEventTextLogger path
 
     Core.WorkerIndexer epochSDDMVar epochSDDWorker <-
-      epochSDDBuilder securityParam catchupConfig epochSDDTextLogger path
+      epochSDDBuilder securityParam catchupConfig ledgerStateTextLogger path
     Core.WorkerIndexer epochNonceMVar epochNonceWorker <-
-      epochNonceBuilder securityParam catchupConfig epochNonceTextLogger path
-    Core.WorkerIndexer _epochStateMVar epochStateWorker <-
+      epochNonceBuilder securityParam catchupConfig ledgerStateTextLogger path
+    Core.WorkerIndexer _ledgerStateMVar ledgerStateWorker <-
       ExtLedgerStateCoordinator.extLedgerStateWorker
-        epochStateConfig
+        ledgerStateConfig
+        ledgerStateTextLogger
         [epochSDDWorker, epochNonceWorker]
         path
 
@@ -189,7 +192,7 @@ buildIndexers
       lift $
         buildBlockEventCoordinator
           blockEventLogger
-          [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
+          [blockInfoWorker, ledgerStateWorker, coordinatorTxBodyWorkers]
 
     Core.WorkerIndexer chainTipMVar chainTipWorker <-
       ChainTip.chainTipBuilder mainLogger path
@@ -251,7 +254,7 @@ epochNonceBuilder
   -> n
       ( Core.WorkerIndexer
           m
-          (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent)
+          EpochEvent
           Nonce.EpochNonce
           (Core.WithTrace m Core.SQLiteIndexer)
       )
@@ -263,12 +266,11 @@ epochNonceBuilder securityParam catchupConfig textLogger path =
           indexerName
           securityParam
           catchupConfig
-          (pure . Nonce.getEpochNonce . fst)
+          (pure . epochNonce)
           (BM.appendName indexerName indexerEventLogger)
-      getEpochNo (ExtLedgerStateCoordinator.ExtLedgerStateEvent ledgerState _) = Nonce.getEpochNo ledgerState
    in Nonce.epochNonceWorker
         epochNonceWorkerConfig
-        (Nonce.EpochNonceWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
+        (Nonce.EpochNonceWorkerConfig epochNo)
         (Core.parseDBLocation (path </> "epochNonce.db"))
 
 -- | Configure and start the @EpochSDD@ indexer
@@ -281,7 +283,7 @@ epochSDDBuilder
   -> n
       ( Core.WorkerIndexer
           m
-          (ExtLedgerStateCoordinator.ExtLedgerStateEvent, WithDistance BlockEvent)
+          EpochEvent
           (NonEmpty SDD.EpochSDD)
           (Core.WithTrace m Core.SQLiteIndexer)
       )
@@ -293,12 +295,11 @@ epochSDDBuilder securityParam catchupConfig textLogger path =
           indexerName
           securityParam
           catchupConfig
-          (pure . SDD.getEpochSDD . fst)
+          (pure . epochSDD)
           (BM.appendName indexerName indexerEventLogger)
-      getEpochNo (ExtLedgerStateCoordinator.ExtLedgerStateEvent ledgerState _) = Nonce.getEpochNo ledgerState
    in SDD.epochSDDWorker
         epochSDDWorkerConfig
-        (SDD.EpochSDDWorkerConfig $ fromMaybe 0 . getEpochNo . fst)
+        (SDD.EpochSDDWorkerConfig epochNo)
         (Core.parseDBLocation (path </> "epochSDD.db"))
 
 -- | Configure and start the @SnapshotBlockEvent@ indexer
@@ -346,7 +347,9 @@ extractSnapshotBlockEvent =
 buildIndexersForSnapshot
   :: SecurityParam
   -> Core.CatchupConfig
-  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig IO (WithDistance BlockEvent)
+  -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig
+      (ExtLedgerStateEvent, WithDistance BlockEvent)
+      (WithDistance BlockEvent)
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
@@ -359,7 +362,7 @@ buildIndexersForSnapshot
 buildIndexersForSnapshot
   securityParam
   catchupConfig
-  epochStateConfig
+  ledgerStateConfig
   textLogger
   prettyLogger
   path
@@ -369,6 +372,7 @@ buildIndexersForSnapshot
         mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
         blockEventTextLogger = BM.appendName "blockEvent" textLogger
         blockEventLogger = BM.appendName "blockEvent" mainLogger
+        ledgerStateTextLogger = BM.appendName "ledgerState" blockEventTextLogger
         snapshotBlockEventTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
         snapshotExtLedgerStateTextLogger = BM.appendName "snapshotBlockEvent" blockEventTextLogger
 
@@ -390,11 +394,12 @@ buildIndexersForSnapshot
             (path </> show no)
             blockRange'
             nodeConfig
-        return [snapshotExtLedgerStateWorker, snapshotBlockEventWorker]
+        pure [snapshotExtLedgerStateWorker, snapshotBlockEventWorker]
 
-    Core.WorkerIndexer _epochStateMVar snapshotWorker <-
+    Core.WorkerIndexer _ledgerStateMVar snapshotWorker <-
       ExtLedgerStateCoordinator.extLedgerStateWorker
-        epochStateConfig
+        ledgerStateConfig
+        ledgerStateTextLogger
         (concat snapshotWorkers)
         path
 
@@ -439,7 +444,6 @@ snapshotExtLedgerStateEventBuilder securityParam catchupConfig textLogger path b
           (pure . Just . fst)
           (BM.appendName indexerName indexerEventLogger)
    in snapshotExtLedgerStateEventWorker
-        securityParam
         standardWorkerConfig
         (SnapshotWorkerConfig (ExtLedgerStateCoordinator.blockNo . fst) blockRange' nodeConfig)
         path
@@ -447,8 +451,7 @@ snapshotExtLedgerStateEventBuilder securityParam catchupConfig textLogger path b
 snapshotExtLedgerStateEventWorker
   :: forall input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
-  => SecurityParam
-  -> StandardWorkerConfig n input ExtLedgerStateEvent
+  => StandardWorkerConfig n input ExtLedgerStateEvent
   -> SnapshotWorkerConfig input
   -> FilePath
   -> m
@@ -458,11 +461,11 @@ snapshotExtLedgerStateEventWorker
           ExtLedgerStateEvent
           (Core.WithTrace n (Core.FileIndexer EpochMetadata))
       )
-snapshotExtLedgerStateEventWorker securityParam standardWorkerConfig snapshotBlockEventWorkerConfig path = do
+snapshotExtLedgerStateEventWorker standardWorkerConfig snapshotBlockEventWorkerConfig path = do
   codecConfig <- getConfigCodec (SnapshotBlockEvent.nodeConfig snapshotBlockEventWorkerConfig)
   indexer <-
     Core.withTrace (logger standardWorkerConfig)
-      <$> buildExtLedgerStateEventIndexer codecConfig securityParam path
+      <$> buildExtLedgerStateEventIndexer codecConfig path
   let preprocessor =
         Core.traverseMaybeEvent (lift . eventExtractor standardWorkerConfig)
           <<< justBeforeBlockRangePreprocessor

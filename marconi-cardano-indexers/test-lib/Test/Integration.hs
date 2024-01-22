@@ -93,7 +93,6 @@ unboundedValidityRange :: (C.TxValidityLowerBound C.BabbageEra, C.TxValidityUppe
 unboundedValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
 
 {- Transaction operations -}
-
 validateAndSubmitTx
   :: (MonadIO m)
   => C.LocalNodeConnectInfo C.CardanoMode

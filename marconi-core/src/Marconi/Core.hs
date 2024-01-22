@@ -267,6 +267,7 @@ module Marconi.Core (
   GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
   SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   InsertPointQuery (InsertPointQuery),
+  SQLiteDBLocation (Memory, Storage),
   -- | Start a new indexer or resume an existing SQLite indexer
   --
   -- The main difference with 'SQLiteIndexer' is
@@ -278,6 +279,8 @@ module Marconi.Core (
   --
   -- It is monomorphic restriction of 'mkSqliteIndexer'
   mkSingleInsertSqliteIndexer,
+  inMemoryDB,
+  parseDBLocation,
   connection,
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
@@ -300,6 +303,8 @@ module Marconi.Core (
   -- | An indexer that serialise the event to disk
   FileIndexer (FileIndexer),
   FileStorageConfig (FileStorageConfig),
+  FileCleanup,
+  withPartition,
   FileBuilder (FileBuilder),
   EventBuilder (EventBuilder),
   EventInfo (fileMetadata),
@@ -387,6 +392,7 @@ module Marconi.Core (
   traverseMaybeEvent,
   scanEvent,
   scanEventM,
+  scanMaybeEvent,
   scanMaybeEventM,
   preprocessor,
   preprocessorM,
@@ -572,9 +578,11 @@ import Marconi.Core.Indexer.FileIndexer (
   EventBuilder (EventBuilder),
   EventInfo (fileMetadata),
   FileBuilder (FileBuilder),
+  FileCleanup,
   FileIndexer (FileIndexer),
   FileStorageConfig (FileStorageConfig),
   mkFileIndexer,
+  withPartition,
  )
 import Marconi.Core.Indexer.LastEventIndexer (
   GetLastQuery (GetLastQuery),
@@ -606,14 +614,17 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   InsertPointQuery (InsertPointQuery),
   SQLInsertPlan (..),
   SQLRollbackPlan (..),
+  SQLiteDBLocation (..),
   SQLiteIndexer (..),
   SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   ToRow (..),
   connection,
   dbLastSync,
   handleSQLErrors,
+  inMemoryDB,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
+  parseDBLocation,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
  )
@@ -625,6 +636,7 @@ import Marconi.Core.Preprocessor (
   preprocessorM,
   scanEvent,
   scanEventM,
+  scanMaybeEvent,
   scanMaybeEventM,
   traverseEvent,
   traverseMaybeEvent,

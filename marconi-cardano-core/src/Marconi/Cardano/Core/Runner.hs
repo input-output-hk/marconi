@@ -12,6 +12,10 @@ module Marconi.Cardano.Core.Runner (
   -- * Runner
   runIndexerOnChainSync,
   runIndexerOnSnapshot,
+  runEmitterAndConsumer,
+
+  -- * Emitters
+  streamEmitter,
 
   -- ** Runner Config
   RunIndexerConfig (RunIndexerConfig),
@@ -50,7 +54,7 @@ import Control.Concurrent qualified as Concurrent
 import Control.Concurrent.Async (race_)
 import Control.Concurrent.STM (atomically, check, isEmptyTBQueue)
 import Control.Concurrent.STM qualified as STM
-import Control.Exception (catch, finally)
+import Control.Exception (catch)
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad (void)
@@ -133,8 +137,9 @@ runIndexerOnChainSync
 runIndexerOnChainSync config indexer = do
   void $
     runEmitterAndConsumer
+      (eventPreprocessing ^. runIndexerExtractTipDistance)
+      (eventPreprocessing ^. runIndexerExtractBlockNo)
       securityParam
-      eventPreprocessing
       (chainSyncEventEmitter config indexer)
       Core.CloseOn
   where
@@ -155,9 +160,10 @@ runIndexerOnSnapshot
   -> IO (Concurrent.MVar (indexer event))
 runIndexerOnSnapshot config indexer stream =
   runEmitterAndConsumer
+    (eventPreprocessing ^. runIndexerExtractTipDistance)
+    (eventPreprocessing ^. runIndexerExtractBlockNo)
     securityParam
-    eventPreprocessing
-    (streamBlockEventEmitter config indexer stream)
+    (streamEmitter (eventPreprocessing ^. runIndexerPreprocessEvent) securityParam indexer stream)
     Core.CloseOff
   where
     securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
@@ -179,25 +185,37 @@ runEmitterAndConsumer
      , Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      )
-  => SecurityParam
-  -> RunIndexerEventPreprocessing rawEvent event
+  => (event -> Maybe Word)
+  -- ^ A tip extraction function
+  -> (event -> Maybe C.BlockNo)
+  -- ^ A block extraction function
+  -> SecurityParam
   -> IO (EventEmitter indexer event a)
   -> Core.CloseSwitch
   -> IO (Concurrent.MVar (indexer event))
 runEmitterAndConsumer
+  tipExtractor
+  blockExtractor
   securityParam
-  eventPreprocessing
   eventEmitter
   closeSwitch =
     do
       EventEmitter{queue, indexerMVar, emitEvents} <- eventEmitter
-      (emitEvents `finally` atomically (check =<< isEmptyTBQueue queue))
-        `race_` consumer queue indexerMVar
+      emitter emitEvents queue `race_` consumer queue indexerMVar
       pure indexerMVar
     where
+      emitter emitEvents queue = case closeSwitch of
+        Core.CloseOn -> void emitEvents
+        Core.CloseOff -> do
+          void emitEvents
+          atomically $ check =<< isEmptyTBQueue queue
       consumer queue indexerMVar = do
         Core.processQueue
-          (stablePointComputation securityParam eventPreprocessing)
+          ( stablePointComputation
+              tipExtractor
+              blockExtractor
+              securityParam
+          )
           Map.empty
           queue
           indexerMVar
@@ -245,30 +263,31 @@ chainSyncEventEmitter
 instead of consuming the stream a caller will consume the created queue.
 The reason behind this is to provide the same interface as 'chainSyncEventEmitter'.
 -}
-streamBlockEventEmitter
+streamEmitter
   :: (Core.Point event ~ C.ChainPoint)
-  => RunIndexerOnSnapshotConfig BlockEvent event
+  => (pre -> [Core.ProcessedInput C.ChainPoint event])
+  -- ^ A preprocessing function
+  -> SecurityParam
   -> indexer event
-  -> S.Stream (S.Of BlockEvent) IO ()
+  -> S.Stream (S.Of pre) IO ()
   -> IO (EventEmitter indexer event ())
-streamBlockEventEmitter config indexer stream = do
+streamEmitter processEvent securityParam indexer stream = do
   queue <- STM.newTBQueueIO $ fromIntegral securityParam
   indexerMVar <- Concurrent.newMVar indexer
-  let processEvent = eventProcessing ^. runIndexerPreprocessEvent
-      emitEvents = mkEventStream processEvent queue stream
+  let emitEvents = mkEventStream processEvent queue stream
   pure EventEmitter{queue, indexerMVar, emitEvents}
-  where
-    securityParam = Lens.view runIndexerOnSnapshotConfigSecurityParam config
-    eventProcessing = Lens.view runIndexerOnSnapshotConfigEventProcessing config
 
 stablePointComputation
-  :: SecurityParam
-  -> RunIndexerEventPreprocessing rawEvent event
+  :: (event -> Maybe Word)
+  -- ^ A tip extraction function
+  -> (event -> Maybe C.BlockNo)
+  -- ^ A block extraction function
+  -> SecurityParam
   -> Core.Timed C.ChainPoint (Maybe event)
   -> State (Map C.BlockNo C.ChainPoint) (Maybe C.ChainPoint)
-stablePointComputation securityParam preprocessing (Core.Timed point event) = do
-  let distanceM = preprocessing ^. runIndexerExtractTipDistance =<< event
-      blockNoM = preprocessing ^. runIndexerExtractBlockNo =<< event
+stablePointComputation tipExtractor blockExtractor securityParam (Core.Timed point event) = do
+  let distanceM = tipExtractor =<< event
+      blockNoM = blockExtractor =<< event
   case (distanceM, blockNoM) of
     (Just distance, Just blockNo) ->
       if distance > fromIntegral securityParam
@@ -290,8 +309,8 @@ getBlockNo (C.BlockInMode block _eraInMode) =
 
 -- | Event preprocessing, to ease the coordinator work
 mkEventStream
-  :: (inputEvent -> [Core.ProcessedInput (Core.Point inputEvent) outputEvent])
-  -> STM.TBQueue (Core.ProcessedInput (Core.Point inputEvent) outputEvent)
+  :: (inputEvent -> [Core.ProcessedInput (Core.Point outputEvent) outputEvent])
+  -> STM.TBQueue (Core.ProcessedInput (Core.Point outputEvent) outputEvent)
   -> S.Stream (S.Of inputEvent) IO r
   -> IO r
 mkEventStream processEvent q =
@@ -321,7 +340,10 @@ withDistanceAndTipPreprocessor =
       getDistance _ = Nothing
       blockNoFromBlockEvent (TipAndBlock _ (Just event)) = Just . getBlockNo . blockInMode $ getEvent event
       blockNoFromBlockEvent _ = Nothing
-   in RunIndexerEventPreprocessing extractChainTipAndAddDistance blockNoFromBlockEvent getDistance
+   in RunIndexerEventPreprocessing
+        extractChainTipAndAddDistance
+        blockNoFromBlockEvent
+        getDistance
 
 withNoPreprocessor :: RunIndexerEventPreprocessing (ChainSyncEvent BlockEvent) BlockEvent
 withNoPreprocessor =

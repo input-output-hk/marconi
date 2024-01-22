@@ -174,6 +174,8 @@ data CommonOptions = CommonOptions
   -- ^ The starting point of the indexers
   , optionsRetryConfig :: !RetryConfig
   -- ^ set up retry configuration when the node socket is unavailable
+  , batchSizeConfig :: !Word64
+  -- ^ Size of the batches sent to the indexers
   }
   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -236,6 +238,7 @@ commonOptionsParser =
     <*> commonNetworkIdParser
     <*> commonStartFromParser
     <*> commonRetryConfigParser
+    <*> commonBatchSizeParser
 
 optionsParser :: Opt.Parser Options
 optionsParser =
@@ -355,6 +358,16 @@ commonPortParser =
       <> Opt.metavar "INT"
       <> Opt.value 3000
       <> Opt.help "JSON-RPC http port number"
+      <> Opt.showDefault
+
+commonBatchSizeParser :: Opt.Parser Word64
+commonBatchSizeParser =
+  Opt.option
+    Opt.auto
+    $ Opt.long "batch-size"
+      <> Opt.metavar "INT"
+      <> Opt.value 3000
+      <> Opt.help "Number of blocks sent as a batch to the indexers"
       <> Opt.showDefault
 
 {- | Parse the addresses to index. Addresses should be given in Bech32 format

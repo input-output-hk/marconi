@@ -4,20 +4,30 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
--- | A coordinator that also maintains the @ExtLedgerState@.
+{- | A coordinator that also maintains the @ExtLedgerState@.
+
+* It takes an @input@ computes the @ExtLedgerState@ out of it
+  (in a preprocessor, we don't want to pass the ledger state if it isn't needed)
+* volatile @ExtLedgerState@s are stored in memory
+  (in a preprocessor as well).
+* Compute the @output@ from there
+* pass the @output@ to the underlying coordinator
+* saves the last known stable ledger state systematically on close
+-}
 module Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   -- * Types
   ExtLedgerState,
   ExtLedgerStateEvent (..),
   ExtLedgerConfig,
   ExtLedgerStateCoordinator (ExtLedgerStateCoordinator),
-  ExtLedgerStateCoordinatorConfig (ExtLedgerStateCoordinatorConfig),
   ExtLedgerStateWorkerConfig (..),
   EpochMetadata,
 
@@ -27,9 +37,9 @@ module Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
   buildExtLedgerStateEventIndexer,
 
   -- * Utils
+  getEpochNo,
   newEpochPreprocessor,
   readGenesisFile,
-  extractBlockEvent,
 
   -- * For testing
   deserialiseLedgerState,
@@ -48,42 +58,36 @@ import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Arrow ((<<<))
 import Control.Concurrent qualified as Con
-import Control.Exception (throw)
-import Control.Lens (Lens', (%~), (&), (-~), (.=), (.~), (^.))
+import Control.Lens ((%=), (+=), (-=), (.=), (^.))
 import Control.Lens qualified as Lens
-import Control.Monad (foldM, (<=<))
+import Control.Monad (guard, when)
 import Control.Monad.Except (ExceptT, MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.State.Strict (MonadState (put), gets)
-import Control.Monad.Trans (lift)
-import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Data.Bifunctor (Bifunctor (bimap))
-import Data.ByteString qualified as BS
 import Data.ByteString.Base16 qualified as Base16
-import Data.ByteString.Lazy qualified as BS.Lazy
+import Data.ByteString.Builder (Builder)
+import Data.ByteString.Lazy qualified as BS
 import Data.ByteString.Short qualified as BS.Short
 import Data.Data (Proxy (Proxy))
-import Data.List (sortOn)
-import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Foldable (foldrM)
+import Data.Functor (($>))
+import Data.List.NonEmpty qualified as NonEmpty
 import Data.Ord (Down (Down), comparing)
+import Data.Sequence (Seq)
+import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
-import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, chainDistance)
+import Data.Word (Word64)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (BlockEvent, SecurityParam (SecurityParam), blockInMode)
-import Marconi.Core (IsSync (lastStablePoint))
 import Marconi.Core qualified as Core
-import Marconi.Core.Preprocessor qualified as Core
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Config qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
-import Ouroboros.Consensus.Node.NetworkProtocolVersion qualified as O
-import Ouroboros.Consensus.Node.Serialisation qualified as O
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
 import Ouroboros.Consensus.Storage.Serialisation qualified as O
-import Prettyprinter (Pretty (pretty))
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import Text.Read qualified as Text
@@ -95,20 +99,6 @@ type CodecConfig = O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypt
 type instance Core.Point ExtLedgerState = C.ChainPoint
 type instance Core.Point (C.BlockInMode C.CardanoMode) = C.ChainPoint
 
-data ExtLedgerStateCoordinatorConfig input = ExtLedgerStateCoordinatorConfig
-  { _configExtractBlockEvent :: input -> BlockEvent
-  -- ^ extract block event from the input
-  , _configGenesisConfig :: C.GenesisConfig
-  -- ^ used to bootstrap the ledger state
-  , _configSnapshotInterval :: Word
-  -- ^ how often we save the ledger state saving often is expensive but make rollbacks faster
-  , _configSecurityParam :: SecurityParam
-  -- ^ we use the security param to decide when we trigger the saves, on stable data, we save at
-  -- each epoch only
-  }
-
-Lens.makeLenses ''ExtLedgerStateCoordinatorConfig
-
 -- | Base event used to store the 'ExtLedgerState'
 data ExtLedgerStateEvent = ExtLedgerStateEvent
   { extLedgerState :: ExtLedgerState
@@ -117,17 +107,6 @@ data ExtLedgerStateEvent = ExtLedgerStateEvent
   deriving (Show)
 
 type instance Core.Point ExtLedgerStateEvent = C.ChainPoint
-
-data ExtLedgerStateCoordinatorState = ExtLedgerStateCoordinatorState
-  { _stateBlocksToNextSnapshot :: Word
-  -- ^ Number of block before the next snapshot
-  , _stateEpochNo :: Maybe C.EpochNo
-  -- ^ LastEpochNo saved
-  , _stateSnapshots :: [C.ChainPoint]
-  -- ^ Track the previous snapshot, used for resuming
-  }
-
-Lens.makeLenses ''ExtLedgerStateCoordinatorState
 
 -- | Metadata used to create 'ExtLedgerStateEventIndexer' filenames
 data EpochMetadata = EpochMetadata
@@ -138,252 +117,336 @@ data EpochMetadata = EpochMetadata
 
 type ExtLedgerStateFileIndexer = Core.FileIndexer EpochMetadata ExtLedgerStateEvent
 
-type BlockFileIndexer = Core.FileIndexer EpochMetadata (C.BlockInMode C.CardanoMode)
-
-data ExtLedgerStateCoordinator input = ExtLedgerStateCoordinator
-  { _extLedgerStateCoordinatorConfig :: ExtLedgerStateCoordinatorConfig input
-  -- ^ The configuration of the coordinator
-  , _extLedgerStateCoordinatorState :: ExtLedgerStateCoordinatorState
-  -- ^ The current state of the coordinator
-  , _extLedgerStateIndexer :: ExtLedgerStateFileIndexer
-  -- ^ The indexer that manage the ledger state snapshot to handle backup and resuming
-  , _blockIndexer :: BlockFileIndexer
-  -- ^ The indexer that serialise blocks to handle resuming
-  , _coordinator :: Core.Coordinator input
+newtype ExtLedgerStateCoordinator output input = ExtLedgerStateCoordinator
+  { _coordinator :: Core.Coordinator output
   -- ^ A standard coordinator, which handles the workers
   }
 
 Lens.makeLenses ''ExtLedgerStateCoordinator
 
--- | The state maintained by the indexer to decide how to handle incoming events
-data WorkerState input = WorkerState
-  { _lastLedgerState :: ExtLedgerStateEvent
+data ExtLedgerStatePersistConfig = ExtLedgerStatePersistConfig
+  { _blocksToNextSnapshot :: Word64
+  -- ^ Number of block before the next snapshot (must be at least 1)
+  , _snapshotInterval :: Word64
+  -- ^ Track the previous snapshot, used for resuming (can't start at 0)
+  , _ledgerStateIndexer :: ExtLedgerStateFileIndexer
+  }
+
+Lens.makeLenses ''ExtLedgerStatePersistConfig
+
+-- | The state maintained by the preprocessor of the indexer to decide how to handle incoming events
+data PreprocessorState output input = PreprocessorState
+  { _volatileLedgerStates :: Seq (Core.Timed C.ChainPoint ExtLedgerStateEvent)
+  -- ^ storage for volatile ledger states
+  , _lastLedgerState :: Core.Timed C.ChainPoint ExtLedgerStateEvent
   -- ^ The last computed ledger state
-  , _accessToIndexer
-      :: Con.MVar
-          ( Core.WithTrace
-              IO
-              ExtLedgerStateCoordinator
-              (ExtLedgerStateEvent, WithDistance input)
-          )
-  -- ^ allow query to the indexer
+  , _currentLength :: Word64
+  -- ^ The number of volatile ledger states that are stored
+  , _securityParam :: Word64
+  -- ^ how many of them do we keep in memory
+  , _persistConfig :: ExtLedgerStatePersistConfig
+  -- ^ the indexer that saves snapshots
   }
 
-Lens.makeLenses ''WorkerState
+Lens.makeLenses ''PreprocessorState
 
-genesisConfig :: Lens.Getter (ExtLedgerStateCoordinator input) C.GenesisConfig
-genesisConfig = extLedgerStateCoordinatorConfig . configGenesisConfig
+{- | Used to maintain a list of `securityParam` ledger states in memory.
+  When full, the oldest stored ledger state is pushed out of the queue
+  and we check if it should be saved (we save every `snapshotInterval + 1` time)
+-}
+updateLatestLedgerState
+  :: forall io output input
+   . (MonadIO io, MonadState (PreprocessorState output input) io, MonadError Core.IndexerError io)
+  => Bool
+  -> Core.Timed C.ChainPoint ExtLedgerStateEvent
+  -> io (Maybe C.ChainPoint)
+updateLatestLedgerState isVolatile' event =
+  let resetBlockCounterIfNeeded = do
+        timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
+        when (timeToNextSnapshot == 0) $ do
+          snapshotInterval' <- Lens.use $ persistConfig . snapshotInterval
+          persistConfig . blocksToNextSnapshot .= snapshotInterval'
+      storeNewSnapshot :: io (Maybe (Core.Timed C.ChainPoint ExtLedgerStateEvent))
+      storeNewSnapshot = do
+        volatileLedgerStates' <- Lens.use volatileLedgerStates
+        case volatileLedgerStates' of
+          -- If we didn't start indexing volatile event yet
+          Seq.Empty -> do
+            eventToSave <- Lens.use lastLedgerState
+            if isVolatile'
+              then do
+                -- we reached the first volatile event
+                -- We always save the last stable event before we reach volatile ones
+                persistConfig . blocksToNextSnapshot .= 0
+                volatileLedgerStates %= (event Seq.<|)
+              else do
+                persistConfig . blocksToNextSnapshot -= 1
+            timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
+            lastLedgerState .= event
+            pure $ guard (timeToNextSnapshot == 0) $> eventToSave
+          -- If we're already indexing volatile event
+          xs Seq.:|> oldestLedgerState -> do
+            max' <- Lens.use securityParam
+            current <- Lens.use currentLength
+            let bufferIsFull = max' <= current
+            if bufferIsFull
+              then volatileLedgerStates .= (event Seq.<| xs)
+              else do
+                volatileLedgerStates %= (event Seq.<|)
+                currentLength += 1
+            timeToNextSnapshot <- Lens.use $ persistConfig . blocksToNextSnapshot
+            lastLedgerState .= event
+            pure $ guard (timeToNextSnapshot == 0 && bufferIsFull) $> oldestLedgerState
+      saveSnapshot eventToSave = do
+        let savePoint = eventToSave ^. Core.point
+        indexer <- Lens.use $ persistConfig . ledgerStateIndexer
+        indexer' <- Core.setLastStablePoint savePoint =<< Core.index (Just <$> eventToSave) indexer
+        persistConfig . ledgerStateIndexer .= indexer'
+        pure $ Just savePoint
+   in do
+        snapshotCandidate <- storeNewSnapshot
+        resetBlockCounterIfNeeded
+        case snapshotCandidate of
+          Nothing -> pure Nothing
+          Just eventToSave -> saveSnapshot eventToSave
 
-extLedgerConfig :: Lens.Getter (ExtLedgerStateCoordinator input) ExtLedgerConfig
-extLedgerConfig = genesisConfig . Lens.to CE.mkExtLedgerConfig
-
-snapshotInterval :: Lens.Getter (ExtLedgerStateCoordinator input) Word
-snapshotInterval = extLedgerStateCoordinatorConfig . configSnapshotInterval
-
-securityParam :: Lens.Getter (ExtLedgerStateCoordinator input) SecurityParam
-securityParam = extLedgerStateCoordinatorConfig . configSecurityParam
-
-extractBlockEvent :: Lens.Getter (ExtLedgerStateCoordinator input) (input -> BlockEvent)
-extractBlockEvent = extLedgerStateCoordinatorConfig . configExtractBlockEvent
-
-blocksToNextSnapshot :: Lens' (ExtLedgerStateCoordinator input) Word
-blocksToNextSnapshot = extLedgerStateCoordinatorState . stateBlocksToNextSnapshot
-
-snapshots :: Lens' (ExtLedgerStateCoordinator input) [C.ChainPoint]
-snapshots = extLedgerStateCoordinatorState . stateSnapshots
-
-lastEpochNo :: Lens' (ExtLedgerStateCoordinator input) (Maybe C.EpochNo)
-lastEpochNo = extLedgerStateCoordinatorState . stateEpochNo
-
-mkExtLedgerStateCoordinator
-  :: (MonadIO m, MonadError Core.IndexerError m, Core.Point (ExtLedgerStateEvent, input) ~ C.ChainPoint)
-  => ExtLedgerStateCoordinatorConfig (ExtLedgerStateEvent, input)
-  -> FilePath
-  -> [Core.Worker (ExtLedgerStateEvent, input) C.ChainPoint]
-  -> m (ExtLedgerStateCoordinator (ExtLedgerStateEvent, input))
-mkExtLedgerStateCoordinator config rootDir workers = do
-  let genesisCfg = config ^. configGenesisConfig
-      securityParam' = config ^. configSecurityParam
-      extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
-      configCodec = O.configCodec . O.getExtLedgerCfg $ extLedgerCfg
-  liftIO $ createDirectoryIfMissing True rootDir
-  epochStateIndexer' <-
-    buildExtLedgerStateEventIndexer
-      configCodec
-      securityParam'
-      (rootDir </> "epochState")
-  epochBlocksIndexer <-
-    buildBlockIndexer
-      configCodec
-      securityParam'
-      (rootDir </> "epochBlocks")
-  coordinator' <- liftIO $ Core.mkCoordinator workers
-  let extLedgerStateCoordinatorState' =
-        ExtLedgerStateCoordinatorState
-          (config ^. configSnapshotInterval)
-          Nothing
-          []
-  pure $
-    ExtLedgerStateCoordinator
-      config
-      extLedgerStateCoordinatorState'
-      epochStateIndexer'
-      epochBlocksIndexer
-      coordinator'
-
-data ExtLedgerStateWorkerConfig m input = ExtLedgerStateWorkerConfig
+-- | Configuration of the worker
+data ExtLedgerStateWorkerConfig output input = ExtLedgerStateWorkerConfig
   { workerEventExtractor :: input -> BlockEvent
-  , workerLogger :: BM.Trace m Text
+  -- ^ Get the blockEvent (required to compute the ledger state) from the event
+  , workerDistanceExtractor :: input -> Word64
+  -- ^ Get the distance to the tip
   , workerNodeConfigPath :: FilePath
-  , workerSnapshotInterval :: Word
+  -- ^ Location of the node config, used to initialise the ledger state
+  , workerSnapshotInterval :: Word64
+  -- ^ Number of blocks before two snapshots of the ledger state
   , workerSecurityParam :: SecurityParam
+  -- ^ Number of volatile blocks
+  , workerOutputBuilder :: ExtLedgerStateEvent -> ExtLedgerStateEvent -> input -> Maybe output
+  -- ^ How to create an @output@ from the previous ledger state, the current one and the current input
   }
 
+{- | The preprocessor maintain the ledger state and pass the processed ledger state to the
+coordinator.
+-}
+extLedgerStatePreprocessor
+  :: C.GenesisConfig
+  -> ExtLedgerStateWorkerConfig output input
+  -> PreprocessorState input output
+  -> Core.Preprocessor (ExceptT Core.IndexerError IO) C.ChainPoint input output
+extLedgerStatePreprocessor genesisCfg config initialState =
+  let extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
+      extract = workerEventExtractor config
+      applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
+   in flip Core.preprocessorM (pure initialState) $ \case
+        Core.Rollback p -> do
+          -- Remove the invalid ledger state from the list of ledger states
+          (dropped, kept) <- Lens.uses volatileLedgerStates (Seq.spanl ((p <) . Lens.view Core.point))
+          volatileLedgerStates .= kept
+          case kept of
+            Seq.Empty -> pure ()
+            latest Seq.:<| _ -> lastLedgerState .= latest
+          currentLength -= fromIntegral (length dropped)
+          pure [Core.Rollback p]
+        Core.Index (Core.Timed p Nothing) -> pure [Core.Index $ Core.Timed p Nothing]
+        Core.Index (Core.Timed p (Just evt)) -> do
+          currentLedgerState <- Lens.use $ lastLedgerState . Core.event
+          let block = extract evt
+              blockInMode' = blockInMode block
+          case applyBlock blockInMode' (extLedgerState currentLedgerState) of
+            Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
+            Right ledgerStateEvent -> do
+              let ledgerState = ExtLedgerStateEvent ledgerStateEvent (getBlockNo blockInMode')
+                  timedLedgerState = Core.Timed p ledgerState
+                  distance = workerDistanceExtractor config evt
+                  SecurityParam security = workerSecurityParam config
+                  isVolatile' = distance <= security
+                  outputEvent = workerOutputBuilder config currentLedgerState ledgerState evt
+                  timedOutput = Core.Timed p outputEvent
+              lastStablePoint' <- updateLatestLedgerState isVolatile' timedLedgerState
+              let stableAtInput = case lastStablePoint' of
+                    Nothing -> []
+                    Just C.ChainPointAtGenesis -> []
+                    Just p' -> [Core.StableAt p']
+              pure $ Core.Index timedOutput : stableAtInput
+        Core.IndexAllDescending evts -> do
+          currentLedgerState <- Lens.use (lastLedgerState . Core.event)
+          let go (Core.Timed _ Nothing) (l, acc) = pure (l, acc)
+              go (Core.Timed p (Just evt)) (l, acc) = do
+                let block = extract evt
+                    blockInMode' = blockInMode block
+                case applyBlock blockInMode' (extLedgerState l) of
+                  Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
+                  Right ledgerStateEvent -> do
+                    let ledgerState = ExtLedgerStateEvent ledgerStateEvent (getBlockNo blockInMode')
+                        timedLedgerState = Core.Timed p ledgerState
+                        distance = workerDistanceExtractor config evt
+                        SecurityParam security = workerSecurityParam config
+                        isVolatile' = distance <= security
+                        outputEvent = workerOutputBuilder config currentLedgerState ledgerState evt
+                        timedOutput = Core.Timed p outputEvent
+                    lastStablePoint' <- updateLatestLedgerState isVolatile' timedLedgerState
+                    pure (ledgerState, maybe id ((:) . Core.StableAt) lastStablePoint' $ Core.Index timedOutput : acc)
+          outputs <- snd <$> foldrM go (currentLedgerState, []) (NonEmpty.toList evts)
+          pure $ reverse outputs
+        -- These are swallows as stability correspond to ledger state savepoints
+        Core.StableAt _p -> pure []
+        Core.Stop -> do
+          -- TODO close the indexer in a separateThread
+          indexer <- saveLastStable
+          persistConfig . ledgerStateIndexer .= indexer
+          Core.close indexer
+          pure [Core.Stop]
+
+saveLastStable
+  :: (MonadIO io, MonadState (PreprocessorState output input) io, MonadError Core.IndexerError io)
+  => io ExtLedgerStateFileIndexer
+saveLastStable = do
+  ledgerStates' <- Lens.use volatileLedgerStates
+  eventToSave <- case ledgerStates' of
+    Seq.Empty ->
+      Just <$> Lens.use lastLedgerState
+    _xs Seq.:|> oldestLedgerState -> do
+      max' <- Lens.use securityParam
+      current <- Lens.use currentLength
+      let bufferIsFull = max' <= current
+      if bufferIsFull
+        then pure $ Just oldestLedgerState
+        else pure Nothing
+  indexer <- Lens.use (persistConfig . ledgerStateIndexer)
+  case eventToSave of
+    Nothing -> pure indexer
+    Just timedEvent ->
+      Core.setLastStablePoint (timedEvent ^. Core.point) =<< Core.index (Just <$> timedEvent) indexer
+
+{- | Create a naked coordinator.
+| You would usually prefer to use a worker, as it will maintain the
+| ledger state before sending it to the coordinator.
+-}
+mkExtLedgerStateCoordinator
+  :: (MonadIO m, MonadError Core.IndexerError m, Core.Point output ~ C.ChainPoint)
+  => [Core.Worker output C.ChainPoint]
+  -> m (ExtLedgerStateCoordinator output input)
+mkExtLedgerStateCoordinator workers = do
+  coordinator' <- liftIO $ Core.mkCoordinator workers
+  pure $ ExtLedgerStateCoordinator coordinator'
+
+-- | Create a worker for the extLedgerState coordinator
 extLedgerStateWorker
-  :: forall m input
+  :: forall m output input
    . ( MonadIO m
      , MonadError Core.IndexerError m
-     , Core.Point (ExtLedgerStateEvent, WithDistance input) ~ C.ChainPoint
+     , Core.Point output ~ C.ChainPoint
+     , Core.Point input ~ C.ChainPoint
      )
-  => ExtLedgerStateWorkerConfig IO (WithDistance input)
-  -> [Core.Worker (ExtLedgerStateEvent, WithDistance input) C.ChainPoint]
+  => ExtLedgerStateWorkerConfig output input
+  -> BM.Trace IO Text
+  -> [Core.Worker output C.ChainPoint]
   -> FilePath
   -> m
       ( Core.WorkerIndexer
           IO
-          (WithDistance input)
-          (ExtLedgerStateEvent, WithDistance input)
-          (Core.WithTrace IO ExtLedgerStateCoordinator)
+          input
+          output
+          (Core.WithTrace IO (ExtLedgerStateCoordinator output))
       )
-extLedgerStateWorker config workers path = do
+extLedgerStateWorker config tracer workers path = do
   genesisCfg <- readGenesisFile $ workerNodeConfigPath config
-  let extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
-      extract = workerEventExtractor config
+  let SecurityParam securityParam' = workerSecurityParam config
       indexerName = "ExtLedgerStateEvent"
-      indexerEventLogger = BM.contramap (fmap $ fmap $ Text.pack . show) $ workerLogger config
-      cfg =
-        ExtLedgerStateCoordinatorConfig
-          (extract . snd)
-          genesisCfg
-          (workerSnapshotInterval config)
-          (workerSecurityParam config)
-
-      mapOneEvent
-        :: (MonadState (WorkerState input) n, MonadError Core.IndexerError n, MonadIO n)
-        => Maybe (WithDistance input)
-        -> n (Maybe (ExtLedgerStateEvent, WithDistance input))
-      mapOneEvent Nothing = pure Nothing
-      mapOneEvent (Just evt) = runMaybeT $ do
-        let applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
-            block = extract evt
-            blockInMode' = blockInMode block
-        let newBlockNo = getBlockNo blockInMode'
-        ExtLedgerStateEvent currentLedgerState' _block <- Lens.use lastLedgerState
-        case applyBlock blockInMode' currentLedgerState' of
-          Left err -> throwError . Core.IndexerInternalError . Text.pack . show $ err
-          Right res -> do
-            let ledgerStateEvent = ExtLedgerStateEvent res newBlockNo
-            lastLedgerState .= ledgerStateEvent
-            seq ledgerStateEvent $ pure (ledgerStateEvent, evt)
-
-      processAsEpochState
-        :: ExceptT Core.IndexerError IO (WorkerState input)
-        -> Core.Preprocessor
-            (ExceptT Core.IndexerError IO)
-            C.ChainPoint
-            (WithDistance input)
-            (ExtLedgerStateEvent, WithDistance input)
-      processAsEpochState = do
-        Core.preprocessorM $ \case
-          Core.Index x -> pure . Core.Index <$> traverse mapOneEvent x
-          Core.IndexAllDescending xs -> pure . Core.IndexAllDescending <$> traverse (traverse mapOneEvent) xs
-          Core.Rollback p -> do
-            lastIndexerM <- Lens.use accessToIndexer
-            lastIndexer <- liftIO $ Con.readMVar lastIndexerM
-            queryResult <- lift $ runExceptT $ Core.query p Core.EventAtQuery lastIndexer
-            case queryResult of
-              Left (Core.IndexerQueryError err) ->
-                throwError $
-                  Core.IndexerInternalError $
-                    "Can't rollback to the given epoch:" <> Text.pack (show err)
-              Left _err -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch"
-              Right Nothing -> throwError $ Core.IndexerInternalError "Can't rollback to the given epoch: no event found"
-              Right (Just res) -> do
-                lastLedgerState .= res
-                pure . pure $ Core.Rollback p
-          Core.StableAt p -> pure . pure $ Core.StableAt p
-          Core.Stop -> pure $ pure Core.Stop
-
+      indexerEventLogger = BM.contramap (fmap $ fmap $ Text.pack . show) tracer
+      rootDir = path </> "ledgerState"
+      initialExtLedgerStateEvent' = initialExtLedgerStateEvent genesisCfg
+      extLedgerCfg = CE.mkExtLedgerConfig genesisCfg
+      configCodec = O.configCodec . O.getExtLedgerCfg $ extLedgerCfg
+  liftIO $ createDirectoryIfMissing True rootDir
+  ledgerStateIndexer' <- buildExtLedgerStateEventIndexer configCodec rootDir
+  let snapshotInterval' = workerSnapshotInterval config
+      persistConfig' = mkExtLedgerStatePersistConfig snapshotInterval' ledgerStateIndexer'
   coordinator' <-
     Core.withTrace indexerEventLogger
-      <$> mkExtLedgerStateCoordinator cfg (path </> "epochState") workers
+      <$> mkExtLedgerStateCoordinator workers
   workerState <- liftIO $ Con.newMVar coordinator'
-  lastStable <- Core.lastStablePoint coordinator'
-  ledgerStateE <- runExceptT $ restoreLedgerState (Just lastStable) (coordinator' ^. Core.unwrap)
+  ledgerStateE <- runExceptT $ restoreLedgerState initialExtLedgerStateEvent' ledgerStateIndexer'
   extLedgerState' <- case ledgerStateE of
     Left _err -> throwError $ Core.IndexerInternalError "can't restore ledger state"
     Right res -> pure res
-  let initialState = pure $ WorkerState extLedgerState' workerState
-      eventPreprocessing = processAsEpochState initialState <<< Core.withResume lastStable
+  let initialState = PreprocessorState Seq.empty extLedgerState' 0 securityParam' persistConfig'
+      eventPreprocessing =
+        extLedgerStatePreprocessor genesisCfg config initialState
+          <<< Core.withResume (extLedgerState' ^. Core.point)
   pure $
     Core.WorkerIndexer workerState $
       Core.Worker indexerName workerState eventPreprocessing id
 
+{- | Smart constructor for ExtLedgerStatePersistConfig, ensure that the time to next snapshot is at
+least one block (saving each ledger state)
+-}
+mkExtLedgerStatePersistConfig
+  :: Word64 -> Core.FileIndexer EpochMetadata ExtLedgerStateEvent -> ExtLedgerStatePersistConfig
+mkExtLedgerStatePersistConfig snapshotInterval' =
+  let curatedSnapshotInterval = max 1 snapshotInterval'
+   in ExtLedgerStatePersistConfig curatedSnapshotInterval curatedSnapshotInterval
+
 instance
   ( MonadIO m
   , MonadError Core.IndexerError m
-  , Core.Point (ExtLedgerStateEvent, WithDistance input) ~ C.ChainPoint
+  , Core.Point output ~ C.ChainPoint
   )
-  => Core.IsIndex m (ExtLedgerStateEvent, WithDistance input) ExtLedgerStateCoordinator
+  => Core.IsIndex m output (ExtLedgerStateCoordinator output)
   where
-  index (Core.Timed _point Nothing) indexer = pure indexer
-  index timedEvent@(Core.Timed point (Just input@(newExtLedgerStateEvent, evt))) indexer = do
-    let indexer' = indexer & blocksToNextSnapshot -~ 1
-        extract = indexer ^. extractBlockEvent
-        block = extract input
-        blockInMode' = blockInMode block
-        snapshotTime = (indexer' ^. blocksToNextSnapshot) == 0
-        thisEpochNo = getEpochNo (extLedgerState newExtLedgerStateEvent)
-        isNewEpoch = thisEpochNo /= indexer ^. lastEpochNo
-        isVolatile = SecurityParam (chainDistance evt) < (indexer' ^. securityParam)
-        snapshotEpoch = (snapshotTime && isVolatile) || isNewEpoch
-        resetOnSnapshot =
-          if snapshotTime || isNewEpoch
-            then
-              (blocksToNextSnapshot .~ indexer' ^. snapshotInterval)
-                . (lastEpochNo .~ thisEpochNo)
-            else id
-        snapshotLedgerState =
-          if snapshotEpoch
-            then
-              fmap (snapshots %~ (point :))
-                . Core.indexVia extLedgerStateIndexer (Core.Timed point $ Just newExtLedgerStateEvent)
-            else pure
-        snapshotBlock =
-          if isVolatile
-            then blockIndexer (Core.index $ Core.Timed point $ Just blockInMode')
-            else pure
-    indexer'' <-
-      pure . resetOnSnapshot
-        <=< snapshotLedgerState
-        <=< snapshotBlock
-        $ indexer'
-    Core.indexVia coordinator timedEvent indexer''
+  index = Core.indexVia coordinator
+  rollback = Core.rollbackVia coordinator
+  setLastStablePoint = Core.setLastStablePointVia coordinator
 
-  rollback point =
-    extLedgerStateIndexer (Core.rollback point)
-      <=< blockIndexer (Core.rollback point)
-      <=< coordinator (Core.rollback point)
+-- Restoration of the LedgerState
 
-  setLastStablePoint point indexer =
-    let (volatile, immutable) = span (> point) $ indexer ^. snapshots
-        p' = listToMaybe immutable
-        indexer' = indexer & snapshots .~ volatile
-        setStablePointOnIndexers p =
-          Core.setLastStablePointVia extLedgerStateIndexer p
-            <=< Core.setLastStablePointVia blockIndexer p
-            <=< Core.setLastStablePointVia coordinator p
-     in maybe pure setStablePointOnIndexers p' indexer'
+restoreLedgerState
+  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery ExtLedgerStateEvent)) m)
+  => ExtLedgerStateEvent
+  -> ExtLedgerStateFileIndexer
+  -> m (Core.Timed C.ChainPoint ExtLedgerStateEvent)
+restoreLedgerState firstExtLedgerStateEvent indexer = do
+  let getLatest [] = Core.Timed Core.genesis firstExtLedgerStateEvent
+      getLatest (x : _) = x
+  result <- runExceptT $ Core.queryLatest Core.latestEvent indexer
+  case result of
+    Right xs -> pure $ getLatest xs
+    Left (Core.AheadOfLastSync partialResult) -> case partialResult of
+      Nothing ->
+        throwError $
+          Core.IndexerQueryError "Cant resolve last ledgerState: No previous result"
+      Just _ ->
+        throwError $
+          Core.IndexerQueryError "Wrong ledger state is stored"
+    Left (Core.IndexerQueryError err) ->
+      throwError $
+        Core.IndexerQueryError $
+          "Cant resolve last ledgerState: " <> Text.pack (show err)
+    Left Core.NotStoredAnymore ->
+      throwError $
+        Core.IndexerQueryError
+          "Cant resolve last ledgerState: Not stored anymore"
+    Left (Core.SlotNoBoundsInvalid _) ->
+      throwError $ Core.IndexerQueryError "Invalid bounds"
+
+instance
+  ( MonadIO m
+  , MonadError Core.IndexerError m
+  , Core.Point event ~ Core.Point output
+  , Core.Point output ~ C.ChainPoint
+  , Ord (Core.Point output)
+  )
+  => Core.IsSync m event (ExtLedgerStateCoordinator output)
+  where
+  lastSyncPoint = Core.lastSyncPointVia coordinator
+  lastStablePoint = Core.lastStablePointVia coordinator
+
+instance
+  (MonadIO m, MonadError Core.IndexerError m)
+  => Core.Closeable m (ExtLedgerStateCoordinator output)
+  where
+  close = Core.closeVia coordinator
 
 -- | A preprocessor that filters in events when they are the first of their epoch
 newEpochPreprocessor :: (Monad m) => (a -> C.EpochNo) -> Core.Preprocessor m C.ChainPoint a a
@@ -398,168 +461,18 @@ newEpochPreprocessor f =
           else pure Nothing
    in Core.scanMaybeEvent filterNewEpoch Nothing
 
-instance
-  ( MonadIO m
-  , MonadError Core.IndexerError m
-  , Core.Point event ~ C.ChainPoint
-  )
-  => Core.IsSync m event ExtLedgerStateCoordinator
-  where
-  lastSyncPoint indexer = do
-    lastBlock <- Core.lastSyncPointVia blockIndexer indexer
-    lastLedgerState' <- Core.lastSyncPointVia extLedgerStateIndexer indexer
-    lastCoordinator <- Core.lastSyncPointVia coordinator indexer
-    pure $ minimum [lastBlock, lastLedgerState', lastCoordinator]
-  lastStablePoint = Core.lastStablePointVia extLedgerStateIndexer
-
-instance
-  (MonadIO m, MonadError Core.IndexerError m)
-  => Core.Closeable m ExtLedgerStateCoordinator
-  where
-  close indexer = do
-    Core.closeVia blockIndexer indexer
-    Core.closeVia extLedgerStateIndexer indexer
-    Core.closeVia coordinator indexer
-
-instance
-  ( MonadIO m
-  , MonadError (Core.QueryError (Core.EventAtQuery ExtLedgerStateEvent)) m
-  , Core.Point event ~ C.ChainPoint
-  , Core.Point (ExtLedgerStateEvent, event) ~ C.ChainPoint
-  )
-  => Core.Queryable
-      m
-      (ExtLedgerStateEvent, event)
-      (Core.EventAtQuery ExtLedgerStateEvent)
-      ExtLedgerStateCoordinator
-  where
-  query point = const $ fmap Just . restoreLedgerState (Just point)
-
--- Restoration of the LedgerState
-
-restoreLedgerState
-  :: ( MonadIO m
-     , MonadError (Core.QueryError (Core.EventAtQuery ExtLedgerStateEvent)) m
-     , Core.Point (ExtLedgerStateEvent, event) ~ C.ChainPoint
-     , Core.Point event ~ C.ChainPoint
-     )
-  => Maybe C.ChainPoint
-  -> ExtLedgerStateCoordinator (ExtLedgerStateEvent, event)
-  -> m ExtLedgerStateEvent
-restoreLedgerState p indexer = do
-  let applyBlocksUpToGivenSlot epochStatePoint closestLedgerState = do
-        blocks <- getBlocksFrom epochStatePoint p (indexer ^. blockIndexer)
-        liftIO $
-          foldM
-            (buildNextExtLedgerStateEvent $ indexer ^. extLedgerConfig)
-            closestLedgerState
-            blocks
-  Core.Timed epochStatePoint closestLedgerState <-
-    getLatestNonEmpty
-      p
-      (Lens.views genesisConfig initialExtLedgerStateEvent indexer)
-      (indexer ^. extLedgerStateIndexer)
-  mlast <- runExceptT @Core.IndexerError $ Core.lastSyncPoint indexer
-  last' <- either (const $ throwError $ Core.IndexerQueryError "can't find lastpoint") pure mlast
-  if epochStatePoint == fromMaybe last' p
-    then pure closestLedgerState
-    else applyBlocksUpToGivenSlot epochStatePoint closestLedgerState
-
-getLatestNonEmpty
-  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery ExtLedgerStateEvent)) m)
-  => Maybe C.ChainPoint
-  -> ExtLedgerStateEvent
-  -> ExtLedgerStateFileIndexer
-  -> m (Core.Timed C.ChainPoint ExtLedgerStateEvent)
-getLatestNonEmpty p firstExtLedgerStateEvent indexer = do
-  let query = maybe Core.queryLatest Core.query
-      getLatest [] = Core.Timed Core.genesis firstExtLedgerStateEvent
-      getLatest (x : _) = x
-  result <- runExceptT $ query p Core.latestEvent indexer
-  case result of
-    Right xs -> pure $ getLatest xs
-    Left (Core.AheadOfLastSync partialResult) -> case partialResult of
-      Nothing ->
-        throwError $
-          Core.IndexerQueryError $
-            "Cant resolve last epochState: No previous result: " <> Text.pack (show $ pretty p)
-      Just xs -> pure $ getLatest xs
-    Left (Core.IndexerQueryError err) ->
-      throwError $
-        Core.IndexerQueryError $
-          "Cant resolve last epochState: " <> Text.pack (show err)
-    Left Core.NotStoredAnymore ->
-      throwError $
-        Core.IndexerQueryError
-          "Cant resolve last epochState: Not stored anymore"
-    Left (Core.SlotNoBoundsInvalid _) ->
-      throwError $ Core.IndexerQueryError "Invalid bounds"
-
-getBlocksFrom
-  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery ExtLedgerStateEvent)) m)
-  => C.ChainPoint
-  -> Maybe C.ChainPoint
-  -> BlockFileIndexer
-  -> m [C.BlockInMode C.CardanoMode]
-getBlocksFrom from to indexer = do
-  let query = maybe Core.queryLatest Core.query
-      extractResult = fmap $ Lens.view Core.event
-  result <- runExceptT $ query to (Core.EventsFromQuery from) indexer
-  case result of
-    Right xs -> pure $ extractResult xs
-    Left (Core.AheadOfLastSync partialResult) -> case partialResult of
-      Nothing -> do
-        lastSync <- Core.lastSyncPoint indexer
-        throwError $
-          Core.IndexerQueryError $
-            "Cant resolve last blocks: No result - ahead of sync - No previous result: "
-              <> Text.pack (show $ pretty to)
-              <> " head is: "
-              <> Text.pack (show $ pretty lastSync)
-      Just xs -> do
-        lastSync <- Core.lastSyncPoint indexer
-        throwError $
-          Core.IndexerQueryError $
-            "Cant resolve last blocks: No result - ahead of sync - Latest results: "
-              <> Text.pack (show (Lens.view Core.point <$> xs))
-              <> " Head is: "
-              <> Text.pack (show $ pretty lastSync)
-              <> " Expecting: "
-              <> Text.pack (show to)
-    Left (Core.IndexerQueryError err) ->
-      throwError $
-        Core.IndexerQueryError $
-          "Cant resolve last blocks: " <> Text.pack (show err)
-    Left Core.NotStoredAnymore ->
-      throwError $
-        Core.IndexerQueryError
-          "Cant resolve last blocks: Not stored anymore"
-    Left (Core.SlotNoBoundsInvalid _) ->
-      throwError $ Core.IndexerQueryError "Invalid bounds"
-
 initialExtLedgerStateEvent :: C.GenesisConfig -> ExtLedgerStateEvent
 initialExtLedgerStateEvent = flip ExtLedgerStateEvent 0 . CE.mkInitExtLedgerState
-
-buildNextExtLedgerStateEvent
-  :: ExtLedgerConfig -> ExtLedgerStateEvent -> C.BlockInMode C.CardanoMode -> IO ExtLedgerStateEvent
-buildNextExtLedgerStateEvent extLedgerCfg currentState block =
-  let currentLedgerState' = extLedgerState currentState
-      applyBlock = CE.applyBlockExtLedgerState extLedgerCfg C.QuickValidation
-   in do
-        case applyBlock block currentLedgerState' of
-          Left err -> throw . Core.IndexerInternalError . Text.pack . show $ err
-          Right res -> pure $ ExtLedgerStateEvent res (getBlockNo block)
 
 -- | File Indexer to save the @ExtLedgerState@
 buildExtLedgerStateEventIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> SecurityParam
   -> FilePath
   -> m (Core.FileIndexer EpochMetadata ExtLedgerStateEvent)
-buildExtLedgerStateEventIndexer codecConfig securityParam' path = do
+buildExtLedgerStateEventIndexer codecConfig path = do
   let serialiseLedgerState =
-        CBOR.toStrictByteString
+        CBOR.toBuilder
           . O.encodeExtLedgerState
             (O.encodeDisk codecConfig)
             (O.encodeDisk codecConfig)
@@ -573,28 +486,17 @@ buildExtLedgerStateEventIndexer codecConfig securityParam' path = do
               C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
                 [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
          in blockNoAsText evt : chainPointTexts
-      immutableEpochs
-        :: Core.Timed (Core.Point ExtLedgerStateEvent) (Maybe ExtLedgerStateEvent)
-        -> [Core.EventInfo EpochMetadata]
-        -> [Core.EventInfo EpochMetadata]
-      immutableEpochs (Core.Timed _ Nothing) _eventsInfo = []
-      immutableEpochs (Core.Timed _ (Just event)) eventsInfo = do
-        let sortedEvents = sortOn (metadataBlockNo . Core.fileMetadata) eventsInfo
-            lastBlockNo = blockNo event
-            blockDepth = (\(C.BlockNo b) -> b) . (lastBlockNo -)
-            isImmutable =
-              maybe True ((> securityParam') . fromIntegral . blockDepth)
-                . metadataBlockNo
-                . Core.fileMetadata
-            immutableEvents = takeWhile isImmutable sortedEvents
-        case immutableEvents of
-          [] -> []
-          _ -> init immutableEvents
+      keepLast [] = ([], [])
+      keepLast (x : xs) = ([x], xs)
   Core.mkFileIndexer
     path
     Nothing -- (Just 180_000_000) -- Wait 180s for files to finish writing before terminating
-    (Core.FileStorageConfig False immutableEpochs (comparing (Down . metadataBlockNo)))
-    (Core.FileBuilder "epochState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
+    ( Core.FileStorageConfig
+        False
+        (Core.withPartition $ const keepLast)
+        (comparing (Down . metadataBlockNo))
+    )
+    (Core.FileBuilder "ledgerState" "cbor" metadataAsText serialiseLedgerState serialisePoint)
     ( Core.EventBuilder
         deserialiseMetadata
         metadataChainpoint
@@ -618,73 +520,14 @@ deserialiseLedgerState codecConfig (EpochMetadata (Just blockNo') _) =
           (O.decodeDisk codecConfig)
           (O.decodeDisk codecConfig)
       )
-    . BS.fromStrict
 
--- | File Indexer to save the @BlockInMode@
-buildBlockIndexer
-  :: (MonadIO m, MonadError Core.IndexerError m)
-  => O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> SecurityParam
-  -> FilePath
-  -> m (Core.FileIndexer EpochMetadata (C.BlockInMode C.CardanoMode))
-buildBlockIndexer codecConfig securityParam' path = do
-  let blockNoAsText = maybe "" (Text.pack . show . (\(C.BlockNo b) -> b) . getBlockNo)
-      metadataAsText :: Core.Timed C.ChainPoint (Maybe (C.BlockInMode C.CardanoMode)) -> [Text]
-      metadataAsText (Core.Timed C.ChainPointAtGenesis evt) = [blockNoAsText evt]
-      metadataAsText (Core.Timed chainPoint evt) =
-        let chainPointTexts = case chainPoint of
-              C.ChainPoint (C.SlotNo slotNo) blockHeaderHash ->
-                [Text.pack $ show slotNo, C.serialiseToRawBytesHexText blockHeaderHash]
-         in blockNoAsText evt : chainPointTexts
-      immutableBlocks
-        :: Core.Timed (Core.Point ExtLedgerStateEvent) (Maybe (C.BlockInMode C.CardanoMode))
-        -> [Core.EventInfo EpochMetadata]
-        -> [Core.EventInfo EpochMetadata]
-      immutableBlocks (Core.Timed _ Nothing) _eventsInfo = []
-      immutableBlocks (Core.Timed _ (Just event)) eventsInfo = do
-        let sortedEvents = sortOn (metadataBlockNo . Core.fileMetadata) eventsInfo
-            lastBlockNo = getBlockNo event
-            blockDepth = (\(C.BlockNo b) -> b) . (lastBlockNo -)
-            isImmutable =
-              maybe True ((> securityParam') . fromIntegral . blockDepth)
-                . metadataBlockNo
-                . Core.fileMetadata
-            immutableEvents = takeWhile isImmutable sortedEvents
-        case immutableEvents of
-          [] -> []
-          _ -> init immutableEvents
-      blockNodeToNodeVersionM = do
-        nodeToClientVersion <- snd $ O.latestReleasedNodeVersion (Proxy @(O.CardanoBlock O.StandardCrypto))
-        Map.lookup nodeToClientVersion $
-          O.supportedNodeToClientVersions (Proxy @(O.CardanoBlock O.StandardCrypto))
-  blockNodeToNodeVersion <- case blockNodeToNodeVersionM of
-    Nothing -> throwError $ Core.IndexerInternalError "Can't finde block to Node version"
-    Just v -> pure v
-  Core.mkFileIndexer
-    path
-    Nothing -- (Just 60_000_000) -- Wait 60s for files to finish writing before terminating
-    (Core.FileStorageConfig False immutableBlocks (comparing metadataBlockNo))
-    ( Core.FileBuilder
-        "block"
-        "cbor"
-        metadataAsText
-        (serialiseBlock codecConfig blockNodeToNodeVersion)
-        serialisePoint
-    )
-    ( Core.EventBuilder
-        deserialiseMetadata
-        metadataChainpoint
-        (deserialiseBlock codecConfig blockNodeToNodeVersion)
-        deserialisePoint
-    )
-
-serialisePoint :: C.ChainPoint -> BS.ByteString
+serialisePoint :: C.ChainPoint -> Builder
 serialisePoint =
   let pointEncoding :: C.ChainPoint -> CBOR.Encoding
       pointEncoding C.ChainPointAtGenesis = CBOR.encodeBool False
       pointEncoding (C.ChainPoint (C.SlotNo s) (C.HeaderHash bhh)) =
         CBOR.encodeBool True <> CBOR.encodeWord64 s <> CBOR.encodeBytes (BS.Short.fromShort bhh)
-   in CBOR.toStrictByteString . pointEncoding
+   in CBOR.toBuilder . pointEncoding
 
 deserialisePoint :: BS.ByteString -> Either Text C.ChainPoint
 deserialisePoint bs =
@@ -696,8 +539,8 @@ deserialisePoint bs =
             bhh <- C.HeaderHash . BS.Short.toShort <$> CBOR.decodeBytes
             pure $ C.ChainPoint s bhh
           else pure C.ChainPointAtGenesis
-   in case CBOR.deserialiseFromBytes pointDecoding . BS.fromStrict $ bs of
-        Right (remain, res) | BS.Lazy.null remain -> Right res
+   in case CBOR.deserialiseFromBytes pointDecoding bs of
+        Right (remain, res) | BS.null remain -> Right res
         _other -> Left "Can't read chainpoint"
 
 deserialiseMetadata :: [Text] -> Maybe EpochMetadata
@@ -713,28 +556,6 @@ deserialiseMetadata [blockNoStr, slotNoStr, bhhStr] = do
     parseBlockNo "" = pure Nothing
     parseBlockNo bno = Just . C.BlockNo <$> Text.readMaybe (Text.unpack bno)
 deserialiseMetadata _ = Nothing
-
-serialiseBlock
-  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
-  -> C.BlockInMode C.CardanoMode
-  -> BS.ByteString
-serialiseBlock codecConfig blockToNode =
-  CBOR.toStrictByteString . O.encodeNodeToClient codecConfig blockToNode . C.toConsensusBlock
-
-deserialiseBlock
-  :: O.CodecConfig (O.HardForkBlock (O.CardanoEras O.StandardCrypto))
-  -> O.BlockNodeToClientVersion (O.CardanoBlock O.StandardCrypto)
-  -> EpochMetadata
-  -> BS.ByteString
-  -> Either Text (Maybe (C.BlockInMode C.CardanoMode))
-deserialiseBlock _codecConfig _blockToNode (EpochMetadata Nothing _) = const (Right Nothing)
-deserialiseBlock codecConfig blockToNode _metadata =
-  bimap
-    (Text.pack . show)
-    (Just . C.fromConsensusBlock C.CardanoMode . snd)
-    . CBOR.deserialiseFromBytes (O.decodeNodeToClient codecConfig blockToNode)
-    . BS.fromStrict
 
 -- Data extraction
 
