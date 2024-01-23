@@ -27,7 +27,6 @@ module Marconi.Cardano.Core.Types (
 
 import Cardano.Api qualified as C
 import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent, blockInMode, blockTime, epochNo))
-import Control.Lens.TH qualified as Lens
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Aeson qualified as Aeson
 import Data.Word (Word64)
