@@ -26,7 +26,6 @@ import Marconi.Cardano.ChainIndex.Indexers (
   queryableEpochNonce,
   queryableEpochSDD,
  )
-import Marconi.Cardano.ChainIndex.Utils qualified as Util
 import Marconi.Cardano.Indexers.EpochNonce qualified as EpochState
 import Marconi.Cardano.Indexers.EpochSDD qualified as EpochState
 import Marconi.Core qualified as Core
@@ -122,8 +121,8 @@ getEpochStakePoolDelegationHandler epochNo
       ActiveSDDResult
         (Lens.view EpochState.sddPoolId epochSDD)
         (Lens.view EpochState.sddLovelace epochSDD)
-        (Util.chainPointToSlotNo chainPoint)
-        (Util.chainPointToHash chainPoint)
+        (C.chainPointToSlotNo chainPoint)
+        (C.chainPointToHeaderHash chainPoint)
         (Lens.view EpochState.sddBlockNo epochSDD)
         (Lens.view EpochState.sddEpochNo epochSDD)
 
@@ -151,10 +150,10 @@ getEpochNonceHandler epochNo
     toEpochNonceResult Nothing = EpochNonceResult Nothing Nothing Nothing Nothing Nothing
     toEpochNonceResult (Just (Core.Timed chainPoint epochNonce)) =
       EpochNonceResult
-        (Util.chainPointToHash chainPoint)
+        (C.chainPointToHeaderHash chainPoint)
         (Just $ Lens.view EpochState.nonceBlockNo epochNonce)
         (Just $ Lens.view EpochState.nonceEpochNo epochNonce)
-        (Util.chainPointToSlotNo chainPoint)
+        (C.chainPointToSlotNo chainPoint)
         (nonceToMaybe $ Lens.view EpochState.nonceNonce epochNonce)
 
 nonceToMaybe :: Ledger.Nonce -> Maybe (Crypto.Hash Crypto.Blake2b_256 Ledger.Nonce)

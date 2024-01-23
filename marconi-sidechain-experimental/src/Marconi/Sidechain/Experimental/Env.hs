@@ -9,8 +9,10 @@ import Cardano.Api qualified as C
 import Cardano.BM.Backend.Switchboard qualified as BM
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (Trace, logError)
+import Control.Exception (throwIO)
 import Control.Lens (makeLenses, (^.))
-import Control.Monad (guard, unless)
+import Control.Monad (guard, unless, (>=>))
+import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (toJSON)
 import Data.List.NonEmpty qualified as NEList
@@ -20,7 +22,7 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Marconi.Cardano.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.Cardano.ChainIndex.Indexers qualified as Indexers
-import Marconi.Cardano.ChainIndex.Utils qualified as ChainIndex.Utils
+import Marconi.Cardano.ChainIndex.SecurityParam qualified as SecurityParam
 import Marconi.Cardano.Core.Extract.WithDistance (chainDistance, getEvent)
 import Marconi.Cardano.Core.Logger (mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
@@ -84,8 +86,8 @@ querySecurityParamFromCliArgs :: (MonadIO m) => Trace IO Text -> CliArgs -> m Se
 querySecurityParamFromCliArgs trace CliArgs{..} =
   liftIO $
     withNodeConnectRetry (mkMarconiTrace trace) optionsRetryConfig socketFilePath $
-      ChainIndex.Utils.toException $
-        ChainIndex.Utils.querySecurityParam @Void networkId socketFilePath
+      (runExceptT >=> either throwIO pure) $
+        SecurityParam.querySecurityParam @Void networkId socketFilePath
 
 -- | Build the 'SidechainBuildIndexersConfig' from CLI arguments.
 mkSidechainBuildIndexersConfig

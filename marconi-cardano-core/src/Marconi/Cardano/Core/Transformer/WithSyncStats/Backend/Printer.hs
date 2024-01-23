@@ -10,13 +10,13 @@ import Cardano.Api qualified as C
 import Cardano.BM.Trace (logInfo)
 import Control.Lens ((^.))
 import Data.Time (NominalDiffTime, defaultTimeLocale, diffUTCTime, formatTime, getCurrentTime)
+import Marconi.Cardano.Core.Logger (MarconiTrace)
 import Marconi.Cardano.Core.Transformer.WithSyncStats (
   LastSyncStats (LastSyncStats),
   StatsBackend (StatsBackend),
   emptyLastSyncStats,
   syncStatsLastMessageTime,
  )
-import Marconi.Cardano.Core.Types (MarconiTrace)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Text.Printf (printf)
 

@@ -12,6 +12,7 @@ import Cardano.BM.Tracing (Trace)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans (lift)
 import Data.Text (Text)
+import Marconi.Cardano.Core.Logger (MarconiTrace)
 import Marconi.Cardano.Core.Orphans qualified ()
 import Marconi.Cardano.Core.Transformer.WithSyncStats (
   WithSyncStats,
@@ -19,7 +20,6 @@ import Marconi.Cardano.Core.Transformer.WithSyncStats (
  )
 import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Printer (mkLogBackend)
 import Marconi.Cardano.Core.Transformer.WithSyncStats.Backend.Prometheus (mkPrometheusBackend)
-import Marconi.Cardano.Core.Types (MarconiTrace)
 import Marconi.Core qualified as Core
 
 standardCoordinator

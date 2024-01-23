@@ -22,8 +22,9 @@ module Marconi.Starter.Indexers.AddressCount where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (nullTracer)
+import Control.Exception (throwIO)
 import Control.Lens (at, folded, sumOf, to, (^.))
-import Control.Monad.Except (MonadError)
+import Control.Monad.Except (MonadError, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (FromJSON)
 import Data.Map (Map)
@@ -32,7 +33,6 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
 import GHC.Generics (Generic)
-import Marconi.Cardano.ChainIndex.Utils qualified as Utils
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
 import Marconi.Cardano.Core.Orphans ()
@@ -75,7 +75,7 @@ addressCountWorker
       )
 addressCountWorker dbPath securityParam = do
   let extract = getEventsFromBlock
-  ix <- Utils.toException $ mkAddressCountSqliteIndexer dbPath
+  ix <- either throwIO pure =<< runExceptT (mkAddressCountSqliteIndexer dbPath)
   let config =
         Core.StandardWorkerConfig
           "AddressCount"

@@ -18,7 +18,6 @@ import Marconi.Cardano.ChainIndex.CLI qualified as Cli
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
   RetryConfig,
-  TargetAddresses,
  )
 import Options.Applicative qualified as Opt
 
@@ -38,7 +37,7 @@ data CliArgs = CliArgs
   -- ^ cardano network id
   , batchSize :: Word64
   -- ^ Size of the batches sent to the indexers
-  , targetAddresses :: !(Maybe TargetAddresses)
+  , targetAddresses :: !(Maybe Cli.TargetAddresses)
   -- ^ white-space sepparated list of Bech32 Cardano Shelley addresses
   , targetAssets :: !(Maybe (NonEmpty (C.PolicyId, Maybe C.AssetName)))
   -- ^ a list of asset to track

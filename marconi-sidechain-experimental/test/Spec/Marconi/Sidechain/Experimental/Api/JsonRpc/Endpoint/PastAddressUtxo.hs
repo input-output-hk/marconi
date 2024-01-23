@@ -19,11 +19,11 @@ import Marconi.Sidechain.Experimental.Api.JsonRpc.Endpoint.PastAddressUtxo quali
 import Marconi.Sidechain.Experimental.CLI qualified as CLI
 import Spec.Marconi.Sidechain.Experimental.Utils qualified as Utils
 import Test.Gen.Marconi.Cardano.Core.Mockchain qualified as Test.Mockchain
-import Test.Gen.Marconi.Cardano.Core.Types qualified as Test.Types
 import Test.Gen.Marconi.Cardano.Indexers.Utxo qualified as Test.Utxo
 import Test.Helpers qualified
 import Test.Marconi.Cardano.ChainIndex.Api.HttpServer qualified as Test.HttpServer
 import Test.Marconi.Cardano.ChainIndex.Api.JsonRpc qualified as Test.JsonRpc
+import Test.Marconi.Cardano.ChainIndex.CLI qualified as Test.CLI
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Hedgehog (
   testPropertyNamed,
@@ -88,7 +88,7 @@ propQueryTargetAddressesWithMockchain events = Test.Helpers.workspace "." $ \tmp
     let
       args =
         Utils.initTestingCliArgs
-          { CLI.targetAddresses = Test.Types.addressAnysToTargetAddresses [addr]
+          { CLI.targetAddresses = Test.CLI.addressAnysToTargetAddresses [addr]
           , -- Use tmp directory instead of "" since LastEventIndexer writes latestStable.cbor
             CLI.dbDir = tmp
           , CLI.nodeConfigPath = configPath

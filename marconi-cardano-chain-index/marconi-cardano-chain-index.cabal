@@ -89,8 +89,8 @@ library
     Marconi.Cardano.ChainIndex.Git.RevFromGit
     Marconi.Cardano.ChainIndex.Indexers
     Marconi.Cardano.ChainIndex.Run
+    Marconi.Cardano.ChainIndex.SecurityParam
     Marconi.Cardano.ChainIndex.Snapshot.Run
-    Marconi.Cardano.ChainIndex.Utils
 
   other-modules:   Paths_marconi_cardano_chain_index
   autogen-modules: Paths_marconi_cardano_chain_index
@@ -111,7 +111,6 @@ library
     , cardano-api             ^>=8.20
     , cardano-crypto-class
     , cardano-ledger-shelley
-    , cardano-slotting        ^>=0.1.1.1
     , iohk-monitoring
     , ouroboros-consensus
 
@@ -189,7 +188,6 @@ test-suite marconi-cardano-chain-index-test
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-node-emulator
-    , cardano-slotting             ^>=0.1.1.1
     , hedgehog-extras
     , iohk-monitoring
     , ouroboros-consensus
@@ -302,7 +300,7 @@ library marconi-cardano-chain-index-test-lib
     , aeson
     , aeson-pretty
     , async
-    , base             >=4.9 && <5
+    , base                 >=4.9 && <5
     , bytestring
     , containers
     , contra-tracer
@@ -313,6 +311,7 @@ library marconi-cardano-chain-index-test-lib
     , hedgehog-extras
     , lens
     , mtl
+    , nonempty-containers
     , process
     , streaming
     , temporary

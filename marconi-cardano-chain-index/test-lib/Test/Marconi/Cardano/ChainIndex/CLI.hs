@@ -3,22 +3,36 @@
 -- | Utilities for testing CLI components, mainly via golden tests.
 module Test.Marconi.Cardano.ChainIndex.CLI where
 
+import Cardano.Api qualified as C
 import Control.Concurrent qualified as IO
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as A
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function ((&))
 import Data.List qualified as L
+import Data.Maybe (mapMaybe)
 import Data.Monoid (getLast)
+import Data.Set qualified as Set
+import Data.Set.NonEmpty qualified as NESet
 import Data.Text qualified as T
 import Hedgehog.Extras.Internal.Plan qualified as H
 import Hedgehog.Extras.Stock qualified as OS
+import Marconi.Cardano.ChainIndex.CLI (TargetAddresses)
 import System.Directory qualified as IO
 import System.Environment qualified as IO
 import System.FilePath qualified as IO
 import System.FilePath.Posix ((</>))
 import System.IO qualified as IO
 import System.Process qualified as IO
+
+{- | Utility for converting possibly randomly generated 'AddressAny'
+to the 'TargetAddresses' type used in the CLI.
+-}
+addressAnysToTargetAddresses :: [C.AddressAny] -> Maybe TargetAddresses
+addressAnysToTargetAddresses = NESet.nonEmptySet . Set.fromList . mapMaybe op
+  where
+    op (C.AddressShelley addr) = Just addr
+    op _ = Nothing
 
 -- Capture handle contents in a separate thread (e.g. stderr)
 captureHandleContents :: IO.Handle -> IO BSL.ByteString

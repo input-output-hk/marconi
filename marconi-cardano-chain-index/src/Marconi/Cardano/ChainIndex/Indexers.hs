@@ -27,11 +27,11 @@ import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig, eventExtractor, logger, workerName),
  )
+import Marconi.Cardano.Core.Logger (MarconiTrace)
 import Marconi.Cardano.Core.Transformer.WithSyncStats (WithSyncStats)
 import Marconi.Cardano.Core.Types (
   AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
-  MarconiTrace,
   SecurityParam,
   TipAndBlock (TipAndBlock),
   TxIndexInBlock,
@@ -54,7 +54,6 @@ import Marconi.Cardano.Indexers.MintTokenEventQuery (
   MintTokenEventIndexerQuery (MintTokenEventIndexerQuery),
  )
 import Marconi.Cardano.Indexers.SnapshotBlockEvent (
-  BlockRange,
   SnapshotBlockEvent (SnapshotBlockEvent),
   SnapshotMetadata,
   SnapshotWorkerConfig (SnapshotWorkerConfig, blockRange, currentBlockNo),
@@ -420,7 +419,7 @@ snapshotExtLedgerStateEventBuilder
   -> Core.CatchupConfig
   -> BM.Trace m Text
   -> FilePath
-  -> BlockRange
+  -> SnapshotBlockEvent.BlockRange
   -> FilePath
   -> n
       ( Core.WorkerIndexer
@@ -473,7 +472,10 @@ snapshotExtLedgerStateEventWorker standardWorkerConfig snapshotBlockEventWorkerC
   Core.createWorkerWithPreprocessing (workerName standardWorkerConfig) preprocessor indexer
 
 justBeforeBlockRangePreprocessor
-  :: (Monad m) => (a -> C.BlockNo) -> BlockRange -> Core.Preprocessor m C.ChainPoint a a
+  :: (Monad m)
+  => (a -> C.BlockNo)
+  -> SnapshotBlockEvent.BlockRange
+  -> Core.Preprocessor m C.ChainPoint a a
 justBeforeBlockRangePreprocessor toBlockNo br =
   Core.scanMaybeEvent filterJustBeforeBlockRange Nothing
   where
