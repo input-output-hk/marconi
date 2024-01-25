@@ -65,12 +65,11 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance, getEvent)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
-import Marconi.Cardano.Core.Logger ()
+import Marconi.Cardano.Core.Logger (MarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Orphans qualified ()
 import Marconi.Cardano.Core.Types (
   BlockEvent (blockInMode),
-  MarconiTrace,
   RetryConfig,
   SecurityParam,
   TipAndBlock (TipAndBlock),

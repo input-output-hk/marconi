@@ -151,7 +151,6 @@ test-suite marconi-cardano-indexers-test
     , cardano-ledger-core
     , cardano-ledger-shelley
     , cardano-node-emulator
-    , cardano-slotting             ^>=0.1.1.1
     , hedgehog-extras
     , iohk-monitoring
     , ouroboros-consensus

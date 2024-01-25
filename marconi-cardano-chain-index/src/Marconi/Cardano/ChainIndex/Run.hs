@@ -8,8 +8,8 @@ import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError, logInfo)
 import Cardano.BM.Tracing qualified as BM
 import Control.Concurrent.Async (race_)
-import Control.Exception (finally)
-import Control.Monad (guard, unless)
+import Control.Exception (finally, throwIO)
+import Control.Monad (guard, unless, (>=>))
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Reader (runReaderT)
 import Data.Aeson (toJSON)
@@ -27,11 +27,11 @@ import Marconi.Cardano.ChainIndex.Api.Types (
  )
 import Marconi.Cardano.ChainIndex.CLI qualified as Cli
 import Marconi.Cardano.ChainIndex.Indexers (buildIndexers)
-import Marconi.Cardano.ChainIndex.Utils qualified as Utils
+import Marconi.Cardano.ChainIndex.SecurityParam qualified as SecurityParam
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
 import Marconi.Cardano.Core.Runner qualified as Runner
-import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam), TargetAddresses)
+import Marconi.Cardano.Core.Types (SecurityParam (SecurityParam))
 import Marconi.Cardano.Indexers.MintTokenEvent qualified as MintTokenEvent
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
@@ -117,8 +117,8 @@ run appName = withGracefulTermination_ $ do
 
   securityParam <-
     withNodeConnectRetry marconiTrace retryConfig socketPath $
-      Utils.toException $
-        Utils.querySecurityParam @Void networkId socketPath
+      (runExceptT >=> either throwIO pure) $
+        SecurityParam.querySecurityParam @Void networkId socketPath
 
   let SecurityParam stopCatchupDistance = securityParam
       extLedgerStateAsEvent previousLedgerStateEvent ledgerStateEvent _blockEvent = do
@@ -184,7 +184,7 @@ run appName = withGracefulTermination_ $ do
     runHttpServer'
     `finally` BM.shutdown sb
 
-shelleyAddressesToAddressAny :: Maybe TargetAddresses -> [C.AddressAny]
+shelleyAddressesToAddressAny :: Maybe Cli.TargetAddresses -> [C.AddressAny]
 shelleyAddressesToAddressAny Nothing = []
 shelleyAddressesToAddressAny (Just targetAddresses) =
   fmap C.AddressShelley $ NEList.toList $ NESet.toList targetAddresses

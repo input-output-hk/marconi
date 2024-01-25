@@ -8,7 +8,8 @@ import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as BM
 import Cardano.BM.Trace (logError)
 import Cardano.BM.Tracing qualified as BM
-import Control.Monad (unless)
+import Control.Exception (throwIO)
+import Control.Monad (unless, (>=>))
 import Control.Monad.Except (runExceptT)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -16,7 +17,7 @@ import Data.Void (Void)
 import Marconi.Cardano.ChainIndex.CLI (parseSnapshotOptions)
 import Marconi.Cardano.ChainIndex.CLI qualified as Cli
 import Marconi.Cardano.ChainIndex.Indexers (buildIndexersForSnapshot)
-import Marconi.Cardano.ChainIndex.Utils qualified as Utils
+import Marconi.Cardano.ChainIndex.SecurityParam qualified as SecurityParam
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
@@ -59,8 +60,8 @@ run = do
 
   securityParam <-
     withNodeConnectRetry marconiTrace retryConfig socketPath $
-      Utils.toException $
-        Utils.querySecurityParam @Void networkId socketPath
+      (runExceptT >=> either throwIO pure) $
+        SecurityParam.querySecurityParam @Void networkId socketPath
 
   let extLedgerStateConfig =
         ExtLedgerStateWorkerConfig

@@ -24,10 +24,10 @@ import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
  )
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
+import Marconi.Cardano.Core.Logger (MarconiTrace)
 import Marconi.Cardano.Core.Types (
   AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
-  MarconiTrace,
   SecurityParam,
   TxIndexInBlock,
  )

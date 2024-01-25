@@ -21,8 +21,9 @@ module Main where
 
 import Control.Concurrent (MVar)
 import Control.Concurrent.Async (race_)
+import Control.Exception (throwIO)
 import Control.Lens ((^.))
-import Control.Monad.Except (ExceptT, MonadError)
+import Control.Monad.Except (ExceptT, MonadError, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Aeson (FromJSON, ToJSON, (.=))
 import Data.Aeson qualified as Aeson
@@ -40,14 +41,13 @@ import Cardano.Api qualified as C
 import Cardano.BM.Setup qualified as Trace
 import Cardano.BM.Tracing qualified as Trace
 import Data.Void (Void)
-import Marconi.Cardano.ChainIndex.Utils qualified as Utils
-import Marconi.Cardano.Core.Logger (mkMarconiTrace)
+import Marconi.Cardano.ChainIndex.SecurityParam qualified as SecurityParam
+import Marconi.Cardano.Core.Logger (MarconiTrace, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry qualified as Core
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Runner qualified as Core
 import Marconi.Cardano.Core.Types (
   BlockEvent (BlockEvent),
-  MarconiTrace,
   RetryConfig (RetryConfig),
   SecurityParam,
  )
@@ -104,7 +104,8 @@ withIndexerBuildEnv worker action = do
     -- We query the local node for the security parameter with a retry mechanism
     -- in case the node has not been started.
     k <- Core.withNodeConnectRetry marconiTrace (RetryConfig 30 Nothing) socketFilePath $ do
-      Utils.toException $ Utils.querySecurityParam @Void networkId socketFilePath
+      runExceptT (SecurityParam.querySecurityParam @Void networkId socketFilePath)
+        >>= either throwIO pure
 
     action (Env marconiTrace socketFilePath networkId k worker)
 
@@ -307,7 +308,7 @@ mkBlockInfoSqliteIndexerWorker
           -- Storage type of the indexer
       )
 mkBlockInfoSqliteIndexerWorker dbPath = do
-  ix <- Utils.toException $ mkBlockInfoSqliteIndexer dbPath
+  ix <- either throwIO pure =<< runExceptT (mkBlockInfoSqliteIndexer dbPath)
   Core.createWorker "BlockInfo" getEventsFromBlock ix
 
 -- | Creation of 'Core.SQLiteIndexer' for the 'BlockInfoEvent' indexer.
