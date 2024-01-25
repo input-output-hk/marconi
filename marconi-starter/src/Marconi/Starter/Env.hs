@@ -3,7 +3,8 @@
 module Marconi.Starter.Env where
 
 import Control.Lens (Lens', makeLenses)
-import Marconi.Cardano.Core.Types (MarconiTrace, SecurityParam)
+import Marconi.Cardano.Core.Logger (MarconiTrace)
+import Marconi.Cardano.Core.Types (SecurityParam)
 import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Indexers.AddressCount (AddressCountStandardWorker)
 

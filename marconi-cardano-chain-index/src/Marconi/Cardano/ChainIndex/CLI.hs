@@ -13,6 +13,7 @@ import Data.ByteString.Char8 qualified as C8
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Proxy (Proxy (Proxy))
+import Data.Set.NonEmpty (NESet)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Text
@@ -30,17 +31,9 @@ import GHC.Generics (Generic)
 import Marconi.Cardano.ChainIndex.Git.Rev (gitRev)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (
-  BlockRange,
   RetryConfig (RetryConfig),
-  TargetAddresses,
-  UtxoIndexerConfig (UtxoIndexerConfig),
-  addressDatumDbName,
-  epochStateDbName,
-  mintBurnDbName,
-  mkBlockRange,
-  scriptTxDbName,
-  utxoDbName,
  )
+import Marconi.Cardano.Indexers.SnapshotBlockEvent (BlockRange, mkBlockRange)
 import Options.Applicative (ReadM, eitherReader, execParserPure)
 import Paths_marconi_cardano_chain_index (version)
 
@@ -370,6 +363,9 @@ commonBatchSizeParser =
       <> Opt.help "Number of blocks sent as a batch to the indexers"
       <> Opt.showDefault
 
+-- | Type represents non empty set of Bech32 Shelley compatible addresses
+type TargetAddresses = NESet (C.Address C.ShelleyAddr)
+
 {- | Parse the addresses to index. Addresses should be given in Bech32 format
  Several addresses can be given in a single string, if they are separated by a space
 -}
@@ -473,9 +469,17 @@ commonRetryConfigParser =
               <> Opt.value 1_800
           )
 
+-- | Type defining the shape of UtxoIndexerConfig from CLI arguments.
+data UtxoIndexerCLIConfig = UtxoIndexerCLIConfig
+  { ucTargetAddresses :: Maybe TargetAddresses
+  -- ^ List of address utxo indexer to follow
+  , ucEnableUtxoTxOutRef :: Bool
+  -- ^ enable utxo indexer to store txOut refScript
+  }
+
 -- | Extract UtxoIndexerConfig from CLI Options
-mkUtxoIndexerConfig :: Options -> UtxoIndexerConfig
-mkUtxoIndexerConfig o = UtxoIndexerConfig (optionsTargetAddresses o) (optionsEnableUtxoTxOutRef o)
+mkUtxoIndexerConfig :: Options -> UtxoIndexerCLIConfig
+mkUtxoIndexerConfig o = UtxoIndexerCLIConfig (optionsTargetAddresses o) (optionsEnableUtxoTxOutRef o)
 
 -- | CL options for the marconi-chain-snapshot executable.
 data SnapshotOptions = SnapshotOptions
@@ -536,3 +540,20 @@ readBlockRange rawBlockRange =
         "Block range is not formatted correctly. "
           <> "Please provide a pair of positive numbers, "
           <> "without any spaces."
+
+-- * Database file names
+
+utxoDbName :: FilePath
+utxoDbName = "utxo.db"
+
+addressDatumDbName :: FilePath
+addressDatumDbName = "addressdatum.db"
+
+scriptTxDbName :: FilePath
+scriptTxDbName = "scripttx.db"
+
+epochStateDbName :: FilePath
+epochStateDbName = "epochstate.db"
+
+mintBurnDbName :: FilePath
+mintBurnDbName = "mintburn.db"

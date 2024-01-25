@@ -89,7 +89,6 @@ import Marconi.Cardano.Core.Types (
   SecurityParam,
   TxIndexInBlock,
   TxOut,
-  pattern CurrentEra,
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
@@ -382,7 +381,7 @@ getUtxosFromTxBody txIndex' txBody@(C.TxBody txBodyContent@C.TxBodyContent{}) =
     getUtxos :: (C.IsCardanoEra era) => [C.TxOut C.CtxTx era] -> Either C.EraCastError [Utxo]
     getUtxos =
       fmap (Lens.imap txoutToUtxo)
-        . traverse (C.eraCast CurrentEra)
+        . traverse (C.eraCast C.ConwayEra)
 
     txid = C.getTxId txBody
     txoutToUtxo :: Int -> TxOut -> Utxo

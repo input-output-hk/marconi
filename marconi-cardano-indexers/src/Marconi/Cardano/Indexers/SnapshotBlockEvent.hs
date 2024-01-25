@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -10,6 +12,12 @@ module Marconi.Cardano.Indexers.SnapshotBlockEvent (
   SnapshotWorkerConfig (..),
   SnapshotMetadata (..),
   getConfigCodec,
+
+  -- * Block ranges
+  BlockRange,
+  mkBlockRange,
+  blockRangeFst,
+  blockRangeSnd,
 
   -- * For testing
   CodecConfig,
@@ -28,9 +36,11 @@ import Codec.CBOR.Encoding qualified as CBOR
 import Codec.CBOR.Read qualified as CBOR
 import Codec.CBOR.Write qualified as CBOR
 import Control.Arrow ((<<<))
+import Control.Lens qualified as Lens
 import Control.Monad.Cont (MonadTrans (lift))
 import Control.Monad.Except (MonadError (throwError), runExceptT)
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Builder (Builder)
@@ -47,10 +57,10 @@ import Data.Time (nominalDiffTimeToSeconds)
 import Data.Time.Clock (secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Word (Word64)
+import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorkerConfig (eventExtractor, logger, workerName),
  )
-import Marconi.Cardano.Core.Types (BlockRange, isInBlockRange)
 import Marconi.Core qualified as Core
 import Ouroboros.Consensus.Block qualified as O
 import Ouroboros.Consensus.Byron.Ledger.Block qualified as O
@@ -61,6 +71,26 @@ import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Ouroboros.Consensus.Node.NetworkProtocolVersion qualified as O
 import Ouroboros.Consensus.Node.Serialisation qualified as O
 import Text.Read qualified as Text
+
+-- | A range of block number
+data BlockRange = BlockRange
+  { _blockRangeFst :: !Word64
+  , _blockRangeSnd :: !Word64
+  }
+  deriving stock (Show, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+Lens.makeLenses ''BlockRange
+
+-- | Smart constructor for 'BlockRange' that ensures that the lower bound is lower than the upper bound.
+mkBlockRange :: Word64 -> Word64 -> Either String BlockRange
+mkBlockRange x y
+  | x <= 0 || y <= 0 = Left "Expected positive arguments in block range."
+  | x <= y = Right $ BlockRange x y
+  | otherwise =
+      Left $
+        "Expected left hand side of the block range "
+          <> "to be smaller than or equal to the right hand side."
 
 {- | Type which contains the data needed to configure the snapshot
  indexer workers for 'BlockEvent's and 'ExtLedgerState' events.
@@ -274,6 +304,9 @@ inBlockRangePreprocessor
 inBlockRangePreprocessor toBlockNo br =
   Core.scanMaybeEvent filterWithinBlockRange Nothing
   where
+    isInBlockRange :: C.BlockNo -> BlockRange -> Bool
+    isInBlockRange (C.BlockNo bNo) (BlockRange left right) =
+      left <= bNo && bNo <= right
     filterWithinBlockRange input =
       if isInBlockRange (toBlockNo input) br
         then pure . Just $ input

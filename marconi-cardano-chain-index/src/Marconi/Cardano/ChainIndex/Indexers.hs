@@ -27,16 +27,14 @@ import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
   StandardWorkerConfig (StandardWorkerConfig, eventExtractor, logger, workerName),
  )
+import Marconi.Cardano.Core.Logger (MarconiTrace)
 import Marconi.Cardano.Core.Transformer.WithSyncStats (WithSyncStats)
 import Marconi.Cardano.Core.Types (
   AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
-  BlockRange,
-  MarconiTrace,
   SecurityParam,
   TipAndBlock (TipAndBlock),
   TxIndexInBlock,
-  blockRangeFst,
  )
 import Marconi.Cardano.Indexers.BlockInfo qualified as BlockInfo
 import Marconi.Cardano.Indexers.ChainTip qualified as ChainTip
@@ -309,7 +307,7 @@ snapshotBlockEventBuilder
   -> Core.CatchupConfig
   -> BM.Trace m Text
   -> FilePath
-  -> BlockRange
+  -> SnapshotBlockEvent.BlockRange
   -> FilePath
   -> n
       ( Core.WorkerIndexer
@@ -353,7 +351,7 @@ buildIndexersForSnapshot
   -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
-  -> [BlockRange]
+  -> [SnapshotBlockEvent.BlockRange]
   -> FilePath
   -> ExceptT
       Core.IndexerError
@@ -421,7 +419,7 @@ snapshotExtLedgerStateEventBuilder
   -> Core.CatchupConfig
   -> BM.Trace m Text
   -> FilePath
-  -> BlockRange
+  -> SnapshotBlockEvent.BlockRange
   -> FilePath
   -> n
       ( Core.WorkerIndexer
@@ -474,7 +472,10 @@ snapshotExtLedgerStateEventWorker standardWorkerConfig snapshotBlockEventWorkerC
   Core.createWorkerWithPreprocessing (workerName standardWorkerConfig) preprocessor indexer
 
 justBeforeBlockRangePreprocessor
-  :: (Monad m) => (a -> C.BlockNo) -> BlockRange -> Core.Preprocessor m C.ChainPoint a a
+  :: (Monad m)
+  => (a -> C.BlockNo)
+  -> SnapshotBlockEvent.BlockRange
+  -> Core.Preprocessor m C.ChainPoint a a
 justBeforeBlockRangePreprocessor toBlockNo br =
   Core.scanMaybeEvent filterJustBeforeBlockRange Nothing
   where
@@ -486,5 +487,5 @@ justBeforeBlockRangePreprocessor toBlockNo br =
         offset
           | leftRange == 0 = 0
           | otherwise = 1
-        leftRange = Lens.view blockRangeFst br
+        leftRange = Lens.view SnapshotBlockEvent.blockRangeFst br
         inputWord = C.unBlockNo . toBlockNo $ input

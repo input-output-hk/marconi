@@ -7,6 +7,7 @@ module Marconi.Cardano.Core.Logger (
   defaultStdOutLogger,
   mkMarconiTrace,
   marconiFormatting,
+  MarconiTrace,
 ) where
 
 import Cardano.BM.Backend.Switchboard qualified as BM
@@ -17,9 +18,12 @@ import Cardano.BM.Tracing (contramap)
 import Cardano.BM.Tracing qualified as BM
 import Data.Text (Text)
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.Cardano.Core.Types (MarconiTrace)
+import Prettyprinter (Doc)
 import Prettyprinter qualified as Pretty
 import Prettyprinter.Render.Text qualified as Pretty
+
+-- | Alias for a 'Doc' tracer, it is the 'Trace' used throughout the Marconi application
+type MarconiTrace m = Trace m (Doc ())
 
 -- | StdOut logger, only log stuff above the Info level
 defaultStdOutLogger :: Text -> BM.Severity -> IO (Trace IO Text, BM.Switchboard Text)
