@@ -134,7 +134,7 @@ mkSpentIndexer path = do
     path
     createSpentTables
     [spentInsert]
-    [Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "spent" "slotNo" C.chainPointToSlotNo)]
 
 catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
 catchupConfigEventHook stdoutTrace dbPath Core.Synced = do

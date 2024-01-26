@@ -341,13 +341,15 @@ mkBlockInfoSqliteIndexer dbPath = do
     ]
     -- Requests launched when a rollback occurs
     [ Core.SQLRollbackPlan
-        -- Name of the SQLite table
-        "block_info_table"
-        -- Field name of the SQLite table which we will use for handling
-        -- rollbacks (which deletes any database after that point)
-        "slotNo"
-        -- Translate the point of the 'Core.Timed point event' to a 'SlotNo'
-        C.chainPointToSlotNo
+        ( Core.defaultRollbackPlan
+            -- Name of the SQLite table
+            "block_info_table"
+            -- Field name of the SQLite table which we will use for handling
+            -- rollbacks (which deletes any database after that point)
+            "slotNo"
+            -- Translate the point of the 'Core.Timed point event' to a 'SlotNo'
+            C.chainPointToSlotNo
+        )
     ]
   where
     dbCreation =

@@ -133,7 +133,7 @@ mkBlockInfoIndexer path = do
     id
     createBlockInfoTable
     blockInfoInsertQuery
-    (Core.SQLRollbackPlan "blockInfo" "slotNo" C.chainPointToSlotNo)
+    (Core.SQLRollbackPlan (Core.defaultRollbackPlan "blockInfo" "slotNo" C.chainPointToSlotNo))
 
 catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
 catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do

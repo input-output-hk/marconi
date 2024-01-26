@@ -112,7 +112,7 @@ mkEpochNonceIndexer path = do
     path
     [createNonce]
     [insertEvent]
-    [Core.SQLRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "epoch_nonce" "slotNo" C.chainPointToSlotNo)]
 
 newtype EpochNonceWorkerConfig input = EpochNonceWorkerConfig
   { epochNonceWorkerConfigExtractor :: input -> C.EpochNo

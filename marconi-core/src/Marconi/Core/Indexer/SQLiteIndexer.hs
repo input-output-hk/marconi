@@ -33,7 +33,8 @@ module Marconi.Core.Indexer.SQLiteIndexer (
   handleSQLErrors,
   dbLastSync,
   SQLInsertPlan (SQLInsertPlan, planInsert, planExtractor),
-  SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
+  SQLRollbackPlan (SQLRollbackPlan, planRollback),
+  defaultRollbackPlan,
 
   -- * Reexport from SQLite
   SQL.ToRow (..),
@@ -102,17 +103,8 @@ newtype InsertPointQuery = InsertPointQuery {getInsertPointQuery :: SQL.Query}
 {- | A 'SQLRollbackPlan' provides a piece of information on how to perform a rollback on the data
  inserted in the database.
 -}
-data SQLRollbackPlan point = forall a.
-  (SQL.ToField a) =>
-  SQLRollbackPlan
-  { tableName :: String
-  -- ^ the table to rollback
-  , pointName :: String
-  -- ^ The name of the point field in the table
-  , pointExtractor :: point -> Maybe a
-  -- ^ How we transform the data to the point field. Returning 'Nothing' essentially means that we
-  -- delete all information from the database. Returning 'Just a' means that we will delete all
-  -- rows with a point higher than 'point'.
+newtype SQLRollbackPlan point = SQLRollbackPlan
+  { planRollback :: point -> SQL.Connection -> IO ()
   }
 
 -- | A newtype to set the last stable point of an indexer.
@@ -298,6 +290,29 @@ indexEvents evts@(e : _) indexer = do
   runIndexQueries (indexer ^. connection) evts (indexer ^. insertPlan)
   setDbLastSync (e ^. point) indexer
 
+defaultRollbackPlan
+  :: (SQL.ToField a)
+  => String
+  -> String
+  -> (point -> Maybe a)
+  -> point
+  -> SQL.Connection
+  -> IO ()
+defaultRollbackPlan tableName pointName extractor p c =
+  let deleteAllQuery tName = "DELETE FROM " <> tName
+      deleteAll = SQL.execute_ c . deleteAllQuery . SQL.Query . Text.pack
+      deleteUntilQuery tName pName =
+        deleteAllQuery tName <> " WHERE " <> pName <> " > :point"
+      deleteUntil :: (SQL.ToField a) => String -> String -> a -> IO ()
+      deleteUntil tName pName pt =
+        SQL.executeNamed
+          c
+          (deleteUntilQuery (SQL.Query $ Text.pack tName) (SQL.Query $ Text.pack pName))
+          [":point" SQL.:= pt]
+   in case extractor p of
+        Nothing -> deleteAll tableName
+        Just pt -> deleteUntil tableName pointName pt
+
 runLastStablePointQuery
   :: (MonadError IndexerError m, MonadIO m, SQL.FromRow r)
   => SQL.Connection
@@ -317,20 +332,7 @@ instance
 
   rollback p indexer = do
     let c = indexer ^. connection
-        deleteAllQuery tName = "DELETE FROM " <> tName
-        deleteAll = SQL.execute_ c . deleteAllQuery . SQL.Query . Text.pack
-        deleteUntilQuery tName pName =
-          deleteAllQuery tName <> " WHERE " <> pName <> " > :point"
-        deleteUntil :: (SQL.ToField a) => String -> String -> a -> IO ()
-        deleteUntil tName pName pt =
-          SQL.executeNamed
-            c
-            (deleteUntilQuery (SQL.Query $ Text.pack tName) (SQL.Query $ Text.pack pName))
-            [":point" SQL.:= pt]
-        rollbackTable (SQLRollbackPlan tableName pointName extractor) =
-          case extractor p of
-            Nothing -> deleteAll tableName
-            Just pt -> deleteUntil tableName pointName pt
+        rollbackTable (SQLRollbackPlan planRollback) = planRollback p c
     liftIO $
       SQL.withTransaction c $
         traverse_ rollbackTable (indexer ^. rollbackPlan)

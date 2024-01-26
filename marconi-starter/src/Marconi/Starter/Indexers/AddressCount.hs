@@ -199,7 +199,7 @@ mkAddressCountSqliteIndexer dbPath = do
       [ SQLInsertPlan eventToRows addressCountInsertQuery
       ]
     ] -- requests launched when an event is stored
-    [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
+    [SQLRollbackPlan (Core.defaultRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo)]
   where
     dbCreation =
       [sql|CREATE TABLE IF NOT EXISTS address_count

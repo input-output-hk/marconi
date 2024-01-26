@@ -679,7 +679,7 @@ sqliteModelIndexerWithFile filepath = do
           "INSERT INTO index_model VALUES (?, ?, ?)"
       ]
     ]
-    [Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "index_model" "pointSlotNo" extractor)]
     (Core.SetLastStablePointQuery "INSERT OR REPLACE INTO sync (pointSlotNo, pointHash) VALUES (?,?)")
     (Core.GetLastStablePointQuery "SELECT pointSlotNo, pointHash FROM sync")
 

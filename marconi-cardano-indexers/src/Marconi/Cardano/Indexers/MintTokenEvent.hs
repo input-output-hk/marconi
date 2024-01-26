@@ -445,7 +445,9 @@ mkMintTokenIndexer dbPath = do
     dbPath
     createMintPolicyEventTables
     [mintInsertPlans]
-    [Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo]
+    [ Core.SQLRollbackPlan
+        (Core.defaultRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo)
+    ]
 
 catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
 catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do

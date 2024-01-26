@@ -119,7 +119,7 @@ mkEpochSDDIndexer path = do
     path
     [createSDD]
     [insertEvent]
-    [Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo)]
 
 newtype EpochSDDWorkerConfig input = EpochSDDWorkerConfig
   { epochSDDWorkerConfigExtractor :: input -> C.EpochNo

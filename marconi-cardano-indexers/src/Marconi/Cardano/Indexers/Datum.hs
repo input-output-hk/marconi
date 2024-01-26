@@ -125,7 +125,7 @@ mkDatumIndexer path = do
     path
     createDatumTables
     [[Core.SQLInsertPlan (traverse NonEmpty.toList) datumInsertQuery]]
-    [Core.SQLRollbackPlan "datum" "slotNo" C.chainPointToSlotNo]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "datum" "slotNo" C.chainPointToSlotNo)]
 
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker

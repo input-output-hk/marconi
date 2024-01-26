@@ -166,4 +166,4 @@ mkUtxoWithSpentIndexer path = do
     createUtxoTables
     [insertEvent]
     -- TODO: fix
-    [Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo)]

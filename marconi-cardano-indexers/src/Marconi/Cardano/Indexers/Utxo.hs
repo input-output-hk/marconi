@@ -167,7 +167,7 @@ mkUtxoIndexer path = do
     path
     createUtxoTables
     [insertEvent]
-    [Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo)]
 
 catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
 catchupConfigEventHook stdoutTrace dbPath Core.Synced = do

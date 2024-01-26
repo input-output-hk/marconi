@@ -283,7 +283,8 @@ module Marconi.Core (
   parseDBLocation,
   connection,
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
-  SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
+  SQLRollbackPlan (SQLRollbackPlan, planRollback),
+  defaultRollbackPlan,
 
   -- **** Reexport from SQLite
   ToRow (..),
@@ -620,6 +621,7 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   ToRow (..),
   connection,
   dbLastSync,
+  defaultRollbackPlan,
   handleSQLErrors,
   inMemoryDB,
   mkSingleInsertSqliteIndexer,
