@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -76,7 +75,6 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
-import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -106,7 +104,7 @@ data Utxo = Utxo
   , _inlineScript :: !(Maybe C.ScriptInAnyLang)
   , _inlineScriptHash :: !(Maybe C.ScriptHash)
   }
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
 
 -- | An alias for a non-empty list of @Utxo@, it's the event potentially produced on each block
 type UtxoEvent = NonEmpty Utxo
