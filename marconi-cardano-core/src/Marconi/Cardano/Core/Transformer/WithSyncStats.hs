@@ -47,6 +47,8 @@ import Marconi.Core.Transformer.Class (IndexerTrans, unwrap)
 import Marconi.Core.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
   indexVia,
+  queryLatestVia,
+  queryVia,
   rollbackVia,
   setLastStablePointVia,
   wrappedIndexer,
@@ -100,10 +102,12 @@ deriving via
   instance
     (IsSync m event indexer) => IsSync m event (WithSyncStats indexer)
 
-deriving via
-  (IndexTransformer WithSyncStatsConfig indexer)
-  instance
-    (Queryable m event query indexer) => Queryable m event query (WithSyncStats indexer)
+instance
+  (Queryable m event query indexer, IsSync m event indexer)
+  => Queryable m event query (WithSyncStats indexer)
+  where
+  query = queryVia unwrap
+  queryLatest = queryLatestVia unwrap
 
 deriving via
   (IndexTransformer WithSyncStatsConfig indexer)

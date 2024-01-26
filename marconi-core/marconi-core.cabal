@@ -103,6 +103,7 @@ library
     , bytestring
     , comonad
     , containers
+    , direct-sqlite
     , directory
     , filepath
     , foldl

@@ -25,7 +25,6 @@ module Marconi.Core.Transformer.IndexTransformer (
 ) where
 
 import Control.Lens (Getter, Lens', makeLenses, view)
-import Control.Monad.Except (MonadError)
 import Marconi.Core.Class (
   Closeable (close),
   IsIndex (index, indexAllDescending, rollback, setLastStablePoint),
@@ -38,7 +37,7 @@ import Marconi.Core.Class (
 import Marconi.Core.Indexer.SQLiteAggregateQuery (HasDatabasePath (getDatabasePath))
 import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
 import Marconi.Core.Transformer.Class (IndexerTrans (unwrap))
-import Marconi.Core.Type (Point, QueryError, Result, Timed)
+import Marconi.Core.Type (Point, Result, Timed)
 
 {- | This datatype is meant to be use inside a new type by any indexer transformer.
 It wraps an indexer and attach to it a "config" (which may be stateful) used in the logic added
@@ -181,7 +180,7 @@ queryVia l p q = query p q . view l
 -}
 queryLatestVia
   :: ( Queryable m event query indexer
-     , MonadError (QueryError query) m
+     , Monad m
      , Ord (Point event)
      , IsSync m event indexer
      )

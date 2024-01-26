@@ -82,7 +82,7 @@ mkSQLiteAggregateQuery
   -- ^ A map of indexers. The keys are used as an alias int the attach statement
   -> IO (SQLiteAggregateQuery m point event)
 mkSQLiteAggregateQuery sources = do
-  con <- liftIO $ SQL.open ":memory:"
+  con <- SQLite.readOnlyConnection SQLite.inMemoryDB
   let databaseFromSource :: SQLiteSourceProvider m point -> IO FilePath
       databaseFromSource (SQLiteSourceProvider ix) = Con.withMVar ix (pure . expectPersistentDB . getDatabasePath)
       attachDb name src =

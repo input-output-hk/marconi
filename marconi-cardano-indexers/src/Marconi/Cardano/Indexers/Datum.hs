@@ -6,7 +6,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.Cardano.Indexers.Datum (
   -- * Event
@@ -180,6 +179,50 @@ instance
           (const datumQuery)
           (const NonEmpty.nonEmpty)
 
+queryMatchingData
+  :: ( MonadIO m
+     , MonadError (Core.QueryError (Core.EventsMatchingQuery DatumEvent)) m
+     )
+  => Maybe C.ChainPoint
+  -> Core.EventsMatchingQuery DatumEvent
+  -> Core.SQLiteIndexer DatumEvent
+  -> m (Core.Result (Core.EventsMatchingQuery DatumEvent))
+queryMatchingData =
+  let queryPrefix :: SQL.Query
+      queryPrefix =
+        [sql|
+        SELECT datumHash, datum,
+               slotNo, blockHeaderHash
+        FROM datum
+        |]
+      queryLatest :: SQL.Query
+      queryLatest = queryPrefix
+      querySpecific :: SQL.Query
+      querySpecific = queryPrefix <> [sql| WHERE slotNo <= :slotNo |]
+      groupEvents
+        :: NonEmpty (Core.Timed point a)
+        -> Core.Timed point (NonEmpty a)
+      groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
+      parseResult
+        :: (NonEmpty a -> Maybe (NonEmpty a))
+        -> [Core.Timed C.ChainPoint a]
+        -> [Core.Timed C.ChainPoint (NonEmpty a)]
+      parseResult p =
+        mapMaybe (traverse p . groupEvents)
+          . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
+   in \case
+        Nothing ->
+          Core.queryLatestSQLiteIndexerWith
+            (pure [])
+            (const queryLatest)
+            (\(Core.EventsMatchingQuery p) -> parseResult p)
+        Just point ->
+          Core.querySyncedOnlySQLiteIndexerWith
+            (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
+            (const querySpecific)
+            (\(Core.EventsMatchingQuery p) -> parseResult p)
+            point
+
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery DatumEvent)) m)
   => Core.Queryable
@@ -188,30 +231,8 @@ instance
       (Core.EventsMatchingQuery DatumEvent)
       Core.SQLiteIndexer
   where
-  query =
-    let datumQuery :: SQL.Query
-        datumQuery =
-          [sql|
-          SELECT datumHash, datum,
-                 slotNo, blockHeaderHash
-          FROM datum
-          WHERE slotNo <= :slotNo
-          |]
-        groupEvents
-          :: NonEmpty (Core.Timed point a)
-          -> Core.Timed point (NonEmpty a)
-        groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
-        parseResult
-          :: (NonEmpty a -> Maybe (NonEmpty a))
-          -> [Core.Timed C.ChainPoint a]
-          -> [Core.Timed C.ChainPoint (NonEmpty a)]
-        parseResult p =
-          mapMaybe (traverse p . groupEvents)
-            . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
-     in Core.querySyncedOnlySQLiteIndexerWith
-          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const datumQuery)
-          (\(Core.EventsMatchingQuery p) -> parseResult p)
+  query = queryMatchingData . Just
+  queryLatest = queryMatchingData Nothing
 
 -- | Entry type for datum hash resolution query
 newtype ResolveDatumQuery = ResolveDatumQuery (C.Hash C.ScriptData)
@@ -222,21 +243,44 @@ newtype ResolvedData = ResolvedData {getData :: C.ScriptData}
 
 type instance Core.Result ResolveDatumQuery = Maybe C.ScriptData
 
+resolveData
+  :: ( MonadIO m
+     , MonadError (Core.QueryError ResolveDatumQuery) m
+     )
+  => Maybe C.ChainPoint
+  -> ResolveDatumQuery
+  -> Core.SQLiteIndexer DatumEvent
+  -> m (Core.Result ResolveDatumQuery)
+resolveData =
+  let queryPrefix :: SQL.Query
+      queryPrefix =
+        [sql|
+          SELECT datum FROM datum
+          WHERE datumHash == :datumHash
+        |]
+      queryLatest :: SQL.Query
+      queryLatest = queryPrefix
+      querySpecific :: SQL.Query
+      querySpecific = queryPrefix <> [sql| AND slotNo <= :slotNo |]
+   in \case
+        Nothing ->
+          Core.queryLatestSQLiteIndexerWith
+            (\(ResolveDatumQuery dh) -> [":datumHash" := dh])
+            (const queryLatest)
+            (const $ fmap getData . listToMaybe)
+        Just point ->
+          Core.querySyncedOnlySQLiteIndexerWith
+            (\cp (ResolveDatumQuery dh) -> [":slotNo" := C.chainPointToSlotNo cp, ":datumHash" := dh])
+            (const querySpecific)
+            (const $ fmap getData . listToMaybe)
+            point
+
 instance
   (MonadIO m, MonadError (Core.QueryError ResolveDatumQuery) m)
   => Core.Queryable m DatumEvent ResolveDatumQuery Core.SQLiteIndexer
   where
-  query =
-    let utxoQuery :: SQL.Query
-        utxoQuery =
-          [sql| SELECT datum FROM datum
-          WHERE datumHash == :datumHash
-          AND slotNo <= :slotNo
-          |]
-     in Core.querySyncedOnlySQLiteIndexerWith
-          (\cp (ResolveDatumQuery dh) -> [":slotNo" := C.chainPointToSlotNo cp, ":datumHash" := dh])
-          (const utxoQuery)
-          (const $ fmap getData . listToMaybe)
+  query = resolveData . Just
+  queryLatest = resolveData Nothing
 
 getDataFromTxBody :: C.TxBody era -> [DatumInfo]
 getDataFromTxBody txBody@(C.TxBody txBodyContent) =

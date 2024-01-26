@@ -29,6 +29,7 @@ module Marconi.Core.Indexer.SQLiteIndexer (
   mkSqliteIndexer,
   mkSingleInsertSqliteIndexer,
   querySQLiteIndexerWith,
+  queryLatestSQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
   dbLastSync,
@@ -37,6 +38,10 @@ module Marconi.Core.Indexer.SQLiteIndexer (
 
   -- * Reexport from SQLite
   SQL.ToRow (..),
+
+  -- * Concurrent and read only connection for sqlite-simple connection
+  readOnlyConnection,
+  readWriteConnection,
 ) where
 
 import Control.Concurrent.Async qualified as Async
@@ -48,9 +53,11 @@ import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
+import Data.Text (Text)
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.ToField qualified as SQL
+import Database.SQLite3 qualified as SQL3
 import Marconi.Core.Class (
   Closeable (close),
   HasGenesis (genesis),
@@ -70,9 +77,9 @@ data SQLiteDBLocation
   = Memory
   | Storage !FilePath
 
-unparseDBLocation :: SQLiteDBLocation -> String
+unparseDBLocation :: SQLiteDBLocation -> Text
 unparseDBLocation Memory = ":memory:"
-unparseDBLocation (Storage path) = path
+unparseDBLocation (Storage path) = Text.pack path
 
 parseDBLocation :: String -> SQLiteDBLocation
 parseDBLocation "" = Memory
@@ -146,6 +153,26 @@ data SQLiteIndexer event = SQLiteIndexer
 
 makeLenses ''SQLiteIndexer
 
+-- | Create an SQL connection with ReadWrite permission and concurrent connections
+readWriteConnection :: (MonadIO io) => SQLiteDBLocation -> io SQL.Connection
+readWriteConnection loc =
+  liftIO $
+    SQL.Connection
+      <$> SQL3.open2
+        (unparseDBLocation loc)
+        [SQL3.SQLOpenReadWrite, SQL3.SQLOpenCreate, SQL3.SQLOpenNoMutex]
+        SQL3.SQLVFSDefault
+
+-- | Create an SQL connection with ReadOnly permission and concurrent connections
+readOnlyConnection :: (MonadIO io) => SQLiteDBLocation -> io SQL.Connection
+readOnlyConnection loc =
+  liftIO $
+    SQL.Connection
+      <$> SQL3.open2
+        (unparseDBLocation loc)
+        [SQL3.SQLOpenReadOnly, SQL3.SQLOpenNoMutex]
+        SQL3.SQLVFSDefault
+
 {- | Start a new indexer or resume an existing SQLite indexer
 
  The main difference with 'SQLiteIndexer' is that we set 'dbLastSync' thanks to the provided query.
@@ -184,7 +211,7 @@ mkSqliteIndexer
           res <- runLastStablePointQuery h lastStablePointQuery
           pure $ fromMaybe genesis res
      in do
-          _connection <- liftIO $ SQL.open (unparseDBLocation _databasePath) -- TODO clean exception on invalid file
+          _connection <- readWriteConnection _databasePath
           traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
           -- allow for concurrent insert/query.
           -- see SQLite WAL, https://www.sqlite.org/wal.html
@@ -382,6 +409,32 @@ querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
     res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     when (p > indexer ^. dbLastSync) $
       throwError (AheadOfLastSync $ Just $ fromRows q res)
+    pure $ fromRows q res
+
+{- | A helper for the definition of 'queryLatest' in the @Queryable@ typeclass
+ for 'SQLiteIndexer'.
+
+ The helper just remove a bit of the boilerplate needed to transform data
+ to query the database.
+ It also assumes that the SQL query will deal with the latest part
+ (we don't use a side query to access the latest sync point).
+-}
+queryLatestSQLiteIndexerWith
+  :: (MonadIO m)
+  => (SQL.FromRow r)
+  => (query -> [SQL.NamedParam])
+  -- ^ A preprocessing of the query, to obtain SQL parameters
+  -> (query -> SQL.Query)
+  -- ^ The sqlite query statement
+  -> (query -> [r] -> Result query)
+  -- ^ Post processing of the result, to obtain the final result
+  -> query
+  -> SQLiteIndexer event
+  -> m (Result query)
+queryLatestSQLiteIndexerWith toNamedParam sqlQuery fromRows q indexer =
+  do
+    let c = indexer ^. connection
+    res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam q)
     pure $ fromRows q res
 
 {- | A helper for the definition of the 'Queryable' typeclass for 'SQLiteIndexer'.

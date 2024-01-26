@@ -41,7 +41,7 @@ import Data.Maybe (catMaybes, mapMaybe)
 import Marconi.Core.Class (
   AppendResult (appendResult),
   IsSync (lastStablePoint),
-  Queryable (query),
+  Queryable (query, queryLatest),
   isAheadOfSync,
  )
 import Marconi.Core.Indexer.FileIndexer (
@@ -70,7 +70,6 @@ data EventAtQuery event = EventAtQuery
 
 {- | The result of EventAtQuery is always an event.
  The error cases are handled by the query interface.
- in time
 -}
 type instance Result (EventAtQuery event) = Maybe event
 
@@ -141,13 +140,14 @@ instance
   where
   query p q ix = do
     let isBefore p' e = p' >= e ^. point
-    let result =
+        result =
           mapMaybe (traverse $ predicate q) $
             ix ^.. events . Lens.folded . Lens.filtered (isBefore p)
 
     aheadOfSync <- isAheadOfSync p ix
     when aheadOfSync $ throwError . AheadOfLastSync $ Just result
     pure result
+  queryLatest q ix = pure $ mapMaybe (traverse $ predicate q) $ ix ^. events
 
 instance
   (MonadError (QueryError (EventsMatchingQuery event)) m)
@@ -193,6 +193,9 @@ instance
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync $ Just lastEvents
     pure lastEvents
+  queryLatest q ix =
+    let events' = ix ^. events
+     in pure $ take (fromIntegral $ nbOfEvents q) events'
 
 instance
   (MonadIO m, MonadError (QueryError (LatestEventsQuery event)) m)
@@ -243,6 +246,7 @@ instance
     aHeadOfSync <- isAheadOfSync p ix
     when aHeadOfSync $ throwError $ AheadOfLastSync Nothing
     pure $ filter (\x -> x ^. point <= p && x ^. point > startingPoint q) $ ix ^. events
+  queryLatest q ix = pure $ filter (\x -> x ^. point > startingPoint q) $ ix ^. events
 
 instance
   (MonadIO m, MonadError (QueryError (EventsFromQuery event)) m)
@@ -267,6 +271,21 @@ instance
         let res' = catMaybes res
         when aHeadOfSync $ throwError $ AheadOfLastSync (Just res')
         pure res'
+  queryLatest q ix = do
+    content <- getDirectoryMetadata ix
+    let validCandidate eventFile =
+          let eventPoint = (ix ^. eventBuilder . extractPoint) (FileIndexer.fileMetadata eventFile)
+           in eventPoint > startingPoint q && FileIndexer.hasContent eventFile
+        resultFiles =
+          sortBy (compareMeta ix `on` FileIndexer.fileMetadata) $ filter validCandidate content
+        extractEvents
+          :: [Either a (Timed (Point event) (Maybe event))]
+          -> Either a [Maybe (Timed (Point event) event)]
+        extractEvents = fmap (fmap sequence) . sequence
+    result <- traverse (runExceptT . FileIndexer.deserialiseTimedEvent ix) resultFiles
+    case extractEvents result of
+      Left err -> throwError $ IndexerQueryError err
+      Right res -> pure $ catMaybes res
 
 instance
   (MonadError (QueryError (EventsFromQuery event)) m)

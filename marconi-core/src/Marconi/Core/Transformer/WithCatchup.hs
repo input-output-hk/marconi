@@ -30,7 +30,7 @@ import Marconi.Core.Class (
   Closeable,
   IsIndex (index, rollback, setLastStablePoint),
   IsSync,
-  Queryable,
+  Queryable (query),
   Resetable (reset),
  )
 import Marconi.Core.Indexer.SQLiteAggregateQuery (HasDatabasePath)
@@ -42,6 +42,7 @@ import Marconi.Core.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
   indexAllDescendingVia,
   indexVia,
+  queryVia,
   resetVia,
   rollbackVia,
   setLastStablePointVia,
@@ -130,10 +131,11 @@ deriving via
   instance
     (Closeable m indexer) => Closeable m (WithCatchup indexer)
 
-deriving via
-  (IndexTransformer CatchupContext indexer)
-  instance
-    (Queryable m event query indexer) => Queryable m event query (WithCatchup indexer)
+instance
+  (Queryable m event query indexer)
+  => Queryable m event query (WithCatchup indexer)
+  where
+  query = queryVia unwrap
 
 caughtUpIndexer :: Lens.Lens' (WithCatchup indexer event) (indexer event)
 caughtUpIndexer = catchupWrapper . wrappedIndexer

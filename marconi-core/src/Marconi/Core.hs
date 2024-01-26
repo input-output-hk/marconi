@@ -204,7 +204,6 @@ module Marconi.Core (
   Closeable (..),
   Queryable (..),
   queryEither,
-  queryLatest,
   queryLatestEither,
   AppendResult (..),
 
@@ -289,6 +288,7 @@ module Marconi.Core (
   ToRow (..),
   dbLastSync,
   querySQLiteIndexerWith,
+  queryLatestSQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
   SQLiteAggregateQuery (SQLiteAggregateQuery),
@@ -297,6 +297,10 @@ module Marconi.Core (
   SQLiteSourceProvider (SQLiteSourceProvider),
   IsSourceProvider,
   HasDatabasePath (getDatabasePath),
+
+  -- **** Connection utilities
+  readOnlyConnection,
+  readWriteConnection,
 
   -- *** On file
 
@@ -625,8 +629,11 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
   parseDBLocation,
+  queryLatestSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+  readOnlyConnection,
+  readWriteConnection,
  )
 import Marconi.Core.Preprocessor (
   Preprocessor,
