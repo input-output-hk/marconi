@@ -22,13 +22,14 @@ module Marconi.Starter.Indexers.AddressCount where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (nullTracer)
-import Control.Exception (throwIO)
-import Control.Lens (at, folded, sumOf, to, (^.))
-import Control.Monad.Except (MonadError, runExceptT)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Lens (at, filtered, folded, sumOf, to, (^.))
+import Control.Lens qualified as Lens
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson (FromJSON)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -49,7 +50,6 @@ import Marconi.Core (
   SQLRollbackPlan (SQLRollbackPlan),
   SQLiteIndexer,
   Timed (Timed),
-  connection,
   event,
   events,
   mkListIndexer,
@@ -126,11 +126,12 @@ instance (Monad m) => Queryable m AddressCountEvent AddressCountQuery ListIndexe
     -> ListIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
   query C.ChainPointAtGenesis _ _ = pure 0
-  query _ (AddressCountQuery addr) lsIndexer = do
+  query p (AddressCountQuery addr) lsIndexer = do
     pure $
       sumOf
         ( events
             . traverse
+            . filtered ((p >=) . Lens.view Core.point)
             . event
             . to unAddressCountEvent
             . at addr
@@ -141,22 +142,29 @@ instance (Monad m) => Queryable m AddressCountEvent AddressCountQuery ListIndexe
 -- * SQLite indexer
 
 -- | Query the SQLite indexer.
-instance (MonadIO m) => Queryable m AddressCountEvent AddressCountQuery SQLiteIndexer where
+instance
+  (MonadIO m, MonadError (Core.QueryError AddressCountQuery) m)
+  => Queryable m AddressCountEvent AddressCountQuery SQLiteIndexer
+  where
   query
     :: Point AddressCountEvent -- give me what you know up to this point, potentially a point in future
     -> AddressCountQuery
     -> SQLiteIndexer AddressCountEvent -- get the point for ListIndexer
     -> m (Result AddressCountQuery)
-  query C.ChainPointAtGenesis _ _ = pure 0
-  query _ (AddressCountQuery addr) sqliteIndexer = do
-    (results :: [[Int]]) <-
-      liftIO $
-        SQL.query
-          (sqliteIndexer ^. connection)
+  query C.ChainPointAtGenesis = const $ const $ pure 0
+  query p = do
+    Core.querySQLiteIndexerWith
+      ( \p' (AddressCountQuery addr) ->
+          [":slotNo" := C.chainPointToSlotNo p', ":addr" := addr]
+      )
+      ( const
           [sql|SELECT count FROM address_count
-               WHERE address = ?|]
-          (SQL.Only addr)
-    pure $ sum $ concat results
+             WHERE address = :addr
+             And slotNo <= :slotNo
+        |]
+      )
+      (const $ sum . concat)
+      p
 
 data AddressCountRow = AddressCountRow
   { addressCountRowAddr :: !C.AddressAny

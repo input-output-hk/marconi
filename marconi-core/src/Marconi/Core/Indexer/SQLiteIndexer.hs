@@ -15,7 +15,8 @@ module Marconi.Core.Indexer.SQLiteIndexer (
   inMemoryDB,
   parseDBLocation,
   databasePath,
-  connection,
+  writeConnection,
+  readConnectionPool,
   insertPlan,
   InsertPointQuery (InsertPointQuery, getInsertPointQuery),
   SetLastStablePointQuery (
@@ -53,6 +54,8 @@ import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (Foldable (toList), traverse_)
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
+import Data.Pool (Pool)
+import Data.Pool qualified as Pool
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Database.SQLite.Simple qualified as SQL
@@ -136,7 +139,9 @@ newtype GetLastStablePointQuery = GetLastStablePointQuery
 data SQLiteIndexer event = SQLiteIndexer
   { _databasePath :: SQLiteDBLocation
   -- ^ The location of the database
-  , _connection :: SQL.Connection
+  , _writeConnection :: SQL.Connection
+  -- ^ The connection used to interact with the database
+  , _readConnectionPool :: Pool SQL.Connection
   -- ^ The connection used to interact with the database
   , _insertPlan :: [[SQLInsertPlan event]]
   -- ^ A plan is a list of lists : each 'SQLInsertPlan' in a list is executed concurrently.
@@ -211,16 +216,33 @@ mkSqliteIndexer
           res <- runLastStablePointQuery h lastStablePointQuery
           pure $ fromMaybe genesis res
      in do
-          _connection <- readWriteConnection _databasePath
-          traverse_ (liftIO . SQL.execute_ _connection) _creationStatements
+          _writeConnection <- readWriteConnection _databasePath
+          let tenHours = 36000
+              poolSize = 100
+              poolConfig = case _databasePath of
+                Memory ->
+                  Pool.defaultPoolConfig
+                    (pure _writeConnection)
+                    SQL.close
+                    tenHours
+                    poolSize
+                Storage _file ->
+                  Pool.defaultPoolConfig
+                    (readOnlyConnection _databasePath)
+                    (const $ pure ())
+                    tenHours
+                    1
+          _readConnectionPool <- liftIO $ Pool.newPool poolConfig
+          traverse_ (liftIO . SQL.execute_ _writeConnection) _creationStatements
           -- allow for concurrent insert/query.
           -- see SQLite WAL, https://www.sqlite.org/wal.html
-          liftIO $ SQL.execute_ _connection "PRAGMA journal_mode=WAL"
-          _dbLastStable <- getLastStablePoint _connection
+          liftIO $ SQL.execute_ _writeConnection "PRAGMA journal_mode=WAL"
+          _dbLastStable <- getLastStablePoint _writeConnection
           let indexer =
                 SQLiteIndexer
                   { _databasePath
-                  , _connection
+                  , _writeConnection
+                  , _readConnectionPool
                   , _insertPlan
                   , _rollbackPlan
                   , _setLastStablePointQuery
@@ -322,7 +344,7 @@ indexEvents
 indexEvents [] indexer = pure indexer
 indexEvents evts@(e : _) indexer = do
   let setDbLastSync p = pure . (dbLastSync .~ p)
-  runIndexQueries (indexer ^. connection) evts (indexer ^. insertPlan)
+  runIndexQueries (indexer ^. writeConnection) evts (indexer ^. insertPlan)
   setDbLastSync (e ^. point) indexer
 
 runLastStablePointQuery
@@ -343,7 +365,7 @@ instance
   indexAllDescending = indexEvents . toList
 
   rollback p indexer = do
-    let c = indexer ^. connection
+    let c = indexer ^. writeConnection
         deleteAllQuery tName = "DELETE FROM " <> tName
         deleteAll = SQL.execute_ c . deleteAllQuery . SQL.Query . Text.pack
         deleteUntilQuery tName pName =
@@ -364,7 +386,7 @@ instance
     pure $ indexer & dbLastSync .~ p
 
   setLastStablePoint p indexer = do
-    let c = indexer ^. connection
+    let c = indexer ^. writeConnection
         SetLastStablePointQuery query = indexer ^. setLastStablePointQuery
     liftIO $ SQL.execute c query p
     pure $ indexer & dbLastStable .~ p
@@ -374,7 +396,9 @@ instance (Monad m) => IsSync m event SQLiteIndexer where
   lastSyncPoint indexer = pure $ indexer ^. dbLastSync
 
 instance (MonadIO m) => Closeable m SQLiteIndexer where
-  close indexer = liftIO $ SQL.close $ indexer ^. connection
+  close indexer = liftIO $ do
+    SQL.close $ indexer ^. writeConnection
+    Pool.destroyAllResources $ indexer ^. readConnectionPool
 
 {- | A helper for the definition of the @Queryable@ typeclass for 'SQLiteIndexer'
 
@@ -389,10 +413,11 @@ instance (MonadIO m) => Closeable m SQLiteIndexer where
  It doesn't filter the result based on the given data point.
 -}
 querySQLiteIndexerWith
-  :: (MonadIO m)
-  => (MonadError (QueryError query) m)
-  => (Ord (Point event))
-  => (SQL.FromRow r)
+  :: ( MonadIO m
+     , MonadError (QueryError query) m
+     , Ord (Point event)
+     , SQL.FromRow r
+     )
   => (Point event -> query -> [SQL.NamedParam])
   -- ^ A preprocessing of the query, to obtain SQL parameters
   -> (query -> SQL.Query)
@@ -405,8 +430,9 @@ querySQLiteIndexerWith
   -> m (Result query)
 querySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
-    let c = indexer ^. connection
-    res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
+    res <- liftIO $
+      Pool.withResource (indexer ^. readConnectionPool) $
+        \c -> SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     when (p > indexer ^. dbLastSync) $
       throwError (AheadOfLastSync $ Just $ fromRows q res)
     pure $ fromRows q res
@@ -433,8 +459,9 @@ queryLatestSQLiteIndexerWith
   -> m (Result query)
 queryLatestSQLiteIndexerWith toNamedParam sqlQuery fromRows q indexer =
   do
-    let c = indexer ^. connection
-    res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam q)
+    res <- liftIO $
+      Pool.withResource (indexer ^. readConnectionPool) $
+        \c -> SQL.queryNamed c (sqlQuery q) (toNamedParam q)
     pure $ fromRows q res
 
 {- | A helper for the definition of the 'Queryable' typeclass for 'SQLiteIndexer'.
@@ -464,8 +491,9 @@ querySyncedOnlySQLiteIndexerWith
   -> m (Result query)
 querySyncedOnlySQLiteIndexerWith toNamedParam sqlQuery fromRows p q indexer =
   do
-    let c = indexer ^. connection
     when (p > indexer ^. dbLastSync) $
       throwError (AheadOfLastSync Nothing)
-    res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
+    res <- liftIO $
+      Pool.withResource (indexer ^. readConnectionPool) $
+        \c -> SQL.queryNamed c (sqlQuery q) (toNamedParam p q)
     pure $ fromRows q res

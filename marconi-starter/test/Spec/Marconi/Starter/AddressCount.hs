@@ -1,12 +1,15 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Spec.Marconi.Starter.AddressCount where
 
 import Cardano.Api qualified as C
 import Control.Lens ((^.))
-import Control.Monad (foldM, forM, forM_)
+import Control.Lens qualified as Lens
+import Control.Monad (forM, forM_)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.List (sortOn)
 import Data.Map qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
@@ -21,13 +24,14 @@ import Marconi.Core (
   IndexerError,
   ListIndexer,
   Point,
+  QueryError,
   Queryable,
   Result,
   SQLiteIndexer,
   Timed (Timed),
   ToRow,
+  dbLastSync,
   event,
-  index,
   indexAll,
   mkListIndexer,
   point,
@@ -77,15 +81,16 @@ hprop_listIndexerAndSqliteIndexerReturnSameQueryResult = do
       mkQuery
 
 mkPropertyListIndexerAndSqliteIndexerReturnSameQueryResult
-  :: ( MonadIO m
+  :: forall e q m
+   . ( MonadIO m
      , Show e
      , Show (Point e)
      , Ord (Point e)
      , HasGenesis (Point e)
      , Show (Result q)
      , Eq (Result q)
-     , Queryable IO e q ListIndexer
-     , Queryable IO e q SQLiteIndexer
+     , Queryable (ExceptT (QueryError q) (PropertyT m)) e q ListIndexer
+     , Queryable (ExceptT (QueryError q) (PropertyT m)) e q SQLiteIndexer
      , ToRow (Point e)
      )
   => Gen [Timed (Point e) (Maybe e)]
@@ -93,19 +98,20 @@ mkPropertyListIndexerAndSqliteIndexerReturnSameQueryResult
   -> (Timed (Point e) (Maybe e) -> [q])
   -> PropertyT m ()
 mkPropertyListIndexerAndSqliteIndexerReturnSameQueryResult genEvents initSqliteIndexer mkQueries = do
-  events <- H.forAll genEvents
+  events <- sortOn (Lens.view point) <$> H.forAll genEvents
   lsIndex <- indexAll events mkListIndexer
   sqliteIndexerE <-
     liftIO $ runExceptT $ do
       sqliteIndexer <- initSqliteIndexer
-      foldM (\indexer e -> index e indexer) sqliteIndexer events
+      indexAll events sqliteIndexer
   sqliteIndexer <- H.evalEither sqliteIndexerE
 
   let queries = concatMap mkQueries events
   randomPoint <- H.forAll $ H.element $ fmap (\te -> te ^. point) events
   forM_ queries $ \q -> do
-    lsIndexResult <- liftIO $ query randomPoint q lsIndex
-    sqliteIndexerResult <- liftIO $ query randomPoint q sqliteIndexer
+    H.annotateShow $ sqliteIndexer ^. dbLastSync
+    lsIndexResult <- H.evalExceptT @_ @(QueryError q) $ query randomPoint q lsIndex
+    sqliteIndexerResult <- H.evalExceptT @_ @(QueryError q) $ query randomPoint q sqliteIndexer
     lsIndexResult === sqliteIndexerResult
 
 {- | We pre-generate set of addresses. This is done in order to ensure that we generate

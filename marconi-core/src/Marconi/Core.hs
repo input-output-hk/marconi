@@ -280,7 +280,8 @@ module Marconi.Core (
   mkSingleInsertSqliteIndexer,
   inMemoryDB,
   parseDBLocation,
-  connection,
+  writeConnection,
+  readConnectionPool,
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
 
@@ -622,7 +623,6 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   SQLiteIndexer (..),
   SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   ToRow (..),
-  connection,
   dbLastSync,
   handleSQLErrors,
   inMemoryDB,
@@ -632,8 +632,10 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   queryLatestSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+  readConnectionPool,
   readOnlyConnection,
   readWriteConnection,
+  writeConnection,
  )
 import Marconi.Core.Preprocessor (
   Preprocessor,

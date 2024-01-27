@@ -111,6 +111,7 @@ library
     , mtl
     , network
     , prettyprinter
+    , resource-pool
     , sqlite-simple
     , stm
     , streaming
