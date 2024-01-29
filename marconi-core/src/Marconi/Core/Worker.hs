@@ -140,35 +140,17 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
       notifyEndToCoordinator :: IO ()
       notifyEndToCoordinator = Con.signalQSemN endTokens 1
 
-      indexEvent timedEvent = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ index timedEvent indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+      -- indexEvent :: Timed (Point input) (Maybe event) -> IO (Maybe IndexerError)
+      indexEvent timedEvent = replaceIndexerWith ix $ hoistError . index timedEvent
 
-      indexAllEventsDescending timedEvents = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ indexAllDescending timedEvents indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+      -- indexAllEventsDescending :: NonEmpty (Timed (Point input) (Maybe event)) -> IO (Maybe IndexerError)
+      indexAllEventsDescending timedEvents = replaceIndexerWith ix $ hoistError . indexAllDescending timedEvents
 
       handleRollback :: Point input -> IO (Maybe IndexerError)
-      handleRollback p = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ rollback p indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+      handleRollback p = replaceIndexerWith ix $ hoistError . rollback p
 
       handleStableAt :: Point input -> IO (Maybe IndexerError)
-      handleStableAt p = do
-        Con.modifyMVar ix $ \indexer -> do
-          result <- runExceptT $ hoistError $ setLastStablePoint p indexer
-          case result of
-            Left err -> pure (indexer, Just err)
-            Right res -> pure (res, Nothing)
+      handleStableAt p = replaceIndexerWith ix $ hoistError . setLastStablePoint p
 
       checkError :: IO (Maybe IndexerError)
       checkError = Con.tryReadMVar errorBox
@@ -235,3 +217,14 @@ startWorker chan errorBox endTokens tokens (Worker name ix transformInput hoistE
    in liftIO $ do
         chan' <- STM.atomically $ STM.dupTChan chan
         Con.forkFinally (loop chan') (const swallowPill)
+
+replaceIndexerWith
+  :: MVar (indexer event) -> (indexer event -> ExceptT err IO (indexer event)) -> IO (Maybe err)
+replaceIndexerWith mIndexer f = do
+  indexer <- Con.readMVar mIndexer
+  res <- runExceptT $ f indexer
+  case res of
+    Left err -> pure $ Just err
+    Right indexer' -> do
+      void $ Con.swapMVar mIndexer indexer'
+      pure Nothing

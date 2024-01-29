@@ -221,17 +221,19 @@ mkSqliteIndexer
               poolSize = 100
               poolConfig = case _databasePath of
                 Memory ->
+                  -- For in memory databases, we reuse the write connection for queries
                   Pool.defaultPoolConfig
                     (pure _writeConnection)
-                    SQL.close
-                    tenHours
-                    poolSize
-                Storage _file ->
-                  Pool.defaultPoolConfig
-                    (readOnlyConnection _databasePath)
+                    -- we never close the connection as it's used by the write part
                     (const $ pure ())
                     tenHours
                     1
+                Storage _file ->
+                  Pool.defaultPoolConfig
+                    (readOnlyConnection _databasePath)
+                    SQL.close
+                    tenHours
+                    poolSize
           _readConnectionPool <- liftIO $ Pool.newPool poolConfig
           traverse_ (liftIO . SQL.execute_ _writeConnection) _creationStatements
           -- allow for concurrent insert/query.
@@ -332,9 +334,8 @@ runIndexQueries c events' plan =
    in case indexEvent of
         Nothing -> pure ()
         Just runIndexers ->
-          let
-           in either throwError pure <=< liftIO $
-                handleSQLErrors (SQL.withTransaction c runIndexers)
+          either throwError pure <=< liftIO $
+            handleSQLErrors (SQL.withTransaction c runIndexers)
 
 indexEvents
   :: (MonadIO m, MonadError IndexerError m)

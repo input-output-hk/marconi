@@ -219,12 +219,12 @@ mkAddressCountSqliteIndexer dbPath = do
     addressCountInsertQuery :: SQL.Query -- AddressCount table SQL statement
     addressCountInsertQuery =
       [sql|INSERT
-               INTO address_count (
-                 address,
-                 count,
-                 slotNo,
-                 blockHeaderHash
-              ) VALUES (?, ?, ?, ?)|]
+        INTO address_count (
+          address,
+          count,
+          slotNo,
+          blockHeaderHash
+        ) VALUES (?, ?, ?, ?)|]
 
 -- | Make a SQLiteIndexer
 mkAddressCountMixedIndexer
