@@ -22,9 +22,10 @@ module Marconi.Starter.Indexers.AddressCount where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (nullTracer)
+import Control.Exception (throwIO)
 import Control.Lens (at, filtered, folded, sumOf, to, (^.))
 import Control.Lens qualified as Lens
-import Control.Monad.Except (MonadError)
+import Control.Monad.Except (MonadError, runExceptT)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson (FromJSON)
 import Data.Map (Map)
