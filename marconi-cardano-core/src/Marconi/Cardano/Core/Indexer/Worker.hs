@@ -26,6 +26,7 @@ import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (SecurityParam)
+import Marconi.Core (WithTransform)
 import Marconi.Core qualified as Core
 
 -- | An alias for an indexer with catchup and transformation to perform filtering
@@ -38,10 +39,13 @@ type StandardIndexer m indexer event =
 -- | An alias for an SQLiteWorker with catchup and transformation to perform filtering
 type StandardSQLiteIndexer m event = StandardIndexer m Core.SQLiteIndexer event
 
-data StandardWorkerConfig m input event = StandardWorkerConfig
+type StandardCatchupConfig indexer event =
+  Core.CatchupConfig (WithTransform indexer event) (WithDistance (Maybe event))
+
+data StandardWorkerConfig m indexer input event = StandardWorkerConfig
   { workerName :: Text
   , securityParamConfig :: !SecurityParam
-  , catchupConfig :: Core.CatchupConfig
+  , catchupConfig :: StandardCatchupConfig indexer event
   , eventExtractor :: input -> m (Maybe event)
   , logger :: Trace m (Core.IndexerEvent C.ChainPoint)
   }
@@ -57,7 +61,7 @@ mkStandardIndexer
   :: ( MonadIO m
      , Core.Point event ~ C.ChainPoint
      )
-  => StandardWorkerConfig m a b
+  => StandardWorkerConfig m indexer a event
   -> indexer event
   -> StandardIndexer m indexer event
 mkStandardIndexer config indexer =
@@ -75,7 +79,7 @@ mkStandardWorker
      , Core.IsSync n event indexer
      , Core.Point event ~ C.ChainPoint
      )
-  => StandardWorkerConfig m input event
+  => StandardWorkerConfig m indexer input event
   -> indexer event
   -> n (StandardWorker m input event indexer)
 mkStandardWorker config = mkStandardWorkerWithFilter config Just
@@ -85,7 +89,7 @@ mkStandardIndexerWithFilter
   :: ( MonadIO m
      , Core.Point event ~ C.ChainPoint
      )
-  => StandardWorkerConfig m a b
+  => StandardWorkerConfig m indexer a event
   -> (event -> Maybe event)
   -> indexer event
   -> StandardIndexer m indexer event
@@ -105,7 +109,7 @@ mkStandardWorkerWithFilter
      , Ord (Core.Point event)
      , Core.Point event ~ C.ChainPoint
      )
-  => StandardWorkerConfig m input event
+  => StandardWorkerConfig m indexer input event
   -> (event -> Maybe event)
   -> indexer event
   -> n (StandardWorker m input event indexer)

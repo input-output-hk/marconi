@@ -52,6 +52,7 @@ import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import GHC.Generics (Generic)
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -130,7 +131,7 @@ mkDatumIndexer path = do
 -- | A worker with catchup for a 'DatumIndexer'
 datumWorker
   :: (MonadIO m, MonadIO n, MonadError Core.IndexerError n)
-  => StandardWorkerConfig m input DatumEvent
+  => StandardWorkerConfig m Core.SQLiteIndexer input DatumEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> SQLiteDBLocation
   -- ^ SQLite database location
@@ -146,6 +147,8 @@ datumBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
+      (Core.WithTransform Core.SQLiteIndexer (NonEmpty DatumInfo))
+      (WithDistance (Maybe (NonEmpty DatumInfo)))
   -> Trace m Text
   -> FilePath
   -> n (StandardWorker m [AnyTxBody] DatumEvent Core.SQLiteIndexer)

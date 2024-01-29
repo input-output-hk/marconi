@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 {- | Generators and helpers for testing @Marconi.Cardano.Indexers@, namely the
@@ -142,7 +143,7 @@ we cannot generate explicitly.
 -}
 buildIndexers
   :: SecurityParam
-  -> Core.CatchupConfig
+  -> (forall indexer event. Core.CatchupConfig indexer event)
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent)

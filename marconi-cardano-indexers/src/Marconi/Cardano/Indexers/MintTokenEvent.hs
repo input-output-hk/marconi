@@ -296,7 +296,7 @@ type instance Core.Point MintTokenBlockEvents = C.ChainPoint
 -- | Create a worker for the MintTokenEvent indexer
 mintTokenEventWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
-  => StandardWorkerConfig m input MintTokenBlockEvents
+  => StandardWorkerConfig m Core.SQLiteIndexer input MintTokenBlockEvents
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> MintTokenEventConfig
   -- ^ Specific configuration of the indexer (mostly for logging purpose and filtering for target
@@ -315,7 +315,7 @@ creating 'StandardWorkerConfig', including a preprocessor.
 mintTokenEventBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
-  -> Core.CatchupConfig
+  -> Core.CatchupConfig indexer event
   -> MintTokenEventConfig
   -> BM.Trace IO Text
   -> FilePath

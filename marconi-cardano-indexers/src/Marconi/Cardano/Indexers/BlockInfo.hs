@@ -151,7 +151,7 @@ blockInfoWorker
      , MonadError Core.IndexerError n
      , MonadIO m
      )
-  => StandardWorkerConfig m input BlockInfo
+  => StandardWorkerConfig m Core.SQLiteIndexer input BlockInfo
   -- ^ General indexer configuration
   -> SQLiteDBLocation
   -- ^ SQLite database location
@@ -166,7 +166,7 @@ creating 'StandardWorkerConfig', including a preprocessor.
 blockInfoBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
-  -> Core.CatchupConfig
+  -> Core.CatchupConfig indexer event
   -> BM.Trace IO Text
   -> FilePath
   -> n (StandardWorker IO BlockEvent BlockInfo Core.SQLiteIndexer)

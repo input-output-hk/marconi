@@ -126,9 +126,9 @@ newtype EpochSDDWorkerConfig input = EpochSDDWorkerConfig
   }
 
 epochSDDWorker
-  :: forall input m n
+  :: forall indexer input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
-  => StandardWorkerConfig n input (NonEmpty EpochSDD)
+  => StandardWorkerConfig n indexer input (NonEmpty EpochSDD)
   -> EpochSDDWorkerConfig input
   -> SQLiteDBLocation
   -> m (Core.WorkerIndexer n input (NonEmpty EpochSDD) (Core.WithTrace n Core.SQLiteIndexer))

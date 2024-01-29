@@ -119,9 +119,9 @@ newtype EpochNonceWorkerConfig input = EpochNonceWorkerConfig
   }
 
 epochNonceWorker
-  :: forall input m n
+  :: forall indexer input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
-  => StandardWorkerConfig n input EpochNonce
+  => StandardWorkerConfig n indexer input EpochNonce
   -> EpochNonceWorkerConfig input
   -> SQLiteDBLocation
   -> m (Core.WorkerIndexer n input EpochNonce (Core.WithTrace n Core.SQLiteIndexer))

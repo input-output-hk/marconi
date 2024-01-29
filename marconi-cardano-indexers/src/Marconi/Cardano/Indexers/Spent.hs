@@ -163,7 +163,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
-  => StandardWorkerConfig m input SpentInfoEvent
+  => StandardWorkerConfig m Core.SQLiteIndexer input SpentInfoEvent
   -- ^ General configuration of a worker
   -> SQLiteDBLocation
   -- ^ SQLite database location
@@ -178,7 +178,7 @@ creating 'StandardWorkerConfig', including a preprocessor.
 spentBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
-  -> Core.CatchupConfig
+  -> Core.CatchupConfig indexer event
   -> BM.Trace IO Text
   -> FilePath
   -> n (StandardWorker IO [AnyTxBody] SpentInfoEvent Core.SQLiteIndexer)

@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -111,7 +112,7 @@ and expose a single coordinator to operate them
 -}
 buildIndexers
   :: SecurityParam
-  -> Core.CatchupConfig
+  -> (forall indexer event. Core.CatchupConfig indexer event) -- (Core.WithTransform Core.SQLiteIndexer (NonEmpty Datum.DatumInfo)) (WithDistance (Maybe (NonEmpty Datum.DatumInfo)))
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent)
@@ -249,6 +250,8 @@ epochNonceBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
+      (Core.WithTransform indexer Nonce.EpochNonce)
+      (WithDistance (Maybe Nonce.EpochNonce))
   -> BM.Trace m Text
   -> FilePath
   -> n
@@ -278,6 +281,8 @@ epochSDDBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
+      (Core.WithTransform indexer (NonEmpty SDD.EpochSDD))
+      (WithDistance (Maybe (NonEmpty SDD.EpochSDD)))
   -> BM.Trace m Text
   -> FilePath
   -> n
@@ -307,6 +312,8 @@ snapshotBlockEventBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
+      (Core.WithTransform indexer SnapshotBlockEvent)
+      (WithDistance (Maybe SnapshotBlockEvent))
   -> BM.Trace m Text
   -> FilePath
   -> BlockRange
@@ -346,7 +353,7 @@ extractSnapshotBlockEvent =
 -- | Builds the coordinators for each sub-chain serializers.
 buildIndexersForSnapshot
   :: SecurityParam
-  -> Core.CatchupConfig
+  -> (forall indexer event. Core.CatchupConfig indexer event)
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig
       (ExtLedgerStateEvent, WithDistance BlockEvent)
       (WithDistance BlockEvent)
@@ -419,6 +426,8 @@ snapshotExtLedgerStateEventBuilder
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => SecurityParam
   -> Core.CatchupConfig
+      (Core.WithTransform indexer ExtLedgerStateEvent)
+      (WithDistance (Maybe ExtLedgerStateEvent))
   -> BM.Trace m Text
   -> FilePath
   -> BlockRange
@@ -449,9 +458,9 @@ snapshotExtLedgerStateEventBuilder securityParam catchupConfig textLogger path b
         path
 
 snapshotExtLedgerStateEventWorker
-  :: forall input m n
+  :: forall indexer input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
-  => StandardWorkerConfig n input ExtLedgerStateEvent
+  => StandardWorkerConfig n indexer input ExtLedgerStateEvent
   -> SnapshotWorkerConfig input
   -> FilePath
   -> m
