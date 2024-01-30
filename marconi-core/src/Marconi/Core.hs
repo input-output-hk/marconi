@@ -456,7 +456,7 @@ module Marconi.Core (
   CatchupConfig (CatchupConfig),
   mkCatchupConfig,
   configCatchupEventHook,
-  HasCatchupConfig (catchupBypassDistance, catchupBatchSize, catchupEventHook),
+  HasCatchupConfig (catchupBypassDistance, catchupBatchSize),
   CatchupEvent (Synced),
 
   -- *** SQLite
@@ -694,7 +694,7 @@ import Marconi.Core.Transformer.WithCache (
 import Marconi.Core.Transformer.WithCatchup (
   CatchupConfig (CatchupConfig),
   CatchupEvent (Synced),
-  HasCatchupConfig (catchupBatchSize, catchupBypassDistance, catchupEventHook),
+  HasCatchupConfig (catchupBatchSize, catchupBypassDistance),
   WithCatchup,
   configCatchupEventHook,
   mkCatchupConfig,

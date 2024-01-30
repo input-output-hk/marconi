@@ -54,7 +54,6 @@ import Cardano.BM.Tracing qualified as BM
 import Control.Lens (
   (&),
   (.~),
-  (?~),
   (^.),
  )
 import Control.Lens qualified as Lens
@@ -169,8 +168,8 @@ mkUtxoIndexer path = do
     [insertEvent]
     [Core.SQLRollbackPlan (Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo)]
 
-catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
-catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
+catchupConfigEventHook :: Trace IO Text -> FilePath -> indexer -> IO indexer
+catchupConfigEventHook stdoutTrace dbPath indexer = do
   SQL.withConnection dbPath $ \c -> do
     let addressIndexName = "utxo_address"
         createAddressIndexStatement =
@@ -185,6 +184,7 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
             <> fromString slotNoIndexName
             <> " ON utxo (slotNo)"
     Core.createIndexTable "Utxo" stdoutTrace c slotNoIndexName createSlotNoIndexStatement
+    pure indexer
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
@@ -243,7 +243,7 @@ utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
       extractUtxos (AnyTxBody _ indexInBlock txb) = getUtxosFromTxBody indexInBlock txb
       catchupConfigWithTracer =
         catchupConfig
-          & Core.configCatchupEventHook ?~ catchupConfigEventHook textLogger utxoDbPath
+          & Core.configCatchupEventHook .~ catchupConfigEventHook textLogger utxoDbPath
       utxoWorkerConfig =
         StandardWorkerConfig
           indexerName

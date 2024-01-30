@@ -106,7 +106,6 @@ import Control.Lens (
   view,
   (%~),
   (.~),
-  (?~),
   (^.),
   (^?),
  )
@@ -327,7 +326,7 @@ mintTokenEventBuilder securityParam catchupConfig mintEventConfig textLogger pat
       catchupConfigWithTracer =
         catchupConfig
           & Core.configCatchupEventHook
-            ?~ catchupConfigEventHook indexerName textLogger mintDbPath
+            .~ catchupConfigEventHook indexerName textLogger mintDbPath
       extractMint :: AnyTxBody -> [MintTokenEvent]
       extractMint (AnyTxBody bn ix txb) = extractEventsFromTx bn ix txb
       mintTokenWorkerConfig =
@@ -449,8 +448,8 @@ mkMintTokenIndexer dbPath = do
         (Core.defaultRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo)
     ]
 
-catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
-catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
+catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> indexer -> IO indexer
+catchupConfigEventHook indexerName stdoutTrace dbPath indexer = do
   SQL.withConnection dbPath $ \c -> do
     let txIdPolicyIdIndexName = "minting_policy_events__txId_policyId"
         createMintPolicyIdIndexStatement =
@@ -470,6 +469,8 @@ catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
             <> fromString slotNoIndexName
             <> " ON minting_policy_events (slotNo)"
     Core.createIndexTable indexerName stdoutTrace c slotNoIndexName createSlotNoIndexStatement
+    -- return the original indexer
+    pure indexer
 
 fromTimedMintEvents
   :: Core.Timed point MintTokenBlockEvents

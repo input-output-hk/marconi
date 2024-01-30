@@ -28,7 +28,7 @@ module Marconi.Cardano.Indexers.Spent (
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Cardano.BM.Tracing qualified as BM
-import Control.Lens ((&), (?~), (^.))
+import Control.Lens ((&), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
@@ -136,8 +136,8 @@ mkSpentIndexer path = do
     [spentInsert]
     [Core.SQLRollbackPlan (Core.defaultRollbackPlan "spent" "slotNo" C.chainPointToSlotNo)]
 
-catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
-catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
+catchupConfigEventHook :: Trace IO Text -> FilePath -> indexer -> IO indexer
+catchupConfigEventHook stdoutTrace dbPath indexer = do
   SQL.withConnection dbPath $ \c -> do
     let slotNoIndexName = "spent_slotNo"
         createSlotNoIndexStatement =
@@ -159,6 +159,8 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
             <> fromString spentAtTxIdIndexName
             <> " ON spent (spentAtTxId)"
     Core.createIndexTable "Spent" stdoutTrace c spentAtTxIdIndexName createSpentAtIndexStatement
+    -- return the original indexer
+    pure indexer
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 spentWorker
@@ -191,7 +193,7 @@ spentBuilder securityParam catchupConfig textLogger path =
       catchupConfigWithTracer =
         catchupConfig
           & Core.configCatchupEventHook
-            ?~ catchupConfigEventHook textLogger spentDbPath
+            .~ catchupConfigEventHook textLogger spentDbPath
       spentWorkerConfig =
         StandardWorkerConfig
           indexerName
