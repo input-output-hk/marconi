@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Spec.Marconi.Sidechain.Routes (tests) where
@@ -6,257 +5,92 @@ module Spec.Marconi.Sidechain.Routes (tests) where
 import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Crypto.Hash.Class qualified as Crypto
-import Cardano.Ledger.Shelley.API qualified as Ledger
-import Cardano.Slotting.Slot (WithOrigin (At, Origin))
 import Control.Monad (forM)
-import Data.Aeson qualified as Aeson
 import Data.Aeson.Encode.Pretty qualified as Aeson
 import Data.ByteString.Lazy (ByteString)
 import Data.Proxy (Proxy (Proxy))
-import Data.String (fromString)
-import Gen.Marconi.ChainIndex.Legacy.Types qualified as Gen
-import Hedgehog (
-  Gen,
-  Property,
-  forAll,
-  property,
-  tripping,
- )
-import Hedgehog.Gen qualified as Gen
-import Hedgehog.Range qualified as Range
-import Marconi.ChainIndex.Legacy.Indexers.Utxo (BlockInfo (BlockInfo))
-import Marconi.ChainIndex.Legacy.Indexers.Utxo qualified as Utxo
-import Marconi.ChainIndex.Legacy.Types (TxIndexInBlock (TxIndexInBlock))
-import Marconi.Sidechain.Api.Routes (
-  ActiveSDDResult (ActiveSDDResult),
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo (
   AddressUtxoResult (AddressUtxoResult),
-  BurnTokenEventResult (BurnTokenEventResult),
-  GetBurnTokenEventsParams (GetBurnTokenEventsParams),
-  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
-  GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
-  GetEpochActiveStakePoolDelegationResult (GetEpochActiveStakePoolDelegationResult),
-  GetEpochNonceResult (GetEpochNonceResult),
-  GetUtxosFromAddressParams (GetUtxosFromAddressParams),
   GetUtxosFromAddressResult (GetUtxosFromAddressResult),
-  NonceResult (NonceResult),
-  SidechainTip (SidechainTip),
-  SidechainValue (SidechainValue),
   SpentInfoResult (SpentInfoResult),
-  UtxoTxInput (UtxoTxInput),
  )
-import Test.Gen.Cardano.Api.Typed qualified as CGen
+import Marconi.Cardano.ChainIndex.Api.JsonRpc.Endpoint.Utxo.Wrappers (
+  UtxoTxInput (UtxoTxInput),
+  ValueWrapper (ValueWrapper),
+ )
+import Marconi.Cardano.Core.Types (TxIndexInBlock (TxIndexInBlock))
+import Marconi.Sidechain.Api.JsonRpc.Endpoint.BurnTokenEvent (
+  BurnTokenEventResult (BurnTokenEventResult),
+  GetBurnTokenEventsResult (GetBurnTokenEventsResult),
+ )
+import Marconi.Sidechain.Api.JsonRpc.Endpoint.CurrentSyncedBlock (
+  GetCurrentSyncedBlockResult (GetCurrentSyncedBlockResult),
+  Tip (Tip),
+ )
+import Marconi.Sidechain.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation (
+  ActiveSDDResult (ActiveSDDResult),
+  GetEpochActiveStakePoolDelegationResult (GetEpochActiveStakePoolDelegationResult),
+ )
+import Marconi.Sidechain.Api.JsonRpc.Endpoint.EpochNonce (
+  NonceResult (NonceResult),
+ )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
-import Test.Tasty.Hedgehog (testPropertyNamed)
 
 tests :: TestTree
 tests =
   testGroup
     "Spec.Marconi.Sidechain.Routes"
     [ testGroup
-        "ToJSON/FromJSON rountrip"
-        [ testPropertyNamed
-            "SidechainTip"
-            "propJSONRountripSidechainTip"
-            propJSONRountripSidechainTip
-        , testPropertyNamed
-            "GetCurrentSyncedBlockResult"
-            "propJSONRountripCurrentSyncedBlockResult"
-            propJSONRountripCurrentSyncedBlockResult
-        , testPropertyNamed
-            "GetEpochActiveStakePoolDelegationResult"
-            "propJSONRountripEpochStakePoolDelegationResult"
-            propJSONRountripEpochStakePoolDelegationResult
-        , testPropertyNamed
-            "GetEpochNonceResult"
-            "propJSONRountripEpochNonceResult"
-            propJSONRountripEpochNonceResult
-        , testPropertyNamed
-            "GetUtxosFromAddressParams"
-            "propJSONRountripGetUtxosFromAddressParams"
-            propJSONRountripGetUtxosFromAddressParams
-        , testPropertyNamed
-            "GetUtxosFromAddressResult"
-            "propJSONRountripGetUtxosFromAddressResult"
-            propJSONRountripGetUtxosFromAddressResult
-        , testPropertyNamed
-            "GetBurnTokenEventsParams"
-            "propJSONRountripGetBurnTokenEventsParams"
-            propJSONRountripGetBurnTokenEventsParams
-        , testPropertyNamed
-            "GetBurnTokenEventsResult"
-            "propJSONRountripGetBurnTokenEventsResult"
-            propJSONRountripGetBurnTokenEventsResult
-        , testPropertyNamed
-            "SidechainValue"
-            "propJSONRountripSidechainValue"
-            propJSONRountripSidechainValue
-        ]
-    , testGroup
-        "Golden test for query results"
+        "Golden test for query result JSON shapes"
         [ goldenVsStringDiff
-            "Golden test for CurrentSyncedBlockResult in JSON format when chain point is at genesis"
+            "Golden test for GetCurrentSyncedBlockResult in JSON format when chain point is at genesis"
             (\expected actual -> ["diff", "--color=always", expected, actual])
-            "test/Spec/Marconi/Sidechain/Api/Routes/Golden/current-synced-point-response-1.json"
-            goldenCurrentChainPointGenesisResult
+            "test/Spec/Golden/Routes/current-synced-point-response-1.json"
+            goldenGetCurrentSyncedBlockChainPointGenesisResult
         , goldenVsStringDiff
-            "Golden test for CurrentSyncedBlockResult in JSON format when chain point is at point other than genesis"
+            "Golden test for GetCurrentSyncedBlockResult in JSON format when chain point is at point other than genesis"
             (\expected actual -> ["diff", "--color=always", expected, actual])
-            "test/Spec/Marconi/Sidechain/Api/Routes/Golden/current-synced-point-response-2.json"
-            goldenCurrentChainPointResult
+            "test/Spec/Golden/Routes/current-synced-point-response-2.json"
+            goldenCurrentSyncedBlockChainPointResult
         , goldenVsStringDiff
-            "Golden test for AddressUtxoResult in JSON format"
+            "Golden test for GetUtxosFromAddressResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
-            "test/Spec/Marconi/Sidechain/Api/Routes/Golden/address-utxo-response.json"
-            goldenAddressUtxoResult
+            "test/Spec/Golden/Routes/address-utxo-response.json"
+            goldenGetUtxosFromAddressResult
         , goldenVsStringDiff
-            "Golden test for MintingPolicyHashTxResult in JSON format"
+            "Golden test for GetBurnTokenEventsResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
-            "test/Spec/Marconi/Sidechain/Api/Routes/Golden/mintingpolicyhash-tx-response.json"
-            goldenMintingPolicyHashTxResult
+            "test/Spec/Golden/Routes/mintingpolicyhash-tx-response.json"
+            goldenGetBurnTokenEventResult
         , goldenVsStringDiff
-            "Golden test for EpochStakePoolDelegationResult in JSON format"
+            "Golden test for GetEpochStakePoolDelegationResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
-            "test/Spec/Marconi/Sidechain/Api/Routes/Golden/epoch-stakepooldelegation-response.json"
-            goldenEpochStakePoolDelegationResult
+            "test/Spec/Golden/Routes/epoch-stakepooldelegation-response.json"
+            goldenGetEpochActiveStakePoolDelegationResult
         , goldenVsStringDiff
-            "Golden test for EpochNonResult in JSON format"
+            "Golden test for GetEpochNonceResult in JSON format"
             (\expected actual -> ["diff", "--color=always", expected, actual])
-            "test/Spec/Marconi/Sidechain/Api/Routes/Golden/epoch-nonce-response.json"
-            goldenEpochNonceResult
+            "test/Spec/Golden/Routes/epoch-nonce-response.json"
+            goldenGetEpochNonceResult
         ]
     ]
 
-propJSONRountripSidechainTip :: Property
-propJSONRountripSidechainTip = property $ do
-  let genChainTip =
-        C.ChainTip
-          <$> Gen.genSlotNo
-          <*> Gen.genHashBlockHeader
-          <*> Gen.genBlockNo
-  tip <- forAll $ SidechainTip <$> Gen.choice [pure C.ChainTipAtGenesis, genChainTip]
-  tripping tip Aeson.encode Aeson.eitherDecode
+{- GetCurrentSyncedBlockResult -}
 
-propJSONRountripCurrentSyncedBlockResult :: Property
-propJSONRountripCurrentSyncedBlockResult = property $ do
-  let genBlockInfo =
-        BlockInfo
-          <$> Gen.genSlotNo
-          <*> Gen.genHashBlockHeader
-          <*> Gen.genBlockNo
-          <*> pure 0
-          <*> Gen.genEpochNo
-  let genChainTip =
-        C.ChainTip
-          <$> Gen.genSlotNo
-          <*> Gen.genHashBlockHeader
-          <*> Gen.genBlockNo
-  blockInfo <- forAll $ Gen.choice [pure Origin, At <$> genBlockInfo]
-  tip <- forAll $ SidechainTip <$> Gen.choice [pure C.ChainTipAtGenesis, genChainTip]
-  tripping (GetCurrentSyncedBlockResult blockInfo tip) Aeson.encode Aeson.eitherDecode
+emptyGetCurrentSyncedBlockResult :: GetCurrentSyncedBlockResult
+emptyGetCurrentSyncedBlockResult = GetCurrentSyncedBlockResult Nothing Nothing Nothing Nothing Nothing Nothing
 
-propJSONRountripGetUtxosFromAddressParams :: Property
-propJSONRountripGetUtxosFromAddressParams = property $ do
-  Right interval <-
-    forAll $
-      Utxo.interval
-        <$> Gen.maybe (C.SlotNo <$> Gen.word64 (Range.linear 1 100))
-        <*> Gen.maybe (C.SlotNo <$> Gen.word64 (Range.linear 101 200))
-  r <-
-    forAll $
-      GetUtxosFromAddressParams
-        <$> Gen.string (Range.linear 1 10) Gen.alphaNum
-        <*> pure interval
-  tripping r Aeson.encode Aeson.eitherDecode
+goldenGetCurrentSyncedBlockChainPointGenesisResult :: IO ByteString
+goldenGetCurrentSyncedBlockChainPointGenesisResult = pure $ Aeson.encodePretty emptyGetCurrentSyncedBlockResult
 
-propJSONRountripGetUtxosFromAddressResult :: Property
-propJSONRountripGetUtxosFromAddressResult = property $ do
-  r <- fmap GetUtxosFromAddressResult $ forAll $ Gen.list (Range.linear 0 10) $ do
-    hsd <- Gen.maybe CGen.genHashableScriptData
-    AddressUtxoResult
-      <$> Gen.genSlotNo
-      <*> Gen.genHashBlockHeader
-      <*> Gen.genEpochNo
-      <*> Gen.genBlockNo
-      <*> fmap fromIntegral (Gen.word64 $ Range.linear 0 5)
-      <*> CGen.genTxIn
-      <*> pure (fmap C.hashScriptDataBytes hsd)
-      <*> pure (fmap C.getScriptData hsd)
-      <*> CGen.genValue CGen.genAssetId (CGen.genQuantity (Range.linear 0 5))
-      <*> Gen.maybe genSpentInfo
-      <*> Gen.list (Range.linear 0 10) (UtxoTxInput <$> CGen.genTxIn)
-
-  tripping r Aeson.encode Aeson.eitherDecode
-
-genSpentInfo :: Gen SpentInfoResult
-genSpentInfo = do
-  slotNo <- Gen.genSlotNo
-  (C.TxIn txId _) <- CGen.genTxIn
-  pure $ SpentInfoResult slotNo txId
-
-propJSONRountripGetBurnTokenEventsParams :: Property
-propJSONRountripGetBurnTokenEventsParams = property $ do
-  r <-
-    forAll $
-      GetBurnTokenEventsParams
-        <$> (C.PolicyId <$> CGen.genScriptHash)
-        <*> (fmap fromString <$> Gen.maybe (Gen.string (Range.linear 1 10) Gen.alphaNum))
-        <*> (Gen.maybe $ Gen.integral (Range.linear 1 10))
-        <*> Gen.maybe CGen.genTxId
-  tripping r Aeson.encode Aeson.eitherDecode
-
-propJSONRountripGetBurnTokenEventsResult :: Property
-propJSONRountripGetBurnTokenEventsResult = property $ do
-  r <- fmap GetBurnTokenEventsResult $ forAll $ Gen.list (Range.linear 0 10) $ do
-    hsd <- Gen.maybe CGen.genHashableScriptData
-    BurnTokenEventResult
-      <$> Gen.genSlotNo
-      <*> Gen.genHashBlockHeader
-      <*> Gen.genBlockNo
-      <*> CGen.genTxId
-      <*> pure (fmap C.hashScriptDataBytes hsd)
-      <*> pure (fmap C.getScriptData hsd)
-      <*> CGen.genAssetName
-      <*> Gen.genQuantity (Range.linear 0 10)
-      <*> pure True
-  tripping r Aeson.encode Aeson.eitherDecode
-
-propJSONRountripEpochStakePoolDelegationResult :: Property
-propJSONRountripEpochStakePoolDelegationResult = property $ do
-  sdds <- fmap GetEpochActiveStakePoolDelegationResult $ forAll $ Gen.list (Range.linear 1 10) $ do
-    ActiveSDDResult
-      <$> Gen.genPoolId
-      <*> CGen.genLovelace
-      <*> fmap Just Gen.genSlotNo
-      <*> fmap Just Gen.genHashBlockHeader
-      <*> Gen.genBlockNo
-  tripping sdds Aeson.encode Aeson.eitherDecode
-
-propJSONRountripEpochNonceResult :: Property
-propJSONRountripEpochNonceResult = property $ do
-  nonce <- fmap GetEpochNonceResult $ forAll $ Gen.maybe $ do
-    NonceResult
-      <$> (Ledger.Nonce . Crypto.castHash . Crypto.hashWith id <$> Gen.bytes (Range.linear 0 32))
-      <*> fmap Just Gen.genSlotNo
-      <*> fmap Just Gen.genHashBlockHeader
-      <*> Gen.genBlockNo
-  tripping nonce Aeson.encode Aeson.eitherDecode
-
-propJSONRountripSidechainValue :: Property
-propJSONRountripSidechainValue = property $ do
-  v <- forAll $ CGen.genValue CGen.genAssetId (CGen.genQuantity (Range.linear 1 100))
-  tripping (SidechainValue v) Aeson.encode Aeson.eitherDecode
-
-goldenCurrentChainPointGenesisResult :: IO ByteString
-goldenCurrentChainPointGenesisResult = do
-  pure $ Aeson.encodePretty $ GetCurrentSyncedBlockResult Origin (SidechainTip C.ChainTipAtGenesis)
-
-goldenCurrentChainPointResult :: IO ByteString
-goldenCurrentChainPointResult = do
+goldenCurrentSyncedBlockChainPointResult :: IO ByteString
+goldenCurrentSyncedBlockChainPointResult = do
   let blockHeaderHashRawBytes = "6161616161616161616161616161616161616161616161616161616161616161"
       epochNo = C.EpochNo 6
       blockNo = C.BlockNo 64903
       blockTimestamp = 0
+      slotNo = C.SlotNo 1
   blockHeaderHash <-
     either
       (error . show)
@@ -268,11 +102,16 @@ goldenCurrentChainPointResult = do
   pure $
     Aeson.encodePretty $
       GetCurrentSyncedBlockResult
-        (At $ BlockInfo (C.SlotNo 1) blockHeaderHash blockNo blockTimestamp epochNo)
-        (SidechainTip $ C.ChainTip (C.SlotNo 1) blockHeaderHash blockNo)
+        (Just blockNo)
+        (Just blockTimestamp)
+        (Just blockHeaderHash)
+        (Just slotNo)
+        (Just epochNo)
+        (Just $ Tip blockNo blockHeaderHash slotNo)
 
-goldenAddressUtxoResult :: IO ByteString
-goldenAddressUtxoResult = do
+{- GetUtxosFromAddressResult -}
+goldenGetUtxosFromAddressResult :: IO ByteString
+goldenGetUtxosFromAddressResult = do
   let datum = C.ScriptDataNumber 34
   let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
   txId <-
@@ -311,30 +150,33 @@ goldenAddressUtxoResult = do
             (C.EpochNo 0)
             (C.BlockNo 1)
             (TxIndexInBlock 0)
-            (C.TxIn txId (C.TxIx 0))
+            txId
+            (C.TxIx 0)
             Nothing
             Nothing
-            (C.valueFromList [(C.AdaAssetId, 10)])
+            (ValueWrapper $ C.valueFromList [(C.AdaAssetId, 10)])
             Nothing
-            [UtxoTxInput $ C.TxIn txId2 (C.TxIx 1)]
+            [UtxoTxInput txId2 (C.TxIx 1)]
         , AddressUtxoResult
             (C.SlotNo 1)
             blockHeaderHash
             (C.EpochNo 0)
             (C.BlockNo 1)
             (TxIndexInBlock 0)
-            (C.TxIn txId (C.TxIx 0))
+            txId
+            (C.TxIx 0)
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData datum)
             (Just datum)
-            (C.valueFromList [(C.AdaAssetId, 1)])
+            (ValueWrapper $ C.valueFromList [(C.AdaAssetId, 1)])
             (Just $ SpentInfoResult (C.SlotNo 12) spentTxId)
-            [UtxoTxInput $ C.TxIn txId (C.TxIx 0)]
+            [UtxoTxInput txId (C.TxIx 0)]
         ]
       result = GetUtxosFromAddressResult utxos
   pure $ Aeson.encodePretty result
 
-goldenMintingPolicyHashTxResult :: IO ByteString
-goldenMintingPolicyHashTxResult = do
+{- GetBurnTokenEvent -}
+goldenGetBurnTokenEventResult :: IO ByteString
+goldenGetBurnTokenEventResult = do
   let redeemerData = C.ScriptDataNumber 34
   let txIdRawBytes = "ec7d3bd7c6a3a31368093b077af0db46ceac77956999eb842373e08c6420f000"
   txId <-
@@ -354,8 +196,8 @@ goldenMintingPolicyHashTxResult = do
 
   let mints =
         [ BurnTokenEventResult
-            (C.SlotNo 1)
-            blockHeaderHash
+            (Just $ C.SlotNo 1)
+            (Just blockHeaderHash)
             (C.BlockNo 1047)
             txId
             (Just $ C.hashScriptDataBytes $ C.unsafeHashableScriptData redeemerData)
@@ -367,8 +209,10 @@ goldenMintingPolicyHashTxResult = do
       result = GetBurnTokenEventsResult mints
   pure $ Aeson.encodePretty result
 
-goldenEpochStakePoolDelegationResult :: IO ByteString
-goldenEpochStakePoolDelegationResult = do
+{- GetEpochActiveStakePoolDelegationResult -}
+
+goldenGetEpochActiveStakePoolDelegationResult :: IO ByteString
+goldenGetEpochActiveStakePoolDelegationResult = do
   let blockHeaderHashRawBytes = "578f3cb70f4153e1622db792fea9005c80ff80f83df028210c7a914fb780a6f6"
   blockHeaderHash <-
     either
@@ -397,8 +241,10 @@ goldenEpochStakePoolDelegationResult = do
       result = GetEpochActiveStakePoolDelegationResult sdds
   pure $ Aeson.encodePretty result
 
-goldenEpochNonceResult :: IO ByteString
-goldenEpochNonceResult = do
+{- GetEpochNonceResult -}
+
+goldenGetEpochNonceResult :: IO ByteString
+goldenGetEpochNonceResult = do
   let blockHeaderHashRawBytes = "fdd5eb1b1e9fc278a08aef2f6c0fe9b576efd76966cc552d8c5a59271dc01604"
   blockHeaderHash <-
     either
@@ -409,16 +255,15 @@ goldenEpochNonceResult = do
         blockHeaderHashRawBytes
 
   let nonce =
-        Ledger.Nonce $
+        Just $
           Crypto.castHash $
             Crypto.hashWith id "162d29c4e1cf6b8a84f2d692e67a3ac6bc7851bc3e6e4afe64d15778bed8bd86"
 
   let result =
-        GetEpochNonceResult $
-          Just $
-            NonceResult
-              nonce
-              (Just $ C.SlotNo 518400)
-              (Just blockHeaderHash)
-              (C.BlockNo 21645)
+        Just $
+          NonceResult
+            nonce
+            (Just $ C.SlotNo 518400)
+            (Just blockHeaderHash)
+            (C.BlockNo 21645)
   pure $ Aeson.encodePretty result

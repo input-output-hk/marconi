@@ -5,6 +5,7 @@ module Spec.Marconi.Sidechain.CLI where
 import Data.ByteString.Lazy (ByteString, fromStrict)
 import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
+import Marconi.Sidechain.CLI (programParser)
 import Options.Applicative (
   ParserResult (CompletionInvoked, Failure, Success),
   defaultPrefs,
@@ -13,8 +14,6 @@ import Options.Applicative (
  )
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsStringDiff)
-
-import Marconi.Sidechain.CLI (programParser)
 
 tests :: TestTree
 tests =
@@ -54,4 +53,5 @@ generateHelpScreen commands = do
         Failure failure -> failure
         Success _ -> error "Parser expected to fail"
         CompletionInvoked _ -> error "Parser expected to fail"
-  pure $ fromStrict (encodeUtf8 . T.pack <$> fst $ renderFailure text "marconi-sidechain")
+  pure $
+    fromStrict (encodeUtf8 . T.pack <$> fst $ renderFailure text "marconi-sidechain-experimental")
