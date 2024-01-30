@@ -14,6 +14,7 @@ module Marconi.Core.Indexer.SQLiteAggregateQuery (
   IsSourceProvider,
   SQLiteAggregateQuery (..),
   aggregateConnection,
+  Pool.withResource,
   HasDatabasePath (..),
 ) where
 
@@ -26,6 +27,8 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans (MonadTrans (lift))
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Pool (Pool)
+import Data.Pool qualified as Pool
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Marconi.Core.Class (
@@ -61,7 +64,7 @@ data SQLiteSourceProvider m point
 data SQLiteAggregateQuery m point event = SQLiteAggregateQuery
   { _databases :: [SQLiteSourceProvider m point]
   -- ^ The indexers that provides database access to this query
-  , _aggregateConnection :: SQL.Connection
+  , _aggregateConnection :: Pool SQL.Connection
   -- ^ The connection that provides a read access accross the different databases
   }
 
@@ -70,7 +73,7 @@ databases :: Lens.Lens' (SQLiteAggregateQuery m point event) [SQLiteSourceProvid
 databases = Lens.lens _databases (\agg _databases -> agg{_databases})
 
 -- | The connection that provides a read access accross the different databases
-aggregateConnection :: Lens.Lens' (SQLiteAggregateQuery m point event) SQL.Connection
+aggregateConnection :: Lens.Lens' (SQLiteAggregateQuery m point event) (Pool SQL.Connection)
 aggregateConnection =
   Lens.lens _aggregateConnection (\agg _aggregateConnection -> agg{_aggregateConnection})
 
@@ -82,24 +85,34 @@ mkSQLiteAggregateQuery
   -- ^ A map of indexers. The keys are used as an alias int the attach statement
   -> IO (SQLiteAggregateQuery m point event)
 mkSQLiteAggregateQuery sources = do
-  con <- SQLite.readOnlyConnection SQLite.inMemoryDB
-  let databaseFromSource :: SQLiteSourceProvider m point -> IO FilePath
+  let expectPersistentDB (SQLite.Storage path) = path
+      expectPersistentDB SQLite.Memory = throw SQLite.ExpectedPersistentDB
+      databaseFromSource :: SQLiteSourceProvider m point -> IO FilePath
       databaseFromSource (SQLiteSourceProvider ix) = Con.withMVar ix (pure . expectPersistentDB . getDatabasePath)
-      attachDb name src =
+      attachDb con name src =
         liftIO $ do
           databasePath <- databaseFromSource src
           SQL.executeNamed
             con
             "ATTACH DATABASE :path AS :name"
             [":path" := databasePath, ":name" := name]
-  void $ Map.traverseWithKey attachDb sources
-  pure $ SQLiteAggregateQuery (Map.elems sources) con
-  where
-    expectPersistentDB (SQLite.Storage path) = path
-    expectPersistentDB SQLite.Memory = throw SQLite.ExpectedPersistentDB
+      createConnection = do
+        con <- SQLite.readOnlyConnection SQLite.inMemoryDB
+        void $ Map.traverseWithKey (attachDb con) sources
+        pure con
+  let tenHours = 36000
+      poolSize = 100
+      poolConfig =
+        Pool.defaultPoolConfig
+          createConnection
+          SQL.close
+          tenHours
+          poolSize
+  pool <- Pool.newPool poolConfig
+  pure $ SQLiteAggregateQuery (Map.elems sources) pool
 
 instance (MonadIO m) => Closeable m (SQLiteAggregateQuery m point) where
-  close indexer = liftIO $ SQL.close $ indexer ^. aggregateConnection
+  close indexer = liftIO $ Pool.destroyAllResources $ indexer ^. aggregateConnection
 
 instance
   (MonadIO m, MonadTrans t, Monad (t m), Ord point, point ~ Point event)

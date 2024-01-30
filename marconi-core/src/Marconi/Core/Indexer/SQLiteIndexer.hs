@@ -140,9 +140,9 @@ data SQLiteIndexer event = SQLiteIndexer
   { _databasePath :: SQLiteDBLocation
   -- ^ The location of the database
   , _writeConnection :: SQL.Connection
-  -- ^ The connection used to interact with the database
+  -- ^ The connection used to index events into the database (write)
   , _readConnectionPool :: Pool SQL.Connection
-  -- ^ The connection used to interact with the database
+  -- ^ The connection pool used to query the database (read)
   , _insertPlan :: [[SQLInsertPlan event]]
   -- ^ A plan is a list of lists : each 'SQLInsertPlan' in a list is executed concurrently.
   -- The different @[SQLInsertPlan]@ are executed in sequence.

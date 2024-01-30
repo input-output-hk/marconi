@@ -254,8 +254,6 @@ queryClosestBlockInfo =
                slotNo, blockHeaderHash
         FROM blockInfo
         |]
-      queryLatest :: SQL.Query
-      queryLatest = queryPrefix
       querySpecific :: SQL.Query
       querySpecific = queryPrefix <> [sql| WHERE slotNo <= :slotNo |]
       parseResult
@@ -267,7 +265,7 @@ queryClosestBlockInfo =
         Nothing ->
           Core.queryLatestSQLiteIndexerWith
             (pure [])
-            (const queryLatest)
+            (const queryPrefix)
             (\(Core.EventsMatchingQuery p) -> parseResult p)
         Just point ->
           Core.querySyncedOnlySQLiteIndexerWith

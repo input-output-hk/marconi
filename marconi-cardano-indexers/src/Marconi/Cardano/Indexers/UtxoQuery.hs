@@ -324,4 +324,5 @@ instance
                 <> sqlFilters
                 <> " GROUP BY u.txId, u.txIx"
                 <> " ORDER BY u.slotNo ASC"
-     in liftIO $ SQL.queryNamed (indexer ^. Core.aggregateConnection) query params
+     in liftIO $ Core.withResource (indexer ^. Core.aggregateConnection) $ \con ->
+          SQL.queryNamed con query params

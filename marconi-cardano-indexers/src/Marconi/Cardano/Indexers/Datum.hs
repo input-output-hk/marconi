@@ -195,8 +195,6 @@ queryMatchingData =
                slotNo, blockHeaderHash
         FROM datum
         |]
-      queryLatest :: SQL.Query
-      queryLatest = queryPrefix
       querySpecific :: SQL.Query
       querySpecific = queryPrefix <> [sql| WHERE slotNo <= :slotNo |]
       groupEvents
@@ -214,7 +212,7 @@ queryMatchingData =
         Nothing ->
           Core.queryLatestSQLiteIndexerWith
             (pure [])
-            (const queryLatest)
+            (const queryPrefix)
             (\(Core.EventsMatchingQuery p) -> parseResult p)
         Just point ->
           Core.querySyncedOnlySQLiteIndexerWith

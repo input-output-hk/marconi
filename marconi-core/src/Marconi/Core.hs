@@ -295,6 +295,7 @@ module Marconi.Core (
   SQLiteAggregateQuery (SQLiteAggregateQuery),
   aggregateConnection,
   mkSQLiteAggregateQuery,
+  withResource,
   SQLiteSourceProvider (SQLiteSourceProvider),
   IsSourceProvider,
   HasDatabasePath (getDatabasePath),
@@ -613,6 +614,7 @@ import Marconi.Core.Indexer.SQLiteAggregateQuery (
   SQLiteSourceProvider (..),
   aggregateConnection,
   mkSQLiteAggregateQuery,
+  withResource,
  )
 import Marconi.Core.Indexer.SQLiteIndexer (
   GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
