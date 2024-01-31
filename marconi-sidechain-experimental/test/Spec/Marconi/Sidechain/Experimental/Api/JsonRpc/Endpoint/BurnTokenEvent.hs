@@ -79,21 +79,15 @@ propQueryMintingPolicyWithMockchain events = Test.Helpers.workspace "." $ \tmp -
 
   unless hasNoBurnEvent $ do
     policy <- Hedgehog.forAll $ getPolicyId <$> Hedgehog.Gen.element burnEvents
-
-    let
-      burnEventsWithPolicy = filter ((== policy) . getPolicyId) burnEvents
-
     configPath <- Hedgehog.evalIO Utils.getNodeConfigPath
 
-    let
-      args =
-        Utils.initTestingCliArgs
-          { CLI.dbDir = tmp
-          , CLI.nodeConfigPath = configPath
-          }
-
-    let
-      params = Sidechain.GetBurnTokenEventsParams policy Nothing Nothing Nothing
+    let burnEventsWithPolicy = filter ((== policy) . getPolicyId) burnEvents
+        args =
+          Utils.initTestingCliArgs
+            { CLI.dbDir = tmp
+            , CLI.nodeConfigPath = configPath
+            }
+        params = Sidechain.GetBurnTokenEventsParams policy Nothing Nothing Nothing
 
     -- Index then query via JSON-RPC handler
     actual <-
