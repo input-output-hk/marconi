@@ -400,17 +400,18 @@ instance
     -> Core.SQLiteIndexer BlockInfoEvent -- The indexer backend
     -> m (Core.Result GetBlockInfoFromBlockNoQuery)
   -- There is not data at genesis. Return 'Nothing'.
-  query C.ChainPointAtGenesis _ _ = pure Nothing
-  query (C.ChainPoint sn _) (GetBlockInfoFromBlockNoQuery bn) sqliteIndexer = do
-    (results :: [Core.Timed C.ChainPoint BlockInfoEvent]) <-
-      Core.querySQLiteIndexerWith
-        (\cp (GetBlockInfoFromBlockNoQuery bn) -> [":slotNo" := C.chainPointToSlotNo, ":blockNo" := bn])
-        ( const const $
-            [sql|SELECT slotNo, blockHeaderHash, blockNo
-               FROM block_info_table
-               WHERE slotNo <= :soltNo AND blockNo = :blockNo|]
-        )
-    pure $ listToMaybe results
+  query C.ChainPointAtGenesis = const $ const $ pure Nothing
+  query cp =
+    let sqlQuery =
+          [sql|SELECT slotNo, blockHeaderHash, blockNo
+             FROM block_info_table
+             WHERE slotNo <= :soltNo AND blockNo = :blockNo|]
+     in Core.querySQLiteIndexerWith
+          ( \cp' (GetBlockInfoFromBlockNoQuery bn) -> [":slotNo" := C.chainPointToSlotNo cp', ":blockNo" := bn]
+          )
+          (const sqlQuery)
+          (const listToMaybe)
+          cp
 
 -- We need to define how to read the stored events which used the 'ToRow'
 -- instance. Therefore, a property test making sure that you can roundtrip
