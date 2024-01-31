@@ -2,6 +2,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
 
 {- |
     On-disk indexer backed by a sqlite database.
@@ -46,7 +47,7 @@ module Marconi.Core.Indexer.SQLiteIndexer (
 ) where
 
 import Control.Concurrent.Async qualified as Async
-import Control.Exception (Exception, Handler (Handler), catches)
+import Control.Exception (Exception, Handler (Handler), catches, try)
 import Control.Lens (makeLenses)
 import Control.Lens.Operators ((&), (.~), (^.))
 import Control.Monad (when, (<=<))
@@ -159,14 +160,22 @@ data SQLiteIndexer event = SQLiteIndexer
 makeLenses ''SQLiteIndexer
 
 -- | Create an SQL connection with ReadWrite permission and concurrent connections
-readWriteConnection :: (MonadIO io) => SQLiteDBLocation -> io SQL.Connection
-readWriteConnection loc =
-  liftIO $
-    SQL.Connection
-      <$> SQL3.open2
-        (unparseDBLocation loc)
-        [SQL3.SQLOpenReadWrite, SQL3.SQLOpenCreate, SQL3.SQLOpenNoMutex]
-        SQL3.SQLVFSDefault
+readWriteConnection
+  :: (MonadIO io, MonadError IndexerError io)
+  => SQLiteDBLocation
+  -> io SQL.Connection
+readWriteConnection loc = do
+  con <-
+    liftIO $
+      try $
+        SQL3.open2
+          (unparseDBLocation loc)
+          [SQL3.SQLOpenReadWrite, SQL3.SQLOpenCreate, SQL3.SQLOpenNoMutex]
+          SQL3.SQLVFSDefault
+  case con of
+    Left (err :: SQL.SQLError) ->
+      throwError $ IndexerInternalError $ Text.pack $ show err
+    Right con' -> pure $ SQL.Connection con'
 
 -- | Create an SQL connection with ReadOnly permission and concurrent connections
 readOnlyConnection :: (MonadIO io) => SQLiteDBLocation -> io SQL.Connection

@@ -24,7 +24,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
  )
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
-import Marconi.Cardano.Core.Logger (MarconiTrace)
+import Marconi.Cardano.Core.Logger (MarconiTrace, nullTracer)
 import Marconi.Cardano.Core.Types (
   AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
@@ -146,7 +146,6 @@ buildIndexers
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent)
-  -> BM.Trace IO Text
   -> MarconiTrace IO
   -> FilePath
   -> ExceptT
@@ -159,13 +158,10 @@ buildIndexers
   utxoConfig
   mintEventConfig
   epochStateConfig
-  textLogger
   prettyLogger
   path = do
-    let mainLogger :: BM.Trace IO (Core.IndexerEvent C.ChainPoint)
-        mainLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
-        blockEventTextLogger = BM.appendName "blockEvent" textLogger
-        blockEventLogger = BM.appendName "blockEvent" mainLogger
+    let blockEventTextLogger = BM.appendName "blockEvent" nullTracer
+        blockEventLogger = BM.appendName "blockEvent" nullTracer
         txBodyCoordinatorLogger = BM.appendName "txBody" blockEventTextLogger
         epochStateTextLogger = BM.appendName "epochState" blockEventTextLogger
         epochSDDTextLogger = BM.appendName "epochSDD" epochStateTextLogger
@@ -212,7 +208,7 @@ buildIndexers
         [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
     utxoQueryIndexer <-
-      Core.withTrace (BM.appendName "utxoQueryEvent" mainLogger)
+      Core.withTrace (BM.appendName "utxoQueryEvent" nullTracer)
         <$> ( lift $
                 UtxoQuery.mkUtxoSQLiteQuery $
                   UtxoQuery.UtxoQueryAggregate utxoMVar spentMVar datumMVar blockInfoMVar
@@ -225,17 +221,17 @@ buildIndexers
           [blockInfoWorker, epochStateWorker, coordinatorTxBodyWorkers]
 
     Core.WorkerIndexer chainTipMVar chainTipWorker <-
-      ChainTip.chainTipBuilder mainLogger path
+      ChainTip.chainTipBuilder nullTracer path
 
     mainCoordinator <-
       lift $
         syncStatsCoordinator
-          mainLogger
+          nullTracer
           prettyLogger
           [blockCoordinator, chainTipWorker]
 
     let currentSyncPointIndexer =
-          Core.withTrace (BM.appendName "currentSyncPointEvent" mainLogger) $
+          Core.withTrace (BM.appendName "currentSyncPointEvent" nullTracer) $
             CurrentSyncPoint.CurrentSyncPointQueryIndexer
               mainCoordinator
               blockInfoMVar

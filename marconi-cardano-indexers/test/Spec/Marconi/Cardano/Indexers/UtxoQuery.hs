@@ -8,7 +8,7 @@ module Spec.Marconi.Cardano.Indexers.UtxoQuery (
 import Cardano.Api qualified as C
 import Control.Lens ((^.), (^..), (^?))
 import Control.Lens qualified as Lens
-import Control.Monad (void, when)
+import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as Aeson
 import Data.List qualified as List
@@ -85,10 +85,10 @@ propAllUnspentWhenPointGenesis = Hedgehog.property $ do
       Test.Utxo.getTimedUtxosEvents $
         Test.Mockchain.mockchainWithInfoAsMockchain events
     utxos = utxoEvents ^.. Lens.folded . Core.event . Lens.folded . Lens.folded
-    hasUtxoEvents = not $ null utxos
+    hasNoUtxoEvents = null utxos
 
-  Hedgehog.cover 90 "Has at least one UTxO" hasUtxoEvents
-  when hasUtxoEvents $ do
+  Hedgehog.cover 90 "Has at least one UTxO" (not hasNoUtxoEvents)
+  unless hasNoUtxoEvents $ do
     -- Take the last UTxO to guarantee the result should
     -- have at least one element.
     let

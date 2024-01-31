@@ -101,9 +101,9 @@ instance
     let fromError :: Core.QueryError a -> Core.QueryError b
         fromError = \case
           Core.NotStoredAnymore -> Core.NotStoredAnymore
-          (Core.IndexerQueryError t) -> Core.IndexerQueryError t
-          (Core.AheadOfLastSync _) -> Core.IndexerQueryError "Upper slot no. ahead of last sync"
-          (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
+          Core.IndexerQueryError t -> Core.IndexerQueryError t
+          Core.AheadOfLastSync _ -> Core.IndexerQueryError "Upper slot no. ahead of last sync"
+          Core.SlotNoBoundsInvalid r -> Core.SlotNoBoundsInvalid r
 
     withStab <-
       case upperSlotNo of
