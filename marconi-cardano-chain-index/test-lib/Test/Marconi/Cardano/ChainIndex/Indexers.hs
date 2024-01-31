@@ -15,8 +15,6 @@ import Control.Monad ((>=>))
 import Control.Monad.Except (ExceptT)
 import Control.Monad.Trans (lift)
 import Data.List.NonEmpty (NonEmpty)
-import Data.Text (Text)
-import Data.Text qualified as Text
 import Marconi.Cardano.ChainIndex.Indexers (EpochEvent)
 import Marconi.Cardano.ChainIndex.Indexers qualified as Indexers
 import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
