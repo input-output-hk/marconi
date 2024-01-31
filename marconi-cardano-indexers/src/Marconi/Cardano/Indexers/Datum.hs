@@ -125,7 +125,7 @@ mkDatumIndexer path = do
   Sync.mkSyncedSqliteIndexer
     path
     createDatumTables
-    [[Core.SQLInsertPlan (traverse NonEmpty.toList) datumInsertQuery]]
+    [[Core.SQLInsertPlan (traverse NonEmpty.toList) (pure datumInsertQuery)]]
     [Core.SQLRollbackPlan (Core.defaultRollbackPlan "datum" "slotNo" C.chainPointToSlotNo)]
 
 -- | A worker with catchup for a 'DatumIndexer'

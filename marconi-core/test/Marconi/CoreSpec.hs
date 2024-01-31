@@ -676,7 +676,7 @@ sqliteModelIndexerWithFile filepath = do
                 )
               ]
           )
-          "INSERT INTO index_model VALUES (?, ?, ?)"
+          (pure "INSERT INTO index_model VALUES (?, ?, ?)")
       ]
     ]
     [Core.SQLRollbackPlan (Core.defaultRollbackPlan "index_model" "pointSlotNo" extractor)]

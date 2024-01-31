@@ -174,7 +174,7 @@ mkUtxoWithSpentIndexer path = do
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createUtxoTables = [createUtxoWithSpent]
-      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery]
+      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) (pure utxoInsertQuery)]
 
   Sync.mkSyncedSqliteIndexer
     path

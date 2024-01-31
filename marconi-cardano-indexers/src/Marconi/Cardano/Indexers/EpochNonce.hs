@@ -107,7 +107,7 @@ mkEpochNonceIndexer path = do
                 , slotNo
                 , blockHeaderHash
                 ) VALUES (?, ?, ?, ?, ?)|]
-      insertEvent = [Core.SQLInsertPlan pure nonceInsertQuery]
+      insertEvent = [Core.SQLInsertPlan pure (pure nonceInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     path
     [createNonce]

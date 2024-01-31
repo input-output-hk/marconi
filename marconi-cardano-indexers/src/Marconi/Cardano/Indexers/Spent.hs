@@ -129,7 +129,7 @@ mkSpentIndexer path = do
                VALUES (?, ?, ?, ?, ?)|]
       createSpentTables = [createSpent]
       spentInsert =
-        [Core.SQLInsertPlan (traverse NonEmpty.toList) spentInsertQuery]
+        [Core.SQLInsertPlan (traverse NonEmpty.toList) (pure spentInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     path
     createSpentTables

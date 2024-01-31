@@ -132,7 +132,7 @@ mkBlockInfoIndexer path = do
     path
     id
     createBlockInfoTable
-    blockInfoInsertQuery
+    (pure blockInfoInsertQuery)
     (Core.SQLRollbackPlan (Core.defaultRollbackPlan "blockInfo" "slotNo" C.chainPointToSlotNo))
 
 catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> indexer -> IO indexer

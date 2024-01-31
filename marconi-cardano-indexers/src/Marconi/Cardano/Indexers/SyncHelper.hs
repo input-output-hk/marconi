@@ -91,8 +91,8 @@ mkSingleInsertSyncedSqliteIndexer
   -> (Core.Timed (Core.Point event) event -> param)
   -> SQL.Query
   -- ^ the creation query
-  -> SQL.Query
-  -- ^ the insert query
+  -> IO SQL.Query
+  -- ^ the action producing an insert query
   -> Core.SQLRollbackPlan (Core.Point event)
   -- ^ the rollback query
   -> m (Core.SQLiteIndexer event)

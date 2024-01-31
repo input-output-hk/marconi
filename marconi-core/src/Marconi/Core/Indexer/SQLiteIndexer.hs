@@ -94,7 +94,7 @@ data SQLInsertPlan event = forall a.
   SQLInsertPlan
   { planExtractor :: Timed (Point event) event -> [a]
   -- ^ How to transform the event into a type that can be handle by the database
-  , planInsert :: SQL.Query
+  , planInsert :: IO SQL.Query
   -- ^ The insert statement for the extracted data
   }
 
@@ -225,7 +225,7 @@ mkSingleInsertSqliteIndexer
   -- ^ The SQL query to fetch the last stable point from the indexer.
   -> m (SQLiteIndexer event)
 mkSingleInsertSqliteIndexer path extract create insert rollback' =
-  mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) insert]] [rollback']
+  mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) (pure insert)]] [rollback']
 
 -- | Map SQLite errors to an indexer error
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
@@ -246,10 +246,11 @@ runIndexQueriesStep _ _ [] = pure ()
 runIndexQueriesStep c events plan =
   let runIndexQuery (SQLInsertPlan planExtractor planInsert) = do
         let rows = planExtractor =<< events
+        query <- planInsert
         case rows of
           [] -> pure ()
-          [x] -> SQL.execute c planInsert x
-          _nonEmpty -> SQL.executeMany c planInsert rows
+          [x] -> SQL.execute c query x
+          _nonEmpty -> SQL.executeMany c query rows
    in Async.mapConcurrently_ runIndexQuery plan
 
 -- | Run a list of insert queries in one single transaction.

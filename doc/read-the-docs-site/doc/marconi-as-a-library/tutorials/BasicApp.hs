@@ -336,7 +336,7 @@ mkBlockInfoSqliteIndexer dbPath = do
           -- single row.
           List.singleton
           -- The query that is called for each row that is the output of the previous parameter.
-          blockInfoInsertQuery
+          (pure blockInfoInsertQuery)
       ]
     ]
     -- Requests launched when a rollback occurs

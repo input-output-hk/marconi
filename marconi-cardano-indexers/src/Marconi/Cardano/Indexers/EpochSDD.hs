@@ -114,7 +114,7 @@ mkEpochSDDIndexer path = do
                 , slotNo
                 , blockHeaderHash
                 ) VALUES (?, ?, ?, ?, ?, ?)|]
-      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) sddInsertQuery]
+      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) (pure sddInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     path
     [createSDD]

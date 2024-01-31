@@ -196,7 +196,7 @@ mkAddressCountSqliteIndexer dbPath = do
     dbPath
     [dbCreation] -- request launched when the indexer is created
     [
-      [ SQLInsertPlan eventToRows addressCountInsertQuery
+      [ SQLInsertPlan eventToRows (pure addressCountInsertQuery)
       ]
     ] -- requests launched when an event is stored
     [SQLRollbackPlan (Core.defaultRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo)]

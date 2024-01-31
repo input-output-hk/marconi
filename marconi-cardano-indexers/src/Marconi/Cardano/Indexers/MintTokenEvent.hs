@@ -439,7 +439,7 @@ mkMintTokenIndexer dbPath = do
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createMintPolicyEventTables = [createMintPolicyEvent]
-      mintInsertPlans = [Core.SQLInsertPlan fromTimedMintEvents mintEventInsertQuery]
+      mintInsertPlans = [Core.SQLInsertPlan fromTimedMintEvents (pure mintEventInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     dbPath
     createMintPolicyEventTables
