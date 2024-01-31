@@ -9,6 +9,7 @@ module Marconi.Cardano.Indexers.UtxoWithSpent (
 ) where
 
 import Cardano.Api qualified as C
+import Control.Applicative ((<|>))
 import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Error.Class (MonadError)
@@ -24,7 +25,9 @@ import Database.SQLite.Simple.ToField (ToField (toField))
 import Marconi.Cardano.Core.Indexer.Worker (StandardSQLiteIndexer)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (TxIndexInBlock)
+import Marconi.Cardano.Indexers.Spent (SpentInfo)
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
+import Marconi.Cardano.Indexers.Utxo (Utxo)
 import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
 import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Core.Type qualified as Core
@@ -111,12 +114,22 @@ instance FromRow UtxoWithSpent where
         txIxSpent <- SQL.field
         pure . pure $ C.TxIn txIdSpent txIxSpent
 
--- | An alias for a non-empty list of @Utxo@, it's the event potentially produced on each block
-type UtxoWithSpentEvent = NonEmpty UtxoWithSpent
+type UtxoOrSpentEvent = NonEmpty UtxoOrSpent
 
-type instance Core.Point UtxoWithSpentEvent = C.ChainPoint
-type UtxoWithSpentIndexer = Core.SQLiteIndexer UtxoWithSpentEvent
-type StandardUtxoWithSpentIndexer m = StandardSQLiteIndexer m UtxoWithSpentEvent
+data UtxoOrSpent
+  = UtxoEvent Utxo
+  | SpentEvent SpentInfo
+
+instance SQL.ToRow (Core.Timed C.ChainPoint UtxoOrSpent) where
+  toRow (Core.Timed cp (UtxoEvent utxoEvent)) = toRow (Core.Timed cp utxoEvent)
+  toRow (Core.Timed cp (SpentEvent spentEvent)) = toRow (Core.Timed cp spentEvent)
+
+instance FromRow (Core.Timed C.ChainPoint UtxoOrSpent) where
+  fromRow = fmap UtxoEvent <$> fromRow <|> fmap SpentEvent <$> fromRow
+
+type instance Core.Point UtxoOrSpentEvent = C.ChainPoint
+type UtxoWithSpentIndexer = Core.SQLiteIndexer UtxoOrSpentEvent
+type StandardUtxoWithSpentIndexer m = StandardSQLiteIndexer m UtxoOrSpentEvent
 
 -- | Make a SQLiteIndexer for UtxoWithSpent
 mkUtxoWithSpentIndexer
@@ -139,11 +152,13 @@ mkUtxoWithSpentIndexer path = do
                  , blockHeaderHash BLOB NOT NULL
                  , txIdSpent TEXT
                  , txIxSpent INT
-                 )|]
-      -- TODO: fix
+                 )
+            as SELECT * FROM utxo LEFT OUTER JOIN spent ON utxo.txId == spent.txId AND utxo.txIx == spent.txIx
+            |]
+      -- TODO: fix not good need 2 types of insert
       utxoInsertQuery :: SQL.Query
       utxoInsertQuery =
-        [sql|INSERT INTO utxo (
+        [sql|INSERT OR REPLACE INTO utxo_with_spent (
                  address,
                  txIndex,
                  txId,
