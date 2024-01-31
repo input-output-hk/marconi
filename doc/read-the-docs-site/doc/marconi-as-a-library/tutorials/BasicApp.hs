@@ -29,6 +29,7 @@ import Data.Aeson (FromJSON, ToJSON, (.=))
 import Data.Aeson qualified as Aeson
 import Data.List qualified as List
 import Data.Maybe (listToMaybe)
+import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -402,13 +403,13 @@ instance
   query C.ChainPointAtGenesis _ _ = pure Nothing
   query (C.ChainPoint sn _) (GetBlockInfoFromBlockNoQuery bn) sqliteIndexer = do
     (results :: [Core.Timed C.ChainPoint BlockInfoEvent]) <-
-      liftIO $
-        SQL.query
-          (sqliteIndexer ^. Core.connection)
-          [sql|SELECT slotNo, blockHeaderHash, blockNo
+      Core.querySQLiteIndexerWith
+        (\cp (GetBlockInfoFromBlockNoQuery bn) -> [":slotNo" := C.chainPointToSlotNo, ":blockNo" := bn])
+        ( const const $
+            [sql|SELECT slotNo, blockHeaderHash, blockNo
                FROM block_info_table
-               WHERE slotNo <= ? AND blockNo = ?|]
-          (sn, bn)
+               WHERE slotNo <= :soltNo AND blockNo = :blockNo|]
+        )
     pure $ listToMaybe results
 
 -- We need to define how to read the stored events which used the 'ToRow'
