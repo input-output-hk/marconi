@@ -94,8 +94,8 @@ data SQLInsertPlan event = forall a.
   SQLInsertPlan
   { planExtractor :: Timed (Point event) event -> [a]
   -- ^ How to transform the event into a type that can be handle by the database
-  , planInsert :: IO SQL.Query
-  -- ^ The insert statement for the extracted data
+  , planInsert :: [a] -> SQL.Query
+  -- ^ The insert statement builder for the extracted data
   }
 
 newtype InsertPointQuery = InsertPointQuery {getInsertPointQuery :: SQL.Query}
@@ -246,7 +246,7 @@ runIndexQueriesStep _ _ [] = pure ()
 runIndexQueriesStep c events plan =
   let runIndexQuery (SQLInsertPlan planExtractor planInsert) = do
         let rows = planExtractor =<< events
-        query <- planInsert
+            query = planInsert rows
         case rows of
           [] -> pure ()
           [x] -> SQL.execute c query x
