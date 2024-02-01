@@ -56,6 +56,7 @@ import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (defaultInsertPlan)
 import System.FilePath ((</>))
 
 data SpentInfo = SpentInfo
@@ -129,7 +130,7 @@ mkSpentIndexer path = do
                VALUES (?, ?, ?, ?, ?)|]
       createSpentTables = [createSpent]
       spentInsert =
-        [Core.SQLInsertPlan (traverse NonEmpty.toList) (pure spentInsertQuery)]
+        [Core.SQLInsertPlan (defaultInsertPlan (traverse NonEmpty.toList) spentInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     path
     createSpentTables

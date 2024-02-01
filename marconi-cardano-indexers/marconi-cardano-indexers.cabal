@@ -113,7 +113,6 @@ library
     , sqlite-simple
     , text
     , time
-    , transformers
     , vector-map
 
 test-suite marconi-cardano-indexers-test

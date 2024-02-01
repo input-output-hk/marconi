@@ -282,7 +282,7 @@ module Marconi.Core (
   inMemoryDB,
   parseDBLocation,
   connection,
-  SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
+  SQLInsertPlan (SQLInsertPlan, planInsert),
   SQLRollbackPlan (SQLRollbackPlan, planRollback),
   defaultRollbackPlan,
 

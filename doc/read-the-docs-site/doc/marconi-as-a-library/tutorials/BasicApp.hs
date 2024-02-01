@@ -53,7 +53,7 @@ import Marconi.Cardano.Core.Types (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Core
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, inMemoryDB)
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, defaultInsertPlan, inMemoryDB)
 import Marconi.Core.JsonRpc qualified as Core
 import Network.JsonRpc.Types (JsonRpc, RawJsonRpc)
 
@@ -332,11 +332,13 @@ mkBlockInfoSqliteIndexer dbPath = do
     -- write the events in the SQLite database
     [
       [ Core.SQLInsertPlan
-          -- Translate the event into a list of rows. In this specific indexer, each event is a
-          -- single row.
-          List.singleton
-          -- The query that is called for each row that is the output of the previous parameter.
-          (pure blockInfoInsertQuery)
+          ( defaultInsertPlan
+              -- Translate the event into a list of rows. In this specific indexer, each event is a
+              -- single row.
+              List.singleton
+              -- The query that is called for each row that is the output of the previous parameter.
+              blockInfoInsertQuery
+          )
       ]
     ]
     -- Requests launched when a rollback occurs

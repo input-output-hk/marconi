@@ -67,6 +67,7 @@ import Marconi.Cardano.Core.Types (
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (defaultInsertPlan)
 import System.FilePath ((</>))
 
 data DatumInfo = DatumInfo
@@ -125,7 +126,7 @@ mkDatumIndexer path = do
   Sync.mkSyncedSqliteIndexer
     path
     createDatumTables
-    [[Core.SQLInsertPlan (traverse NonEmpty.toList) (pure datumInsertQuery)]]
+    [[Core.SQLInsertPlan (defaultInsertPlan (traverse NonEmpty.toList) datumInsertQuery)]]
     [Core.SQLRollbackPlan (Core.defaultRollbackPlan "datum" "slotNo" C.chainPointToSlotNo)]
 
 -- | A worker with catchup for a 'DatumIndexer'

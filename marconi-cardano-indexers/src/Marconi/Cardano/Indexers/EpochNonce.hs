@@ -52,7 +52,7 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, defaultInsertPlan)
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.HeaderValidation qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
@@ -107,7 +107,7 @@ mkEpochNonceIndexer path = do
                 , slotNo
                 , blockHeaderHash
                 ) VALUES (?, ?, ?, ?, ?)|]
-      insertEvent = [Core.SQLInsertPlan pure (pure nonceInsertQuery)]
+      insertEvent = [Core.SQLInsertPlan (defaultInsertPlan pure nonceInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     path
     [createNonce]

@@ -91,8 +91,8 @@ mkSingleInsertSyncedSqliteIndexer
   -> (Core.Timed (Core.Point event) event -> param)
   -> SQL.Query
   -- ^ the creation query
-  -> ([param] -> SQL.Query)
-  -- ^ the action producing an insert query
+  -> SQL.Query
+  -- ^ the insert query
   -> Core.SQLRollbackPlan (Core.Point event)
   -- ^ the rollback query
   -> m (Core.SQLiteIndexer event)
@@ -100,7 +100,7 @@ mkSingleInsertSyncedSqliteIndexer path extract tableCreation insertQuery rollbac
   Core.mkSqliteIndexer
     path
     [tableCreation, syncTableCreation]
-    [[Core.SQLInsertPlan (pure . extract) insertQuery]]
+    [[Core.SQLInsertPlan (SQL.defaultInsertPlan (pure . extract) insertQuery)]]
     [rollbackPlan]
     syncSetStablePoint
     syncLastPointQuery

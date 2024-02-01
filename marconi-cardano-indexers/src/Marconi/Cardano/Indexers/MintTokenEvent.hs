@@ -145,6 +145,7 @@ import Marconi.Cardano.Core.Types (
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (defaultInsertPlan)
 import System.FilePath ((</>))
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
@@ -439,7 +440,7 @@ mkMintTokenIndexer dbPath = do
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createMintPolicyEventTables = [createMintPolicyEvent]
-      mintInsertPlans = [Core.SQLInsertPlan fromTimedMintEvents (pure mintEventInsertQuery)]
+      mintInsertPlans = [Core.SQLInsertPlan (defaultInsertPlan fromTimedMintEvents mintEventInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     dbPath
     createMintPolicyEventTables

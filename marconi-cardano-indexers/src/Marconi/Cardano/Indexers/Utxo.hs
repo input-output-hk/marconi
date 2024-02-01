@@ -91,6 +91,7 @@ import Marconi.Cardano.Core.Types (
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (defaultInsertPlan)
 import System.FilePath ((</>))
 
 -- | Indexer representation of an UTxO
@@ -160,7 +161,7 @@ mkUtxoIndexer path = do
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createUtxoTables = [createUtxo]
-      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) (pure utxoInsertQuery)]
+      insertEvent = [Core.SQLInsertPlan (defaultInsertPlan (traverse NonEmpty.toList) utxoInsertQuery)]
 
   Sync.mkSyncedSqliteIndexer
     path

@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -32,7 +33,8 @@ module Marconi.Core.Indexer.SQLiteIndexer (
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
   dbLastSync,
-  SQLInsertPlan (SQLInsertPlan, planInsert, planExtractor),
+  SQLInsertPlan (SQLInsertPlan, planInsert),
+  defaultInsertPlan,
   SQLRollbackPlan (SQLRollbackPlan, planRollback),
   defaultRollbackPlan,
 
@@ -89,13 +91,8 @@ data ExpectedPersistentDB = ExpectedPersistentDB
 instance Exception ExpectedPersistentDB
 
 -- | A 'SQLInsertPlan' provides a piece information about how an event should be inserted in the database
-data SQLInsertPlan event = forall a.
-  (SQL.ToRow a) =>
-  SQLInsertPlan
-  { planExtractor :: Timed (Point event) event -> [a]
-  -- ^ How to transform the event into a type that can be handle by the database
-  , planInsert :: [a] -> SQL.Query
-  -- ^ The insert statement builder for the extracted data
+newtype SQLInsertPlan event = SQLInsertPlan
+  { planInsert :: [Timed (Point event) event] -> SQL.Connection -> IO ()
   }
 
 newtype InsertPointQuery = InsertPointQuery {getInsertPointQuery :: SQL.Query}
@@ -225,7 +222,11 @@ mkSingleInsertSqliteIndexer
   -- ^ The SQL query to fetch the last stable point from the indexer.
   -> m (SQLiteIndexer event)
 mkSingleInsertSqliteIndexer path extract create insert rollback' =
-  mkSqliteIndexer path [create] [[SQLInsertPlan (pure . extract) (pure insert)]] [rollback']
+  mkSqliteIndexer
+    path
+    [create]
+    [[SQLInsertPlan (defaultInsertPlan (pure . extract) insert)]]
+    [rollback']
 
 -- | Map SQLite errors to an indexer error
 handleSQLErrors :: IO a -> IO (Either IndexerError a)
@@ -236,6 +237,21 @@ handleSQLErrors value =
               , Handler (\(x :: SQL.SQLError) -> pure . Left . IndexerInternalError . Text.pack $ show x)
               ]
 
+defaultInsertPlan
+  :: forall a q
+   . (SQL.ToRow q)
+  => (a -> [q])
+  -> SQL.Query
+  -> [a]
+  -> SQL.Connection
+  -> IO ()
+defaultInsertPlan planExtractor query events c = do
+  let rows = planExtractor =<< events
+  case rows of
+    [] -> pure ()
+    [x] -> SQL.execute c query x
+    _nonEmpty -> SQL.executeMany c query rows
+
 -- | Run a list of insert queries in one single transaction.
 runIndexQueriesStep
   :: SQL.Connection
@@ -244,13 +260,7 @@ runIndexQueriesStep
   -> IO ()
 runIndexQueriesStep _ _ [] = pure ()
 runIndexQueriesStep c events plan =
-  let runIndexQuery (SQLInsertPlan planExtractor planInsert) = do
-        let rows = planExtractor =<< events
-            query = planInsert rows
-        case rows of
-          [] -> pure ()
-          [x] -> SQL.execute c query x
-          _nonEmpty -> SQL.executeMany c query rows
+  let runIndexQuery (SQLInsertPlan planInsert) = planInsert events c
    in Async.mapConcurrently_ runIndexQuery plan
 
 -- | Run a list of insert queries in one single transaction.

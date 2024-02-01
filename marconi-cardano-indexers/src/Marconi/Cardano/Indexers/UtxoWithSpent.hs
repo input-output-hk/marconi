@@ -14,7 +14,6 @@ import Control.Lens ((^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Error.Class (MonadError)
 import Control.Monad.Except (MonadIO)
-import Control.Monad.Trans.Maybe (MaybeT (MaybeT, runMaybeT))
 import Data.Aeson.TH qualified as Aeson
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
@@ -51,7 +50,7 @@ data UtxoWithSpent = UtxoWithSpent
   -- ^ the inline script hash of the tx out
   , _txIndex :: TxIndexInBlock
   -- ^ the index at which the tx is present in the block
-  , _spentAt :: !(Maybe C.TxIn)
+  , _spentAt :: !(Maybe C.TxId)
   -- ^ the tx id and index at which the tx out is spent
   }
   deriving (Show, Eq)
@@ -65,7 +64,7 @@ instance SQL.ToRow (Core.Timed C.ChainPoint UtxoWithSpent) where
     let (C.TxIn txid txix) = u ^. Core.event . txIn
         spentAtFields =
           case u ^. Core.event . spentAt of
-            (Just (C.TxIn txIdSpent txIxSpent)) -> [toField txIdSpent, toField txIxSpent]
+            (Just txIdSpent) -> [toField txIdSpent]
             Nothing -> []
      in toRow
           [ toField $ u ^. Core.event . address
@@ -96,7 +95,7 @@ instance FromRow UtxoWithSpent where
     _value <- SQL.field
     _inlineScript <- SQL.field
     _inlineScriptHash <- SQL.field
-    _spentAt <- runMaybeT parseSpent
+    _spentAt <- SQL.field
     pure $
       UtxoWithSpent
         { _address
@@ -108,11 +107,6 @@ instance FromRow UtxoWithSpent where
         , _inlineScriptHash
         , _spentAt
         }
-    where
-      parseSpent = MaybeT $ do
-        txIdSpent <- SQL.field
-        txIxSpent <- SQL.field
-        pure . pure $ C.TxIn txIdSpent txIxSpent
 
 type UtxoOrSpentEvent = NonEmpty UtxoOrSpent
 
@@ -151,31 +145,34 @@ mkUtxoWithSpentIndexer path = do
                  , slotNo INT NOT NULL
                  , blockHeaderHash BLOB NOT NULL
                  , txIdSpent TEXT
-                 , txIxSpent INT
                  )
             as SELECT * FROM utxo LEFT OUTER JOIN spent ON utxo.txId == spent.txId AND utxo.txIx == spent.txIx
             |]
-      -- TODO: fix not good need 2 types of insert
-      utxoInsertQuery :: SQL.Query
-      utxoInsertQuery =
-        [sql|INSERT OR REPLACE INTO utxo_with_spent (
-                 address,
-                 txIndex,
-                 txId,
-                 txIx,
-                 datumHash,
-                 value,
-                 inlineScript,
-                 inlineScriptHash,
-                 slotNo,
-                 blockHeaderHash,
-                 txIdSpent,
-                 txIxSpent
-              ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+      utxoInsertQuery :: [Core.Timed C.ChainPoint UtxoOrSpent] -> SQL.Query
+      utxoInsertQuery [] = [sql||]
+      utxoInsertQuery ((Core.Timed _ utxoOrSpent) : _) =
+        case utxoOrSpent of
+          UtxoEvent _ ->
+            [sql|INSERT INTO utxo_with_spent (
+                     address,
+                     txIndex,
+                     txId,
+                     txIx,
+                     datumHash,
+                     value,
+                     inlineScript,
+                     inlineScriptHash,
+                     slotNo,
+                     blockHeaderHash,
+                     txIdSpent,
+                  ) VALUES
+                  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+          SpentEvent _ ->
+            [sql|UPDATE utxo_with_spent
+                 SET txIdSpent = ?
+                 WHERE txId = ? AND txIx = ? |]
       createUtxoTables = [createUtxoWithSpent]
-      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) (pure utxoInsertQuery)]
-
+      insertEvent = [Core.SQLInsertPlan undefined] -- (traverse NonEmpty.toList)]
   Sync.mkSyncedSqliteIndexer
     path
     createUtxoTables
