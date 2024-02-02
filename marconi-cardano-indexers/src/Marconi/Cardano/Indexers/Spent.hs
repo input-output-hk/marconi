@@ -21,6 +21,14 @@ module Marconi.Cardano.Indexers.Spent (
   StandardSpentIndexer,
   catchupConfigEventHook,
 
+  -- * Queries
+  createSpent,
+  spentInsertQuery,
+
+  -- * SQL plans
+  spentInsertPlan,
+  spentRollbackPlan,
+
   -- * Extractor
   getInputs,
 ) where
@@ -105,37 +113,49 @@ type SpentIndexer = Core.SQLiteIndexer SpentInfoEvent
 -- | A SQLite Spent indexer with Catchup
 type StandardSpentIndexer m = StandardSQLiteIndexer m SpentInfoEvent
 
+createSpent, spentInsertQuery :: SQL.Query
+createSpent =
+  [sql|CREATE TABLE IF NOT EXISTS spent
+         ( txId TEXT NOT NULL
+         , txIx INT NOT NULL
+         , spentAtTxId TEXT NOT NULL
+         , slotNo INT NOT NULL
+         , blockHeaderHash BLOB NOT NULL
+         )|]
+spentInsertQuery =
+  [sql|INSERT OR IGNORE INTO spent
+         ( txId
+         , txIx
+         , spentAtTxId
+         , slotNo
+         , blockHeaderHash
+         )
+         VALUES (?, ?, ?, ?, ?)|]
+
+spentInsertPlan
+  :: (Core.ToRow (Core.Timed (Core.Point (NonEmpty a)) a))
+  => Core.SQLInsertPlan (NonEmpty a)
+spentInsertPlan =
+  Core.SQLInsertPlan $
+    defaultInsertPlan (traverse NonEmpty.toList) spentInsertQuery
+
+spentRollbackPlan :: Core.SQLRollbackPlan C.ChainPoint
+spentRollbackPlan =
+  Core.SQLRollbackPlan $
+    Core.defaultRollbackPlan "spent" "slotNo" C.chainPointToSlotNo
+
 mkSpentIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => SQLiteDBLocation
   -> m (Core.SQLiteIndexer SpentInfoEvent)
 mkSpentIndexer path = do
-  let createSpent =
-        [sql|CREATE TABLE IF NOT EXISTS spent
-               ( txId TEXT NOT NULL
-               , txIx INT NOT NULL
-               , spentAtTxId TEXT NOT NULL
-               , slotNo INT NOT NULL
-               , blockHeaderHash BLOB NOT NULL
-               )|]
-      spentInsertQuery :: SQL.Query
-      spentInsertQuery =
-        [sql|INSERT OR IGNORE INTO spent
-               ( txId
-               , txIx
-               , spentAtTxId
-               , slotNo
-               , blockHeaderHash
-               )
-               VALUES (?, ?, ?, ?, ?)|]
-      createSpentTables = [createSpent]
-      spentInsert =
-        [Core.SQLInsertPlan (defaultInsertPlan (traverse NonEmpty.toList) spentInsertQuery)]
+  let createSpentTables = [createSpent]
+      spentInsert = [spentInsertPlan]
   Sync.mkSyncedSqliteIndexer
     path
     createSpentTables
     [spentInsert]
-    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "spent" "slotNo" C.chainPointToSlotNo)]
+    [spentRollbackPlan]
 
 catchupConfigEventHook :: Trace IO Text -> FilePath -> indexer -> IO indexer
 catchupConfigEventHook stdoutTrace dbPath indexer = do

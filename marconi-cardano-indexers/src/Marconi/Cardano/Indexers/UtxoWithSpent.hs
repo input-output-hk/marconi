@@ -7,6 +7,7 @@
 
 module Marconi.Cardano.Indexers.UtxoWithSpent (
   StandardUtxoWithSpentIndexer,
+  mkUtxoOrSpentIndexer,
   mkUtxoWithSpentIndexer,
 ) where
 
@@ -27,9 +28,14 @@ import Database.SQLite.Simple.ToField (ToField (toField))
 import Marconi.Cardano.Core.Indexer.Worker (StandardSQLiteIndexer)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (TxIndexInBlock)
-import Marconi.Cardano.Indexers.Spent (SpentInfo (SpentInfo))
+import Marconi.Cardano.Indexers.Spent (
+  SpentInfo (SpentInfo),
+  createSpent,
+  spentInsertPlan,
+  spentRollbackPlan,
+ )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
-import Marconi.Cardano.Indexers.Utxo (Utxo)
+import Marconi.Cardano.Indexers.Utxo (Utxo, createUtxo, utxoInsertPlan, utxoRollbackPlan)
 import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
 import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Core.Type qualified as Core
@@ -119,8 +125,9 @@ instance FromRow UtxoWithSpent where
         , _spentAtSlotNo
         }
 
-type UtxoOrSpentEvent = NonEmpty UtxoOrSpent
-
+{- | We need to consider the following cases: either the event to be indexed represents
+ the creation of a new UTxO or the spending of an existing one.
+-}
 data UtxoOrSpent
   = UtxoEvent Utxo
   | SpentEvent SpentInfo
@@ -132,11 +139,34 @@ instance SQL.ToRow (Core.Timed C.ChainPoint UtxoOrSpent) where
 instance FromRow (Core.Timed C.ChainPoint UtxoOrSpent) where
   fromRow = fmap UtxoEvent <$> fromRow <|> fmap SpentEvent <$> fromRow
 
+-- | The event type for indexing UTxOs with Spent information.
+type UtxoOrSpentEvent = NonEmpty UtxoOrSpent
+
 type instance Core.Point UtxoOrSpentEvent = C.ChainPoint
 type UtxoWithSpentIndexer = Core.SQLiteIndexer UtxoOrSpentEvent
 type StandardUtxoWithSpentIndexer m = StandardSQLiteIndexer m UtxoOrSpentEvent
 
--- | Make a SQLiteIndexer for UtxoWithSpent
+{- | Make a SQLiteIndexer which indexes data into two tables: one for UTxO
+ information and the other for Spent information.
+-}
+mkUtxoOrSpentIndexer
+  :: (MonadIO m, MonadError Core.IndexerError m)
+  => SQLiteDBLocation
+  -- ^ SQL connection to database
+  -> m UtxoWithSpentIndexer
+mkUtxoOrSpentIndexer path = do
+  let createTables = [createUtxo, createSpent]
+      insertPlans = [[utxoInsertPlan, spentInsertPlan]]
+      rollbackPlans = [utxoRollbackPlan, spentRollbackPlan]
+  Sync.mkSyncedSqliteIndexer
+    path
+    createTables
+    insertPlans
+    rollbackPlans
+
+{- | Make a SQLiteIndexer which indexes data in a table containing both
+ UTxO and Spent information.
+-}
 mkUtxoWithSpentIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => SQLiteDBLocation
@@ -183,6 +213,7 @@ mkUtxoWithSpentIndexer path = do
     [[Core.SQLInsertPlan insertPlan]]
     [Core.SQLRollbackPlan rollbackPlan]
 
+-- | Custom SQL insert plan for adding both UTxO and Spent data to the table.
 insertPlan :: [Core.Timed C.ChainPoint UtxoOrSpentEvent] -> SQL.Connection -> IO ()
 insertPlan events conn = do
   let rows = traverse NonEmpty.toList =<< events
@@ -224,6 +255,7 @@ insertPlan events conn = do
                 ]
           SQL.executeNamed conn query params
 
+-- | Custom SQL rollback plan for removing both UTxO and Spent data from the table.
 rollbackPlan
   :: C.ChainPoint
   -> SQL.Connection

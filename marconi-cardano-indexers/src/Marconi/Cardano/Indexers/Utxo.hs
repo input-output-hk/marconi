@@ -41,6 +41,14 @@ module Marconi.Cardano.Indexers.Utxo (
   trackedAddresses,
   includeScript,
 
+  -- * Queries
+  createUtxo,
+  utxoInsertQuery,
+
+  -- * SQL plans
+  utxoInsertPlan,
+  utxoRollbackPlan,
+
   -- * Extractors
   getUtxoEventsFromBlock,
   getUtxosFromTx,
@@ -125,6 +133,47 @@ type instance Core.Point UtxoEvent = C.ChainPoint
 type UtxoIndexer = Core.SQLiteIndexer UtxoEvent
 type StandardUtxoIndexer m = StandardSQLiteIndexer m UtxoEvent
 
+createUtxo, utxoInsertQuery :: SQL.Query
+createUtxo =
+  [sql|CREATE TABLE IF NOT EXISTS utxo
+           ( address BLOB NOT NULL
+           , txIndex INT NOT NULL
+           , txId TEXT NOT NULL
+           , txIx INT NOT NULL
+           , datumHash BLOB
+           , value BLOB
+           , inlineScript BLOB
+           , inlineScriptHash BLOB
+           , slotNo INT NOT NULL
+           , blockHeaderHash BLOB NOT NULL
+           )|]
+utxoInsertQuery =
+  [sql|INSERT INTO utxo (
+           address,
+           txIndex,
+           txId,
+           txIx,
+           datumHash,
+           value,
+           inlineScript,
+           inlineScriptHash,
+           slotNo,
+           blockHeaderHash
+        ) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+
+utxoInsertPlan
+  :: (Core.ToRow (Core.Timed (Core.Point (NonEmpty a)) a))
+  => Core.SQLInsertPlan (NonEmpty a)
+utxoInsertPlan =
+  Core.SQLInsertPlan $
+    defaultInsertPlan (traverse NonEmpty.toList) utxoInsertQuery
+
+utxoRollbackPlan :: Core.SQLRollbackPlan C.ChainPoint
+utxoRollbackPlan =
+  Core.SQLRollbackPlan $
+    Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo
+
 -- | Make a SQLiteIndexer for Utxos
 mkUtxoIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -132,42 +181,13 @@ mkUtxoIndexer
   -- ^ SQL connection to database
   -> m UtxoIndexer
 mkUtxoIndexer path = do
-  let createUtxo =
-        [sql|CREATE TABLE IF NOT EXISTS utxo
-                 ( address BLOB NOT NULL
-                 , txIndex INT NOT NULL
-                 , txId TEXT NOT NULL
-                 , txIx INT NOT NULL
-                 , datumHash BLOB
-                 , value BLOB
-                 , inlineScript BLOB
-                 , inlineScriptHash BLOB
-                 , slotNo INT NOT NULL
-                 , blockHeaderHash BLOB NOT NULL
-                 )|]
-      utxoInsertQuery :: SQL.Query
-      utxoInsertQuery =
-        [sql|INSERT INTO utxo (
-                 address,
-                 txIndex,
-                 txId,
-                 txIx,
-                 datumHash,
-                 value,
-                 inlineScript,
-                 inlineScriptHash,
-                 slotNo,
-                 blockHeaderHash
-              ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-      createUtxoTables = [createUtxo]
-      insertEvent = [Core.SQLInsertPlan (defaultInsertPlan (traverse NonEmpty.toList) utxoInsertQuery)]
-
+  let createUtxoTables = [createUtxo]
+      insertEvent = [utxoInsertPlan]
   Sync.mkSyncedSqliteIndexer
     path
     createUtxoTables
     [insertEvent]
-    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo)]
+    [utxoRollbackPlan]
 
 catchupConfigEventHook :: Trace IO Text -> FilePath -> indexer -> IO indexer
 catchupConfigEventHook stdoutTrace dbPath indexer = do
