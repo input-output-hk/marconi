@@ -6,6 +6,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.Cardano.Indexers.UtxoWithSpent (
+  StandardUtxoWithSpentIndexer,
   mkUtxoWithSpentIndexer,
 ) where
 
@@ -50,7 +51,7 @@ data UtxoWithSpent = UtxoWithSpent
   -- ^ the inline script of the tx out
   , _inlineScriptHash :: !(Maybe C.ScriptHash)
   -- ^ the inline script hash of the tx out
-  , _txIndex :: TxIndexInBlock
+  , _txIndex :: !TxIndexInBlock
   -- ^ the index at which the tx is present in the block
   , _spentAtTx :: !(Maybe C.TxId)
   -- ^ the tx id and index at which the tx out is spent
@@ -83,9 +84,9 @@ instance SQL.ToRow (Core.Timed C.ChainPoint UtxoWithSpent) where
           , toField $ u ^. Core.event . inlineScript
           , toField $ u ^. Core.event . inlineScriptHash
           ]
+          <> toRow (u ^. Core.point)
           <> toRow spentAtField
           <> toRow spentAtSlotNoField
-          <> toRow (u ^. Core.point)
 
 instance FromRow (Core.Timed C.ChainPoint UtxoWithSpent) where
   fromRow = do
