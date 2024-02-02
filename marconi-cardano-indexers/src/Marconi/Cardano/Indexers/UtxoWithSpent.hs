@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -15,16 +16,17 @@ import Control.Lens qualified as Lens
 import Control.Monad.Error.Class (MonadError)
 import Control.Monad.Except (MonadIO)
 import Data.Aeson.TH qualified as Aeson
+import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import Database.SQLite.Simple (FromRow (fromRow), ToRow (toRow))
+import Database.SQLite.Simple (FromRow (fromRow), NamedParam ((:=)), ToRow (toRow))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Marconi.Cardano.Core.Indexer.Worker (StandardSQLiteIndexer)
 import Marconi.Cardano.Core.Orphans ()
 import Marconi.Cardano.Core.Types (TxIndexInBlock)
-import Marconi.Cardano.Indexers.Spent (SpentInfo)
+import Marconi.Cardano.Indexers.Spent (SpentInfo (SpentInfo))
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Cardano.Indexers.Utxo (Utxo)
 import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
@@ -148,34 +150,48 @@ mkUtxoWithSpentIndexer path = do
                  )
             as SELECT * FROM utxo LEFT OUTER JOIN spent ON utxo.txId == spent.txId AND utxo.txIx == spent.txIx
             |]
-      utxoInsertQuery :: [Core.Timed C.ChainPoint UtxoOrSpent] -> SQL.Query
-      utxoInsertQuery [] = [sql||]
-      utxoInsertQuery ((Core.Timed _ utxoOrSpent) : _) =
-        case utxoOrSpent of
-          UtxoEvent _ ->
-            [sql|INSERT INTO utxo_with_spent (
-                     address,
-                     txIndex,
-                     txId,
-                     txIx,
-                     datumHash,
-                     value,
-                     inlineScript,
-                     inlineScriptHash,
-                     slotNo,
-                     blockHeaderHash,
-                     txIdSpent,
-                  ) VALUES
-                  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-          SpentEvent _ ->
-            [sql|UPDATE utxo_with_spent
-                 SET txIdSpent = ?
-                 WHERE txId = ? AND txIx = ? |]
       createUtxoTables = [createUtxoWithSpent]
-      insertEvent = [Core.SQLInsertPlan undefined] -- (traverse NonEmpty.toList)]
+      insertEvent = [Core.SQLInsertPlan insertPlan]
   Sync.mkSyncedSqliteIndexer
     path
     createUtxoTables
     [insertEvent]
     -- TODO: fix
     [Core.SQLRollbackPlan (Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo)]
+
+insertPlan :: [Core.Timed C.ChainPoint UtxoOrSpentEvent] -> SQL.Connection -> IO ()
+insertPlan events conn = do
+  let rows = traverse NonEmpty.toList =<< events
+  traverse_ buildAndExecuteQuery rows
+  where
+    buildAndExecuteQuery :: Core.Timed C.ChainPoint UtxoOrSpent -> IO ()
+    buildAndExecuteQuery row@(Core.Timed _ utxoOrSpent) =
+      case utxoOrSpent of
+        UtxoEvent _ -> do
+          let query =
+                [sql|INSERT INTO utxo_with_spent (
+                       address,
+                       txIndex,
+                       txId,
+                       txIx,
+                       datumHash,
+                       value,
+                       inlineScript,
+                       inlineScriptHash,
+                       slotNo,
+                       blockHeaderHash,
+                       txIdSpent,
+                    ) VALUES
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+          SQL.execute conn query row
+        SpentEvent (SpentInfo (C.TxIn txId txIx) txIdSpent) -> do
+          let query =
+                [sql|UPDATE utxo_with_spent
+                   SET txIdSpent = :txIdSpent
+                   WHERE txId = :txId AND txIx = :txIx|]
+              params =
+                [ ":txId" := txId
+                , ":txIx" := txIx
+                , ":txIdSpent" := txIdSpent
+                ]
+          SQL.executeNamed conn query params
