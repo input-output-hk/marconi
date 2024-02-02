@@ -54,6 +54,7 @@ data UtxoWithSpent = UtxoWithSpent
   -- ^ the index at which the tx is present in the block
   , _spentAt :: !(Maybe C.TxId)
   -- ^ the tx id and index at which the tx out is spent
+  , _spentAtSlotNo :: !(Maybe C.SlotNo)
   }
   deriving (Show, Eq)
 
@@ -98,6 +99,7 @@ instance FromRow UtxoWithSpent where
     _inlineScript <- SQL.field
     _inlineScriptHash <- SQL.field
     _spentAt <- SQL.field
+    _spentAtSlotNo <- SQL.field
     pure $
       UtxoWithSpent
         { _address
@@ -108,6 +110,7 @@ instance FromRow UtxoWithSpent where
         , _inlineScript
         , _inlineScriptHash
         , _spentAt
+        , _spentAtSlotNo
         }
 
 type UtxoOrSpentEvent = NonEmpty UtxoOrSpent
@@ -147,8 +150,25 @@ mkUtxoWithSpentIndexer path = do
                  , slotNo INT NOT NULL
                  , blockHeaderHash BLOB NOT NULL
                  , txIdSpent TEXT
+                 , slotNoSpent INT
                  )
-            as SELECT * FROM utxo LEFT OUTER JOIN spent ON utxo.txId == spent.txId AND utxo.txIx == spent.txIx
+            as
+              SELECT
+                utxo.address,
+                utxo.txIndex,
+                utxo.txId,
+                utxo.txIx,
+                utxo.datumHash,
+                utxo.value,
+                utxo.inlineScript,
+                utxo.inlineScriptHash,
+                utxo.slotNo,
+                utxo.blockHeaderHash,
+                spent.spentAtTxId,
+                spent.slotNo
+              FROM utxo
+              LEFT OUTER JOIN spent ON utxo.txId == spent.txId AND utxo.txIx == spent.txIx
+              WHERE ISNULL spent.spentAtTxId AND ISNULL spent.slotNo
             |]
       createUtxoTables = [createUtxoWithSpent]
       insertEvent = [Core.SQLInsertPlan insertPlan]
@@ -165,7 +185,7 @@ insertPlan events conn = do
   traverse_ buildAndExecuteQuery rows
   where
     buildAndExecuteQuery :: Core.Timed C.ChainPoint UtxoOrSpent -> IO ()
-    buildAndExecuteQuery row@(Core.Timed _ utxoOrSpent) =
+    buildAndExecuteQuery row@(Core.Timed chainPoint utxoOrSpent) =
       case utxoOrSpent of
         UtxoEvent _ -> do
           let query =
@@ -185,13 +205,16 @@ insertPlan events conn = do
                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
           SQL.execute conn query row
         SpentEvent (SpentInfo (C.TxIn txId txIx) txIdSpent) -> do
-          let query =
+          let pointToSlot (C.ChainPoint slotNoSpent _) = slotNoSpent
+              pointToSlot _ = 0
+              query =
                 [sql|UPDATE utxo_with_spent
-                   SET txIdSpent = :txIdSpent
+                   SET txIdSpent = :txIdSpent, slotNoSpent = :slotNoSpent
                    WHERE txId = :txId AND txIx = :txIx|]
               params =
                 [ ":txId" := txId
                 , ":txIx" := txIx
                 , ":txIdSpent" := txIdSpent
+                , ":slotNoSpent" := pointToSlot chainPoint
                 ]
           SQL.executeNamed conn query params
