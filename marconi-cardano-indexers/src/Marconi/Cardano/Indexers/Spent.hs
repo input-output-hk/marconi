@@ -183,7 +183,7 @@ catchupConfigEventHook stdoutTrace dbPath indexer = do
     -- return the original indexer
     pure indexer
 
--- | A minimal worker for the UTXO indexer, with catchup and filtering.
+-- | A minimal worker for the spent indexer
 spentWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
   => StandardWorkerConfig m Core.SQLiteIndexer input SpentInfoEvent
@@ -196,7 +196,8 @@ spentWorker config path = do
   mkStandardWorker config indexer
 
 {- | Convenience wrapper around 'spentWorker' with some defaults for
-creating 'StandardWorkerConfig', including a preprocessor.
+creating 'StandardWorkerConfig', including a preprocessor. Adds catchup
+capabilities as well.
 -}
 spentBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)

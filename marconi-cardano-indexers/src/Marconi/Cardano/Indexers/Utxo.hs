@@ -53,6 +53,7 @@ module Marconi.Cardano.Indexers.Utxo (
   getUtxoEventsFromBlock,
   getUtxosFromTx,
   getUtxosFromTxBody,
+  extractUtxos,
 ) where
 
 import Cardano.Api qualified as C
@@ -260,8 +261,6 @@ utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
   let indexerName = "Utxo"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       utxoDbPath = path </> "utxo.db"
-      extractUtxos :: AnyTxBody -> [Utxo]
-      extractUtxos (AnyTxBody _ indexInBlock txb) = getUtxosFromTxBody indexInBlock txb
       catchupConfigWithTracer =
         catchupConfig
           & Core.configCatchupEventHook .~ catchupConfigEventHook textLogger utxoDbPath
@@ -364,9 +363,12 @@ instance
           (const utxoQuery)
           (\(Core.EventsMatchingQuery p) -> parseResult p)
 
+extractUtxos :: AnyTxBody -> [Utxo]
+extractUtxos (AnyTxBody _ indexInBlock txb) = getUtxosFromTxBody indexInBlock txb
+
 {- | Extract UtxoEvents from Cardano Block
 
- Returns @Nothing@ if the block doesn't consume or spend any utxo
+ Returns the empty list if the block doesn't consume or spend any utxo
 -}
 getUtxoEventsFromBlock
   :: (C.IsCardanoEra era)

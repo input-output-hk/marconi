@@ -12,8 +12,10 @@ module Marconi.Cardano.Indexers.UtxoWithSpent (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.BM.Trace (Trace)
+import Cardano.BM.Tracing qualified as BM
 import Control.Applicative ((<|>))
-import Control.Lens ((^.))
+import Control.Lens ((&), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Error.Class (MonadError)
 import Control.Monad.Except (MonadIO)
@@ -21,24 +23,41 @@ import Data.Aeson.TH qualified as Aeson
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
+import Data.String (fromString)
+import Data.Text (Text)
+import Data.Text qualified as Text
 import Database.SQLite.Simple (FromRow (fromRow), NamedParam ((:=)), ToRow (toRow))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
-import Marconi.Cardano.Core.Indexer.Worker (StandardSQLiteIndexer)
+import Marconi.Cardano.Core.Indexer.Worker (
+  StandardSQLiteIndexer,
+  StandardWorker,
+  StandardWorkerConfig (StandardWorkerConfig),
+  mkStandardWorker,
+ )
 import Marconi.Cardano.Core.Orphans ()
-import Marconi.Cardano.Core.Types (TxIndexInBlock)
+import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody), SecurityParam, TxIndexInBlock)
 import Marconi.Cardano.Indexers.Spent (
   SpentInfo (SpentInfo),
   createSpent,
+  getInputs,
   spentInsertPlan,
   spentRollbackPlan,
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
-import Marconi.Cardano.Indexers.Utxo (Utxo, createUtxo, utxoInsertPlan, utxoRollbackPlan)
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Cardano.Indexers.Utxo (
+  Utxo,
+  createUtxo,
+  extractUtxos,
+  utxoInsertPlan,
+  utxoRollbackPlan,
+ )
+import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation (Storage))
 import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
 import Marconi.Core.Type qualified as Core
+import System.FilePath ((</>))
 
 {- | Indexer representation of a UTxO together with the information
  about where it was spent. If this information is missing, then it isn't
@@ -273,3 +292,53 @@ rollbackPlan point conn =
                 WHERE slotNoSpent = :slotNo|]
       SQL.executeNamed conn deleteNewRows [":slotNo" := slotNo]
       SQL.executeNamed conn deleteNewSpentReferences [":slotNo" := slotNo]
+
+catchupConfigEventHook
+  :: Trace IO Text
+  -> FilePath
+  -> UtxoWithSpentIndexer
+  -> IO UtxoWithSpentIndexer
+catchupConfigEventHook _ dbPath _ = mkUtxoWithSpentIndexer (Storage dbPath)
+
+-- | A minimal worker for the UtxoWithSpent indexer
+utxoWithSpentWorker
+  :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
+  => StandardWorkerConfig m Core.SQLiteIndexer input UtxoOrSpentEvent
+  -- ^ General configuration of a worker
+  -> SQLiteDBLocation
+  -- ^ SQLite database location
+  -> n (StandardWorker m input UtxoOrSpentEvent Core.SQLiteIndexer)
+utxoWithSpentWorker config path = do
+  indexer <- mkUtxoOrSpentIndexer path
+  mkStandardWorker config indexer
+
+{- | Convenience wrapper around 'utxoWithSpentWorker' with some defaults for
+creating 'StandardWorkerConfig', including a preprocessor. Adds catchup
+capabilities as well.
+-}
+utxoWithSpentBuilder
+  :: (MonadIO n, MonadError Core.IndexerError n)
+  => SecurityParam
+  -> Core.CatchupConfig indexer event
+  -> Trace IO Text
+  -> FilePath
+  -> n (StandardWorker IO [AnyTxBody] UtxoOrSpentEvent Core.SQLiteIndexer)
+utxoWithSpentBuilder securityParam catchupConfig textLogger path =
+  let indexerName = "UtxoWithSpent"
+      indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
+      spentDbPath = path </> "utxoWithSpent.db"
+      extractUtxoOrSpent :: AnyTxBody -> [UtxoOrSpent]
+      extractUtxoOrSpent anyTxBody@(AnyTxBody _ _ txb) =
+        (UtxoEvent <$> extractUtxos anyTxBody) <> (SpentEvent <$> getInputs txb)
+      catchupConfigWithTracer =
+        catchupConfig
+          & Core.configCatchupEventHook
+            .~ catchupConfigEventHook textLogger spentDbPath
+      utxoWithSpentWorkerConfig =
+        StandardWorkerConfig
+          indexerName
+          securityParam
+          undefined -- catchupConfigWithTracer
+          (pure . NonEmpty.nonEmpty . (>>= extractUtxoOrSpent))
+          (BM.appendName indexerName indexerEventLogger)
+   in utxoWithSpentWorker utxoWithSpentWorkerConfig (Core.parseDBLocation spentDbPath)
