@@ -6,7 +6,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Marconi.Cardano.Indexers.UtxoWithSpent (
-
+  mkUtxoWithSpentIndexer,
 ) where
 
 import Cardano.Api qualified as C
@@ -52,7 +52,7 @@ data UtxoWithSpent = UtxoWithSpent
   -- ^ the inline script hash of the tx out
   , _txIndex :: TxIndexInBlock
   -- ^ the index at which the tx is present in the block
-  , _spentAt :: !(Maybe C.TxId)
+  , _spentAtTx :: !(Maybe C.TxId)
   -- ^ the tx id and index at which the tx out is spent
   , _spentAtSlotNo :: !(Maybe C.SlotNo)
   }
@@ -65,9 +65,13 @@ Lens.makeLenses ''UtxoWithSpent
 instance SQL.ToRow (Core.Timed C.ChainPoint UtxoWithSpent) where
   toRow u =
     let (C.TxIn txid txix) = u ^. Core.event . txIn
-        spentAtFields =
-          case u ^. Core.event . spentAt of
+        spentAtField =
+          case u ^. Core.event . spentAtTx of
             (Just txIdSpent) -> [toField txIdSpent]
+            Nothing -> []
+        spentAtSlotNoField =
+          case u ^. Core.event . spentAtSlotNo of
+            (Just slotNoSpent) -> [toField slotNoSpent]
             Nothing -> []
      in toRow
           [ toField $ u ^. Core.event . address
@@ -79,14 +83,15 @@ instance SQL.ToRow (Core.Timed C.ChainPoint UtxoWithSpent) where
           , toField $ u ^. Core.event . inlineScript
           , toField $ u ^. Core.event . inlineScriptHash
           ]
-          <> toRow spentAtFields
+          <> toRow spentAtField
+          <> toRow spentAtSlotNoField
           <> toRow (u ^. Core.point)
 
 instance FromRow (Core.Timed C.ChainPoint UtxoWithSpent) where
   fromRow = do
-    utxo <- fromRow
+    utxoWithSpent <- fromRow
     point <- fromRow
-    pure $ Core.Timed point utxo
+    pure $ Core.Timed point utxoWithSpent
 
 instance FromRow UtxoWithSpent where
   fromRow = do
@@ -98,7 +103,7 @@ instance FromRow UtxoWithSpent where
     _value <- SQL.field
     _inlineScript <- SQL.field
     _inlineScriptHash <- SQL.field
-    _spentAt <- SQL.field
+    _spentAtTx <- SQL.field
     _spentAtSlotNo <- SQL.field
     pure $
       UtxoWithSpent
@@ -109,7 +114,7 @@ instance FromRow UtxoWithSpent where
         , _value
         , _inlineScript
         , _inlineScriptHash
-        , _spentAt
+        , _spentAtTx
         , _spentAtSlotNo
         }
 
@@ -171,13 +176,11 @@ mkUtxoWithSpentIndexer path = do
               WHERE ISNULL spent.spentAtTxId AND ISNULL spent.slotNo
             |]
       createUtxoTables = [createUtxoWithSpent]
-      insertEvent = [Core.SQLInsertPlan insertPlan]
   Sync.mkSyncedSqliteIndexer
     path
     createUtxoTables
-    [insertEvent]
-    -- TODO: fix
-    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo)]
+    [[Core.SQLInsertPlan insertPlan]]
+    [Core.SQLRollbackPlan rollbackPlan]
 
 insertPlan :: [Core.Timed C.ChainPoint UtxoOrSpentEvent] -> SQL.Connection -> IO ()
 insertPlan events conn = do
@@ -201,8 +204,9 @@ insertPlan events conn = do
                        slotNo,
                        blockHeaderHash,
                        txIdSpent,
+                       slotNoSpent,
                     ) VALUES
-                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
           SQL.execute conn query row
         SpentEvent (SpentInfo (C.TxIn txId txIx) txIdSpent) -> do
           let pointToSlot (C.ChainPoint slotNoSpent _) = slotNoSpent
@@ -218,3 +222,21 @@ insertPlan events conn = do
                 , ":slotNoSpent" := pointToSlot chainPoint
                 ]
           SQL.executeNamed conn query params
+
+rollbackPlan
+  :: C.ChainPoint
+  -> SQL.Connection
+  -> IO ()
+rollbackPlan point conn =
+  case C.chainPointToSlotNo point of
+    Nothing ->
+      SQL.execute_ conn [sql|DELETE FROM utxo_with_spent|]
+    Just slotNo -> do
+      let deleteNewRows =
+            [sql|DELETE FROM utxo_with_spent WHERE slotNo == :slotNo|]
+          deleteNewSpentReferences =
+            [sql|UPDATE utxo_with_spent
+                SET txIdSpent = NULL, slotNoSpent = NULL
+                WHERE slotNoSpent = :slotNo|]
+      SQL.executeNamed conn deleteNewRows [":slotNo" := slotNo]
+      SQL.executeNamed conn deleteNewSpentReferences [":slotNo" := slotNo]
