@@ -387,7 +387,9 @@ instance SQL.ToRow (Core.Timed C.ChainPoint BlockInfoEvent) where
 
 -- | Query the SQLite indexer
 instance
-  (MonadIO m)
+  ( MonadError (Core.QueryError GetBlockInfoFromBlockNoQuery) m
+  , MonadIO m
+  )
   => Core.Queryable
       m
       BlockInfoEvent -- The event type of the indexer
