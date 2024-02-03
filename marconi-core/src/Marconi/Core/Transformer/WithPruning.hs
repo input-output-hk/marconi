@@ -34,7 +34,7 @@ import Marconi.Core.Class (
   HasGenesis,
   IsIndex (index, rollback, setLastStablePoint),
   IsSync,
-  Queryable,
+  Queryable (query),
   Resetable (reset),
  )
 import Marconi.Core.Indexer.MixedIndexer (MixedIndexer, inDatabase)
@@ -45,6 +45,7 @@ import Marconi.Core.Transformer.Class (
 import Marconi.Core.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
   indexVia,
+  queryVia,
   resetVia,
   rollbackVia,
   setLastStablePointVia,
@@ -153,10 +154,11 @@ deriving via
   instance
     (IsSync m event indexer) => IsSync m event (WithPruning indexer)
 
-deriving via
-  (IndexTransformer PruningConfig indexer)
-  instance
-    (Queryable m event query indexer) => Queryable m event query (WithPruning indexer)
+instance
+  (Queryable m event query indexer)
+  => Queryable m event query (WithPruning indexer)
+  where
+  query = queryVia unwrap
 
 deriving via
   (IndexTransformer PruningConfig indexer)

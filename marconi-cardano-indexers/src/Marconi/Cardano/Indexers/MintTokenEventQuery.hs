@@ -29,7 +29,7 @@ import Marconi.Cardano.Indexers.MintTokenEvent (
 import Marconi.Core qualified as Core
 
 {- If at any point we move to another database backend, we might want to consider changing this to
-	use SQLiteAggregateQuery to avoid opening more than one connection -}
+   use SQLiteAggregateQuery to avoid opening more than one connection -}
 
 -- | The inner state of the 'MintTokenIndexerQuery'
 data MintTokenEventIndexerQuery event = MintTokenEventIndexerQuery
@@ -101,9 +101,9 @@ instance
     let fromError :: Core.QueryError a -> Core.QueryError b
         fromError = \case
           Core.NotStoredAnymore -> Core.NotStoredAnymore
-          (Core.IndexerQueryError t) -> Core.IndexerQueryError t
-          (Core.AheadOfLastSync _) -> Core.IndexerQueryError "Upper slot no. ahead of last sync"
-          (Core.SlotNoBoundsInvalid r) -> Core.SlotNoBoundsInvalid r
+          Core.IndexerQueryError t -> Core.IndexerQueryError t
+          Core.AheadOfLastSync _ -> Core.IndexerQueryError "Upper slot no. ahead of last sync"
+          Core.SlotNoBoundsInvalid r -> Core.SlotNoBoundsInvalid r
 
     withStab <-
       case upperSlotNo of

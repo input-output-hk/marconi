@@ -204,7 +204,6 @@ module Marconi.Core (
   Closeable (..),
   Queryable (..),
   queryEither,
-  queryLatest,
   queryLatestEither,
   AppendResult (..),
 
@@ -281,7 +280,8 @@ module Marconi.Core (
   mkSingleInsertSqliteIndexer,
   inMemoryDB,
   parseDBLocation,
-  connection,
+  writeConnection,
+  readConnectionPool,
   SQLInsertPlan (SQLInsertPlan, planExtractor, planInsert),
   SQLRollbackPlan (SQLRollbackPlan, tableName, pointName, pointExtractor),
 
@@ -289,14 +289,20 @@ module Marconi.Core (
   ToRow (..),
   dbLastSync,
   querySQLiteIndexerWith,
+  queryLatestSQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
   handleSQLErrors,
   SQLiteAggregateQuery (SQLiteAggregateQuery),
   aggregateConnection,
   mkSQLiteAggregateQuery,
+  withResource,
   SQLiteSourceProvider (SQLiteSourceProvider),
   IsSourceProvider,
   HasDatabasePath (getDatabasePath),
+
+  -- **** Connection utilities
+  readOnlyConnection,
+  readWriteConnection,
 
   -- *** On file
 
@@ -608,6 +614,7 @@ import Marconi.Core.Indexer.SQLiteAggregateQuery (
   SQLiteSourceProvider (..),
   aggregateConnection,
   mkSQLiteAggregateQuery,
+  withResource,
  )
 import Marconi.Core.Indexer.SQLiteIndexer (
   GetLastStablePointQuery (GetLastStablePointQuery, getLastStablePointQuery),
@@ -618,15 +625,19 @@ import Marconi.Core.Indexer.SQLiteIndexer (
   SQLiteIndexer (..),
   SetLastStablePointQuery (SetLastStablePointQuery, getSetLastStablePointQuery),
   ToRow (..),
-  connection,
   dbLastSync,
   handleSQLErrors,
   inMemoryDB,
   mkSingleInsertSqliteIndexer,
   mkSqliteIndexer,
   parseDBLocation,
+  queryLatestSQLiteIndexerWith,
   querySQLiteIndexerWith,
   querySyncedOnlySQLiteIndexerWith,
+  readConnectionPool,
+  readOnlyConnection,
+  readWriteConnection,
+  writeConnection,
  )
 import Marconi.Core.Preprocessor (
   Preprocessor,

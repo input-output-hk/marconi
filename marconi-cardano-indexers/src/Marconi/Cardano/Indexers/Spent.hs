@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
@@ -218,6 +219,48 @@ instance
           (const spentInfoQuery)
           (const NonEmpty.nonEmpty)
 
+queryMatchingSpent
+  :: ( MonadIO m
+     , MonadError (Core.QueryError (Core.EventsMatchingQuery SpentInfoEvent)) m
+     )
+  => Maybe C.ChainPoint
+  -> Core.EventsMatchingQuery SpentInfoEvent
+  -> Core.SQLiteIndexer SpentInfoEvent
+  -> m (Core.Result (Core.EventsMatchingQuery SpentInfoEvent))
+queryMatchingSpent =
+  let queryPrefix :: SQL.Query
+      queryPrefix =
+        [sql|
+        SELECT txId, txIx, spentAtTxId,
+               slotNo, blockHeaderHash
+        FROM spent
+        |]
+      querySpecific :: SQL.Query
+      querySpecific = queryPrefix <> [sql| WHERE slotNo <= :slotNo |]
+      groupEvents
+        :: NonEmpty (Core.Timed point a)
+        -> Core.Timed point (NonEmpty a)
+      groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
+      parseResult
+        :: (NonEmpty a -> Maybe (NonEmpty a))
+        -> [Core.Timed C.ChainPoint a]
+        -> [Core.Timed C.ChainPoint (NonEmpty a)]
+      parseResult p =
+        mapMaybe (traverse p . groupEvents)
+          . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
+   in \case
+        Nothing ->
+          Core.queryLatestSQLiteIndexerWith
+            (pure [])
+            (const queryPrefix)
+            (\(Core.EventsMatchingQuery p) -> parseResult p)
+        Just point ->
+          Core.querySyncedOnlySQLiteIndexerWith
+            (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
+            (const querySpecific)
+            (\(Core.EventsMatchingQuery p) -> parseResult p)
+            point
+
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery SpentInfoEvent)) m)
   => Core.Queryable
@@ -226,30 +269,8 @@ instance
       (Core.EventsMatchingQuery SpentInfoEvent)
       Core.SQLiteIndexer
   where
-  query =
-    let spentQuery :: SQL.Query
-        spentQuery =
-          [sql|
-          SELECT txId, txIx, spentAtTxId,
-                 slotNo, blockHeaderHash
-          FROM spent
-          WHERE slotNo <= :slotNo
-          |]
-        groupEvents
-          :: NonEmpty (Core.Timed point a)
-          -> Core.Timed point (NonEmpty a)
-        groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
-        parseResult
-          :: (NonEmpty a -> Maybe (NonEmpty a))
-          -> [Core.Timed C.ChainPoint a]
-          -> [Core.Timed C.ChainPoint (NonEmpty a)]
-        parseResult p =
-          mapMaybe (traverse p . groupEvents)
-            . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
-     in Core.querySyncedOnlySQLiteIndexerWith
-          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const spentQuery)
-          (\(Core.EventsMatchingQuery p) -> parseResult p)
+  query = queryMatchingSpent . Just
+  queryLatest = queryMatchingSpent Nothing
 
 getInputs :: C.TxBody era -> [SpentInfo]
 getInputs

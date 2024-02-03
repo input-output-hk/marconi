@@ -26,7 +26,7 @@ import Marconi.Core.Class (
   Closeable,
   IsIndex (index, rollback, setLastStablePoint),
   IsSync,
-  Queryable,
+  Queryable (query),
   Resetable (reset),
  )
 import Marconi.Core.Indexer.SQLiteAggregateQuery (HasDatabasePath)
@@ -37,6 +37,7 @@ import Marconi.Core.Transformer.Class (
 import Marconi.Core.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
   indexVia,
+  queryVia,
   resetVia,
   rollbackVia,
   setLastStablePointVia,
@@ -90,10 +91,11 @@ deriving via
   instance
     (Closeable m indexer) => Closeable m (WithDelay indexer)
 
-deriving via
-  (IndexTransformer DelayConfig indexer)
-  instance
-    (Queryable m event query indexer) => Queryable m event query (WithDelay indexer)
+instance
+  (Queryable m event query indexer)
+  => Queryable m event query (WithDelay indexer)
+  where
+  query = queryVia delayedIndexer
 
 instance IndexerTrans WithDelay where
   unwrap = delayedIndexer

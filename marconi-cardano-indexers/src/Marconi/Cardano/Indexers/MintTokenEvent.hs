@@ -423,7 +423,7 @@ mkMintTokenIndexer dbPath = do
               , redeemerHash BLOB
               , redeemerData BLOB
               )|]
-  let mintEventInsertQuery :: SQL.Query
+      mintEventInsertQuery :: SQL.Query
       mintEventInsertQuery =
         [sql|INSERT
                INTO minting_policy_events (

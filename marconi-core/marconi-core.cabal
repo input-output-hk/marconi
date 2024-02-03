@@ -103,6 +103,7 @@ library
     , bytestring
     , comonad
     , containers
+    , direct-sqlite
     , directory
     , filepath
     , foldl
@@ -110,6 +111,7 @@ library
     , mtl
     , network
     , prettyprinter
+    , resource-pool
     , sqlite-simple
     , stm
     , streaming

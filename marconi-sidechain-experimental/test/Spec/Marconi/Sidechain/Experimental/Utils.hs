@@ -55,7 +55,6 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
         (config ^. Indexers.sidechainBuildIndexersUtxoConfig)
         (config ^. Indexers.sidechainBuildIndexersMintTokenEventConfig)
         (config ^. Indexers.sidechainBuildIndexersEpochStateConfig)
-        trace
         (mkMarconiTrace trace)
         (config ^. Indexers.sidechainBuildIndexersDbPath)
 

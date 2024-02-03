@@ -1,11 +1,10 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 
 -- | An Indexer that stores BlockInfo
 module Marconi.Cardano.Indexers.BlockInfo (
@@ -39,9 +38,8 @@ import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Tracing qualified as BM
 import Control.Lens ((&), (?~), (^.))
 import Control.Lens qualified as Lens
-import Control.Monad (when)
-import Control.Monad.Except (MonadError (throwError))
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Aeson.TH qualified as Aeson
 import Data.Maybe (listToMaybe, mapMaybe)
 import Data.String (fromString)
@@ -191,6 +189,15 @@ type instance Core.Result (BlockInfoBySlotNoQuery event) = Maybe event
 
 newtype BlockInfoBySlotNoQuery event = BlockInfoBySlotNoQuery C.SlotNo
 
+lastBlockInfoQuery :: SQL.Query
+lastBlockInfoQuery =
+  [sql|
+  SELECT blockNo, blockTimestamp, epochNo
+  FROM blockInfo
+  ORDER BY slotNo DESC
+  LIMIT 1
+  |]
+
 blockInfoBySlotNoQuery :: SQL.Query
 blockInfoBySlotNoQuery =
   [sql|
@@ -204,31 +211,17 @@ instance
   (MonadIO m, MonadError (Core.QueryError (BlockInfoBySlotNoQuery BlockInfo)) m)
   => Core.Queryable m BlockInfo (BlockInfoBySlotNoQuery BlockInfo) Core.SQLiteIndexer
   where
-  query p q@(BlockInfoBySlotNoQuery sn) =
-    querySyncedOnlySQLiteIndexerBySlotNoWith
-      (\s -> pure [":slotNo" := s])
+  query =
+    Core.querySyncedOnlySQLiteIndexerWith
+      (const $ \(BlockInfoBySlotNoQuery sn) -> [":slotNo" := sn])
       (const blockInfoBySlotNoQuery)
       (const listToMaybe)
-      sn
-    where
-      -- This isn't in core because we don't want to encourage this operation in the general case
-      querySyncedOnlySQLiteIndexerBySlotNoWith
-        :: (C.SlotNo -> BlockInfoBySlotNoQuery BlockInfo -> [NamedParam])
-        -> (BlockInfoBySlotNoQuery BlockInfo -> SQL.Query)
-        -> ( BlockInfoBySlotNoQuery BlockInfo
-             -> [BlockInfo]
-             -> Maybe BlockInfo
-           )
-        -> C.SlotNo
-        -> Core.SQLiteIndexer BlockInfo
-        -> m (Maybe BlockInfo)
-      querySyncedOnlySQLiteIndexerBySlotNoWith toNamedParam sqlQuery fromRows slotNo indexer =
-        do
-          let c = indexer ^. Core.connection
-          when (p > indexer ^. Core.dbLastSync) $
-            throwError (Core.AheadOfLastSync Nothing)
-          res <- liftIO $ SQL.queryNamed c (sqlQuery q) (toNamedParam slotNo q)
-          pure $ fromRows q res
+
+  queryLatest =
+    Core.queryLatestSQLiteIndexerWith
+      (\(BlockInfoBySlotNoQuery s) -> [":slotNo" := s])
+      (const blockInfoBySlotNoQuery)
+      (const listToMaybe)
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery BlockInfo)) m)
@@ -239,52 +232,102 @@ instance
       (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
       (const blockInfoBySlotNoQuery)
       (const listToMaybe)
+  queryLatest =
+    Core.queryLatestSQLiteIndexerWith
+      (pure [])
+      (const lastBlockInfoQuery)
+      (const listToMaybe)
+
+queryClosestBlockInfo
+  :: ( MonadIO m
+     , MonadError (Core.QueryError (Core.EventsMatchingQuery BlockInfo)) m
+     )
+  => Maybe C.ChainPoint
+  -> Core.EventsMatchingQuery BlockInfo
+  -> Core.SQLiteIndexer BlockInfo
+  -> m (Core.Result (Core.EventsMatchingQuery BlockInfo))
+queryClosestBlockInfo =
+  let queryPrefix :: SQL.Query
+      queryPrefix =
+        [sql|
+        SELECT blockNo, blockTimestamp, epochNo,
+               slotNo, blockHeaderHash
+        FROM blockInfo
+        |]
+      querySpecific :: SQL.Query
+      querySpecific = queryPrefix <> [sql| WHERE slotNo <= :slotNo |]
+      parseResult
+        :: (a -> Maybe a)
+        -> [Core.Timed C.ChainPoint a]
+        -> [Core.Timed C.ChainPoint a]
+      parseResult = mapMaybe . traverse
+   in \case
+        Nothing ->
+          Core.queryLatestSQLiteIndexerWith
+            (pure [])
+            (const queryPrefix)
+            (\(Core.EventsMatchingQuery p) -> parseResult p)
+        Just point ->
+          Core.querySyncedOnlySQLiteIndexerWith
+            (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
+            (const querySpecific)
+            (\(Core.EventsMatchingQuery p) -> parseResult p)
+            point
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery BlockInfo)) m)
   => Core.Queryable m BlockInfo (Core.EventsMatchingQuery BlockInfo) Core.SQLiteIndexer
   where
-  query =
-    let blockInfoBeforeOrAtSlotNoQuery :: SQL.Query
-        blockInfoBeforeOrAtSlotNoQuery =
-          [sql|
+  query = queryClosestBlockInfo . Just
+  queryLatest = queryClosestBlockInfo Nothing
+
+queryLatestBlockInfo
+  :: ( MonadIO m
+     , MonadError (Core.QueryError (Core.LatestEventsQuery BlockInfo)) m
+     )
+  => Maybe C.ChainPoint
+  -> Core.LatestEventsQuery BlockInfo
+  -> Core.SQLiteIndexer BlockInfo
+  -> m (Core.Result (Core.LatestEventsQuery BlockInfo))
+queryLatestBlockInfo =
+  let queryPrefix :: SQL.Query
+      queryPrefix =
+        [sql|
           SELECT blockNo, blockTimestamp, epochNo,
                  slotNo, blockHeaderHash
           FROM blockInfo
-          WHERE slotNo <= :slotNo
-          |]
-
-        parseResult
-          :: (a -> Maybe a)
-          -> [Core.Timed C.ChainPoint a]
-          -> [Core.Timed C.ChainPoint a]
-        parseResult = mapMaybe . traverse
-     in Core.querySyncedOnlySQLiteIndexerWith
-          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const blockInfoBeforeOrAtSlotNoQuery)
-          (\(Core.EventsMatchingQuery p) -> parseResult p)
+        |]
+      extraParts :: SQL.Query
+      extraParts =
+        [sql|
+          ORDER BY slotNo DESC
+          LIMIT :n
+        |]
+      queryLatest :: SQL.Query
+      queryLatest = queryPrefix <> extraParts
+      querySpecific :: SQL.Query
+      querySpecific = queryPrefix <> [sql| WHERE slotNo <= :slotNo |] <> extraParts
+   in \case
+        Nothing ->
+          Core.queryLatestSQLiteIndexerWith
+            (\(Core.LatestEventsQuery n) -> [":n" := n])
+            (const queryLatest)
+            (const id)
+        Just point ->
+          Core.querySyncedOnlySQLiteIndexerWith
+            ( \cp (Core.LatestEventsQuery n) ->
+                [":slotNo" := C.chainPointToSlotNo cp, ":n" := n]
+            )
+            (const querySpecific)
+            (const id)
+            point
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.LatestEventsQuery BlockInfo)) m)
   => Core.Queryable m BlockInfo (Core.LatestEventsQuery BlockInfo) Core.SQLiteIndexer
   where
-  query =
-    let blockInfoBeforeOrAtSlotNoQuery :: SQL.Query
-        blockInfoBeforeOrAtSlotNoQuery =
-          [sql|
-          SELECT blockNo, blockTimestamp, epochNo,
-                 slotNo, blockHeaderHash
-          FROM blockInfo
-          WHERE slotNo <= :slotNo
-          ORDER BY slotNo DESC
-          LIMIT :n
-          |]
-     in Core.querySyncedOnlySQLiteIndexerWith
-          ( \cp (Core.LatestEventsQuery n) ->
-              [":slotNo" := C.chainPointToSlotNo cp, ":n" := n]
-          )
-          (const blockInfoBeforeOrAtSlotNoQuery)
-          (const id)
+  query = queryLatestBlockInfo . Just
+  queryLatest = queryLatestBlockInfo Nothing
 
 extractBlockInfo :: BlockEvent -> BlockInfo
 extractBlockInfo (BlockEvent (C.BlockInMode b _) eno t) =

@@ -296,53 +296,98 @@ instance SQL.FromRow Utxo where
         , _inlineScriptHash
         }
 
+queryUtxoAt
+  :: (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery UtxoEvent)) m)
+  => Maybe C.ChainPoint
+  -> Core.EventAtQuery UtxoEvent
+  -> Core.SQLiteIndexer UtxoEvent
+  -> m (Core.Result (Core.EventAtQuery UtxoEvent))
+queryUtxoAt =
+  let
+    queryPrefix =
+      [sql|
+    SELECT address, txIndex, txId, txIx, datumHash, value, inlineScript, inlineScriptHash
+    FROM utxo
+    |]
+    queryLatest =
+      queryPrefix
+        <> [sql|
+      ORDER BY slotNo DESC
+      LIMIT 1
+      |]
+    querySpecific = queryPrefix <> [sql| WHERE slotNo == :slotNo |]
+   in
+    \case
+      Nothing ->
+        Core.queryLatestSQLiteIndexerWith
+          (pure [])
+          (const queryLatest)
+          (const NonEmpty.nonEmpty)
+      Just point ->
+        Core.querySyncedOnlySQLiteIndexerWith
+          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
+          (const querySpecific)
+          (const NonEmpty.nonEmpty)
+          point
+
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventAtQuery UtxoEvent)) m)
   => Core.Queryable m UtxoEvent (Core.EventAtQuery UtxoEvent) Core.SQLiteIndexer
   where
-  query =
-    let utxoQuery :: SQL.Query
-        utxoQuery =
-          [sql|
-          SELECT address, txIndex, txId, txIx, datumHash, value, inlineScript, inlineScriptHash
-          FROM utxo
-          WHERE slotNo == :slotNo
-          |]
-     in Core.querySyncedOnlySQLiteIndexerWith
+  query = queryUtxoAt . Just
+  queryLatest = queryUtxoAt Nothing
+
+queryMatching
+  :: (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery UtxoEvent)) m)
+  => Maybe C.ChainPoint
+  -> Core.EventsMatchingQuery UtxoEvent
+  -> Core.SQLiteIndexer UtxoEvent
+  -> m (Core.Result (Core.EventsMatchingQuery UtxoEvent))
+queryMatching =
+  let
+    queryPrefix =
+      [sql|
+    SELECT address, txIndex, txId, txIx, datumHash, value, inlineScript, inlineScriptHash,
+           slotNo, blockHeaderHash
+    FROM utxo
+    |]
+    orderPart = [sql| ORDER BY slotNo ASC |]
+    queryLatest = queryPrefix <> orderPart
+    querySpecific = queryPrefix <> [sql| WHERE slotNo <= :slotNo |] <> orderPart
+
+    -- Group utxos that are of the same block in the same event
+    groupEvents
+      :: NonEmpty (Core.Timed point a)
+      -> Core.Timed point (NonEmpty a)
+    groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
+
+    parseResult
+      :: (NonEmpty a -> Maybe (NonEmpty a))
+      -> [Core.Timed C.ChainPoint a]
+      -> [Core.Timed C.ChainPoint (NonEmpty a)]
+    parseResult p =
+      mapMaybe (traverse p . groupEvents)
+        . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
+   in
+    \case
+      Nothing ->
+        Core.queryLatestSQLiteIndexerWith
+          (pure [])
+          (const queryLatest)
+          (\(Core.EventsMatchingQuery p) -> parseResult p)
+      Just point ->
+        Core.querySyncedOnlySQLiteIndexerWith
           (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const utxoQuery)
-          (const NonEmpty.nonEmpty)
+          (const querySpecific)
+          (\(Core.EventsMatchingQuery p) -> parseResult p)
+          point
 
 instance
   (MonadIO m, MonadError (Core.QueryError (Core.EventsMatchingQuery UtxoEvent)) m)
   => Core.Queryable m UtxoEvent (Core.EventsMatchingQuery UtxoEvent) Core.SQLiteIndexer
   where
-  query =
-    let utxoQuery :: SQL.Query
-        utxoQuery =
-          [sql|
-          SELECT address, txIndex, txId, txIx, datumHash, value, inlineScript, inlineScriptHash,
-                 slotNo, blockHeaderHash
-          FROM utxo
-          WHERE slotNo <= :slotNo
-          |]
-        -- Group utxos that are of the same block in the same event
-        groupEvents
-          :: NonEmpty (Core.Timed point a)
-          -> Core.Timed point (NonEmpty a)
-        groupEvents xs@(x :| _) = Core.Timed (x ^. Core.point) (Lens.view Core.event <$> xs)
-
-        parseResult
-          :: (NonEmpty a -> Maybe (NonEmpty a))
-          -> [Core.Timed C.ChainPoint a]
-          -> [Core.Timed C.ChainPoint (NonEmpty a)]
-        parseResult p =
-          mapMaybe (traverse p . groupEvents)
-            . NonEmpty.groupBy ((==) `on` Lens.view Core.point)
-     in Core.querySyncedOnlySQLiteIndexerWith
-          (\cp -> pure [":slotNo" := C.chainPointToSlotNo cp])
-          (const utxoQuery)
-          (\(Core.EventsMatchingQuery p) -> parseResult p)
+  query = queryMatching . Just
+  queryLatest = queryMatching Nothing
 
 {- | Extract UtxoEvents from Cardano Block
 

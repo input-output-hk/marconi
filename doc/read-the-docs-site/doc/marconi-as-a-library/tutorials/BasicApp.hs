@@ -29,6 +29,7 @@ import Data.Aeson (FromJSON, ToJSON, (.=))
 import Data.Aeson qualified as Aeson
 import Data.List qualified as List
 import Data.Maybe (listToMaybe)
+import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField qualified as SQL
@@ -386,7 +387,9 @@ instance SQL.ToRow (Core.Timed C.ChainPoint BlockInfoEvent) where
 
 -- | Query the SQLite indexer
 instance
-  (MonadIO m)
+  ( MonadError (Core.QueryError GetBlockInfoFromBlockNoQuery) m
+  , MonadIO m
+  )
   => Core.Queryable
       m
       BlockInfoEvent -- The event type of the indexer
@@ -399,17 +402,18 @@ instance
     -> Core.SQLiteIndexer BlockInfoEvent -- The indexer backend
     -> m (Core.Result GetBlockInfoFromBlockNoQuery)
   -- There is not data at genesis. Return 'Nothing'.
-  query C.ChainPointAtGenesis _ _ = pure Nothing
-  query (C.ChainPoint sn _) (GetBlockInfoFromBlockNoQuery bn) sqliteIndexer = do
-    (results :: [Core.Timed C.ChainPoint BlockInfoEvent]) <-
-      liftIO $
-        SQL.query
-          (sqliteIndexer ^. Core.connection)
+  query C.ChainPointAtGenesis = const $ const $ pure Nothing
+  query cp =
+    let sqlQuery =
           [sql|SELECT slotNo, blockHeaderHash, blockNo
-               FROM block_info_table
-               WHERE slotNo <= ? AND blockNo = ?|]
-          (sn, bn)
-    pure $ listToMaybe results
+             FROM block_info_table
+             WHERE slotNo <= :soltNo AND blockNo = :blockNo|]
+     in Core.querySQLiteIndexerWith
+          ( \cp' (GetBlockInfoFromBlockNoQuery bn) -> [":slotNo" := C.chainPointToSlotNo cp', ":blockNo" := bn]
+          )
+          (const sqlQuery)
+          (const listToMaybe)
+          cp
 
 -- We need to define how to read the stored events which used the 'ToRow'
 -- instance. Therefore, a property test making sure that you can roundtrip

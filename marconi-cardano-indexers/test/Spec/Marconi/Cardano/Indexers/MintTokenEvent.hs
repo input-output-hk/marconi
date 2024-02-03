@@ -21,7 +21,7 @@ import Control.Exception (throwIO)
 import Control.Lens (over, toListOf, view, (^.))
 import Control.Lens.Fold qualified as Lens
 import Control.Lens.Traversal qualified as Lens
-import Control.Monad (forM, forM_, void, when)
+import Control.Monad (forM, forM_, unless, void, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Except (ExceptT, runExceptT)
 import Control.Tracer (nullTracer)
@@ -263,10 +263,8 @@ propActLikeListIndexerOnQueryByAssetIdWithUpperLowerBounds = H.property $ do
   H.cover 10 "At least two blocks with mint/burn events" $
     length allEvents > 1
 
-  when (not $ null allEvents) $ do
-    let (_, maxPoint) =
-          maybe (C.ChainPointAtGenesis, C.ChainPointAtGenesis) id $
-            minMaxChainPoints allEvents
+  unless (null allEvents) $ do
+    let maxPoint = maybe C.ChainPointAtGenesis snd $ minMaxChainPoints allEvents
 
     -- The query requires the lowerTxId to exist among the events.
     sampleEvent <- H.forAll $ H.Gen.element allEvents
@@ -493,7 +491,7 @@ propQueryWithUpperSlotNoReturnsEventsUpToThatSlot = H.property $ do
   H.cover 20 "At least two blocks with mint/burn events" $
     length allEvents > 1
 
-  when (not $ null allEvents) $ do
+  unless (null allEvents) $ do
     let (minPoint, maxPoint) =
           maybe (C.ChainPointAtGenesis, C.ChainPointAtGenesis) id $
             minMaxChainPoints allEvents
@@ -552,7 +550,7 @@ propQueryWithLowerTxIdAndUpperSlotNoReturnsEventsInRange = H.property $ do
   H.cover 20 "At least two blocks with mint/burn events" $
     length allEvents > 1
 
-  when (not $ null allEvents) $ do
+  unless (null allEvents) $ do
     let (_, maxPoint) =
           maybe (C.ChainPointAtGenesis, C.ChainPointAtGenesis) id $
             minMaxChainPoints allEvents
@@ -909,14 +907,14 @@ propWithStabilityAllStable =
 -- | Given a @SecurityParam@ of @1000000@ and no @upperSlotNo@, all events should be @Volatile@
 propWithStabilityAllUnstable :: H.Property
 propWithStabilityAllUnstable =
-  stabilityTestBase (H.assert . not . any isStable) Nothing 1000000
+  stabilityTestBase (H.assert . not . any isStable) Nothing 1_000_000
 
 {- | Given a maximal @upperSlotNo@, all events should be @Stable@, despite a @SecurityParam@ of
     @1000000@
 -}
 propWithStabilitySetUsnStable :: H.Property
 propWithStabilitySetUsnStable =
-  stabilityTestBase (H.assert . all isStable) (Just Max) 1000000
+  stabilityTestBase (H.assert . all isStable) (Just Max) 1_000_000
 
 {- | Given a minimal @upperSlotNo@, all events should be @Volatile@, despite a @SecurityParam@ of
     @0@
@@ -943,11 +941,9 @@ stabilityTestBase assertion upperSlotNo securityParam = H.property $ do
         let comp = case upper of
               Min -> minimumBy
               Max -> maximumBy
-        let upperPoint = comp (comparing $ view Core.point) blockEvents ^. Core.point
-        case upperPoint of
-          (C.ChainPoint sn _) -> Just sn
-          _ -> Nothing
-  ((Right res)) <-
+            upperPoint = comp (comparing $ view Core.point) blockEvents ^. Core.point
+        C.chainPointToSlotNo upperPoint
+  Right res <-
     liftIO $
       runExceptT $
         withIndexer securityParam events $
@@ -973,9 +969,7 @@ genMintTokenEvents =
         pure $
           Core.Timed
             (C.ChainPoint slotNo blockHeaderHash)
-            ( fmap MintTokenBlockEvents $
-                NonEmpty.nonEmpty events
-            )
+            (MintTokenBlockEvents <$> NonEmpty.nonEmpty events)
    in traverse getBlockSpentsEvent
 
 genInputs :: C.BlockNo -> C.TxBody era -> Gen [MintTokenEvent]
@@ -1012,12 +1006,13 @@ genInputs
           pure $ zipWith MintTokenEvent locations assets
 
 mkMintCombine
-  :: SecurityParam
+  :: FilePath
+  -> SecurityParam
   -> IO
       ( MintTokenIndexers
       , MintTokenEventQuery.MintTokenEventIndexerQuery MintTokenEvent.MintTokenBlockEvents
       )
-mkMintCombine securityParam = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
+mkMintCombine dir securityParam = do
   let blockInfoPath = dir </> "blockInfo.db"
   let catchupConfig = Core.mkCatchupConfig 4 2
 
@@ -1078,8 +1073,8 @@ withIndexer
       )
       IO
       a
-withIndexer securityParam events f = do
-  (indexers, mintTokenCombine) <- liftIO (mkMintCombine securityParam)
+withIndexer securityParam events f = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
+  (indexers, mintTokenCombine) <- liftIO (mkMintCombine dir securityParam)
   liftIO $ indexMockchain securityParam indexers events
   res <- f mintTokenCombine
   void $ liftIO $ runExceptT $ closeIndexers indexers

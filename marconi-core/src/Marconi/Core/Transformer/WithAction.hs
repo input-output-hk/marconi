@@ -24,12 +24,13 @@ import Marconi.Core.Class (
   Closeable,
   IsIndex (index, rollback, setLastStablePoint),
   IsSync,
-  Queryable,
+  Queryable (query),
  )
 import Marconi.Core.Transformer.Class (IndexerTrans, unwrap)
 import Marconi.Core.Transformer.IndexTransformer (
   IndexTransformer (IndexTransformer),
   indexVia,
+  queryVia,
   rollbackVia,
   setLastStablePointVia,
   wrappedIndexer,
@@ -54,10 +55,11 @@ deriving via
   instance
     (IsSync m event indexer) => IsSync m event (WithAction indexer)
 
-deriving via
-  (IndexTransformer WithActionConfig indexer)
-  instance
-    (Queryable m event query indexer) => Queryable m event query (WithAction indexer)
+instance
+  (Queryable m event query indexer)
+  => Queryable m event query (WithAction indexer)
+  where
+  query = queryVia unwrap
 
 deriving via
   (IndexTransformer WithActionConfig indexer)

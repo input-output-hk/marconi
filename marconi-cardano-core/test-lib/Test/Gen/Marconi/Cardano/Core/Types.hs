@@ -19,14 +19,14 @@ module Test.Gen.Marconi.Cardano.Core.Types (
   genWitnessAndHashInEra,
   genTxOutTxContext,
   genShelleyTxOutTxContext,
-  genAddressInEra,
-  genTxOutValue,
+  CGen.genAddressInEra,
+  CGen.genTxOutValue,
   genSimpleScriptData,
   genSimpleHashableScriptData,
   genProtocolParametersForPlutusScripts,
-  genHashScriptData,
-  genAssetId,
-  genPolicyId,
+  CGen.genHashScriptData,
+  CGen.genAssetId,
+  CGen.genPolicyId,
   CGen.genQuantity,
   CGen.genEpochNo,
   genPoolId,
@@ -38,24 +38,19 @@ import Cardano.Api.Shelley qualified as C
 import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.Hash.Class qualified as CRYPTO
 import Cardano.Ledger.Keys (KeyHash (KeyHash))
-import Cardano.Ledger.SafeHash (unsafeMakeSafeHash)
 import Control.Monad.State (StateT, evalStateT, lift, modify)
 import Control.Monad.State.Lazy (MonadState (get))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Short qualified as BSS
 import Data.Coerce (coerce)
-import Data.Int (Int64)
 import Data.List.NonEmpty as NE (NonEmpty ((:|)), cons, fromList, init, toList)
 import Data.Map qualified as Map
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Proxy (Proxy (Proxy))
-import Data.Ratio (Ratio, (%))
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.String (fromString)
 import Data.Word (Word64)
-import GHC.Natural (Natural)
 import Hedgehog (Gen, MonadGen)
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -225,7 +220,7 @@ genTxBodyContentForPlutusScripts = do
   txOuts <- Gen.list (Range.constant 1 10) (genTxOutTxContext C.BabbageEra)
   let txTotalCollateral = C.TxTotalCollateralNone
   let txReturnCollateral = C.TxReturnCollateralNone
-  txFee <- genTxFee C.BabbageEra
+  txFee <- CGen.genTxFee C.BabbageEra
   let txValidityRange = (C.TxValidityNoLowerBound, C.TxValidityNoUpperBound C.ValidityNoUpperBoundInBabbageEra)
   let txMetadata = C.TxMetadataNone
   let txAuxScripts = C.TxAuxScriptsNone
@@ -265,13 +260,6 @@ genTxBodyContentForPlutusScripts = do
       , C.txProposalProcedures
       , C.txVotingProcedures
       }
-  where
-    -- Copied from cardano-api. Delete when this function is reexported
-    genTxFee :: C.CardanoEra era -> Gen (C.TxFee era)
-    genTxFee era =
-      case C.txFeesExplicitInEra era of
-        Left supported -> pure (C.TxFeeImplicit supported)
-        Right supported -> C.TxFeeExplicit supported <$> CGen.genLovelace
 
 genWitnessAndHashInEra :: C.CardanoEra era -> Gen (C.Witness C.WitCtxTxIn era, C.ScriptHash)
 genWitnessAndHashInEra era = do
@@ -297,7 +285,7 @@ genWitnessAndHashInEra era = do
 For a version that only gives Shelley addresses, see 'genShelleyTxOutTxContext'.
 -}
 genTxOutTxContext :: C.CardanoEra era -> Gen (C.TxOut C.CtxTx era)
-genTxOutTxContext era = genTxOutTxContextWithAddress era (genAddressInEra era)
+genTxOutTxContext era = genTxOutTxContextWithAddress era (CGen.genAddressInEra era)
 
 {- | Generate a @C.'TxOut'@ in the given era. It will contain only Shelley addresses.
 For a version that also might give Byron addresses, see 'genTxOutTxContext'.
@@ -311,32 +299,13 @@ genTxOutTxContextWithAddress
 genTxOutTxContextWithAddress era addrGen =
   C.TxOut
     <$> addrGen
-    <*> genTxOutValue era
+    <*> CGen.genTxOutValue era
     <*> genSimpleTxOutDatumHashTxContext era
     <*> constantReferenceScript era
 
 -- | Generate a Shelley address in the given era.
 genShelleyAddressInEra :: (C.IsShelleyBasedEra era) => C.CardanoEra era -> Gen (C.AddressInEra era)
 genShelleyAddressInEra _ = C.shelleyAddressInEra <$> CGen.genAddressShelley
-
--- Copied from cardano-api. Delete when this function is reexported
-genAddressInEra :: C.CardanoEra era -> Gen (C.AddressInEra era)
-genAddressInEra era =
-  case C.cardanoEraStyle era of
-    C.LegacyByronEra ->
-      C.byronAddressInEra <$> CGen.genAddressByron
-    C.ShelleyBasedEra _ ->
-      Gen.choice
-        [ C.byronAddressInEra <$> CGen.genAddressByron
-        , C.shelleyAddressInEra <$> CGen.genAddressShelley
-        ]
-
--- Copied from cardano-api. Delete when this function is reexported
-genTxOutValue :: C.CardanoEra era -> Gen (C.TxOutValue era)
-genTxOutValue era =
-  case C.multiAssetSupportedInEra era of
-    Left adaOnlyInEra -> C.TxOutAdaOnly adaOnlyInEra <$> fmap (<> 1) CGen.genLovelace
-    Right multiAssetInEra -> C.TxOutValue multiAssetInEra . C.lovelaceToValue <$> fmap (<> 1) CGen.genLovelace
 
 -- Copied from cardano-api, but removed the recursive construction because it is time consuming,
 -- about a factor of 20 when compared to this simple generator.
@@ -392,40 +361,33 @@ genSimpleTxOutDatumHashTxContext era = case era of
   C.AlonzoEra ->
     Gen.choice
       [ pure C.TxOutDatumNone
-      , C.TxOutDatumHash C.ScriptDataInAlonzoEra <$> genHashScriptData
+      , C.TxOutDatumHash C.ScriptDataInAlonzoEra <$> CGen.genHashScriptData
       , C.TxOutDatumInTx C.ScriptDataInAlonzoEra <$> CGen.genHashableScriptData
       ]
   C.BabbageEra ->
     Gen.choice
       [ pure C.TxOutDatumNone
-      , C.TxOutDatumHash C.ScriptDataInBabbageEra <$> genHashScriptData
+      , C.TxOutDatumHash C.ScriptDataInBabbageEra <$> CGen.genHashScriptData
       , C.TxOutDatumInTx C.ScriptDataInBabbageEra <$> CGen.genHashableScriptData
       , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInBabbageEra <$> CGen.genHashableScriptData
       ]
   C.ConwayEra ->
     Gen.choice
       [ pure C.TxOutDatumNone
-      , C.TxOutDatumHash C.ScriptDataInConwayEra <$> genHashScriptData
+      , C.TxOutDatumHash C.ScriptDataInConwayEra <$> CGen.genHashScriptData
       , C.TxOutDatumInTx C.ScriptDataInConwayEra <$> CGen.genHashableScriptData
       , C.TxOutDatumInline C.ReferenceTxInsScriptsInlineDatumsInConwayEra <$> CGen.genHashableScriptData
       ]
 
--- Copied from cardano-api. Delete when this function is reexported
-genHashScriptData :: Gen (C.Hash C.ScriptData)
-genHashScriptData = C.ScriptDataHash . unsafeMakeSafeHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
-  where
-    mkDummyHash :: forall h a. (CRYPTO.HashAlgorithm h) => Int -> CRYPTO.Hash h a
-    mkDummyHash = coerce . CRYPTO.hashWithSerialiser @h CBOR.toCBOR
-
 genProtocolParametersForPlutusScripts :: Gen C.ProtocolParameters
 genProtocolParametersForPlutusScripts =
   C.ProtocolParameters
-    <$> ((,) <$> genNat <*> genNat)
+    <$> ((,) <$> CGen.genNat <*> CGen.genNat)
     <*> Gen.maybe CGen.genRational
     <*> CGen.genMaybePraosNonce
-    <*> genNat
-    <*> genNat
-    <*> genNat
+    <*> CGen.genNat
+    <*> CGen.genNat
+    <*> CGen.genNat
     <*> CGen.genLovelace
     <*> CGen.genLovelace
     <*> Gen.maybe CGen.genLovelace
@@ -433,8 +395,8 @@ genProtocolParametersForPlutusScripts =
     <*> CGen.genLovelace
     <*> CGen.genLovelace
     <*> CGen.genEpochNo
-    <*> genNat
-    <*> genRationalInt64
+    <*> CGen.genNat
+    <*> CGen.genRationalInt64
     <*> CGen.genRational
     <*> CGen.genRational
     <*> pure Nothing -- Obsolete from babbage onwards
@@ -454,50 +416,13 @@ genProtocolParametersForPlutusScripts =
             )
           ]
       )
-    <*> (Just <$> genExecutionUnitPrices)
+    <*> (Just <$> CGen.genExecutionUnitPrices)
     <*> (Just <$> CGen.genExecutionUnits)
     <*> (Just <$> CGen.genExecutionUnits)
-    <*> (Just <$> genNat)
-    <*> (Just <$> genNat)
-    <*> (Just <$> genNat)
+    <*> (Just <$> CGen.genNat)
+    <*> (Just <$> CGen.genNat)
+    <*> (Just <$> CGen.genNat)
     <*> (Just <$> CGen.genLovelace)
-  where
-    -- Copied from cardano-api. Delete when this function is reexported
-    genRationalInt64 :: Gen Rational
-    genRationalInt64 =
-      (\d -> ratioToRational (1 % d)) <$> genDenominator
-      where
-        genDenominator :: Gen Int64
-        genDenominator = Gen.integral (Range.linear 1 maxBound)
-
-        ratioToRational :: Ratio Int64 -> Rational
-        ratioToRational = toRational
-
-    -- Copied from cardano-api. Delete when this function is reexported
-    genNat :: Gen Natural
-    genNat = Gen.integral (Range.linear 0 10)
-
-    -- Copied from cardano-api. Delete when this function is reexported
-    genExecutionUnitPrices :: Gen C.ExecutionUnitPrices
-    genExecutionUnitPrices = C.ExecutionUnitPrices <$> CGen.genRational <*> CGen.genRational
-
--- TODO Copied from cardano-api. Delete once reexported
-genAssetId :: Gen C.AssetId
-genAssetId =
-  Gen.choice
-    [ C.AssetId <$> genPolicyId <*> CGen.genAssetName
-    , return C.AdaAssetId
-    ]
-
--- TODO Copied from cardano-api. Delete once reexported
-genPolicyId :: Gen C.PolicyId
-genPolicyId =
-  Gen.frequency
-    -- mostly from a small number of choices, so we get plenty of repetition
-    [ (9, Gen.element [fromString (x : replicate 55 '0') | x <- ['a' .. 'c']])
-    , -- and some from the full range of the type
-      (1, C.PolicyId <$> CGen.genScriptHash)
-    ]
 
 genPoolId :: Gen (C.Hash C.StakePoolKey)
 genPoolId = C.StakePoolKeyHash . KeyHash . mkDummyHash <$> Gen.int (Range.linear 0 10)
