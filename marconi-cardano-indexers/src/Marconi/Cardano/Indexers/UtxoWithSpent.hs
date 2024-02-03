@@ -9,27 +9,29 @@ module Marconi.Cardano.Indexers.UtxoWithSpent (
   StandardUtxoWithSpentIndexer,
   mkUtxoOrSpentIndexer,
   mkUtxoWithSpentIndexer,
+  utxoWithSpentBuilder,
 ) where
 
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Cardano.BM.Tracing qualified as BM
 import Control.Applicative ((<|>))
+import Control.Exception (throwIO)
 import Control.Lens ((&), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Error.Class (MonadError)
-import Control.Monad.Except (MonadIO)
+import Control.Monad.Except (MonadIO, runExceptT)
 import Data.Aeson.TH qualified as Aeson
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
-import Data.String (fromString)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Database.SQLite.Simple (FromRow (fromRow), NamedParam ((:=)), ToRow (toRow))
 import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
+import Marconi.Cardano.Core.Extract.WithDistance (WithDistance)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -55,8 +57,6 @@ import Marconi.Cardano.Indexers.Utxo (
  )
 import Marconi.Core qualified as Core
 import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation (Storage))
-import Marconi.Core.Indexer.SQLiteIndexer qualified as Core
-import Marconi.Core.Type qualified as Core
 import System.FilePath ((</>))
 
 {- | Indexer representation of a UTxO together with the information
@@ -293,12 +293,22 @@ rollbackPlan point conn =
       SQL.executeNamed conn deleteNewRows [":slotNo" := slotNo]
       SQL.executeNamed conn deleteNewSpentReferences [":slotNo" := slotNo]
 
+type TopUtxoWithSpentIndexer =
+  Core.WithTransform
+    Core.SQLiteIndexer
+    (NonEmpty UtxoOrSpent)
+    (WithDistance (Maybe (NonEmpty UtxoOrSpent)))
+
 catchupConfigEventHook
   :: Trace IO Text
   -> FilePath
-  -> UtxoWithSpentIndexer
-  -> IO UtxoWithSpentIndexer
-catchupConfigEventHook _ dbPath _ = mkUtxoWithSpentIndexer (Storage dbPath)
+  -> TopUtxoWithSpentIndexer
+  -> IO TopUtxoWithSpentIndexer
+catchupConfigEventHook _ dbPath topIndexer = do
+  result <- runExceptT $ mkUtxoWithSpentIndexer (Storage dbPath)
+  case result of
+    Left err -> throwIO err
+    Right indexer -> pure (Lens.set Core.unwrapMap indexer topIndexer)
 
 -- | A minimal worker for the UtxoWithSpent indexer
 utxoWithSpentWorker
@@ -338,7 +348,7 @@ utxoWithSpentBuilder securityParam catchupConfig textLogger path =
         StandardWorkerConfig
           indexerName
           securityParam
-          undefined -- catchupConfigWithTracer
+          catchupConfigWithTracer
           (pure . NonEmpty.nonEmpty . (>>= extractUtxoOrSpent))
           (BM.appendName indexerName indexerEventLogger)
    in utxoWithSpentWorker utxoWithSpentWorkerConfig (Core.parseDBLocation spentDbPath)
