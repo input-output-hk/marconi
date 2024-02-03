@@ -21,6 +21,14 @@ module Marconi.Cardano.Indexers.Spent (
   StandardSpentIndexer,
   catchupConfigEventHook,
 
+  -- * Queries
+  createSpent,
+  spentInsertQuery,
+
+  -- * SQL plans
+  spentInsertPlan,
+  spentRollbackPlan,
+
   -- * Extractor
   getInputs,
 ) where
@@ -28,7 +36,7 @@ module Marconi.Cardano.Indexers.Spent (
 import Cardano.Api qualified as C
 import Cardano.BM.Trace (Trace)
 import Cardano.BM.Tracing qualified as BM
-import Control.Lens ((&), (?~), (^.))
+import Control.Lens ((&), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
@@ -56,6 +64,7 @@ import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody), SecurityParam)
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (defaultInsertPlan)
 import System.FilePath ((</>))
 
 data SpentInfo = SpentInfo
@@ -104,40 +113,52 @@ type SpentIndexer = Core.SQLiteIndexer SpentInfoEvent
 -- | A SQLite Spent indexer with Catchup
 type StandardSpentIndexer m = StandardSQLiteIndexer m SpentInfoEvent
 
+createSpent, spentInsertQuery :: SQL.Query
+createSpent =
+  [sql|CREATE TABLE IF NOT EXISTS spent
+         ( txId TEXT NOT NULL
+         , txIx INT NOT NULL
+         , spentAtTxId TEXT NOT NULL
+         , slotNo INT NOT NULL
+         , blockHeaderHash BLOB NOT NULL
+         )|]
+spentInsertQuery =
+  [sql|INSERT OR IGNORE INTO spent
+         ( txId
+         , txIx
+         , spentAtTxId
+         , slotNo
+         , blockHeaderHash
+         )
+         VALUES (?, ?, ?, ?, ?)|]
+
+spentInsertPlan
+  :: (Core.ToRow (Core.Timed (Core.Point (NonEmpty a)) a))
+  => Core.SQLInsertPlan (NonEmpty a)
+spentInsertPlan =
+  Core.SQLInsertPlan $
+    defaultInsertPlan (traverse NonEmpty.toList) spentInsertQuery
+
+spentRollbackPlan :: Core.SQLRollbackPlan C.ChainPoint
+spentRollbackPlan =
+  Core.SQLRollbackPlan $
+    Core.defaultRollbackPlan "spent" "slotNo" C.chainPointToSlotNo
+
 mkSpentIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
   => SQLiteDBLocation
   -> m (Core.SQLiteIndexer SpentInfoEvent)
 mkSpentIndexer path = do
-  let createSpent =
-        [sql|CREATE TABLE IF NOT EXISTS spent
-               ( txId TEXT NOT NULL
-               , txIx INT NOT NULL
-               , spentAtTxId TEXT NOT NULL
-               , slotNo INT NOT NULL
-               , blockHeaderHash BLOB NOT NULL
-               )|]
-      spentInsertQuery :: SQL.Query
-      spentInsertQuery =
-        [sql|INSERT OR IGNORE INTO spent
-               ( txId
-               , txIx
-               , spentAtTxId
-               , slotNo
-               , blockHeaderHash
-               )
-               VALUES (?, ?, ?, ?, ?)|]
-      createSpentTables = [createSpent]
-      spentInsert =
-        [Core.SQLInsertPlan (traverse NonEmpty.toList) spentInsertQuery]
+  let createSpentTables = [createSpent]
+      spentInsert = [spentInsertPlan]
   Sync.mkSyncedSqliteIndexer
     path
     createSpentTables
     [spentInsert]
-    [Core.SQLRollbackPlan "spent" "slotNo" C.chainPointToSlotNo]
+    [spentRollbackPlan]
 
-catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
-catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
+catchupConfigEventHook :: Trace IO Text -> FilePath -> indexer -> IO indexer
+catchupConfigEventHook stdoutTrace dbPath indexer = do
   SQL.withConnection dbPath $ \c -> do
     let slotNoIndexName = "spent_slotNo"
         createSlotNoIndexStatement =
@@ -159,11 +180,13 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
             <> fromString spentAtTxIdIndexName
             <> " ON spent (spentAtTxId)"
     Core.createIndexTable "Spent" stdoutTrace c spentAtTxIdIndexName createSpentAtIndexStatement
+    -- return the original indexer
+    pure indexer
 
--- | A minimal worker for the UTXO indexer, with catchup and filtering.
+-- | A minimal worker for the spent indexer
 spentWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
-  => StandardWorkerConfig m input SpentInfoEvent
+  => StandardWorkerConfig m Core.SQLiteIndexer input SpentInfoEvent
   -- ^ General configuration of a worker
   -> SQLiteDBLocation
   -- ^ SQLite database location
@@ -173,12 +196,13 @@ spentWorker config path = do
   mkStandardWorker config indexer
 
 {- | Convenience wrapper around 'spentWorker' with some defaults for
-creating 'StandardWorkerConfig', including a preprocessor.
+creating 'StandardWorkerConfig', including a preprocessor. Adds catchup
+capabilities as well.
 -}
 spentBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
-  -> Core.CatchupConfig
+  -> Core.CatchupConfig indexer event
   -> BM.Trace IO Text
   -> FilePath
   -> n (StandardWorker IO [AnyTxBody] SpentInfoEvent Core.SQLiteIndexer)
@@ -191,7 +215,7 @@ spentBuilder securityParam catchupConfig textLogger path =
       catchupConfigWithTracer =
         catchupConfig
           & Core.configCatchupEventHook
-            ?~ catchupConfigEventHook textLogger spentDbPath
+            .~ catchupConfigEventHook textLogger spentDbPath
       spentWorkerConfig =
         StandardWorkerConfig
           indexerName

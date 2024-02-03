@@ -182,7 +182,12 @@ import GHC.Generics (Generic)
 import Marconi.Core (Streamable (streamFrom), unwrap, withStream)
 import Marconi.Core qualified as Core
 import Marconi.Core.Coordinator qualified as Core (errorBox, threadIds)
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, inMemoryDB, parseDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer (
+  SQLiteDBLocation,
+  defaultInsertPlan,
+  inMemoryDB,
+  parseDBLocation,
+ )
 import Network.Socket (
   Family (AF_UNIX),
   SockAddr (SockAddrUnix),
@@ -668,18 +673,20 @@ sqliteModelIndexerWithFile filepath = do
     ]
     [
       [ Core.SQLInsertPlan
-          ( \t ->
-              [
-                ( t ^. Core.point . testPointSlot
-                , UUID.toText $ t ^. Core.point . testPointHash
-                , t ^. Core.event
-                )
-              ]
+          ( defaultInsertPlan
+              ( \t ->
+                  [
+                    ( t ^. Core.point . testPointSlot
+                    , UUID.toText $ t ^. Core.point . testPointHash
+                    , t ^. Core.event
+                    )
+                  ]
+              )
+              "INSERT INTO index_model VALUES (?, ?, ?)"
           )
-          "INSERT INTO index_model VALUES (?, ?, ?)"
       ]
     ]
-    [Core.SQLRollbackPlan "index_model" "pointSlotNo" extractor]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "index_model" "pointSlotNo" extractor)]
     (Core.SetLastStablePointQuery "INSERT OR REPLACE INTO sync (pointSlotNo, pointHash) VALUES (?,?)")
     (Core.GetLastStablePointQuery "SELECT pointSlotNo, pointHash FROM sync")
 

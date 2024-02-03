@@ -37,7 +37,7 @@ module Marconi.Cardano.Indexers.BlockInfo (
 import Cardano.Api qualified as C
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Tracing qualified as BM
-import Control.Lens ((&), (?~), (^.))
+import Control.Lens ((&), (.~), (^.))
 import Control.Lens qualified as Lens
 import Control.Monad (when)
 import Control.Monad.Except (MonadError (throwError))
@@ -133,10 +133,10 @@ mkBlockInfoIndexer path = do
     id
     createBlockInfoTable
     blockInfoInsertQuery
-    (Core.SQLRollbackPlan "blockInfo" "slotNo" C.chainPointToSlotNo)
+    (Core.SQLRollbackPlan (Core.defaultRollbackPlan "blockInfo" "slotNo" C.chainPointToSlotNo))
 
-catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
-catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
+catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> indexer -> IO indexer
+catchupConfigEventHook indexerName stdoutTrace dbPath indexer = do
   SQL.withConnection dbPath $ \c -> do
     let slotNoIndexName = "blockInfo__slotNo"
         createSlotNoIndexStatement =
@@ -144,6 +144,7 @@ catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
             <> fromString slotNoIndexName
             <> " ON blockInfo (slotNo)"
     Core.createIndexTable indexerName stdoutTrace c slotNoIndexName createSlotNoIndexStatement
+    pure indexer
 
 -- | Create a worker for 'BlockInfoIndexer' with catchup
 blockInfoWorker
@@ -151,7 +152,7 @@ blockInfoWorker
      , MonadError Core.IndexerError n
      , MonadIO m
      )
-  => StandardWorkerConfig m input BlockInfo
+  => StandardWorkerConfig m Core.SQLiteIndexer input BlockInfo
   -- ^ General indexer configuration
   -> SQLiteDBLocation
   -- ^ SQLite database location
@@ -166,7 +167,7 @@ creating 'StandardWorkerConfig', including a preprocessor.
 blockInfoBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
-  -> Core.CatchupConfig
+  -> Core.CatchupConfig indexer event
   -> BM.Trace IO Text
   -> FilePath
   -> n (StandardWorker IO BlockEvent BlockInfo Core.SQLiteIndexer)
@@ -177,7 +178,7 @@ blockInfoBuilder securityParam catchupConfig textLogger path =
       catchupConfigWithTracer =
         catchupConfig
           & Core.configCatchupEventHook
-            ?~ catchupConfigEventHook indexerName textLogger blockInfoDbPath
+            .~ catchupConfigEventHook indexerName textLogger blockInfoDbPath
       blockInfoWorkerConfig =
         StandardWorkerConfig
           indexerName

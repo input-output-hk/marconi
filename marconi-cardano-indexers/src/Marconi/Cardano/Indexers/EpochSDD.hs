@@ -62,7 +62,7 @@ import Marconi.Cardano.Indexers.ExtLedgerStateCoordinator (
  )
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, defaultInsertPlan)
 import Ouroboros.Consensus.Cardano.Block qualified as O
 import Ouroboros.Consensus.Ledger.Extended qualified as O
 import Ouroboros.Consensus.Shelley.Ledger qualified as O
@@ -114,21 +114,21 @@ mkEpochSDDIndexer path = do
                 , slotNo
                 , blockHeaderHash
                 ) VALUES (?, ?, ?, ?, ?, ?)|]
-      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) sddInsertQuery]
+      insertEvent = [Core.SQLInsertPlan (defaultInsertPlan (traverse NonEmpty.toList) sddInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     path
     [createSDD]
     [insertEvent]
-    [Core.SQLRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo]
+    [Core.SQLRollbackPlan (Core.defaultRollbackPlan "epoch_sdd" "slotNo" C.chainPointToSlotNo)]
 
 newtype EpochSDDWorkerConfig input = EpochSDDWorkerConfig
   { epochSDDWorkerConfigExtractor :: input -> C.EpochNo
   }
 
 epochSDDWorker
-  :: forall input m n
+  :: forall indexer input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
-  => StandardWorkerConfig n input (NonEmpty EpochSDD)
+  => StandardWorkerConfig n indexer input (NonEmpty EpochSDD)
   -> EpochSDDWorkerConfig input
   -> SQLiteDBLocation
   -> m (Core.WorkerIndexer n input (NonEmpty EpochSDD) (Core.WithTrace n Core.SQLiteIndexer))

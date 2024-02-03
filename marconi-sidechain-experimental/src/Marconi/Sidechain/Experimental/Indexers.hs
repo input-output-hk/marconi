@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Marconi.Sidechain.Experimental.Indexers where
@@ -37,10 +38,10 @@ data SidechainRunIndexersConfig = SidechainRunIndexersConfig
 {- | Configuration for constructing marconi indexers as used
 in this package.
 -}
-data SidechainBuildIndexersConfig = SidechainBuildIndexersConfig
+data SidechainBuildIndexersConfig indexer event = SidechainBuildIndexersConfig
   { _sidechainBuildIndexersTrace :: !(Trace IO Text)
   , _sidechainBuildIndexersSecurityParam :: !SecurityParam
-  , _sidechainBuildIndexersCatchupConfig :: !CatchupConfig
+  , _sidechainBuildIndexersCatchupConfig :: !(CatchupConfig indexer event)
   , _sidechainBuildIndexersDbPath :: !FilePath
   , _sidechainBuildIndexersEpochStateConfig
       :: !(EpochState.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent))
@@ -58,7 +59,7 @@ similarly to the marconi-cardano-chain-index application.
 -}
 sidechainBuildIndexers
   :: (MonadIO m)
-  => SidechainBuildIndexersConfig
+  => (forall indexer event. SidechainBuildIndexersConfig indexer event)
   -> m (Either IndexerError (C.ChainPoint, MarconiCardanoQueryables, SyncStatsCoordinator))
 sidechainBuildIndexers config =
   liftIO . runExceptT $

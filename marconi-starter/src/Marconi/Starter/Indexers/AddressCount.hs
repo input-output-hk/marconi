@@ -57,7 +57,7 @@ import Marconi.Core (
   point,
  )
 import Marconi.Core qualified as Core
-import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation)
+import Marconi.Core.Indexer.SQLiteIndexer (SQLiteDBLocation, defaultInsertPlan)
 
 type SQLiteStandardIndexer event = Core.StandardIndexer IO Core.SQLiteIndexer event
 type AddressCountIndexer = SQLiteStandardIndexer AddressCountEvent
@@ -196,10 +196,10 @@ mkAddressCountSqliteIndexer dbPath = do
     dbPath
     [dbCreation] -- request launched when the indexer is created
     [
-      [ SQLInsertPlan eventToRows addressCountInsertQuery
+      [ SQLInsertPlan (defaultInsertPlan eventToRows addressCountInsertQuery)
       ]
     ] -- requests launched when an event is stored
-    [SQLRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo]
+    [SQLRollbackPlan (Core.defaultRollbackPlan "address_count" "slotNo" C.chainPointToSlotNo)]
   where
     dbCreation =
       [sql|CREATE TABLE IF NOT EXISTS address_count

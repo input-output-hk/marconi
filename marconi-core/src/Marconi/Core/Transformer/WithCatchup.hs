@@ -25,6 +25,7 @@ import Control.Lens qualified as Lens
 import Control.Lens.Operators ((%~), (+~), (.~), (?~), (^.))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Function ((&))
+import Data.Kind (Type)
 import Data.Word (Word64)
 import Marconi.Core.Class (
   Closeable,
@@ -53,26 +54,26 @@ import Marconi.Core.Type (Point, Timed (Timed), point)
 {- | The visible part of the catchup configuration, it allows you to configure the size of the batch
 and to control when the batch mecanism stops
 -}
-data CatchupConfig = CatchupConfig
+data CatchupConfig (indexer :: Type -> Type) (event :: Type) = CatchupConfig
   { _configCatchupBatchSize :: Word64
   -- ^ Maximal number of events in one batch
   , _configCatchupBypassDistance :: Word64
   -- ^ How far from the block should we be to bypass the catchup mechanism (in number of blocks).
-  , _configCatchupEventHook :: Maybe (CatchupEvent -> IO ())
+  , _configCatchupEventHook :: indexer event -> IO (indexer event)
   -- ^ Hook to execute when specific events are triggered.
   }
 
 data CatchupEvent = Synced
 
-mkCatchupConfig :: Word64 -> Word64 -> CatchupConfig
-mkCatchupConfig batchSize bypassDistance = CatchupConfig batchSize bypassDistance Nothing
+mkCatchupConfig :: Word64 -> Word64 -> CatchupConfig indexer event
+mkCatchupConfig batchSize bypassDistance = CatchupConfig batchSize bypassDistance pure
 
 Lens.makeLenses ''CatchupConfig
 
-data CatchupContext event = CatchupContext
+data CatchupContext (indexer :: Type -> Type) (event :: Type) = CatchupContext
   { _contextDistanceComputation :: Point event -> event -> Word64
   -- ^ How we compute distance to tip
-  , _contextCatchupConfig :: CatchupConfig
+  , _contextCatchupConfig :: CatchupConfig indexer event
   -- ^ How far from the block should we be to bypass the catchup mechanism (in number of blocks)
   , _contextCatchupBufferLength :: Word64
   -- ^ How many event do we have in the batch
@@ -84,22 +85,25 @@ data CatchupContext event = CatchupContext
 
 Lens.makeLenses ''CatchupContext
 
-contextCatchupBypassDistance :: Lens.Lens' (CatchupContext event) Word64
+contextCatchupBypassDistance :: Lens.Lens' (CatchupContext indexer event) Word64
 contextCatchupBypassDistance = contextCatchupConfig . configCatchupBypassDistance
 
-contextCatchupBatchSize :: Lens.Lens' (CatchupContext event) Word64
+contextCatchupBatchSize :: Lens.Lens' (CatchupContext indexer event) Word64
 contextCatchupBatchSize = contextCatchupConfig . configCatchupBatchSize
 
-contextCatchupEventHook :: Lens.Lens' (CatchupContext event) (Maybe (CatchupEvent -> IO ()))
+contextCatchupEventHook
+  :: Lens.Lens' (CatchupContext indexer event) (indexer event -> IO (indexer event))
 contextCatchupEventHook = contextCatchupConfig . configCatchupEventHook
 
 {-- | WithCatchup is used to speed up the synchronisation of indexers by preparing batches of events
  - that will be submitted via `indexAll` to the underlying indexer.
  -
- - Once the indexer is close enough to the tip, the transformer stops the batch to insert element
+ - Once the indexer is close enough to the tip, the transformer stops the batch to insert elements
  - one by one.
  -}
-newtype WithCatchup indexer event = WithCatchup {_catchupWrapper :: IndexTransformer CatchupContext indexer event}
+newtype WithCatchup (indexer :: Type -> Type) (event :: Type) = WithCatchup
+  { _catchupWrapper :: IndexTransformer (CatchupContext indexer) indexer event
+  }
 
 Lens.makeLenses 'WithCatchup
 
@@ -107,7 +111,7 @@ Lens.makeLenses 'WithCatchup
 withCatchup
   :: (Point event -> event -> Word64)
   -- ^ The distance function
-  -> CatchupConfig
+  -> CatchupConfig indexer event
   -- ^ Configure how many element we put in a batch and until when we use it
   -> indexer event
   -- ^ the underlying indexer
@@ -115,23 +119,29 @@ withCatchup
 withCatchup computeDistance config =
   WithCatchup . IndexTransformer (CatchupContext computeDistance config 0 [] Nothing)
 
+runCatchupHook :: WithCatchup indexer event -> IO (WithCatchup indexer event)
+runCatchupHook (WithCatchup (IndexTransformer context indexer)) = do
+  let catchupHook = context ^. contextCatchupEventHook
+  newIndexer <- catchupHook indexer
+  pure (WithCatchup (IndexTransformer context newIndexer))
+
 deriving via
-  (IndexTransformer CatchupContext indexer)
+  (IndexTransformer (CatchupContext indexer) indexer)
   instance
     (IsSync m event indexer) => IsSync m event (WithCatchup indexer)
 
 deriving via
-  (IndexTransformer CatchupContext indexer)
+  (IndexTransformer (CatchupContext indexer) indexer)
   instance
     (HasDatabasePath indexer) => HasDatabasePath (WithCatchup indexer)
 
 deriving via
-  (IndexTransformer CatchupContext indexer)
+  (IndexTransformer (CatchupContext indexer) indexer)
   instance
     (Closeable m indexer) => Closeable m (WithCatchup indexer)
 
 deriving via
-  (IndexTransformer CatchupContext indexer)
+  (IndexTransformer (CatchupContext indexer) indexer)
   instance
     (Queryable m event query indexer) => Queryable m event query (WithCatchup indexer)
 
@@ -147,12 +157,10 @@ instance IndexerTrans WithCatchup where
 class HasCatchupConfig indexer where
   catchupBypassDistance :: Lens.Lens' (indexer event) Word64
   catchupBatchSize :: Lens.Lens' (indexer event) Word64
-  catchupEventHook :: Lens.Lens' (indexer event) (Maybe (CatchupEvent -> IO ()))
 
 instance {-# OVERLAPPING #-} HasCatchupConfig (WithCatchup indexer) where
   catchupBypassDistance = catchupWrapper . wrapperConfig . contextCatchupBypassDistance
   catchupBatchSize = catchupWrapper . wrapperConfig . contextCatchupBatchSize
-  catchupEventHook = catchupWrapper . wrapperConfig . contextCatchupEventHook
 
 instance
   {-# OVERLAPPABLE #-}
@@ -161,7 +169,6 @@ instance
   where
   catchupBypassDistance = unwrap . catchupBypassDistance
   catchupBatchSize = unwrap . catchupBatchSize
-  catchupEventHook = unwrap . catchupEventHook
 
 instance
   {-# OVERLAPPABLE #-}
@@ -170,7 +177,6 @@ instance
   where
   catchupBypassDistance = unwrapMap . catchupBypassDistance
   catchupBatchSize = unwrapMap . catchupBatchSize
-  catchupEventHook = unwrapMap . catchupEventHook
 
 catchupDistance :: Lens.Lens' (WithCatchup indexer event) (Point event -> event -> Word64)
 catchupDistance = catchupWrapper . wrapperConfig . contextDistanceComputation
@@ -208,11 +214,11 @@ instance
           pure $ resetBuffer ix''
      in if hasCaughtUp
           then do
-            maybe (pure ()) (\f -> liftIO $ f Synced) $ indexer ^. catchupEventHook
+            newIndexer <- liftIO $ runCatchupHook indexer
             indexer' <-
-              if null (indexer ^. catchupBuffer)
-                then pure indexer
-                else sendBatch indexer
+              if null (newIndexer ^. catchupBuffer)
+                then pure newIndexer
+                else sendBatch newIndexer
             indexVia caughtUpIndexer timedEvent indexer'
           else do
             let indexer' = pushEvent indexer

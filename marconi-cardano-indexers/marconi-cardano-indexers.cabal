@@ -69,6 +69,7 @@ library
     Marconi.Cardano.Indexers.SyncHelper
     Marconi.Cardano.Indexers.Utxo
     Marconi.Cardano.Indexers.UtxoQuery
+    Marconi.Cardano.Indexers.UtxoWithSpent
 
   --------------------
   -- Local components

@@ -106,7 +106,6 @@ import Control.Lens (
   view,
   (%~),
   (.~),
-  (?~),
   (^.),
   (^?),
  )
@@ -146,6 +145,7 @@ import Marconi.Cardano.Core.Types (
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (defaultInsertPlan)
 import System.FilePath ((</>))
 
 -- | A raw SQLite indexer for 'MintTokenBlockEvents'
@@ -296,7 +296,7 @@ type instance Core.Point MintTokenBlockEvents = C.ChainPoint
 -- | Create a worker for the MintTokenEvent indexer
 mintTokenEventWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
-  => StandardWorkerConfig m input MintTokenBlockEvents
+  => StandardWorkerConfig m Core.SQLiteIndexer input MintTokenBlockEvents
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> MintTokenEventConfig
   -- ^ Specific configuration of the indexer (mostly for logging purpose and filtering for target
@@ -315,7 +315,7 @@ creating 'StandardWorkerConfig', including a preprocessor.
 mintTokenEventBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
-  -> Core.CatchupConfig
+  -> Core.CatchupConfig indexer event
   -> MintTokenEventConfig
   -> BM.Trace IO Text
   -> FilePath
@@ -327,7 +327,7 @@ mintTokenEventBuilder securityParam catchupConfig mintEventConfig textLogger pat
       catchupConfigWithTracer =
         catchupConfig
           & Core.configCatchupEventHook
-            ?~ catchupConfigEventHook indexerName textLogger mintDbPath
+            .~ catchupConfigEventHook indexerName textLogger mintDbPath
       extractMint :: AnyTxBody -> [MintTokenEvent]
       extractMint (AnyTxBody bn ix txb) = extractEventsFromTx bn ix txb
       mintTokenWorkerConfig =
@@ -440,15 +440,17 @@ mkMintTokenIndexer dbPath = do
               ) VALUES
               (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
       createMintPolicyEventTables = [createMintPolicyEvent]
-      mintInsertPlans = [Core.SQLInsertPlan fromTimedMintEvents mintEventInsertQuery]
+      mintInsertPlans = [Core.SQLInsertPlan (defaultInsertPlan fromTimedMintEvents mintEventInsertQuery)]
   Sync.mkSyncedSqliteIndexer
     dbPath
     createMintPolicyEventTables
     [mintInsertPlans]
-    [Core.SQLRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo]
+    [ Core.SQLRollbackPlan
+        (Core.defaultRollbackPlan "minting_policy_events" "slotNo" C.chainPointToSlotNo)
+    ]
 
-catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
-catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
+catchupConfigEventHook :: Text -> Trace IO Text -> FilePath -> indexer -> IO indexer
+catchupConfigEventHook indexerName stdoutTrace dbPath indexer = do
   SQL.withConnection dbPath $ \c -> do
     let txIdPolicyIdIndexName = "minting_policy_events__txId_policyId"
         createMintPolicyIdIndexStatement =
@@ -468,6 +470,8 @@ catchupConfigEventHook indexerName stdoutTrace dbPath Core.Synced = do
             <> fromString slotNoIndexName
             <> " ON minting_policy_events (slotNo)"
     Core.createIndexTable indexerName stdoutTrace c slotNoIndexName createSlotNoIndexStatement
+    -- return the original indexer
+    pure indexer
 
 fromTimedMintEvents
   :: Core.Timed point MintTokenBlockEvents

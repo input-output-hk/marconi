@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -42,10 +41,19 @@ module Marconi.Cardano.Indexers.Utxo (
   trackedAddresses,
   includeScript,
 
+  -- * Queries
+  createUtxo,
+  utxoInsertQuery,
+
+  -- * SQL plans
+  utxoInsertPlan,
+  utxoRollbackPlan,
+
   -- * Extractors
   getUtxoEventsFromBlock,
   getUtxosFromTx,
   getUtxosFromTxBody,
+  extractUtxos,
 ) where
 
 import Cardano.Api qualified as C
@@ -55,7 +63,6 @@ import Cardano.BM.Tracing qualified as BM
 import Control.Lens (
   (&),
   (.~),
-  (?~),
   (^.),
  )
 import Control.Lens qualified as Lens
@@ -76,7 +83,6 @@ import Database.SQLite.Simple qualified as SQL
 import Database.SQLite.Simple.QQ (sql)
 import Database.SQLite.Simple.ToField (ToField (toField))
 import Database.SQLite.Simple.ToRow (ToRow (toRow))
-import GHC.Generics (Generic)
 import Marconi.Cardano.Core.Indexer.Worker (
   StandardSQLiteIndexer,
   StandardWorker,
@@ -93,6 +99,7 @@ import Marconi.Cardano.Core.Types (
 import Marconi.Cardano.Indexers.SyncHelper qualified as Sync
 import Marconi.Core (SQLiteDBLocation)
 import Marconi.Core qualified as Core
+import Marconi.Core.Indexer.SQLiteIndexer (defaultInsertPlan)
 import System.FilePath ((</>))
 
 -- | Indexer representation of an UTxO
@@ -105,7 +112,7 @@ data Utxo = Utxo
   , _inlineScript :: !(Maybe C.ScriptInAnyLang)
   , _inlineScriptHash :: !(Maybe C.ScriptHash)
   }
-  deriving (Show, Eq, Generic)
+  deriving (Show, Eq)
 
 -- | An alias for a non-empty list of @Utxo@, it's the event potentially produced on each block
 type UtxoEvent = NonEmpty Utxo
@@ -126,6 +133,47 @@ type instance Core.Point UtxoEvent = C.ChainPoint
 type UtxoIndexer = Core.SQLiteIndexer UtxoEvent
 type StandardUtxoIndexer m = StandardSQLiteIndexer m UtxoEvent
 
+createUtxo, utxoInsertQuery :: SQL.Query
+createUtxo =
+  [sql|CREATE TABLE IF NOT EXISTS utxo
+           ( address BLOB NOT NULL
+           , txIndex INT NOT NULL
+           , txId TEXT NOT NULL
+           , txIx INT NOT NULL
+           , datumHash BLOB
+           , value BLOB
+           , inlineScript BLOB
+           , inlineScriptHash BLOB
+           , slotNo INT NOT NULL
+           , blockHeaderHash BLOB NOT NULL
+           )|]
+utxoInsertQuery =
+  [sql|INSERT INTO utxo (
+           address,
+           txIndex,
+           txId,
+           txIx,
+           datumHash,
+           value,
+           inlineScript,
+           inlineScriptHash,
+           slotNo,
+           blockHeaderHash
+        ) VALUES
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
+
+utxoInsertPlan
+  :: (Core.ToRow (Core.Timed (Core.Point (NonEmpty a)) a))
+  => Core.SQLInsertPlan (NonEmpty a)
+utxoInsertPlan =
+  Core.SQLInsertPlan $
+    defaultInsertPlan (traverse NonEmpty.toList) utxoInsertQuery
+
+utxoRollbackPlan :: Core.SQLRollbackPlan C.ChainPoint
+utxoRollbackPlan =
+  Core.SQLRollbackPlan $
+    Core.defaultRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo
+
 -- | Make a SQLiteIndexer for Utxos
 mkUtxoIndexer
   :: (MonadIO m, MonadError Core.IndexerError m)
@@ -133,45 +181,16 @@ mkUtxoIndexer
   -- ^ SQL connection to database
   -> m UtxoIndexer
 mkUtxoIndexer path = do
-  let createUtxo =
-        [sql|CREATE TABLE IF NOT EXISTS utxo
-                 ( address BLOB NOT NULL
-                 , txIndex INT NOT NULL
-                 , txId TEXT NOT NULL
-                 , txIx INT NOT NULL
-                 , datumHash BLOB
-                 , value BLOB
-                 , inlineScript BLOB
-                 , inlineScriptHash BLOB
-                 , slotNo INT NOT NULL
-                 , blockHeaderHash BLOB NOT NULL
-                 )|]
-      utxoInsertQuery :: SQL.Query
-      utxoInsertQuery =
-        [sql|INSERT INTO utxo (
-                 address,
-                 txIndex,
-                 txId,
-                 txIx,
-                 datumHash,
-                 value,
-                 inlineScript,
-                 inlineScriptHash,
-                 slotNo,
-                 blockHeaderHash
-              ) VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)|]
-      createUtxoTables = [createUtxo]
-      insertEvent = [Core.SQLInsertPlan (traverse NonEmpty.toList) utxoInsertQuery]
-
+  let createUtxoTables = [createUtxo]
+      insertEvent = [utxoInsertPlan]
   Sync.mkSyncedSqliteIndexer
     path
     createUtxoTables
     [insertEvent]
-    [Core.SQLRollbackPlan "utxo" "slotNo" C.chainPointToSlotNo]
+    [utxoRollbackPlan]
 
-catchupConfigEventHook :: Trace IO Text -> FilePath -> Core.CatchupEvent -> IO ()
-catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
+catchupConfigEventHook :: Trace IO Text -> FilePath -> indexer -> IO indexer
+catchupConfigEventHook stdoutTrace dbPath indexer = do
   SQL.withConnection dbPath $ \c -> do
     let addressIndexName = "utxo_address"
         createAddressIndexStatement =
@@ -186,11 +205,12 @@ catchupConfigEventHook stdoutTrace dbPath Core.Synced = do
             <> fromString slotNoIndexName
             <> " ON utxo (slotNo)"
     Core.createIndexTable "Utxo" stdoutTrace c slotNoIndexName createSlotNoIndexStatement
+    pure indexer
 
 -- | A minimal worker for the UTXO indexer, with catchup and filtering.
 utxoWorker
   :: (MonadIO n, MonadError Core.IndexerError n, MonadIO m)
-  => StandardWorkerConfig m input UtxoEvent
+  => StandardWorkerConfig m Core.SQLiteIndexer input UtxoEvent
   -- ^ General configuration of the indexer (mostly for logging purpose)
   -> UtxoIndexerConfig
   -- ^ Specific configuration of the indexer (mostly for logging purpose)
@@ -231,7 +251,7 @@ creating 'StandardWorkerConfig', including a preprocessor.
 utxoBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)
   => SecurityParam
-  -> Core.CatchupConfig
+  -> Core.CatchupConfig indexer event
   -> UtxoIndexerConfig
   -> BM.Trace IO Text
   -> FilePath
@@ -240,11 +260,9 @@ utxoBuilder securityParam catchupConfig utxoConfig textLogger path =
   let indexerName = "Utxo"
       indexerEventLogger = BM.contramap (fmap (fmap $ Text.pack . show)) textLogger
       utxoDbPath = path </> "utxo.db"
-      extractUtxos :: AnyTxBody -> [Utxo]
-      extractUtxos (AnyTxBody _ indexInBlock txb) = getUtxosFromTxBody indexInBlock txb
       catchupConfigWithTracer =
         catchupConfig
-          & Core.configCatchupEventHook ?~ catchupConfigEventHook textLogger utxoDbPath
+          & Core.configCatchupEventHook .~ catchupConfigEventHook textLogger utxoDbPath
       utxoWorkerConfig =
         StandardWorkerConfig
           indexerName
@@ -344,9 +362,12 @@ instance
           (const utxoQuery)
           (\(Core.EventsMatchingQuery p) -> parseResult p)
 
+extractUtxos :: AnyTxBody -> [Utxo]
+extractUtxos (AnyTxBody _ indexInBlock txb) = getUtxosFromTxBody indexInBlock txb
+
 {- | Extract UtxoEvents from Cardano Block
 
- Returns @Nothing@ if the block doesn't consume or spend any utxo
+ Returns the empty list if the block doesn't consume or spend any utxo
 -}
 getUtxoEventsFromBlock
   :: (C.IsCardanoEra era)

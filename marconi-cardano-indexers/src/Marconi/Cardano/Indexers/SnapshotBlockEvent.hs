@@ -270,9 +270,9 @@ deserialiseMetadata _other = Nothing
  any blocks which are not in the given 'BlockRange'.
 -}
 snapshotBlockEventWorker
-  :: forall input m n
+  :: forall indexer input m n
    . (MonadIO m, MonadError Core.IndexerError m, MonadIO n)
-  => StandardWorkerConfig n input SnapshotBlockEvent
+  => StandardWorkerConfig n indexer input SnapshotBlockEvent
   -> SnapshotWorkerConfig input
   -> FilePath
   -> m

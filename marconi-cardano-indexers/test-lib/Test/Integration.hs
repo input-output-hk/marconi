@@ -209,7 +209,7 @@ quantityToZero = C.valueFromList . map (fmap (const 0)) . C.valueToList
 {- | @Core.'CatchupConfig'@ with values suitable for end-to-end tests. The current values are taken
 from those hard-coded in the marconi-cardano-chain-index application.
 -}
-mkEndToEndCatchupConfig :: Core.CatchupConfig
+mkEndToEndCatchupConfig :: Core.CatchupConfig indexer event
 mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100
 
 {- | Build a @Runner.'RunIndexerConfig'@ with values suitable for end-to-end tests with

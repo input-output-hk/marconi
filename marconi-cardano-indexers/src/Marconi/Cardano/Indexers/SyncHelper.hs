@@ -100,7 +100,7 @@ mkSingleInsertSyncedSqliteIndexer path extract tableCreation insertQuery rollbac
   Core.mkSqliteIndexer
     path
     [tableCreation, syncTableCreation]
-    [[Core.SQLInsertPlan (pure . extract) insertQuery]]
+    [[Core.SQLInsertPlan (SQL.defaultInsertPlan (pure . extract) insertQuery)]]
     [rollbackPlan]
     syncSetStablePoint
     syncLastPointQuery

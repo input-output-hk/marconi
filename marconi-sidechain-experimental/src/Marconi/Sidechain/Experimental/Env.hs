@@ -91,7 +91,7 @@ querySecurityParamFromCliArgs trace CliArgs{..} =
 
 -- | Build the 'SidechainBuildIndexersConfig' from CLI arguments.
 mkSidechainBuildIndexersConfig
-  :: Trace IO Text -> CliArgs -> SecurityParam -> SidechainBuildIndexersConfig
+  :: Trace IO Text -> CliArgs -> SecurityParam -> SidechainBuildIndexersConfig indexer event
 mkSidechainBuildIndexersConfig trace CliArgs{..} securityParam =
   let
     filteredAddresses =
