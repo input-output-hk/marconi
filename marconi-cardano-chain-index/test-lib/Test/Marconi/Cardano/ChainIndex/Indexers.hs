@@ -22,7 +22,7 @@ import Marconi.Cardano.Core.Indexer.Worker (
   StandardWorker (StandardWorker),
  )
 import Marconi.Cardano.Core.Indexer.Worker qualified as Core
-import Marconi.Cardano.Core.Logger (MarconiTrace, nullTracer)
+import Marconi.Cardano.Core.Logger (nullTracer)
 import Marconi.Cardano.Core.Types (
   AnyTxBody (AnyTxBody),
   BlockEvent (BlockEvent),
@@ -144,7 +144,6 @@ buildIndexers
   -> Utxo.UtxoIndexerConfig
   -> MintTokenEvent.MintTokenEventConfig
   -> ExtLedgerStateCoordinator.ExtLedgerStateWorkerConfig EpochEvent (WithDistance BlockEvent)
-  -> MarconiTrace IO
   -> FilePath
   -> ExceptT
       Core.IndexerError
@@ -156,7 +155,6 @@ buildIndexers
   utxoConfig
   mintEventConfig
   epochStateConfig
-  prettyLogger
   path = do
     let blockEventTextLogger = BM.appendName "blockEvent" nullTracer
         blockEventLogger = BM.appendName "blockEvent" nullTracer
@@ -225,7 +223,7 @@ buildIndexers
       lift $
         syncStatsCoordinator
           nullTracer
-          prettyLogger
+          nullTracer
           [blockCoordinator, chainTipWorker]
 
     let currentSyncPointIndexer =

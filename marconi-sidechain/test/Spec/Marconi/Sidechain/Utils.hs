@@ -14,7 +14,7 @@ import Data.Aeson qualified as A
 import Data.Functor ((<&>))
 import Marconi.Cardano.ChainIndex.Api.Types qualified as ChainIndex.Types
 import Marconi.Cardano.ChainIndex.CLI (StartingPoint (StartFromGenesis))
-import Marconi.Cardano.Core.Logger (defaultStdOutLogger, mkMarconiTrace)
+import Marconi.Cardano.Core.Logger (defaultStdOutLogger)
 import Marconi.Cardano.Core.Types qualified as Core.Types
 import Marconi.Cardano.Indexers.Utxo qualified as Utxo
 import Marconi.Core qualified as Core
@@ -55,8 +55,6 @@ mkTestSidechainConfigsFromCliArgs cliArgs = do
         (config ^. Indexers.sidechainBuildIndexersUtxoConfig)
         (config ^. Indexers.sidechainBuildIndexersMintTokenEventConfig)
         (config ^. Indexers.sidechainBuildIndexersEpochStateConfig)
-        trace
-        (mkMarconiTrace trace)
         (config ^. Indexers.sidechainBuildIndexersDbPath)
 
   buildIndexersConfig <- either (liftIO . throwIO) pure res
