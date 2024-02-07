@@ -12,7 +12,6 @@ module Marconi.Core.Class (
   Resetable (..),
   Queryable (..),
   queryEither,
-  queryLatest,
   queryLatestEither,
   AppendResult (..),
   Closeable (..),
@@ -23,7 +22,7 @@ module Marconi.Core.Class (
 
 import Control.Lens ((^.))
 import Control.Monad ((<=<))
-import Control.Monad.Except (ExceptT, MonadError, runExceptT)
+import Control.Monad.Except (ExceptT, runExceptT)
 import Data.Foldable (foldlM, foldrM)
 import Marconi.Core.Type (Point, QueryError, Result, Timed, point)
 
@@ -166,6 +165,18 @@ class Queryable m event query indexer where
     -> indexer event
     -> m (Result query)
 
+  -- | Like 'query', but use the latest point of the indexer instead of a provided one
+  queryLatest
+    :: (IsSync m event indexer, Monad m, Ord (Point event))
+    => query
+    -> indexer event
+    -> m (Result query)
+  queryLatest q indexer = do
+    p <- lastSyncPoint indexer
+    query p q indexer
+
+  {-# MINIMAL query #-}
+
 -- | Like 'queryEither, but internalise @QueryError@ in the result.
 queryEither
   :: (Queryable (ExceptT (QueryError query) m) event query indexer)
@@ -175,19 +186,6 @@ queryEither
   -> indexer event
   -> m (Either (QueryError query) (Result query))
 queryEither p q = runExceptT . query p q
-
--- | Like 'query', but use the latest point of the indexer instead of a provided one
-queryLatest
-  :: (Queryable m event query indexer)
-  => (IsSync m event indexer)
-  => (MonadError (QueryError query) m)
-  => (Ord (Point event))
-  => query
-  -> indexer event
-  -> m (Result query)
-queryLatest q indexer = do
-  p <- lastSyncPoint indexer
-  query p q indexer
 
 -- | Like 'queryEither', but use the latest point of the indexer instead of a provided one
 queryLatestEither

@@ -168,7 +168,8 @@ onForward = cacheWrapper . wrapperConfig . configOnForward
  If you want to add several indexers at the same time, use @traverse@.
 -}
 addCacheFor
-  :: (Queryable (ExceptT (QueryError query) m) event query indexer)
+  :: forall query m event indexer
+   . (Queryable (ExceptT (QueryError query) m) event query indexer)
   => (IsSync (ExceptT (QueryError query) m) event indexer)
   => (HasCacheConfig query indexer)
   => (Monad m)
@@ -179,7 +180,7 @@ addCacheFor
   -> indexer event
   -> m (indexer event)
 addCacheFor q indexer = do
-  initialResult <- runExceptT $ queryLatest q indexer
+  initialResult <- runExceptT $ queryLatest @(ExceptT (QueryError query) m) q indexer
   case initialResult of
     Left _err -> throwError $ OtherIndexError "Can't create cache"
     Right result -> pure $ indexer & cache %~ Map.insert q result

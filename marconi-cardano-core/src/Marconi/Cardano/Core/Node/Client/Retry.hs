@@ -14,8 +14,8 @@ import Control.Concurrent (
  )
 import Control.Exception (Handler (Handler), catches, throwIO)
 import Data.Word (Word64)
+import Marconi.Cardano.Core.Logger (MarconiTrace)
 import Marconi.Cardano.Core.Types (
-  MarconiTrace,
   RetryConfig,
   baseTimeBeforeNextRetry,
   maybeMaxWaitTime,

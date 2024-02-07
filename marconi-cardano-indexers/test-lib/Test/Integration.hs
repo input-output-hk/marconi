@@ -27,6 +27,7 @@ import Data.Maybe (listToMaybe)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Ledger.Test (testnet)
 import Marconi.Cardano.Core.Extract.WithDistance qualified as Distance
+import Marconi.Cardano.Core.Logger qualified as Logger
 import Marconi.Cardano.Core.Runner qualified as Runner
 import Marconi.Cardano.Core.Types (AnyTxBody (AnyTxBody))
 import Marconi.Cardano.Core.Types qualified as Types
@@ -216,7 +217,7 @@ mkEndToEndCatchupConfig = Core.mkCatchupConfig 5000 100
  - Starts at genesis.
 -}
 mkEndToEndRunIndexerConfig
-  :: Types.MarconiTrace IO
+  :: Logger.MarconiTrace IO
   -> E.Types.NodeServerConfig
   -> Runner.RunIndexerEventPreprocessing (ChainSyncEvent Types.BlockEvent) event
   -> Runner.RunIndexerConfig (ChainSyncEvent Types.BlockEvent) event

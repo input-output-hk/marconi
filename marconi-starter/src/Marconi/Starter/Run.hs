@@ -5,14 +5,16 @@ module Marconi.Starter.Run where
 import Cardano.BM.Setup (withTrace)
 import Cardano.BM.Tracing (defaultConfigStdout)
 import Control.Concurrent.Async (race_)
+import Control.Exception (throwIO)
+import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (runReaderT)
 import Data.Void (Void)
 import Marconi.Cardano.ChainIndex.CLI qualified as CommonCLI
-import Marconi.Cardano.ChainIndex.Utils qualified as Utils
-import Marconi.Cardano.Core.Logger (mkMarconiTrace)
+import Marconi.Cardano.ChainIndex.SecurityParam qualified as SecurityParam
+import Marconi.Cardano.Core.Logger (MarconiTrace, mkMarconiTrace)
 import Marconi.Cardano.Core.Node.Client.Retry (withNodeConnectRetry)
-import Marconi.Cardano.Core.Types (MarconiTrace, SecurityParam)
+import Marconi.Cardano.Core.Types (SecurityParam)
 import Marconi.Starter.CLI qualified as CLI
 import Marconi.Starter.Env (Env (Env))
 import Marconi.Starter.HttpServer qualified as HttpServer
@@ -44,5 +46,7 @@ querySecuritParamWithRetry stdoutTrace cliOptions = do
   let retryConfig = CommonCLI.optionsRetryConfig $ CLI.commonOptions cliOptions
       networkId = CommonCLI.optionsNetworkId $ CLI.commonOptions cliOptions
       socketPath = CommonCLI.optionsSocketPath $ CLI.commonOptions cliOptions
-  liftIO $ withNodeConnectRetry stdoutTrace retryConfig socketPath $ do
-    Utils.toException $ Utils.querySecurityParam @Void networkId socketPath
+  liftIO $
+    withNodeConnectRetry stdoutTrace retryConfig socketPath $
+      runExceptT (SecurityParam.querySecurityParam @Void networkId socketPath)
+        >>= either throwIO pure

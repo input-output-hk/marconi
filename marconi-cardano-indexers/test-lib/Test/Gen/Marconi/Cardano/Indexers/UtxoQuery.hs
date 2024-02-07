@@ -40,8 +40,8 @@ withIndexer
        -> (ExceptT (Core.QueryError UtxoQuery.UtxoQueryInput) IO) a
      )
   -> IO a
-withIndexer events f = do
-  (indexers, utxoQuery) <- liftIO mkUtxoQuery
+withIndexer events f = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
+  (indexers, utxoQuery) <- liftIO $ mkUtxoQuery dir
   liftIO $ indexMockchain indexers events
   Right res <- liftIO $ runExceptT $ f utxoQuery
   liftIO $ closeIndexers indexers utxoQuery
@@ -99,14 +99,15 @@ utxoQueryIndexersAsAggregate
       }
 
 mkUtxoQuery
-  :: IO
+  :: FilePath
+  -> IO
       ( UtxoQueryIndexers
       , Core.SQLiteAggregateQuery
           IO
           C.ChainPoint
           UtxoQueryEvent
       )
-mkUtxoQuery = Tmp.withSystemTempDirectory "testUtxoQuery" $ \dir -> do
+mkUtxoQuery dir = do
   let blockInfoPath = dir </> "blockInfo.db"
   Right blockInfoIndexer <-
     runExceptT $ BlockInfo.mkBlockInfoIndexer (Core.parseDBLocation blockInfoPath)

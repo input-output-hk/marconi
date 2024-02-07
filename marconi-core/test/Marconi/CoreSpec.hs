@@ -1323,10 +1323,10 @@ resumeLastSyncProperty rehydrate gen =
     file <- lift $ Tmp.withSystemTempDirectory "testResume" pure
     indexer <- lift $ rehydrate file
     indexer' <- GenM.run $ foldM (flip process) indexer chain
-    indexer'' <- GenM.run $ rehydrate file
     origSyncPoint <- GenM.run $ Core.lastStablePoint indexer'
-    resumedSyncPoint <- GenM.run $ Core.lastStablePoint indexer''
     lift $ Core.close indexer'
+    indexer'' <- GenM.run $ rehydrate file
+    resumedSyncPoint <- GenM.run $ Core.lastStablePoint indexer''
     lift $ Core.close indexer''
     pure $ origSyncPoint === resumedSyncPoint
 
@@ -1770,7 +1770,7 @@ propWithStreamSocket = monadicExceptTIO @() $ GenM.forAllM genChainWithInstabili
       waitQSem serverStarted
 
       -- We need to delay because otherwise we might try to connect before @accept s@ runs
-      threadDelay 100
+      threadDelay 5000
       bracket (runUnixSocketClient socketPath) close $ \s -> do
         let testEvents :: [TestEvent] = chainSubset ^.. traversed . _Insert . _2 . _Just
             stream :: Stream (Of Int) IO () = streamFrom s

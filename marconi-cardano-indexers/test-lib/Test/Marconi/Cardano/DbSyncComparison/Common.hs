@@ -96,7 +96,8 @@ eraToString =
  the information which was accumulated from the snapshot.
 -}
 queryIndexerOnSnapshot
-  :: ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
+  :: forall event indexer query
+   . ( Core.IsIndex (ExceptT Core.IndexerError IO) event indexer
      , Core.Closeable IO indexer
      , Core.Point event ~ C.ChainPoint
      , Core.Queryable (ExceptT (Core.QueryError query) IO) event query indexer
@@ -121,7 +122,7 @@ queryIndexerOnSnapshot nodeType subChainPath dbPath config point query indexer =
   withAsync runIndexer $ \runner -> do
     finalState <- wait runner >>= readMVar
     toRuntimeException $
-      maybe Core.queryLatest Core.query point query finalState
+      maybe (Core.queryLatest @(ExceptT (Core.QueryError query) IO)) Core.query point query finalState
 
 {- | The path to a data directory containing configuration files
 is set to an environment variable. This function retrieves the right

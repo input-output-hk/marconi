@@ -98,7 +98,10 @@ instance
         runExceptT @(Core.QueryError (Core.LatestEventsQuery BlockInfo)) $
           Core.query point Core.latestEvent blockInfoIndexer'
     chainTipIndexer' <- liftIO $ Con.readMVar chainTipIndexerMvar
-    tips <- toSyncPointError $ runExceptT $ Core.queryLatest Core.GetLastQuery chainTipIndexer'
+    tips <-
+      toSyncPointError $
+        runExceptT @(Core.QueryError (Core.GetLastQuery C.ChainTip)) $
+          Core.queryLatest Core.GetLastQuery chainTipIndexer'
     case (blockInfos, tips) of
       ([timedBlockInfo], Just tip) -> do
         let blockInfo = timedBlockInfo ^. Core.event
