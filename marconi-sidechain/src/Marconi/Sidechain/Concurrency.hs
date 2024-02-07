@@ -20,8 +20,8 @@ import System.Exit (ExitCode (ExitFailure), exitWith)
 {- These purpose of these functions is as follows:
 
   If we try to naively exit with a different exit code than that of the received signal, our new
-  exit code will be ignored, We can work around this by using `installHandler`; catching the
-  signal and setting our own exit code.
+	exit code will be ignored, We can work around this by using `installHandler`; catching the
+	signal and setting our own exit code.
 
   We can use exceptions to map our domain failures to these exit codes.
 
@@ -34,11 +34,11 @@ import System.Exit (ExitCode (ExitFailure), exitWith)
   we exit with whatever signal (SIGINT or SIGTERM) requested shutdown. -}
 
 {- | A data type representing an action with explicit instructions as to whether concurrent
-     operations should attempt to map any exceptions it throws to Unix exit codes.
+		 operations should attempt to map any exceptions it throws to Unix exit codes.
 
-    It has two type parameters:
+		It has two type parameters:
 
-    * @e@ the exception type, 'Void' in the unhandled case
+		* @e@ the exception type, 'Void' in the unhandled case
 
     * @a@ the type returned by the action
 -}
@@ -48,10 +48,10 @@ data HandledAction e a where
 
 {- | Perform two actions, with explicit handling instructions, concurrently (with the chosen scheme)
 
-    Returns whatever the concurrent operation would, if called plainly.
+		Returns whatever the concurrent operation would, if called plainly.
 
-    If the program is already shutting as a result of `SIGINT` or `SIGTERM`, any handled actions
-    will have their exceptions caught and mapped to an exit code.
+		If the program is already shutting as a result of `SIGINT` or `SIGTERM`, any handled actions
+		will have their exceptions caught and mapped to an exit code.
 -}
 concOpSignalHandled
   :: forall e1 e2 a b f
@@ -82,11 +82,11 @@ concOpSignalHandled concOp hleft hright = do
 
 {- | Race two actions, with explicit handling instructions, concurrently.
 
-    Takes two `HandledAction`s (the mechanism to explicitly specify handling instructions), and
-    returns whatever `race` would, if called directly.
+		Takes two `HandledAction`s (the mechanism to explicitly specify handling instructions), and
+		returns whatever `race` would, if called directly.
 
-    If the program is already shutting as a result of `SIGINT` or `SIGTERM`, any handled actions
-    will have their exceptions caught and mapped to an exit code.
+		If the program is already shutting as a result of `SIGINT` or `SIGTERM`, any handled actions
+		will have their exceptions caught and mapped to an exit code.
 -}
 raceSignalHandled
   :: forall e1 e2 a b

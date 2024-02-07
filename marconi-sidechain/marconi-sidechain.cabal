@@ -6,8 +6,8 @@ license-files:
   LICENSE
   NOTICE
 
-author:        Markus Läll
-maintainer:    markus.lall@iohk.io
+author:        Brendan Brown
+maintainer:    brendan.brown@iohk.io
 homepage:      https://github.com/input-output-hk/marconi#readme
 bug-reports:   https://github.com/input-output-hk/marconi/issues
 description:
@@ -52,15 +52,24 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Marconi.Sidechain.Api.HttpServer
-    Marconi.Sidechain.Api.Query.Indexers.EpochState
-    Marconi.Sidechain.Api.Query.Indexers.MintBurn
-    Marconi.Sidechain.Api.Query.Indexers.Utxo
-    Marconi.Sidechain.Api.Routes
-    Marconi.Sidechain.Bootstrap
+    Marconi.Sidechain.Api.JsonRpc.Endpoint.BurnTokenEvent
+    Marconi.Sidechain.Api.JsonRpc.Endpoint.CurrentSyncedBlock
+    Marconi.Sidechain.Api.JsonRpc.Endpoint.Echo
+    Marconi.Sidechain.Api.JsonRpc.Endpoint.EpochActiveStakePoolDelegation
+    Marconi.Sidechain.Api.JsonRpc.Endpoint.EpochNonce
+    Marconi.Sidechain.Api.JsonRpc.Endpoint.PastAddressUtxo
+    Marconi.Sidechain.Api.JsonRpc.Endpoint.TargetAddresses
+    Marconi.Sidechain.Api.JsonRpc.Routes
+    Marconi.Sidechain.Api.JsonRpc.Server
+    Marconi.Sidechain.Api.Rest.Endpoint.Metrics
+    Marconi.Sidechain.Api.Rest.Routes
+    Marconi.Sidechain.Api.Rest.Server
+    Marconi.Sidechain.Api.Types
     Marconi.Sidechain.CLI
     Marconi.Sidechain.Concurrency
     Marconi.Sidechain.Env
     Marconi.Sidechain.Error
+    Marconi.Sidechain.Indexers
     Marconi.Sidechain.Run
     Marconi.Sidechain.Utils
 
@@ -68,17 +77,19 @@ library
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index-legacy  >=1.2.0
-    , marconi-core-json-rpc       >=1.2.0
-    , marconi-core-legacy         >=1.2.0
+    , marconi-cardano-chain-index                                        >=1.2.0
+    , marconi-cardano-core:{marconi-cardano-core, cardano-api-extended}  >=1.2.0
+    , marconi-cardano-indexers                                           >=1.2.0
+    , marconi-core                                                       >=1.2.0
+    , marconi-core-json-rpc                                              >=1.2.0
 
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api          ^>=8.20
+    , cardano-api           ^>=8.20
+    , cardano-crypto-class
     , cardano-ledger-core
-    , cardano-slotting     ^>=0.1.1.1
     , iohk-monitoring
 
   ------------------------
@@ -89,23 +100,17 @@ library
     , async
     , base                  >=4.9 && <5
     , bytestring
-    , data-default
     , directory
-    , fast-logger
-    , filepath
-    , http-types
     , lens
     , mtl
+    , nonempty-containers
     , optparse-applicative
     , pretty-simple
-    , prettyprinter
     , prometheus-client
     , servant
     , servant-server
     , stm                   >=2.5
     , text
-    , time
-    , wai-extra
     , warp
 
 executable marconi-sidechain
@@ -124,65 +129,6 @@ executable marconi-sidechain
   ------------------------
   build-depends:  base >=4.9 && <5
 
-executable examples-json-rpc-client
-  import:         lang
-  hs-source-dirs: examples/json-rpc-client/src
-  main-is:        Main.hs
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:
-    , marconi-core-json-rpc  >=1.2.0
-    , marconi-sidechain      >=1.2.0
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , base            >=4.9 && <5
-    , http-client
-    , servant
-    , servant-client
-
-library db-utils
-  import:          lang
-  hs-source-dirs:  db-utils/src
-  exposed-modules: Marconi.DB.SqlUtils
-
-  --------------------------
-  -- Other IOG dependencies
-  --------------------------
-  build-depends:   cardano-api ^>=8.20
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , async
-    , base            >=4.9 && <5
-    , raw-strings-qq
-    , sqlite-simple
-    , text
-    , time
-
-executable db-utils-exe
-  import:         lang
-  hs-source-dirs: db-utils/exe
-  main-is:        Main.hs
-
-  --------------------
-  -- Local components
-  --------------------
-  build-depends:  marconi-sidechain:db-utils
-
-  ------------------------
-  -- Non-IOG dependencies
-  ------------------------
-  build-depends:
-    , base                  >=4.9 && <5
-    , optparse-applicative
-
 test-suite marconi-sidechain-test
   import:             lang
   ghc-options:        -Wno-unused-packages
@@ -190,29 +136,28 @@ test-suite marconi-sidechain-test
   main-is:            Spec.hs
   hs-source-dirs:     test
   other-modules:
-    Spec.Marconi.Sidechain.Api.Query.Indexers.MintBurn
-    Spec.Marconi.Sidechain.Api.Query.Indexers.Utxo
+    Spec.Marconi.Sidechain.Api.JsonRpc.Endpoint.BurnTokenEvent
+    Spec.Marconi.Sidechain.Api.JsonRpc.Endpoint.PastAddressUtxo
     Spec.Marconi.Sidechain.CLI
     Spec.Marconi.Sidechain.CLIInputValidation
-    Spec.Marconi.Sidechain.Env
-    Spec.Marconi.Sidechain.Integration
     Spec.Marconi.Sidechain.Routes
-    Spec.Marconi.Sidechain.RpcClientAction
     Spec.Marconi.Sidechain.Utils
 
   --------------------
   -- Required local executable
-  --------------------
   build-tool-depends: marconi-sidechain:marconi-sidechain
 
+  --------------------
   --------------------
   -- Local components
   --------------------
   build-depends:
-    , marconi-chain-index-legacy:{marconi-chain-index-legacy, marconi-chain-index-legacy-test-lib}  >=1.2.0
-    , marconi-core-json-rpc                                                                         >=1.2.0
-    , marconi-core-legacy                                                                           >=1.2.0
-    , marconi-sidechain                                                                             >=1.2.0
+    , marconi-cardano-chain-index:{marconi-cardano-chain-index, marconi-cardano-chain-index-test-lib}  >=1.2.0
+    , marconi-cardano-core:{marconi-cardano-core, marconi-cardano-core-test-lib}                       >=1.2.0
+    , marconi-cardano-indexers:{marconi-cardano-indexers, marconi-cardano-indexers-test-lib}           >=1.2.0
+    , marconi-core                                                                                     >=1.2.0
+    , marconi-core-json-rpc                                                                            >=1.2.0
+    , marconi-sidechain
 
   --------------------------
   -- Other IOG dependencies
@@ -222,8 +167,7 @@ test-suite marconi-sidechain-test
     , cardano-api-gen         ^>=8.2
     , cardano-crypto-class
     , cardano-ledger-shelley
-    , cardano-node-emulator
-    , cardano-slotting        ^>=0.1.1.1
+    , filepath
     , hedgehog-extras
     , iohk-monitoring
     , plutus-tx-plugin
@@ -231,6 +175,7 @@ test-suite marconi-sidechain-test
   ------------------------
   -- Non-IOG dependencies
   ------------------------
+
   build-depends:
     , aeson
     , aeson-pretty
@@ -239,11 +184,11 @@ test-suite marconi-sidechain-test
     , containers
     , directory
     , exceptions
-    , filepath
     , hedgehog
     , http-client
     , lens
     , mtl
+    , nonempty-containers
     , optparse-applicative
     , process
     , resourcet
