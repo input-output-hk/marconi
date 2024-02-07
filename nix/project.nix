@@ -43,9 +43,6 @@ let
           marconi-sidechain.doHaddock = false;
           marconi-sidechain.flags.defer-plugin-errors = false;
 
-          marconi-sidechain.doHaddock = false;
-          marconi-sidechain.flags.defer-plugin-errors = false;
-
           marconi-starter.doHaddock = false;
           marconi-starter.flags.defer-plugin-errors = false;
 
