@@ -19,6 +19,19 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+{- |
+ Host an indexer that stores all the transaction outputs and
+ many of their relative information
+
+ * transaction that created them
+ * hash of their datum datum
+ * script info
+
+ It also includes helper function to extract the corresponding
+ data from a block or from a TxBody.
+
+ Note that we don't remove spent tx outputs from this indexer.
+-}
 module Marconi.Cardano.Indexers.Utxo (
   -- * Event
   Utxo (Utxo),
@@ -117,7 +130,9 @@ Lens.makeLenses ''Utxo
 
 data UtxoIndexerConfig = UtxoIndexerConfig
   { _trackedAddresses :: [C.AddressAny]
+  -- ^ Allow us to filter the UTxOs we want to index
   , _includeScript :: Bool
+  -- ^ Do we store script info
   }
 
 Lens.makeLenses ''UtxoIndexerConfig
@@ -226,7 +241,7 @@ utxoWorker workerConfig utxoConfig path = do
       indexer
 
 {- | Convenience wrapper around 'utxoWorker' with some defaults for
-creating 'StandardWorkerConfig', including a preprocessor.
+creating 'StandardWorkerConfig', including a preprocessor for resuming and an address filter.
 -}
 utxoBuilder
   :: (MonadIO n, MonadError Core.IndexerError n)

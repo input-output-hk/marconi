@@ -7,6 +7,10 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+{- | This indexer tracks the spent transaction outputs:
+ the outputs that are spent as tx input in a transaction.
+ We track the transaction where they are spent and its block.
+-}
 module Marconi.Cardano.Indexers.Spent (
   -- * Event
   SpentInfo (SpentInfo),

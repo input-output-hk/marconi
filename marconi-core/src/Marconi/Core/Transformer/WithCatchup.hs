@@ -9,7 +9,12 @@
  the blocks to the indexer.
 
  When you use several workers and coordinators, you may want to put the catchup on the final
- indexers and not on the coordinators to improve performances.
+ indexers and not on the coordinators to improve performances
+
+ Similarly, if you want to filter the events before sending them to the indexer
+ (for example, using 'WithTransform'), you should do it after the catchup, to  ensure that
+ each event is properly handle by the catchup.
+ If you don't do it, batch can be send very late to the indexer and it would impact resuming.
 -}
 module Marconi.Core.Transformer.WithCatchup (
   WithCatchup,
