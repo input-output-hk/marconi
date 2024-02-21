@@ -43,17 +43,8 @@ let
           marconi-sidechain.doHaddock = false;
           marconi-sidechain.flags.defer-plugin-errors = false;
 
-          marconi-sidechain-experimental.doHaddock = false;
-          marconi-sidechain-experimental.flags.defer-plugin-errors = false;
-
           marconi-starter.doHaddock = false;
           marconi-starter.flags.defer-plugin-errors = false;
-
-          marconi-core-legacy.doHaddock = false;
-          marconi-core-legacy.flags.defer-plugin-errors = false;
-
-          marconi-chain-index-legacy.doHaddock = false;
-          marconi-chain-index-legacy.flags.defer-plugin-errors = false;
 
           # The lines `export CARDANO_NODE=...` and `export CARDANO_CLI=...`
           # is necessary to prevent the error
@@ -65,18 +56,12 @@ let
             export MARCONI_CHAIN_INDEX=${inputs.self.packages.marconi-cardano-chain-index}/bin/marconi-cardano-chain-index
           '';
 
+          # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
           # Needed for running the marconi-sidechain integration tests in CI
           marconi-sidechain.preCheck = ''
             export MARCONI_SIDECHAIN=${inputs.self.packages.marconi-sidechain}/bin/marconi-sidechain
             export CARDANO_NODE_CONFIG=${../config}
           '';
-
-          # CARDANO_NODE_CONFIG needed for tests of handlers, which include ExtLedgerStateCoordinator.
-          # The coordinator's build function calls `readGenesisFile` so must know where to look.
-          marconi-sidechain-experimental.preCheck = "
-            export MARCONI_SIDECHAIN_EXPERIMENTAL=${inputs.self.packages.marconi-sidechain-experimental}/bin/marconi-sidechain-experimental
-            export CARDANO_NODE_CONFIG=${../config}
-          ";
 
           # Needed for running marconi-cardano-indexers snapshot tests in CI
           marconi-cardano-indexers.preCheck = "
@@ -89,7 +74,6 @@ let
           marconi-cardano-indexers.ghcOptions = [ "-Werror" ];
           marconi-cardano-chain-index.ghcOptions = [ "-Werror" ];
           marconi-sidechain.ghcOptions = [ "-Werror" ];
-          marconi-sidechain-experimental.ghcOptions = [ "-Werror" ];
           marconi-starter.ghcOptions = [ "-Werror" ];
         };
       }];
@@ -98,10 +82,8 @@ let
 
   gitrev-overlay = _: prev: {
     hsPkgs = prev.pkgs.pkgsHostTarget.setGitRevForPaths prev.pkgs.gitrev [
-      "marconi-chain-index-legacy.components.exes.marconi-chain-index-legacy"
       "marconi-cardano-chain-index.components.exes.marconi-cardano-chain-index"
       "marconi-sidechain.components.exes.marconi-sidechain"
-      "marconi-sidechainexperimental.components.exes.marconi-sidechain-experimental"
     ]
       prev.hsPkgs;
   };

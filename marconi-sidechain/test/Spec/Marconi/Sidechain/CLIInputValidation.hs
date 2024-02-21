@@ -7,21 +7,23 @@ module Spec.Marconi.Sidechain.CLIInputValidation where
 import Data.ByteString.Lazy qualified as BSL
 import Data.Functor ((<&>))
 import Data.Maybe (fromJust)
-import Spec.Marconi.Sidechain.Utils qualified as U
 import System.FilePath.Posix ((</>))
 import System.Process qualified as IO
+import Test.Marconi.Cardano.ChainIndex.CLI qualified as Test.CLI
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.Golden (goldenVsString)
+import Test.Tasty.Golden (goldenVsStringDiff)
 
 tests :: TestTree
 tests =
   testGroup
     "marconi-sidechain input validation error"
-    [ testGroup "check input validation when starting marconi-sidechain with invalid cli flags" $
-        invalidOptionalCliFlagsWithExpectedErrors
+    [ testGroup
+        "check input validation when starting marconi-sidechain-experimental with invalid cli flags"
+        $ invalidOptionalCliFlagsWithExpectedErrors
           <&> ( \testInput ->
-                  goldenVsString
+                  goldenVsStringDiff
                     (testDescription testInput)
+                    (\expected actual -> ["diff", "--color=always", expected, actual])
                     (goldenFile testInput)
                     (invalidCliArgWhenStartIngMarconiSideChainTest testInput)
               )
@@ -35,7 +37,7 @@ data InvalidArgTestInput = InvalidArgTestInput
   }
 
 goldenFileDir :: FilePath
-goldenFileDir = "test/Spec/Marconi/Sidechain/CLIInputValidation/Golden"
+goldenFileDir = "test/Spec/Golden/CLIInputValidation"
 
 invalidOptionalCliFlagsWithExpectedErrors :: [InvalidArgTestInput]
 invalidOptionalCliFlagsWithExpectedErrors =
@@ -123,6 +125,9 @@ invalidCliArgWhenStartIngMarconiSideChainTest InvalidArgTestInput{..} = do
               , IO.std_err = IO.CreatePipe
               }
         )
-      =<< U.procFlex "marconi-sidechain" "MARCONI_SIDECHAIN" [invalidFlag, invalidArg]
+      =<< Test.CLI.procFlex
+        "marconi-sidechain"
+        "MARCONI_SIDECHAIN"
+        [invalidFlag, invalidArg]
 
-  U.captureHandleContents (fromJust mStderr)
+  Test.CLI.captureHandleContents (fromJust mStderr)
