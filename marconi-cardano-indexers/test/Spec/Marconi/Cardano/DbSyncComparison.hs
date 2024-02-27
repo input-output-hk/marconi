@@ -8,6 +8,7 @@ import Test.Marconi.Cardano.DbSyncComparison.Common (
   NodeType (Mainnet),
  )
 import Test.Marconi.Cardano.DbSyncComparison.SpentInfoResult (mkSpentInfoEventAtQueryTest)
+import Test.Marconi.Cardano.DbSyncComparison.UtxoResult (mkUtxoEventTest)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.ExpectedFailure (ignoreTest)
 
@@ -17,6 +18,7 @@ tests =
     "Spec.Marconi.Cardano.DbSyncComparison"
     [ ignoreTest blockInfoTests
     , ignoreTest spentInfoTests
+    , utxoTests
     ]
 
 blockInfoTests :: TestTree
@@ -73,6 +75,13 @@ spentInfoTests =
     , mkSpentInfoEventAtQueryTest "At slot number 72316896" $ spentInfoConfig Mainnet Babbage1 72316896
     ]
 
+utxoTests :: TestTree
+utxoTests =
+  testGroup
+    "Utxo tests"
+    [ mkUtxoEventTest "TESTING" $ utxoEventConfig Mainnet Shelley 4520900
+    ]
+
 {- Config creation -}
 
 goldenDir :: FilePath
@@ -97,3 +106,13 @@ spentInfoConfig nodeType era slotNo =
     (goldenDir <> "/spent-info-db/")
     goldenDir
     "spentinfo"
+
+utxoEventConfig :: NodeType -> Era -> C.SlotNo -> DbSyncComparisonConfig
+utxoEventConfig nodeType era slotNo =
+  DbSyncComparisonConfig
+    nodeType
+    era
+    slotNo
+    (goldenDir <> "/utxo-db/")
+    goldenDir
+    "utxo"

@@ -46,9 +46,12 @@ module Marconi.Cardano.Indexers.Utxo (
   getUtxoEventsFromBlock,
   getUtxosFromTx,
   getUtxosFromTxBody,
+  toTxBodys,
+  getTxBody,
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Extended.Streaming (BlockEvent (BlockEvent))
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.BM.Tracing qualified as BM
@@ -484,3 +487,10 @@ getRefScriptAndHash refScript = case refScript of
 toAddr :: C.AddressInEra era -> C.AddressAny
 toAddr (C.AddressInEra C.ByronAddressInAnyEra addr) = C.AddressByron addr
 toAddr (C.AddressInEra (C.ShelleyAddressInEra _) addr) = C.AddressShelley addr
+
+getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
+getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
+
+toTxBodys :: BlockEvent -> [AnyTxBody]
+toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
+  zipWith (getTxBody bn) [0 ..] txs

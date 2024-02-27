@@ -167,16 +167,10 @@ buildIndexers
         txBodyCoordinatorLogger
         path
 
-    let getTxBody :: (C.IsCardanoEra era) => C.BlockNo -> TxIndexInBlock -> C.Tx era -> AnyTxBody
-        getTxBody blockNo ix tx = AnyTxBody blockNo ix (C.getTxBody tx)
-        toTxBodys :: BlockEvent -> [AnyTxBody]
-        toTxBodys (BlockEvent (C.BlockInMode (C.Block (C.BlockHeader _ _ bn) txs) _) _ _) =
-          zipWith (getTxBody bn) [0 ..] txs
-
     coordinatorTxBodyWorkers <-
       buildTxBodyCoordinator
         txBodyCoordinatorLogger
-        (pure . Just . fmap toTxBodys)
+        (pure . Just . fmap Utxo.toTxBodys)
         [utxoWorker, spentWorker, datumWorker, mintTokenWorker]
 
     utxoQueryIndexer <-

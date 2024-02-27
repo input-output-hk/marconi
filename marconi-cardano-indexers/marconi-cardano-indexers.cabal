@@ -218,6 +218,7 @@ library marconi-cardano-indexers-test-lib
     Test.Marconi.Cardano.DbSyncComparison.BlockInfoResult
     Test.Marconi.Cardano.DbSyncComparison.Common
     Test.Marconi.Cardano.DbSyncComparison.SpentInfoResult
+    Test.Marconi.Cardano.DbSyncComparison.UtxoResult
 
   --------------------
   -- Local components
