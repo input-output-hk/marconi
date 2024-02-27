@@ -1,6 +1,6 @@
-= https://github.com/input-output-hk/marconi[Cardano Blockchain Indexer Framework]
+= https://github.com/input-output-hk/marconi[Marconi]
 :email: plutus@iohk.io
-:author: Input Output HK Limited
+:author: Input Output Global
 :toc: left
 :reproducible:
 
@@ -13,58 +13,65 @@ Its original purpose is to provide a library that eases the tailored indexing of
 information.
 However, this repository also contains a set of indexers that are ready to use
 and some executables that group them.
+We've also bundle some of them in executables that you can reuse if you want, as
+the noe we use for link:./marconi-sidechain/README.md[sidechain]
 While we'd recommend defining indexers that fits your need, you can reuse the
 existing ones to test Marconi.
 
 == Key features
 
 * Customizable backend. The core library comes with
-  file:./marconi-core/src/Marconi/Core/Indexer/SQLiteIndexer.hs[SQLite backend],
-  a file:./marconi-core/src/Marconi/Core/Indexer/FileIndexer.hs[file backend]
-  or a file:./marconi-core/src/Marconi/Core/Indexer/ListIndexer.hs[in-memory backend].
-* file:./marconi-core/src/Marconi/Core/Indexer/SQLiteAggregateQuery.hs[Group indexers]
+  link:./marconi-core/src/Marconi/Core/Indexer/SQLiteIndexer.hs[SQLite backend],
+  a link:./marconi-core/src/Marconi/Core/Indexer/FileIndexer.hs[file backend]
+  or a link:./marconi-core/src/Marconi/Core/Indexer/ListIndexer.hs[in-memory backend].
+* link:./marconi-core/src/Marconi/Core/Indexer/SQLiteAggregateQuery.hs[Group indexers]
   to query them,
-* file:./marconi-core/src/Marconi/Core/Preprocessor/Resume.hs[Resume indexing]
+* link:./marconi-core/src/Marconi/Core/Preprocessor/Resume.hs[Resume indexing]
   (new indexers don't reset existing ones).
-* file:./marconi-core/src/Marconi/Core/Transformer/WithCatchup.hs[Batch insert] to
+* link:./marconi-core/src/Marconi/Core/Transformer/WithCatchup.hs[Batch insert] to
   speed up synchronisation with the node.
 * Logging using
   https://github.com/input-output-hk/iohk-monitoring-framework[iohk-monitoring-framework].
-* Indexers can be file:./marconi-core/src/Marconi/Core/Coordinator.hs[grouped].
+* Indexers can be link:./marconi-core/src/Marconi/Core/Coordinator.hs[grouped].
+* Differentiate easily volatile data (subject to rollback) from stable one.
 
-A comparison with other chain-indexing projects is also https://example.com/TODO[available].
+A comparison with other chain-indexing projects is also
+link:./doc/read-the-docs-site/architecture/comparison-other-chain-indexing-projects.rst[available].
 
+////
 == Quick start
 
-To be completed...
+To be completed
+////
 
 == Documentation
 
 === User documentation
 
-The more in-depth user documentation is available in our http://example.com/TODO[website].
+A more complete user manual should be available soon.
 
 === Haddock documentation
 
 The Haskell API documentation (Haddock) for the Marconi libraries is hosted here:
 
 * https://input-output-hk.github.io/marconi/main/marconi-core[marconi-core]
+* https://input-output-hk.github.io/marconi/main/marconi-core-json-rpc[marconi-core-json-rpc]
 * https://input-output-hk.github.io/marconi/main/marconi-cardano-core[marconi-cardano-core]
 * https://input-output-hk.github.io/marconi/main/marconi-cardano-indexers[marconi-cardano-indexers]
-* https://input-output-hk.github.io/marconi/main/marconi-core-json-rpc[marconi-core-json-rpc]
 
 You may generate them directly with `Cabal` for each component:
 
 ```
 cabal haddock marconi-core
 cabal haddock marconi-core-json-rpc
-cabal haddock marconi-cardano-chain-index
+cabal haddock marconi-cardano-core
+cabal haddock marconi-cardano-indexers
 ```
 
 [[Architecture]]
 == Architecture overview
 
-See the http://example.com/TODO[Design and Architecture] section the website for more in-depth explainations.
+See the link:./doc/read-the-docs-site/architecture/index.rst[Design and Architecture] section the website for more in-depth explainations.
 
 == CONTRIBUTING
 
@@ -77,9 +84,11 @@ See link:CONTRIBUTING{outfilesuffix}[CONTRIBUTING] for comprehensive documentati
 
 Issues can be filed in the https://github.com/input-output-hk/marconi/issues[GitHub Issue tracker].
 
+////
 == Roadmap
 
 To be completed...
+////
 
 == Licensing
 

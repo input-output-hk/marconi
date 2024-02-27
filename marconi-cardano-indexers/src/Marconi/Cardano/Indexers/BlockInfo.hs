@@ -12,6 +12,7 @@ module Marconi.Cardano.Indexers.BlockInfo (
   BlockInfo (BlockInfo),
   blockNo,
   timestamp,
+  timestampUTCTime,
   epochNo,
 
   -- * Indexer and worker
@@ -47,6 +48,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Time qualified as Time
 import Data.Time.Clock.POSIX (POSIXTime)
+import Data.Time.Clock.POSIX qualified as Time
 import Data.Word (Word64)
 import Database.SQLite.Simple (NamedParam ((:=)))
 import Database.SQLite.Simple qualified as SQL
@@ -77,6 +79,9 @@ data BlockInfo = BlockInfo
 Aeson.deriveJSON Aeson.defaultOptions{Aeson.fieldLabelModifier = tail} ''BlockInfo
 
 Lens.makeLenses ''BlockInfo
+
+timestampUTCTime :: Lens.Getter BlockInfo Time.UTCTime
+timestampUTCTime = timestamp . Lens.to (Time.posixSecondsToUTCTime . fromIntegral)
 
 type instance Core.Point BlockInfo = C.ChainPoint
 
